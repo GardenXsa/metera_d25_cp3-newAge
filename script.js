@@ -121,7 +121,7 @@ function syncPlayerGoldFromInventory() {
 
 function countRealItems(containerId, prototypeId) {
     const cont = ContainerRegistry.get(containerId);
-    if (!cont) return 0;
+    if (!cont || !cont.items) return 0;
     return cont.items.reduce((sum, itemId) => {
         const item = ItemRegistry.get(itemId);
         return (item && item.prototype_id === prototypeId) ? sum + item.stack_size : sum;
@@ -14470,7 +14470,7 @@ function getEffectiveStats() {
     if (player.container_equipment) {
         const eqCont = ContainerRegistry.get(player.container_equipment);
         if (eqCont) {
-            eqCont.items.forEach(itemId => {
+            (eqCont.items || []).forEach(itemId => {
                 const item = ItemRegistry.get(itemId);
                 if (item && item.custom_props && Array.isArray(item.custom_props.effects)) {
                     item.custom_props.effects.forEach(effect => {
