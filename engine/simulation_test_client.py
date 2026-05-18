@@ -12,8 +12,6 @@ Metera Simulation Test Client — расширенный графический 
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox, ttk
-import subprocess
-import threading
 import json
 import sys
 import os
@@ -28,84 +26,15 @@ except ImportError:
     print("ОШИБКА: pip install Pillow")
     sys.exit(1)
 
+# Import shared engine client (single source of truth)
+from engine_client import EngineProcess, load_json as _shared_load_json, sync_biome_colors
+
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
 # =============================================================================
-# ENGINE PROCESS WRAPPER
+# EngineProcess is now imported from engine_client.py
 # =============================================================================
-class EngineProcess:
-    def __init__(self, on_progress, on_result, on_error):
-        self.proc = None
-        self.on_progress = on_progress
-        self.on_result = on_result
-        self.on_error = on_error
-        self.is_running = False
-
-    def start(self):
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        exe_name = 'meterea_engine.exe' if sys.platform == 'win32' else 'meterea_engine'
-        exe_path = os.path.join(base_dir, exe_name)
-        if not os.path.exists(exe_path):
-            self.on_error(f"Движок не найден:\n{exe_path}\nСкомпилируйте C++ код.")
-            return False
-        try:
-            self.proc = subprocess.Popen(
-                [exe_path], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, text=True, encoding='utf-8', cwd=base_dir
-            )
-            self.is_running = True
-            threading.Thread(target=self._read_loop, daemon=True).start()
-            return True
-        except Exception as e:
-            self.on_error(f"Ошибка запуска: {e}")
-            return False
-
-    def send(self, cmd_data):
-        if self.is_running and self.proc:
-            try:
-                self.proc.stdin.write(json.dumps(cmd_data, ensure_ascii=False) + '\n')
-                self.proc.stdin.flush()
-            except Exception as e:
-                self.on_error(f"Ошибка отправки: {e}")
-
-    def _read_loop(self):
-        while self.is_running and self.proc:
-            line = self.proc.stdout.readline()
-            if not line:
-                break
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                data = json.loads(line)
-                cmd = data.get("message", "") or data.get("command", "")
-                has_world = "world" in data
-                has_map = "map" in data
-                status = data.get("status", "?")
-                print(f"[ENGINE->CLIENT] status={status} world={has_world} map={has_map} msg={cmd[:60]} len={len(line)}")
-                if data.get("status") == "progress":
-                    self.on_progress(data.get("message", ""))
-                elif data.get("status") in ("ok", "realtime_update"):
-                    self.on_result(data)
-                elif data.get("status") == "error":
-                    self.on_error(data.get("message", "Ошибка движка"))
-                else:
-                    print(f"[ENGINE->CLIENT] Unknown status: {data.get('status')}")
-            except json.JSONDecodeError as e:
-                print(f"[RAW] JSON parse error: {e}, line_len={len(line)}, first200={line[:200]}")
-        self.is_running = False
-        if self.proc:
-            self.proc.poll()
-            if self.proc.returncode is not None and self.proc.returncode != 0:
-                err = self.proc.stderr.read()
-                self.on_error(f"Движок упал (Код: {self.proc.returncode})\n{err}")
-
-    def stop(self):
-        self.is_running = False
-        if self.proc:
-            self.proc.terminate()
-            self.proc = None
 
 
 # =============================================================================
@@ -418,28 +347,15 @@ class SimulationTestClient(ctk.CTk):
     # ENGINE COMMANDS
     # -------------------------------------------------------------------------
     def _load_json(self, path, default=None):
-        """Load JSON file. default: [] for array fields, {} for object fields."""
-        if default is None:
-            default = {}
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if not data:
-                    self._log(f"[WARN] {path} empty")
-                    return default
-                t = type(data).__name__
-                l = len(data) if isinstance(data, (list, dict)) else '?'
-                self._log(f"[OK] {os.path.basename(path)}: {t}({l})")
-                return data
-        except FileNotFoundError:
-            self._log(f"[ERR] Not found: {path}")
-            return default
-        except json.JSONDecodeError as e:
-            self._log(f"[ERR] Bad JSON: {path}: {e}")
-            return default
-        except Exception as e:
-            self._log(f"[ERR] Load fail: {path}: {e}")
-            return default
+        """Delegate to shared load_json with local logging."""
+        result = _shared_load_json(path, default)
+        if result == default:
+            self._log(f"[WARN/ERR] {os.path.basename(path)}: using default")
+        else:
+            t = type(result).__name__
+            l = len(result) if isinstance(result, (list, dict)) else '?'
+            self._log(f"[OK] {os.path.basename(path)}: {t}({l})")
+        return result
 
     def _log(self, msg):
         """Log message to diagnostics tab and console."""

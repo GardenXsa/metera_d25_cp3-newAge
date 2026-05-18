@@ -444,27 +444,41 @@ class ProjectScannerApp(ctk.CTk):
             self.finish_scan(False, str(e))
 
     def update_status(self, text):
+        """Thread-safe status update via self.after()"""
         if len(text) > 50:
             text = text[:47] + "..."
-        self.status_label.configure(text=text)
+        self.after(0, lambda: self.status_label.configure(text=text))
 
     def finish_scan(self, success, message):
-        self.progress_bar.stop()
-        self.btn_start.configure(state="normal", text="НАЧАТЬ СКАНИРОВАНИЕ")
-        
-        if success:
-            self.status_label.configure(text="Готово!", text_color="green")
-            if messagebox.askyesno("Успех", f"Сканирование завершено.\n\nОткрыть файл отчета?"):
-                try:
-                    os.startfile(message)
-                except AttributeError:
-                    try:
-                        os.system(f"open '{message}'")
-                    except:
-                        os.system(f"xdg-open '{message}'")
-        else:
-            self.status_label.configure(text="Ошибка", text_color="red")
-            messagebox.showerror("Ошибка", f"Произошла ошибка:\n{message}")
+        """Thread-safe scan completion via self.after()"""
+        def _on_ui_thread():
+            self.progress_bar.stop()
+            self.btn_start.configure(state="normal", text="НАЧАТЬ СКАНИРОВАНИЕ")
+            
+            if success:
+                self.status_label.configure(text="Готово!", text_color="green")
+                if messagebox.askyesno("Успех", f"Сканирование завершено.\n\nОткрыть файл отчета?"):
+                    self._open_file_cross_platform(message)
+            else:
+                self.status_label.configure(text="Ошибка", text_color="red")
+                messagebox.showerror("Ошибка", f"Произошла ошибка:\n{message}")
+        self.after(0, _on_ui_thread)
+
+    @staticmethod
+    def _open_file_cross_platform(filepath):
+        """Cross-platform file opener (Windows/macOS/Linux)"""
+        import subprocess
+        import platform
+        system = platform.system()
+        try:
+            if system == "Windows":
+                os.startfile(filepath)
+            elif system == "Darwin":
+                subprocess.Popen(["open", filepath])
+            else:
+                subprocess.Popen(["xdg-open", filepath])
+        except Exception as e:
+            print(f"Не удалось открыть файл: {e}")
 
 if __name__ == "__main__":
     app = ProjectScannerApp()

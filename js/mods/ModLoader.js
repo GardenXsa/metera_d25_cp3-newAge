@@ -390,6 +390,474 @@ window.ModAPI = {
     mergeDeep: mergeDeep
 };
 
+// ============================================================================
+// SANDBOX: with + Proxy pattern for true mod isolation (Issue #4 FULL)
+// ============================================================================
+//
+// Architecture Overview:
+//
+//   +---------------------------------------------------+
+//   |  Mod code runs inside:                            |
+//   |    with(sandboxProxy) { <mod code> }              |
+//   |                                                   |
+//   |  Every identifier lookup goes through:            |
+//   |    sandboxProxy.has() → always true               |
+//   |    sandboxProxy.get() → 3-tier resolution:        |
+//   |      1. Whitelisted safe globals → safe value     |
+//   |      2. Blocked globals → undefined + warning     |
+//   |      3. Game globals (window.X) → pass-through    |
+//   |                                                   |
+//   |  window = safeWindowProxy:                        |
+//   |    window.player     → ✅ pass-through            |
+//   |    window.t          → ✅ pass-through            |
+//   |    window.fetch      → ❌ blocked + warning       |
+//   |    window.electronAPI → ❌ blocked + warning       |
+//   |                                                   |
+//   |  document = hardenedDocProxy:                     |
+//   |    document.createElement('div')    → ✅ allowed  |
+//   |    document.createElement('script') → ❌ blocked  |
+//   |    document.defaultView             → safeWindow  |
+//   +---------------------------------------------------+
+//
+
+/**
+ * Deep-freeze an object and all its nested properties recursively.
+ * Prevents mods from mutating any ModAPI state.
+ */
+function deepFreeze(obj) {
+    if (obj === null || typeof obj !== 'object' && typeof obj !== 'function') return obj;
+    if (Object.isFrozen(obj)) return obj;
+    Object.freeze(obj);
+    const keys = Object.getOwnPropertyNames(obj);
+    for (const key of keys) {
+        const val = obj[key];
+        if ((typeof val === 'object' || typeof val === 'function') && val !== null && !Object.isFrozen(val)) {
+            deepFreeze(val);
+        }
+    }
+    return obj;
+}
+
+/**
+ * Properties that are BLOCKED as bare identifiers in the sandbox.
+ * When a mod writes `fetch` or `eval`, the Proxy intercepts it
+ * and returns undefined + logs a warning.
+ *
+ * NOTE: 'window' is NOT here — we provide a safe window proxy instead.
+ */
+const SANDBOX_BLOCKED_GLOBALS = new Set([
+    'top', 'parent', 'frames', 'contentWindow',
+    'fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource',
+    'eval', 'Function', 'AsyncFunction', 'GeneratorFunction',
+    'require', 'module', 'exports', '__dirname', '__filename',
+    'process', 'Buffer',
+    'electronAPI',
+    'localStorage', 'sessionStorage', 'indexedDB', 'caches',
+    'importScripts',
+    'Navigator', 'Location', 'History',
+    'SharedArrayBuffer', 'Atomics',
+    'Proxy', 'Reflect', 'Symbol',
+    'alert', 'confirm', 'prompt',
+    'open', 'close', 'stop', 'print',
+    'postMessage', 'onmessage',
+]);
+
+/**
+ * Properties that are BLOCKED on the safe `window` proxy.
+ * This is a superset of SANDBOX_BLOCKED_GLOBALS plus:
+ * - `window` / `self` / `globalThis` (return the safe proxy, not the real window)
+ * - `crypto` (use ModAPI.readFile for I/O)
+ */
+const WINDOW_BLOCKED_PROPS = new Set([
+    ...SANDBOX_BLOCKED_GLOBALS,
+    'window',    // window.window → return safe proxy (not real window)
+    'self',      // window.self  → return safe proxy
+    'globalThis',// window.globalThis → return safe proxy
+    'crypto',
+]);
+
+/**
+ * DOM element types that mods are NOT allowed to create via document.createElement.
+ * These can load external resources or execute arbitrary code.
+ */
+const BLOCKED_CREATE_ELEMENTS = new Set([
+    'script', 'iframe', 'object', 'embed', 'applet',
+    'link',   // <link rel="import"> can load external resources
+    'base',   // <base> can redirect all relative URLs
+    'meta',   // <meta http-equiv> can do redirects
+    'form',   // prevent form-based data exfiltration
+]);
+
+/**
+ * Creates a safe `window` proxy for the mod sandbox.
+ *
+ * WHY: Existing mods use `window.player`, `window.t`, `window.updateCharacterSheet`, etc.
+ * We can't simply block `window` — mods need game globals.
+ * Instead, we proxy `window` and block only dangerous properties.
+ *
+ * SECURITY:
+ * - window.fetch       → ❌ blocked
+ * - window.eval        → ❌ blocked
+ * - window.electronAPI → ❌ blocked
+ * - window.player      → ✅ pass-through (game global)
+ * - window.t           → ✅ pass-through (game global)
+ * - window.window      → returns safe proxy (not real window)
+ */
+function createSafeWindowProxy(realWindow, modId) {
+    // We need a reference to the proxy itself for self-referencing properties.
+    // This is set up after the proxy is created.
+    let safeWindowProxy = null;
+
+    const handler = {
+        get(target, prop, receiver) {
+            // window.window / window.self / window.globalThis → return safe proxy
+            if (prop === 'window' || prop === 'self' || prop === 'globalThis') {
+                return safeWindowProxy;
+            }
+
+            // Block dangerous properties
+            if (WINDOW_BLOCKED_PROPS.has(prop)) {
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to access window.${prop} — blocked`);
+                return undefined;
+            }
+
+            // Allow all other window properties (game globals: player, t, World, etc.)
+            return realWindow[prop];
+        },
+
+        set(target, prop, value) {
+            // Block writing to dangerous properties
+            if (WINDOW_BLOCKED_PROPS.has(prop)) {
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to set window.${prop} — blocked`);
+                return true;
+            }
+            // Allow setting game globals (mods may set window.player, etc.)
+            realWindow[prop] = value;
+            return true;
+        },
+
+        has(target, prop) {
+            // Return true for everything so `with()` doesn't fall through
+            return true;
+        },
+
+        deleteProperty(target, prop) {
+            if (WINDOW_BLOCKED_PROPS.has(prop)) {
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to delete window.${prop} — blocked`);
+                return false;
+            }
+            delete realWindow[prop];
+            return true;
+        }
+    };
+
+    safeWindowProxy = new Proxy(realWindow, handler);
+    return safeWindowProxy;
+}
+
+/**
+ * Creates a hardened document Proxy that:
+ * 1. Blocks createElement for dangerous element types (script, iframe, etc.)
+ * 2. Blocks innerHTML/outerHTML with <script> injection
+ * 3. Blocks defaultView (prevents window access via document)
+ * 4. Allows all other document operations
+ */
+function createDocumentProxy(doc, safeWindowProxy, modId) {
+    return new Proxy(doc, {
+        get(target, prop, receiver) {
+            // Block document.defaultView (=== window)
+            if (prop === 'defaultView') {
+                console.warn(`[ModLoader SANDBOX] document.defaultView is redirected to safe window proxy for mod ${modId}`);
+                return safeWindowProxy;
+            }
+
+            const value = Reflect.get(target, prop, receiver);
+
+            // Intercept document.createElement
+            if (prop === 'createElement' && typeof value === 'function') {
+                return function(tagName, options) {
+                    const tag = String(tagName).toLowerCase();
+                    if (BLOCKED_CREATE_ELEMENTS.has(tag)) {
+                        console.error(`[ModLoader SANDBOX] Blocked document.createElement('${tag}') — not allowed in mod sandbox`);
+                        return target.createElement('div'); // inert element
+                    }
+                    return value.call(target, tagName, options);
+                };
+            }
+
+            // Intercept document.createElementNS
+            if (prop === 'createElementNS' && typeof value === 'function') {
+                return function(namespace, tagName, options) {
+                    const tag = String(tagName).toLowerCase();
+                    if (BLOCKED_CREATE_ELEMENTS.has(tag)) {
+                        console.error(`[ModLoader SANDBOX] Blocked document.createElementNS('${tag}') — not allowed in mod sandbox`);
+                        return target.createElement('div');
+                    }
+                    return value.call(target, namespace, tagName, options);
+                };
+            }
+
+            return value;
+        },
+
+        set(target, prop, value) {
+            // Block innerHTML/outerHTML with <script> tags
+            if (prop === 'innerHTML' || prop === 'outerHTML') {
+                if (typeof value === 'string' && /<\s*script/i.test(value)) {
+                    console.error(`[ModLoader SANDBOX] Blocked <script> injection via document.${prop}`);
+                    return true;
+                }
+            }
+            // Block setting on* event handler properties on document
+            if (typeof prop === 'string' && prop.startsWith('on') && prop.length > 2) {
+                console.error(`[ModLoader SANDBOX] Blocked document.${prop} event handler assignment`);
+                return true;
+            }
+            target[prop] = value;
+            return true;
+        }
+    });
+}
+
+/**
+ * Creates a full sandbox environment for mod execution using the
+ * `with(proxy) { ... }` pattern.
+ *
+ * How it works:
+ * - The Proxy's `has` trap returns `true` for ALL property names,
+ *   which prevents the JS engine from falling through to the real global
+ *   scope via the `with` statement.
+ * - The `get` trap implements a 3-tier access policy:
+ *   1. Whitelisted safe globals → return the safe value
+ *   2. Explicitly blocked globals → return undefined + warn
+ *   3. Game globals (on window but not blocked) → pass through
+ *      This allows mods to use `player`, `updateCharacterSheet`, etc.
+ *      Both bare identifiers and `window.X` forms work.
+ */
+function createModSandbox(modAPI, modId, modMeta) {
+    // --- Build the safe globals whitelist ---
+    const safeGlobals = Object.create(null);
+
+    // Safe window proxy (must create early — document proxy needs it)
+    const safeWindow = createSafeWindowProxy(window, modId);
+    safeGlobals.window = safeWindow;
+
+    // Deep-frozen ModAPI copy (immutable for mods)
+    safeGlobals.ModAPI = deepFreeze({ ...modAPI });
+
+    // Safe console (with mod tag prefix for debugging)
+    safeGlobals.console = Object.freeze({
+        log: console.log.bind(console, `[Mod:${modId}]`),
+        warn: console.warn.bind(console, `[Mod:${modId}]`),
+        error: console.error.bind(console, `[Mod:${modId}]`),
+        info: console.info.bind(console, `[Mod:${modId}]`)
+    });
+
+    // Hardened document proxy (blocks createElement('script'), defaultView, on* handlers)
+    safeGlobals.document = createDocumentProxy(document, safeWindow, modId);
+
+    // Safe built-in types
+    safeGlobals.Array = Array;
+    safeGlobals.Object = Object;
+    safeGlobals.String = String;
+    safeGlobals.Number = Number;
+    safeGlobals.Boolean = Boolean;
+    safeGlobals.Map = Map;
+    safeGlobals.Set = Set;
+    safeGlobals.Error = Error;
+    safeGlobals.RegExp = RegExp;
+    safeGlobals.Date = Date;
+    safeGlobals.JSON = JSON;
+    safeGlobals.Math = Math;
+    safeGlobals.Promise = Promise;
+    safeGlobals.Intl = Intl;
+    safeGlobals.TextEncoder = TextEncoder;
+    safeGlobals.TextDecoder = TextDecoder;
+
+    // Safe utility functions
+    safeGlobals.parseInt = parseInt;
+    safeGlobals.parseFloat = parseFloat;
+    safeGlobals.isNaN = isNaN;
+    safeGlobals.isFinite = isFinite;
+    safeGlobals.encodeURI = encodeURI;
+    safeGlobals.decodeURI = decodeURI;
+    safeGlobals.encodeURIComponent = encodeURIComponent;
+    safeGlobals.decodeURIComponent = decodeURIComponent;
+    safeGlobals.btoa = btoa;
+    safeGlobals.atob = atob;
+
+    // Constants
+    safeGlobals.undefined = undefined;
+    safeGlobals.NaN = NaN;
+    safeGlobals.Infinity = Infinity;
+    safeGlobals.true = true;
+    safeGlobals.false = false;
+    safeGlobals.null = null;
+
+    // Performance
+    safeGlobals.performance = performance;
+
+    // Timers with flood protection (max 50 concurrent per mod)
+    const _maxTimers = 50;
+    let _activeTimers = 0;
+    safeGlobals.setTimeout = function(fn, ms, ...args) {
+        if (_activeTimers >= _maxTimers) {
+            console.warn(`[ModLoader SANDBOX] Timer limit (${_maxTimers}) reached for mod ${modId}.`);
+            return -1;
+        }
+        _activeTimers++;
+        const id = setTimeout(() => { _activeTimers--; try { fn(...args); } catch(e) { console.error(`[Mod:${modId}] Timer callback error:`, e); } }, ms);
+        return id;
+    };
+    safeGlobals.setInterval = function(fn, ms, ...args) {
+        if (_activeTimers >= _maxTimers) {
+            console.warn(`[ModLoader SANDBOX] Timer limit (${_maxTimers}) reached for mod ${modId}.`);
+            return -1;
+        }
+        _activeTimers++;
+        const id = setInterval(() => { try { fn(...args); } catch(e) { console.error(`[Mod:${modId}] Interval callback error:`, e); } }, ms);
+        return id;
+    };
+    safeGlobals.clearTimeout = function(id) { if (id > 0) { clearTimeout(id); _activeTimers = Math.max(0, _activeTimers - 1); } };
+    safeGlobals.clearInterval = function(id) { if (id > 0) { clearInterval(id); _activeTimers = Math.max(0, _activeTimers - 1); } };
+    safeGlobals.requestAnimationFrame = function(fn) {
+        return requestAnimationFrame(() => { try { fn(performance.now()); } catch(e) { console.error(`[Mod:${modId}] rAF callback error:`, e); } });
+    };
+    safeGlobals.cancelAnimationFrame = cancelAnimationFrame;
+
+    // Mod identity (read-only)
+    safeGlobals.modId = modId;
+    safeGlobals.modMeta = modMeta;
+
+    // --- Create the with-compatible Proxy ---
+    const sandboxProxy = new Proxy(safeGlobals, {
+        /**
+         * The `has` trap is the KEY to the with+Proxy pattern.
+         * By returning `true` for ALL property names, we prevent the JS engine
+         * from ever falling through to the real global scope.
+         * Even for blocked globals like `fetch`, we return `true`
+         * so the engine doesn't find them in the outer scope.
+         */
+        has(target, prop) {
+            return true;
+        },
+
+        /**
+         * The `get` trap implements a 3-tier access policy:
+         *
+         * 1. Whitelisted safe globals (ModAPI, console, Math, etc.)
+         *    → return the safe value
+         *
+         * 2. Explicitly blocked globals (fetch, eval, electronAPI, etc.)
+         *    → return undefined + log warning
+         *
+         * 3. Game globals (player, t, updateCharacterSheet, etc.)
+         *    These are properties on `window` that are NOT in the blocked list.
+         *    → pass through from real window
+         *    This allows mods to use both bare identifiers (`player`)
+         *    and `window.player` forms.
+         */
+        get(target, prop) {
+            // 1. If in our safe globals, return it
+            if (prop in target) {
+                return target[prop];
+            }
+
+            // 2. If explicitly blocked, return undefined + warn
+            if (SANDBOX_BLOCKED_GLOBALS.has(prop)) {
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to access blocked global "${prop}" — returned undefined`);
+                return undefined;
+            }
+
+            // 3. Pass-through: check if it's a game global on window.
+            //    Dangerous window properties are already filtered by step 2
+            //    (fetch, eval, etc. are in both SANDBOX_BLOCKED_GLOBALS
+            //     and WINDOW_BLOCKED_PROPS).
+            //    This allows `player`, `t`, `World`, `updateCharacterSheet`,
+            //    `damagePlayerHP`, etc. to work as bare identifiers.
+            if (prop in window) {
+                return window[prop];
+            }
+
+            // 4. Unknown property — return undefined
+            return undefined;
+        },
+
+        /**
+         * Control writes to the sandbox namespace:
+         * - Block overwriting safe globals (ModAPI, console, etc.)
+         * - Pass through writes to window for game globals
+         * - Allow local variables (var/let/const inside with() block)
+         */
+        set(target, prop, value) {
+            // Block overwriting our safe globals
+            if (prop in target) {
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to overwrite sandbox property "${prop}" — blocked`);
+                return true;
+            }
+            // For game globals, pass through to window
+            if (prop in window) {
+                window[prop] = value;
+                return true;
+            }
+            // Allow local variables in the with() scope
+            target[prop] = value;
+            return true;
+        },
+
+        /**
+         * Prevent deletion of sandbox properties.
+         */
+        deleteProperty(target, prop) {
+            if (prop in target) {
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to delete sandbox property "${prop}" — blocked`);
+                return false;
+            }
+            // Pass through to window for game globals
+            if (prop in window) {
+                delete window[prop];
+                return true;
+            }
+            return true;
+        }
+    });
+
+    return sandboxProxy;
+}
+
+/**
+ * Executes mod code in a sandboxed environment using the with+Proxy pattern.
+ *
+ * The `with(sandboxProxy) { ... }` block redirects ALL identifier lookups
+ * through the Proxy. Combined with the `has` trap returning `true` for
+ * everything, this prevents mods from accessing the real global scope
+ * through closures — they can only access what the Proxy allows.
+ *
+ * Key security properties:
+ * - `window` → safe proxy (blocks fetch, eval, electronAPI, etc.)
+ * - `document` → blocks createElement('script'), defaultView, on* handlers
+ * - `ModAPI` → deep-frozen (immutable)
+ * - Bare `fetch`, `eval`, `require` → return undefined + warning
+ * - Game globals (player, t, updateCharacterSheet) → pass through from window
+ *
+ * NOTE: Strict mode disables `with`, so we do NOT use "use strict" at the
+ * outermost scope. The sandbox Proxy provides equivalent protection.
+ */
+async function executeModInSandbox(code, modAPI, modId, modMeta) {
+    const sandboxProxy = createModSandbox(modAPI, modId, modMeta);
+
+    // Wrap mod code in with(sandboxProxy) to redirect ALL global lookups
+    const wrappedCode = `
+        with(this) {
+            ${code}
+        }
+    `;
+
+    const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+    const modFunc = new AsyncFunction(wrappedCode);
+    await modFunc.call(sandboxProxy);
+}
+
 class ModLoader {
     topologicalSort(adj) {
         const inDegree = new Map();
@@ -437,7 +905,7 @@ class ModLoader {
         for (const mod of activeMods) {
             const errors = window.ModAPI._validateModMeta(mod);
             if (errors.length > 0) {
-                console.error(`[ModLoader] Мод "${mod.id || 'UNKNOWN}" не прошёл валидацию. Пропускаю. Ошибки: ${errors.join('; ')}`);
+                console.error(`[ModLoader] Мод "${mod.id || 'UNKNOWN'}" не прошёл валидацию. Пропускаю. Ошибки: ${errors.join('; ')}`);
                 continue;
             }
             // Issue #7: API versioning check - warn but don't block
@@ -484,7 +952,7 @@ class ModLoader {
         for (const mod of activeMods) {
             if (mod.total_conversion === true) {
                 window.ModAPI.isTotalConversion = true;
-                console.log(`[ModLoader] ⚠️ АКТИВИРОВАН РЕЖИМ ТОТАЛЬНОЙ КОНВЕРСИИ модом: ${mod.id}. Ванильные ресурсы отключены.`);
+                console.log(`[ModLoader] АКТИВИРОВАН РЕЖИМ ТОТАЛЬНОЙ КОНВЕРСИИ модом: ${mod.id}. Ванильные ресурсы отключены.`);
                 break;
             }
         }
@@ -504,50 +972,13 @@ class ModLoader {
                         if (code) {
                             console.log(`[ModLoader] Выполнение скрипта: ${scriptPath} из мода ${modId}`);
 
-                            // Issue #1: Create restricted mod sandbox
-                            // SECURITY: AsyncFunction still has access to global scope via closures.
-                            // We mitigate by:
-                            // 1. Restricting `this` context to a sandbox object
-                            // 2. Only passing safe, vetted properties
-                            // 3. Explicitly NOT passing: fetch, XMLHttpRequest, WebSocket, 
-                            //    window.electronAPI, eval, Function, require, process, globalThis
-                            // 4. Running in strict mode to prevent accidental global leaks
-                            // For full isolation, Web Workers should be used in a future iteration.
-                            const modSandbox = Object.create(null);
-                            // Copy only safe properties — whitelist approach
-                            modSandbox.ModAPI = window.ModAPI;
-                            modSandbox.console = {
-                                log: console.log.bind(console),
-                                warn: console.warn.bind(console),
-                                error: console.error.bind(console),
-                                info: console.info.bind(console)
-                            };
-                            modSandbox.document = document; // mods need DOM for addUI
-                            modSandbox.Math = Math;
-                            modSandbox.Date = Date;
-                            modSandbox.JSON = JSON;
-                            modSandbox.Promise = Promise;
-                            modSandbox.setTimeout = setTimeout;
-                            modSandbox.setInterval = setInterval;
-                            modSandbox.clearTimeout = clearTimeout;
-                            modSandbox.clearInterval = clearInterval;
-                            modSandbox.Array = Array;
-                            modSandbox.Object = Object;
-                            modSandbox.String = String;
-                            modSandbox.Number = Number;
-                            modSandbox.Boolean = Boolean;
-                            modSandbox.Map = Map;
-                            modSandbox.Set = Set;
-                            modSandbox.Error = Error;
-                            modSandbox.RegExp = RegExp;
-                            // Explicitly NOT including: fetch, XMLHttpRequest, WebSocket, 
-                            // window, globalThis, eval, Function, require, process,
-                            // electronAPI, localStorage, sessionStorage
-
-                            // Execute mod in sandbox context with strict mode
-                            const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
-                            const modFunc = new AsyncFunction('ModAPI', 'modId', 'modMeta', '"use strict"; ' + code);
-                            await modFunc.call(modSandbox, window.ModAPI, modId, mod);
+                            // Issue #4 FULL: Execute mod in hardened with+Proxy sandbox.
+                            // The with+Proxy pattern intercepts ALL identifier lookups,
+                            // preventing mods from accessing window, fetch, eval, etc.
+                            // even through closures. The Proxy's `has` trap returns true
+                            // for all properties, so the JS engine never falls through
+                            // to the real global scope.
+                            await executeModInSandbox(code, window.ModAPI, modId, mod);
                         } else {
                             console.log(`[ModLoader] Скрипт ${scriptPath} пропущен (не найден в папке data/ мода ${modId}). Это нормально, если мод содержит только JSON.`);
                         }

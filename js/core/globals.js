@@ -62,18 +62,20 @@ const ItemRegistry = new Map();
 const ContainerRegistry = new Map();
 
 // Normalize container data from engine (engine sends 'item_ids', JS expects 'items')
+// Does NOT mutate the original object — returns a new normalized copy.
 function normalizeContainer(cont) {
     if (!cont) return cont;
+    const c = { ...cont }; // shallow-clone to avoid mutating the source
     // Ensure items array always exists
-    if (!cont.items && cont.item_ids) cont.items = cont.item_ids;
-    if (!Array.isArray(cont.items)) cont.items = [];
-    if (!cont.item_ids) cont.item_ids = cont.items;
-    // Ensure other critical fields exist
-    if (!cont.lock_data) cont.lock_data = { is_locked: false, difficulty: 10, trap: null };
-    if (!cont.physical_props) cont.physical_props = {};
-    if (!cont.custom_props) cont.custom_props = {};
-    if (!cont.location) cont.location = {};
-    return cont;
+    if (!c.items && c.item_ids) c.items = [...c.item_ids];
+    if (!Array.isArray(c.items)) c.items = [];
+    if (!c.item_ids) c.item_ids = [...c.items];
+    // Ensure other critical fields exist (clone objects too)
+    if (!c.lock_data) c.lock_data = { is_locked: false, difficulty: 10, trap: null };
+    if (!c.physical_props) c.physical_props = {};
+    if (!c.custom_props) c.custom_props = {};
+    if (!c.location) c.location = {};
+    return c;
 }
 
 // Safe helper: get items array from container (never undefined)
@@ -97,6 +99,52 @@ function generateUUID() {
     });
 }
 
+// --- Minimal EventBus (pub/sub) for centralized state mutations ---
+// Replaces scattered direct mutations of global state (player, World, etc.)
+// Usage:
+//   EventBus.on('player:hpChanged', (data) => { ... });
+//   EventBus.emit('player:hpChanged', { oldHp: 100, newHp: 80 });
+//   const unsub = EventBus.on('world:tick', handler);
+//   unsub(); // remove listener
+const EventBus = {
+    _listeners: {},
+    on(event, callback) {
+        if (!this._listeners[event]) this._listeners[event] = [];
+        const entry = { callback, once: false };
+        this._listeners[event].push(entry);
+        return () => {
+            const list = this._listeners[event];
+            if (list) {
+                const idx = list.indexOf(entry);
+                if (idx !== -1) list.splice(idx, 1);
+            }
+        };
+    },
+    once(event, callback) {
+        if (!this._listeners[event]) this._listeners[event] = [];
+        this._listeners[event].push({ callback, once: true });
+    },
+    emit(event, data) {
+        const list = this._listeners[event];
+        if (!list) return;
+        for (let i = list.length - 1; i >= 0; i--) {
+            try {
+                list[i].callback(data);
+            } catch (e) {
+                console.error(`[EventBus] Error in handler for '${event}':`, e);
+            }
+            if (list[i] && list[i].once) {
+                list.splice(i, 1);
+            }
+        }
+    },
+    off(event, callback) {
+        const list = this._listeners[event];
+        if (!list) return;
+        this._listeners[event] = list.filter(entry => entry.callback !== callback);
+    }
+};
+window.EventBus = EventBus;
 
 // Флаг инициализации C++ ядра симуляции
 window.isSimulatorInitialized = false;

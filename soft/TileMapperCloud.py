@@ -32,6 +32,7 @@ class TileMapperUltimate(ctk.CTk):
         self.tile_size = 16
         self.spacing = 1
         self.mappings = {}
+        self._mappings_lock = threading.Lock()  # Thread-safety for self.mappings
         self.img_source = None
         self.photo = None
         self.selected_coords = (0, 0)
@@ -628,13 +629,18 @@ class TileMapperUltimate(ctk.CTk):
             results = self.send_batch_request(chunk)
             added = 0
             for (x, y, tile_id) in results:
-                if tile_id and not self.is_tile_mapped(x, y):
+                if tile_id:
+                    with self._mappings_lock:
+                        already = any(pos["x"] == x and pos["y"] == y for pos in self.mappings.values())
+                    if already:
+                        continue
                     final_id = tile_id
                     cnt = 1
-                    while final_id in self.mappings:
-                        final_id = f"{tile_id}_{cnt}"
-                        cnt += 1
-                    self.mappings[final_id] = {"x": x, "y": y}
+                    with self._mappings_lock:
+                        while final_id in self.mappings:
+                            final_id = f"{tile_id}_{cnt}"
+                            cnt += 1
+                        self.mappings[final_id] = {"x": x, "y": y}
                     self.after(0, lambda tid=final_id, xx=x, yy=y: self.add_mapping_visual(tid, xx, yy))
                     added += 1
                 processed += 1
@@ -676,13 +682,18 @@ class TileMapperUltimate(ctk.CTk):
             self.after(0, lambda: self.update_status(f"Пакет: {i}/{total} (отправка {len(chunk)} тайлов)", "#f1c40f"))
             results = self.send_batch_request(chunk)
             for (x, y, tile_id) in results:
-                if tile_id and not self.is_tile_mapped(x, y):
+                if tile_id:
+                    with self._mappings_lock:
+                        already = any(pos["x"] == x and pos["y"] == y for pos in self.mappings.values())
+                    if already:
+                        continue
                     final_id = tile_id
                     cnt = 1
-                    while final_id in self.mappings:
-                        final_id = f"{tile_id}_{cnt}"
-                        cnt += 1
-                    self.mappings[final_id] = {"x": x, "y": y}
+                    with self._mappings_lock:
+                        while final_id in self.mappings:
+                            final_id = f"{tile_id}_{cnt}"
+                            cnt += 1
+                        self.mappings[final_id] = {"x": x, "y": y}
                     self.after(0, lambda tid=final_id, xx=x, yy=y: self.add_mapping_visual(tid, xx, yy))
                 processed += 1
             self.after(0, lambda: self.refresh_listbox())
@@ -707,8 +718,11 @@ class TileMapperUltimate(ctk.CTk):
             "model": VISION_MODEL,
             "messages": [{"role": "user", "content": content}],
             "max_tokens": 200,
-            "temperature": 0.2,
-            "response_format": {"type": "json_object"}
+            "temperature": 0.2
+            # NOTE: response_format json_object is intentionally NOT set here.
+            # The AI is asked to return a JSON array of names, but json_object
+            # wraps the response in {"result": [...]}, complicating extraction.
+            # Without it, the regex below extracts the array directly.
         }
         headers = {"Authorization": f"Bearer {LLMOST_API_KEY}", "Content-Type": "application/json"}
         try:
@@ -716,11 +730,21 @@ class TileMapperUltimate(ctk.CTk):
             if resp.status_code == 200:
                 data = resp.json()
                 answer = data['choices'][0]['message']['content'].strip()
-                match = re.search(r'\[.*\]', answer, re.DOTALL)
-                if match:
-                    names = json.loads(match.group(0))
-                else:
-                    names = []
+                # Try direct JSON parse first (if model returns a bare array)
+                try:
+                    names = json.loads(answer)
+                    if not isinstance(names, list):
+                        # Model returned an object — extract the array field
+                        for v in names.values():
+                            if isinstance(v, list):
+                                names = v
+                                break
+                        else:
+                            names = []
+                except json.JSONDecodeError:
+                    # Fallback: regex extraction for partial/malformed JSON
+                    match = re.search(r'\[.*\]', answer, re.DOTALL)
+                    names = json.loads(match.group(0)) if match else []
                 results = []
                 for idx, (x, y) in enumerate(chunk):
                     name = names[idx] if idx < len(names) else "unknown"

@@ -816,13 +816,17 @@ ipcMain.handle('gemini-request', async (event, model, contents) => {
         if (!apiKey) {
             return reject(new Error('API key not configured in settings'));
         }
-        // TODO: Make safety settings configurable via app settings.
-        // Current defaults are permissive; override via settings if needed.
+        // Safety settings: configurable via settings.json "safetyThresholds".
+        // Defaults are moderate (BLOCK_MEDIUM_AND_ABOVE) instead of BLOCK_NONE.
+        // Valid thresholds: BLOCK_LOW_AND_ABOVE, BLOCK_MEDIUM_AND_ABOVE,
+        //                  BLOCK_ONLY_HIGH, BLOCK_NONE
+        const defaultThreshold = "BLOCK_MEDIUM_AND_ABOVE";
+        const savedThresholds = (settings && settings.safetyThresholds) || {};
         const safetySettings = [ 
-            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }, 
-            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" }, 
-            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" }, 
-            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" } 
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: savedThresholds.harassment || defaultThreshold }, 
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: savedThresholds.hateSpeech || defaultThreshold }, 
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: savedThresholds.sexuallyExplicit || defaultThreshold }, 
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: savedThresholds.dangerousContent || defaultThreshold } 
         ];
         const requestBody = JSON.stringify({ 
             contents, 

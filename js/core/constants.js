@@ -48,28 +48,33 @@ const RACE_MODIFIERS = {
 };
 
 // Called by loadDatabaseWithModsAndInitEngine after database.races is populated.
-// Overwrites the hardcoded defaults above with data from races.json.
+// Replaces the hardcoded defaults with data from races.json.
+// Uses Object.assign on a fresh copy to avoid mutating the const reference.
 function applyDatabaseStats(racesArray) {
     if (!Array.isArray(racesArray) || racesArray.length === 0) return;
 
     // Build RACE_MODIFIERS from races[].stat_modifiers
+    const newRaceModifiers = {};
     for (const race of racesArray) {
         if (race.id && race.stat_modifiers) {
-            RACE_MODIFIERS[race.id] = race.stat_modifiers;
+            newRaceModifiers[race.id] = { ...race.stat_modifiers };
         }
     }
+    // Merge defaults with database entries (database wins)
+    Object.assign(RACE_MODIFIERS, newRaceModifiers);
 
-    // Build BASE_CLASS_STATS from races[].class_stats (first base_race wins per class)
+    // Build BASE_CLASS_STATS from races[].class_stats
+    const newClassStats = {};
     for (const race of racesArray) {
         if (race.class_stats) {
             for (const [className, stats] of Object.entries(race.class_stats)) {
-                // Only set if not already defined (first base_race defines the class template)
-                if (!BASE_CLASS_STATS[className] || race.base_race) {
-                    BASE_CLASS_STATS[className] = stats;
+                if (!newClassStats[className] || race.base_race) {
+                    newClassStats[className] = { ...stats };
                 }
             }
         }
     }
+    Object.assign(BASE_CLASS_STATS, newClassStats);
 
     console.log('[Constants] BASE_CLASS_STATS and RACE_MODIFIERS loaded from database.',
         Object.keys(RACE_MODIFIERS).length, 'races,', Object.keys(BASE_CLASS_STATS).length, 'classes');
@@ -80,50 +85,55 @@ let predefinedStatusEffects = {
     "minor_burn_dot": {
         name: "Слабое горение",
         description: "Вы чувствуете легкий жар. Наносит небольшой урон огнем каждый ход.",
-        effectsJSON: `[{"trigger":{"type":"on_turn_start","interval":1},"action":{"type":"modify_stat","stat":"hp","change":-2}}]`
+        effects: [{trigger:{type:"on_turn_start",interval:1},action:{type:"modify_stat",stat:"hp",change:-2}}]
     },
     "weak_poison_dot": {
         name: "Слабый яд",
         description: "Яд медленно действует в ваших жилах. Наносит урон и ослабляет.",
-        effectsJSON: `[
-            {"trigger":{"type":"on_turn_start","interval":1},"action":{"type":"modify_stat","stat":"hp","change":-1}},
-            {"trigger":{"type":"on_apply"},"action":{"type":"modify_stat","stat":"str","change":-1}},
-            {"trigger":{"type":"on_remove"},"action":{"type":"modify_stat","stat":"str","change":1}}
-        ]`
+        effects: [
+            {trigger:{type:"on_turn_start",interval:1},action:{type:"modify_stat",stat:"hp",change:-1}},
+            {trigger:{type:"on_apply"},action:{type:"modify_stat",stat:"str",change:-1}},
+            {trigger:{type:"on_remove"},action:{type:"modify_stat",stat:"str",change:1}}
+        ]
     },
     "curse_of_clumsiness": {
         name: "Проклятие неуклюжести",
         description: "Ваши движения стали неловкими (-2 к Ловкости).",
-        effectsJSON: `[
-            {"trigger":{"type":"on_apply"},"action":{"type":"modify_stat","stat":"dex","change":-2}},
-            {"trigger":{"type":"on_remove"},"action":{"type":"modify_stat","stat":"dex","change":2}}
-        ]`
+        effects: [
+            {trigger:{type:"on_apply"},action:{type:"modify_stat",stat:"dex",change:-2}},
+            {trigger:{type:"on_remove"},action:{type:"modify_stat",stat:"dex",change:2}}
+        ]
     },
 
     // --- Позитивные эффекты (Баффы) ---
     "blessing_of_might": {
         name: "Благословение силы",
         description: "Вы чувствуете прилив сил (+2 к Силе).",
-        // --- КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Используем modify_stat, а не set_stat ---
-        effectsJSON: `[
-            {"trigger":{"type":"on_apply"},"action":{"type":"modify_stat","stat":"str","change":2}},
-            {"trigger":{"type":"on_remove"},"action":{"type":"modify_stat","stat":"str","change":-2}}
-        ]`
+        effects: [
+            {trigger:{type:"on_apply"},action:{type:"modify_stat",stat:"str",change:2}},
+            {trigger:{type:"on_remove"},action:{type:"modify_stat",stat:"str",change:-2}}
+        ]
     },
     "blessing_of_luck": {
         name: "Благословение удачи",
         description: "Вы чувствуете прикосновение удачи (+2 к Ловкости).",
-        effectsJSON: `[
-            {"trigger":{"type":"on_apply"},"action":{"type":"modify_stat","stat":"dex","change":2}},
-            {"trigger":{"type":"on_remove"},"action":{"type":"modify_stat","stat":"dex","change":-2}}
-        ]`
+        effects: [
+            {trigger:{type:"on_apply"},action:{type:"modify_stat",stat:"dex",change:2}},
+            {trigger:{type:"on_remove"},action:{type:"modify_stat",stat:"dex",change:-2}}
+        ]
     },
     "minor_regeneration": {
         name: "Слабая регенерация",
         description: "Ваши раны медленно затягиваются (+1 HP каждый ход).",
-        effectsJSON: `[{"trigger":{"type":"on_turn_start","interval":1},"action":{"type":"modify_stat","stat":"hp","change":1}}]`
+        effects: [{trigger:{type:"on_turn_start",interval:1},action:{type:"modify_stat",stat:"hp",change:1}}]
     }
 };
+
+// Backward-compat accessor: if code still reads effectsJSON, parse from effects
+Object.defineProperty(predefinedStatusEffects, 'effectsJSON', {
+    get() { return undefined; },
+    configurable: true
+});
 
 const standardItemDescriptions = {
     'sword_short': () => t('itemDescriptions.shortSword', null, 'Простой, но надежный короткий меч. Базовое оружие ближнего боя.'),

@@ -2,8 +2,6 @@
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox
-import subprocess
-import threading
 import json
 import sys
 import os
@@ -16,97 +14,13 @@ except ImportError:
     print("Откройте консоль и выполните команду: pip install Pillow")
     sys.exit(1)
 
+# Import shared engine client (single source of truth)
+from engine_client import EngineProcess, load_json as _shared_load_json, sync_biome_colors
+
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-class EngineProcess:
-    def __init__(self, on_progress, on_result, on_error):
-        self.proc = None
-        self.on_progress = on_progress
-        self.on_result = on_result
-        self.on_error = on_error
-        self.is_running = False
-
-    def start(self):
-        # Абсолютное разрешение путей (защита от запуска из другой папки)
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        exe_name = 'meterea_engine.exe' if sys.platform == 'win32' else 'meterea_engine'
-        exe_path = os.path.join(base_dir, exe_name)
-        
-        if not os.path.exists(exe_path):
-            self.on_error(f"Движок не найден по пути:\n{exe_path}\nСкомпилируйте C++ код.")
-            return False
-        
-        try:
-            # Запускаем процесс, жестко привязывая рабочую директорию (cwd) к папке engine
-            self.proc = subprocess.Popen(
-                [exe_path],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding='utf-8',
-                cwd=base_dir
-            )
-            self.is_running = True
-            threading.Thread(target=self._read_loop, daemon=True).start()
-            return True
-        except Exception as e:
-            self.on_error(f"Критическая ошибка запуска процесса: {e}")
-            return False
-
-    def send(self, cmd_data):
-        if self.is_running and self.proc:
-            try:
-                self.proc.stdin.write(json.dumps(cmd_data, ensure_ascii=False) + '\n')
-                self.proc.stdin.flush()
-            except Exception as e:
-                self.on_error(f"Ошибка отправки данных в движок: {e}")
-
-    def _read_loop(self):
-        while self.is_running and self.proc:
-            line = self.proc.stdout.readline()
-            if not line:
-                # Если readline вернул пустоту, значит процесс умер или закрыл stdout
-                break
-            
-            line = line.strip()
-            if not line: continue
-            
-            try:
-                data = json.loads(line)
-                if data.get("status") == "progress":
-                    self.on_progress(data.get("message", ""))
-                elif data.get("status") == "ok":
-                    self.on_result(data)
-
-                elif data.get("status") == "realtime_update":
-                    self.on_result(data)
-                elif data.get("status") == "error":
-                    self.on_error(data.get("message", "Неизвестная ошибка движка"))
-            except json.JSONDecodeError:
-                print(f"[RAW ENGINE OUTPUT] {line}")
-                
-        self.is_running = False
-        
-        # Проверка на тихое падение (Silent Crash)
-        if self.proc:
-            self.proc.poll()
-            if self.proc.returncode is not None and self.proc.returncode != 0:
-                err_output = self.proc.stderr.read()
-                error_msg = f"Движок аварийно завершился (Код: {self.proc.returncode}).\n"
-                if "dll" in err_output.lower() or self.proc.returncode == 3221225781: # 0xC0000135
-                    error_msg += "\nПохоже, не хватает системных библиотек C++ (DLL). Перекомпилируйте движок с флагом -static:\n"
-                    error_msg += "g++ -std=c++17 -O2 -static -o meterea_engine meterea_engine.cpp"
-                else:
-                    error_msg += f"Вывод ошибок:\n{err_output}"
-                self.on_error(error_msg)
-
-    def stop(self):
-        self.is_running = False
-        if self.proc:
-            self.proc.terminate()
-            self.proc = None
+# EngineProcess and load_json are now imported from engine_client.py
 
 
 class SimulationApp(ctk.CTk):
@@ -273,29 +187,8 @@ class SimulationApp(ctk.CTk):
                 self.render_content()
 
     def _load_json(self, path, default=None):
-        """Load a JSON file. Returns `default` on failure.
-        
-        IMPORTANT: Array-type fields (recipes, biomes, monsters, disasters, races,
-        professions, traits) MUST use default=[] to prevent C++ engine crashes.
-        Object-type fields use default={} (the original behavior).
-        """
-        if default is None:
-            default = {}
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if not data:
-                    return default
-                return data
-        except FileNotFoundError:
-            print(f"[WARN] File not found: {path}")
-            return default
-        except json.JSONDecodeError as e:
-            print(f"[ERROR] Invalid JSON in {path}: {e}")
-            return default
-        except Exception as e:
-            print(f"[WARN] Failed to load {path}: {e}")
-            return default
+        """Delegate to shared load_json utility from engine_client.py."""
+        return _shared_load_json(path, default)
 
     def start_generation(self):
         if not self.engine.is_running:
@@ -330,18 +223,56 @@ class SimulationApp(ctk.CTk):
             "world_config": self._load_json(os.path.join(data_dir, 'world_config.json'), {}),
         }
 
-        # Send loadDatabase command (critical step that was missing!)
+        # Send loadDatabase command and wait for acknowledgment before buildWorld
         self.engine.send(database)
 
-        self.pending_bootstrap = True
+        # Sync biome colors from biomes.json for map rendering
+        biomes_data = database.get("biomes", [])
+        if isinstance(biomes_data, list) and biomes_data:
+            self._biome_colors = {}
+            for b in sorted(biomes_data, key=lambda x: x.get("numeric_id", 0)):
+                nid = b.get("numeric_id", 0)
+                hex_color = b.get("color_hex", "#000000")
+                hex_color = hex_color.lstrip('#')
+                if len(hex_color) == 6:
+                    rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+                    self._biome_colors[nid] = rgb
+            print(f"[BIOME COLORS] Synced {len(self._biome_colors)} colors from biomes.json")
 
-        cmd = {
+        self._pending_db = database  # Store for ack-based flow
+        self._waiting_for_db_ack = True
+        # buildWorld will be sent in handle_result after loadDatabase ack
+
+    def _send_build_world(self):
+        """Send buildWorld command AFTER loadDatabase acknowledgment.
+        Loads era-specific global_locations so the world is not empty.
+        """
+        era = self.era_var.get()
+
+        # Load era-specific locations (mirrors simulation_test_client.py)
+        data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+        loc_file_map = {
+            "rebirth": "locations_rebirth.json",
+            "architects": "locations_architects.json",
+            "sundering": "locations_sundering.json",
+            "silence": "locations_silence.json",
+        }
+        loc_file = loc_file_map.get(era, "locations_rebirth.json")
+        loc_path = os.path.join(data_dir, loc_file)
+        global_locations = self._load_json(loc_path, {})
+        loc_count = len(global_locations) if isinstance(global_locations, dict) else 0
+        print(f"[LOCATIONS] era={era} file={loc_file} count={loc_count}")
+        if loc_count == 0:
+            print(f"[WARN] No locations loaded! World will be empty.")
+
+        self.pending_bootstrap = True
+        self.engine.send({
             "command": "buildWorld",
             "player_id": "sim_admin",
-            "era": self.era_var.get(),
-            "initial_agents": self.agents_var.get()
-        }
-        self.engine.send(cmd)
+            "era": era,
+            "initial_agents": self.agents_var.get(),
+            "global_locations": global_locations
+        })
 
     def update_speed(self, val):
         speed = int(val)
@@ -440,6 +371,16 @@ class SimulationApp(ctk.CTk):
             self.progress_bar.stop()
             self.progress_bar.set(1)
 
+            # Ack-based flow: after loadDatabase succeeds, send buildWorld
+            if getattr(self, '_waiting_for_db_ack', False):
+                if data.get("status") == "ok" and "world" not in data:
+                    self._waiting_for_db_ack = False
+                    self.status_lbl.configure(text="База загружена. Генерация мира...", text_color="#3498db")
+                    self.after(100, self._send_build_world)
+                    return
+                # If we got world data, loadDatabase was already processed inline
+                self._waiting_for_db_ack = False
+
             # Если пришла только карта (от getWorldMap)
             if "map" in data and "world" not in data:
                 if self.world_data is None:
@@ -516,9 +457,11 @@ class SimulationApp(ctk.CTk):
         if not tiles:
             return
 
-        # Цвета тайлов (Синхронизировано с JS-клиентом)
-        COLORS = {
-            0: (26, 59, 92),    # OCEAN
+        # Цвета тайлов: prefer synced from biomes.json, fallback to hardcoded
+        COLORS = getattr(self, '_biome_colors', None)
+        if not COLORS:
+            COLORS = {
+                0: (26, 59, 92),    # OCEAN
             1: (41, 128, 185),  # SHALLOW_WATER
             2: (46, 204, 113),  # PLAINS
             3: (39, 174, 96),   # FOREST
@@ -536,7 +479,7 @@ class SimulationApp(ctk.CTk):
             15: (88, 214, 141), # FLOODPLAIN (Светло-зеленый)
             16: (211, 84, 0),   # LAVA
             17: (85, 85, 85)    # ASH
-        }
+            }
 
         # Создаем базовое изображение
         img = Image.new('RGB', (w, h))

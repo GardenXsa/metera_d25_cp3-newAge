@@ -66,7 +66,8 @@ class BackupManagerWindow(ctk.CTkToplevel):
                     with open(meta_path, 'r', encoding='utf-8') as f:
                         meta = json.load(f)
                         name = f"[{meta['timestamp']}] {meta['patch_name']}"
-                except Exception: pass
+                except (json.JSONDecodeError, KeyError, OSError) as e:
+                    print(f"[WARN] Cannot read backup meta: {e}")
 
             frame = ctk.CTkFrame(self.scroll_frame, fg_color=BG_COLOR)
             frame.pack(fill="x", pady=3, padx=5)
@@ -82,7 +83,9 @@ class BackupManagerWindow(ctk.CTkToplevel):
             try:
                 yview = self.scroll_frame._parent_canvas.yview()
                 if len(yview) == 2 and yview[1] >= 0.90: self.load_more_backups()
-            except Exception: pass
+            except (AttributeError, TypeError) as e:
+                # _parent_canvas may not be available during teardown
+                pass
         self.after(250, self.check_scroll_position)
 
     def restore(self, path):
@@ -291,7 +294,9 @@ class AIPatcherPro(ctk.CTk):
         self.txt_json.delete("1.0", "end")
         try:
             text = self.clipboard_get()
-        except Exception:
+        except (tk.TclError, OSError) as e:
+            # Clipboard access may fail on Linux/Wayland
+            print(f"[WARN] Clipboard paste failed: {e}")
             text = ""
         self.txt_json.insert("end", text)
 
@@ -760,24 +765,46 @@ class AIPatcherPro(ctk.CTk):
         with open(os.path.join(b_path, "patch_meta.json"), "w", encoding="utf-8") as f:
             json.dump({"timestamp": ts, "patch_name": self.current_patch_name}, f, ensure_ascii=False)
 
-        written_files = []
+        # Phase 1: Backup ALL original files first (atomic: if backup fails, nothing is written)
+        backup_map = {}  # original_path -> backup_path
         try:
-            for p, content in self.memory_files.items():
+            for p in self.memory_files.keys():
                 if os.path.exists(p):
                     rel = os.path.relpath(p, os.getcwd())
                     bp = os.path.join(b_path, rel)
                     os.makedirs(os.path.dirname(bp), exist_ok=True)
                     shutil.copy2(p, bp)
-                
+                    backup_map[p] = bp
+        except Exception as e:
+            messagebox.showerror("Ошибка бэкапа", f"Не удалось создать бэкап для:\n{p}\n\nОшибка: {e}\n\nПатч НЕ применён.")
+            return
+
+        # Phase 2: Write all files (if any write fails, rollback from backups)
+        written_files = []
+        try:
+            for p, content in self.memory_files.items():
                 os.makedirs(os.path.dirname(p), exist_ok=True)
                 with open(p, 'w', encoding='utf-8') as f: 
                     f.write(content)
                 written_files.append(p)
         except Exception as e:
-            messagebox.showerror("Ошибка применения", f"Запись прервана на файле:\n{p}\n\nОшибка: {e}\n\nУже записанные файлы ({len(written_files)}):\n" + "\n".join(written_files) + "\n\nВосстановите из бэкапа.")
+            # Rollback: restore all files that were already written
+            rollback_errors = []
+            for wp in written_files:
+                if wp in backup_map:
+                    try:
+                        shutil.copy2(backup_map[wp], wp)
+                    except Exception as re:
+                        rollback_errors.append(f"{wp}: {re}")
+            error_msg = f"Запись прервана на файле:\n{p}\n\nОшибка: {e}\n\n"
+            if rollback_errors:
+                error_msg += f"Ошибки отката ({len(rollback_errors)}):\n" + "\n".join(rollback_errors) + "\n\nВосстановите вручную из бэкапа."
+            else:
+                error_msg += f"Откат выполнен: {len(written_files)} файлов восстановлены из бэкапа."
+            messagebox.showerror("Ошибка применения", error_msg)
             return
             
-        messagebox.showinfo("Успех", f"Патч '{self.current_patch_name}' успешно применен!")
+        messagebox.showinfo("Успех", f"Патч '{self.current_patch_name}' успешно применен!\nБэкап: {b_path}")
         self.clear()
 
 if __name__ == "__main__":

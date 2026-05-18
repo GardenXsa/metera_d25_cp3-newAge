@@ -1,4 +1,34 @@
 // ======================================================================
+// --- SEEDED PRNG (deterministic rolls for game mechanics) ---
+// ======================================================================
+const GameRNG = {
+    _seed: Date.now(),
+    /**
+     * Seed the RNG. Call once at game start or on load.
+     * @param {number} seed
+     */
+    seed(seed) { this._seed = seed >>> 0; },
+    /**
+     * Mulberry32 — fast 32-bit PRNG. Returns [0, 1).
+     * Deterministic given the same seed sequence.
+     */
+    next() {
+        let t = this._seed += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    },
+    /** Returns integer in [min, max] inclusive (like a d20 roll). */
+    roll(min, max) {
+        return Math.floor(this.next() * (max - min + 1)) + min;
+    },
+    /** d20 + modifier roll, used for lockpicking, skill checks etc. */
+    d20(modifier = 0) {
+        return this.roll(1, 20) + modifier;
+    }
+};
+
+// ======================================================================
 // --- CORE INVENTORY & CONTAINER SYSTEM (T3) ---
 // ======================================================================
 
@@ -487,7 +517,7 @@ const OldCoreInventorySystem = {
         const lockpickId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'lockpicks_common');
         if (!lockpickId) return { success: false, error: "No lockpicks" };
         this.removeItem(lockpickId, 1);
-        const roll = Math.floor(Math.random() * 20) + 1 + (player.stats.dex - 10)/2;
+        const roll = GameRNG.d20((player.stats.dex - 10)/2);
         if (roll >= cont.lock_data.difficulty) {
             cont.lock_data.is_locked = false;
             return { success: true, message: "Unlocked successfully" };
@@ -672,7 +702,7 @@ const CoreInventorySystemAsync = {
         const lockpickId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'lockpicks_common');
         if (!lockpickId) return { success: false, error: "No lockpicks" };
         await this.removeItem(lockpickId, 1);
-        const roll = Math.floor(Math.random() * 20) + 1 + (player.stats.dex - 10)/2;
+        const roll = GameRNG.d20((player.stats.dex - 10)/2);
         if (roll >= cont.lock_data.difficulty) {
             cont.lock_data.is_locked = false;
             return { success: true, message: "Unlocked successfully" };
@@ -1132,7 +1162,9 @@ async function executeCommand(command, args) {
     if (!command) return null;
     if (!player) return t('gameInterface.commandFeedback.errorPlayerMissing');
 
+    // Shallow-clone args to prevent mutation of the caller's object
     if (args && typeof args === 'object') {
+        args = { ...args };
         if (args.entityKey !== undefined && args.aiIdentifier === undefined) args.aiIdentifier = args.entityKey;
         if (args.target !== undefined && args.aiIdentifier === undefined && args.target !== 'player') args.aiIdentifier = args.target;
         if (args.id !== undefined) {

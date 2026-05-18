@@ -716,36 +716,60 @@ window.Cartographer = {
 
         if (this.currentFilter === 'political') {
             // --- ПОЛИТИЧЕСКАЯ КАРТА (CIV 5 STYLE) ---
-            // TODO: Оптимизация O(n*m) — заменить на пре-компутированную диаграмму Вороного.
-            // Текущая реализация для каждого тайла перебирает все локации.
-            // Используем кэш, который пересчитывается только при изменении локаций.
+            // Optimized with spatial bucketing: O(n + m*B) where B = avg locations per bucket
+            // instead of O(n*m) brute-force.
             const locsKey = JSON.stringify(locs.map(l => `${l.id}:${l.x}:${l.y}:${l.faction}`));
             let ownership;
             if (this._politicalCache && this._politicalCacheKey === locsKey) {
                 ownership = this._politicalCache;
             } else {
                 ownership = new Array(map.width * map.height).fill(null);
-                const MAX_TERRITORY_RADIUS = 25; // Максимальный радиус владений от города
+                const MAX_TERRITORY_RADIUS = 25;
+                const BUCKET_SIZE = MAX_TERRITORY_RADIUS; // Each bucket covers MAX_TERRITORY_RADIUS tiles
 
-                // 1. Определяем владельца каждого тайла
+                // 1. Build spatial index: bucket locations into grid cells
+                const bucketsX = Math.ceil(map.width / BUCKET_SIZE);
+                const bucketsY = Math.ceil(map.height / BUCKET_SIZE);
+                const buckets = new Array(bucketsX * bucketsY);
+                for (let i = 0; i < buckets.length; i++) buckets[i] = [];
+                for (const loc of locs) {
+                    const bx = Math.min(Math.floor(loc.x / BUCKET_SIZE), bucketsX - 1);
+                    const by = Math.min(Math.floor(loc.y / BUCKET_SIZE), bucketsY - 1);
+                    buckets[by * bucketsX + bx].push(loc);
+                }
+
+                // 2. For each tile, check only nearby buckets (3x3 window)
                 for (let y = 0; y < map.height; y++) {
                     for (let x = 0; x < map.width; x++) {
                         const tileType = map.grid ? map.grid[y * map.width + x][0] : map.tiles[y * map.width + x];
                         if (tileType === 0) continue; // Океаны (0) никому не принадлежат
 
+                        const by = Math.floor(y / BUCKET_SIZE);
+                        const bx = Math.floor(x / BUCKET_SIZE);
                         let nearestLoc = null;
                         let minDist = Infinity;
-                        for (let i = 0; i < locs.length; i++) {
-                            const dx = locs[i].x - x;
-                            const dy = locs[i].y - y;
-                            const dist = Math.sqrt(dx*dx + dy*dy);
-                            if (dist < minDist) {
-                                minDist = dist;
-                                nearestLoc = locs[i];
+
+                        // Check 3x3 bucket window around the tile
+                        for (let dy = -1; dy <= 1; dy++) {
+                            for (let dx = -1; dx <= 1; dx++) {
+                                const nbx = bx + dx;
+                                const nby = by + dy;
+                                if (nbx < 0 || nbx >= bucketsX || nby < 0 || nby >= bucketsY) continue;
+                                const bucketLocs = buckets[nby * bucketsX + nbx];
+                                for (let i = 0; i < bucketLocs.length; i++) {
+                                    const ddx = bucketLocs[i].x - x;
+                                    const ddy = bucketLocs[i].y - y;
+                                    // Use squared distance to avoid sqrt
+                                    const distSq = ddx * ddx + ddy * ddy;
+                                    if (distSq < minDist) {
+                                        minDist = distSq;
+                                        nearestLoc = bucketLocs[i];
+                                    }
+                                }
                             }
                         }
 
-                        if (nearestLoc && minDist <= MAX_TERRITORY_RADIUS) {
+                        if (nearestLoc && minDist <= MAX_TERRITORY_RADIUS * MAX_TERRITORY_RADIUS) {
                             ownership[y * map.width + x] = nearestLoc.faction;
                         }
                     }

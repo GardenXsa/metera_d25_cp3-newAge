@@ -8,7 +8,7 @@ let allowNSFW = false;
 
 
 // Gemini
-let geminiApiKeys = [];
+let geminiApiKeys = []; // Deduplication enforced via addGeminiKey / removeGeminiKey
 let geminiApiKey = ''; // Единый активный ключ
 let currentGeminiKeyIndex = 0;
 let geminiModelId = 'gemini-3.1-flash-lite-preview';
@@ -56,3 +56,41 @@ let aiPlayerLocalUrl = 'http://localhost:1234/v1/chat/completions';
 let isAutoTesting = false;
 let aiPlayerTurnLimit = 20;
 let aiPlayerCurrentTurns = 0;
+
+// --- GEMINI KEY MANAGEMENT (deduplication-safe) ---
+function addGeminiKey(key) {
+    if (!key || typeof key !== 'string') return false;
+    const trimmed = key.trim();
+    if (!trimmed || geminiApiKeys.includes(trimmed)) return false;
+    geminiApiKeys.push(trimmed);
+    if (!geminiApiKey) geminiApiKey = trimmed;
+    return true;
+}
+
+function removeGeminiKey(key) {
+    const idx = geminiApiKeys.indexOf(key);
+    if (idx === -1) return false;
+    geminiApiKeys.splice(idx, 1);
+    // If the active key was removed, switch to the first available
+    if (geminiApiKey === key) {
+        geminiApiKey = geminiApiKeys.length > 0 ? geminiApiKeys[currentGeminiKeyIndex % geminiApiKeys.length] : '';
+    }
+    return true;
+}
+
+function setGeminiKeys(keysArray) {
+    if (!Array.isArray(keysArray)) return;
+    // Deduplicate and filter empty strings
+    const seen = new Set();
+    geminiApiKeys = keysArray.filter(k => {
+        if (!k || typeof k !== 'string') return false;
+        const trimmed = k.trim();
+        if (seen.has(trimmed)) return false;
+        seen.add(trimmed);
+        return true;
+    });
+    if (geminiApiKeys.length > 0 && !geminiApiKey) {
+        geminiApiKey = geminiApiKeys[0];
+    }
+    currentGeminiKeyIndex = 0;
+}
