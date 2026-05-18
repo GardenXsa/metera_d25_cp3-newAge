@@ -7225,6 +7225,31 @@ void processShips() {
     }
 }
 
+// Export surplus goods from region vaults to port docks for naval trade
+void exportGoodsToPortDocks() {
+    for (auto& [rid, port] : g_world.port_facilities) {
+        if (port.is_blockaded) continue;
+        if (!g_world.regions.count(rid)) continue;
+        Region& r = g_world.regions[rid];
+        
+        // Export surplus goods: if region has more than reserve threshold, move excess to dock
+        for (const auto& [gtStr, itemDef] : g_db.items) {
+            if (itemDef.category == "document") continue;
+            int inVault = countItemsInContainer(r.vault_id, gtStr);
+            if (inVault <= 100) continue; // Keep minimum reserve in vault
+            
+            int inDock = countItemsInContainer(port.dock_container_id, gtStr);
+            if (inDock >= 200) continue; // Dock already has enough
+            
+            int toExport = std::min(inVault - 80, 200 - inDock); // Export up to 200 in dock, keep 80 in vault
+            if (toExport <= 0) continue;
+            
+            consumeItemsFromContainer(r.vault_id, gtStr, toExport);
+            createItem(gtStr, toExport, port.dock_container_id, g_world.current_day, "Экспорт в порт");
+        }
+    }
+}
+
 void processNavalTrade() {
     std::vector<bool> dummy_has_road(g_world.map.width * g_world.map.height, false);
     std::vector<int> dummy_path_status(g_world.map.width * g_world.map.height, 0);
@@ -7318,8 +7343,7 @@ void processNavalTrade() {
                     ship.destination = bestDest;
                     addNews(locStr("engine.news.naval.ship_departed", {{"ship", ship.id}, {"origin", localReg.name}, {"dest", g_world.regions[bestDest].name}, {"cargo", getGoodName(bestGood)}}), current_port, 1, "logistics");
                 } else {
-                    moveItem(countItemsInContainer(ship.chest_id, bestGood) > 0 ? "TODO_FIX_ME" : "", localPort.dock_container_id); // This part is tricky without itemId
-                    // Simplified: just put it back if no path
+                    // No water path found — unload cargo back to dock
                     consumeItemsFromContainer(ship.chest_id, bestGood, amountToBuy);
                     createItem(bestGood, amountToBuy, localPort.dock_container_id, g_world.current_day, "Разгрузка (нет пути)");
                 }
@@ -7757,6 +7781,7 @@ void hourlyTick() {
 
     processFleets();
 
+    exportGoodsToPortDocks();
     processNavalTrade();
 
     processShips();
@@ -11218,23 +11243,43 @@ void generateWorldMapTerrain(WorldMap& map, int seed) {
                     double nx = (double)x / map.width;
                     double ny = (double)y / map.height;
                     
-                    double e = perlin.fbm(nx * 4.0, ny * 4.0, 5, 0.5, 2.0);
+                    double e = perlin.fbm(nx * 2.0, ny * 2.0, 6, 0.5, 2.0);
+                    
+                    // Shift elevation range up: fbm returns ~[-0.5, 0.5], we need ~60% land
+                    e = e + 0.3;
+                    
+                    // Edge falloff: push map edges below sea level to create a continent
+                    double dx = nx - 0.5;
+                    double dy = ny - 0.5;
+                    double dist = std::sqrt(dx * dx + dy * dy) * 2.0; // 0 at center, ~1.41 at corners
+                    double falloff = 1.0 - std::pow(std::min(dist * 0.8, 1.0), 3.0);
+                    e = e * falloff + (1.0 - falloff) * (-0.5); // Blend toward ocean at edges
+                    
                     elevation[y * map.width + x] = e;
                     
                     double dist_to_equator = std::abs(y - map.height / 2.0) / (map.height / 2.0);
-                    double base_t = 1.0 - dist_to_equator; 
-                    double t_noise = temp_noise.fbm(nx * 3.0, ny * 3.0, 3, 0.5, 2.0) * 0.5;
-                    double temperature = std::clamp(base_t + t_noise - 0.1, 0.0, 1.0);
+                    double base_t = 0.7 - dist_to_equator * 0.5; // Range: 0.2 (poles) to 0.7 (equator)
+                    double t_noise = temp_noise.fbm(nx * 3.0, ny * 3.0, 3, 0.5, 2.0) * 0.15;
+                    double temperature = std::clamp(base_t + t_noise, 0.0, 1.0);
 
                     double m = moist_noise.fbm(nx * 5.0, ny * 5.0, 4, 0.5, 2.0) + 0.5;
                     
                     uint8_t selected_biome = 0;
+                    double best_score = 999.0;
                     for (const auto& b : g_db.biomes) {
                         if (e >= b.min_elevation && e <= b.max_elevation &&
                             temperature >= b.min_temp && temperature <= b.max_temp &&
                             m >= b.min_moisture && m <= b.max_moisture) {
                             selected_biome = b.numeric_id;
                             break;
+                        }
+                        // Fallback: find closest biome by elevation (ignoring temp/moisture constraints)
+                        if (!b.is_water && e >= b.min_elevation && e <= b.max_elevation) {
+                            double score = std::abs(e - (b.min_elevation + b.max_elevation) / 2.0);
+                            if (score < best_score) {
+                                best_score = score;
+                                selected_biome = b.numeric_id;
+                            }
                         }
                     }
                     map.grid[y * map.width + x].biome_id = selected_biome;
