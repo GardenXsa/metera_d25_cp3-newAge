@@ -42,6 +42,26 @@ result = run_command({"command": "init"})
 assert result["status"] == "ok", f"Ожидался 'ok', получено: {result}"
 print(f"   ✅ init: {result['message']}")
 
+print("\n🧪 Тест 1.5: loadDatabase команда (обязательна перед buildWorld)")
+result_db = run_command({
+    "command": "loadDatabase",
+    "items": {},
+    "recipes": [],
+    "facilities": {},
+    "biomes": [],
+    "city_gen": {},
+    "monsters": [],
+    "disasters": [],
+    "races": [],
+    "professions": [],
+    "traits": [],
+    "npc_names": {},
+    "faction_relations": {},
+    "world_config": {}
+})
+assert result_db["status"] == "ok", f"Ожидался 'ok' для loadDatabase, получено: {result_db}"
+print(f"   ✅ loadDatabase: {result_db.get('message', 'OK')}")
+
 print("\n🧪 Тест 2: buildWorld команда")
 result = run_command({"command": "buildWorld", "player_id": 1})
 assert result["status"] == "ok", f"Ожидался 'ok', получено: {result}"

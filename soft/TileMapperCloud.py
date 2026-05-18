@@ -12,7 +12,7 @@ import re
 import time
 
 # ========== НАСТРОЙКИ ==========
-LLMOST_API_KEY = "YOUR_API_KEY_HERE"
+LLMOST_API_KEY = os.environ.get("LLMOST_API_KEY", "")
 LLMOST_BASE_URL = "https://llmost.ru/api/v1"
 VISION_MODEL = "openai/gpt-4o"
 BATCH_SIZE = 10

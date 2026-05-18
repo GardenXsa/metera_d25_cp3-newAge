@@ -104,7 +104,7 @@ class TileMapperLocal:
                     if "llava" in m['id'].lower():
                         return m['id']
                 return models[0]['id'] # Если не нашли llava, берем первую
-        except:
+        except Exception:
             return "llava-v1.5-7b-llamafile"
         return "llava-v1.5-7b-llamafile"
 
@@ -147,15 +147,16 @@ class TileMapperLocal:
                 # Удаляем лишние знаки
                 ai_text = ai_text.replace('"', '').replace("'", "").split('\n')[0].replace(" ", "_")
                 
-                self.id_entry.delete(0, tk.END)
-                self.id_entry.insert(0, ai_text)
-                self.status_lbl.config(text=f"✅ OK: {model_id[:10]}", fg="#2ecc71")
+                # Thread-safe UI update via self.after()
+                self.root.after(0, lambda: self.id_entry.delete(0, tk.END))
+                self.root.after(0, lambda: self.id_entry.insert(0, ai_text))
+                self.root.after(0, lambda: self.status_lbl.config(text=f"✅ OK: {model_id[:10]}", fg="#2ecc71"))
             else:
-                self.status_lbl.config(text=f"❌ HTTP {response.status_code}", fg="#e74c3c")
+                self.root.after(0, lambda: self.status_lbl.config(text=f"❌ HTTP {response.status_code}", fg="#e74c3c"))
                 print(f"Error Detail: {response.text}")
 
         except Exception as e:
-            self.status_lbl.config(text="❌ Connection Error", fg="#e74c3c")
+            self.root.after(0, lambda: self.status_lbl.config(text="❌ Connection Error", fg="#e74c3c"))
             print(f"Exception: {e}")
 
     def add_mapping(self):

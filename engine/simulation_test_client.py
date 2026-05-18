@@ -449,7 +449,7 @@ class SimulationTestClient(ctk.CTk):
             self.diag_text.insert(tk.END, msg + "\n")
             self.diag_text.see(tk.END)
             self.diag_text.configure(state="disabled")
-        except:
+        except Exception:
             pass
 
     def _browse_data_dir(self):
@@ -536,6 +536,20 @@ class SimulationTestClient(ctk.CTk):
         payload_size = len(json.dumps(db_payload, ensure_ascii=False))
         self._log(f"Sending loadDatabase ({payload_size} bytes)...")
         self.engine.send(db_payload)
+
+        # Sync biome colors from biomes.json for map rendering
+        biomes_data = db_payload.get("biomes", [])
+        if isinstance(biomes_data, list) and biomes_data:
+            self._biome_colors = {}
+            for b in sorted(biomes_data, key=lambda x: x.get("numeric_id", 0)):
+                nid = b.get("numeric_id", 0)
+                hex_color = b.get("color_hex", "#000000")
+                # Convert hex to RGB tuple
+                hex_color = hex_color.lstrip('#')
+                if len(hex_color) == 6:
+                    rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+                    self._biome_colors[nid] = rgb
+            self._log(f"[BIOME COLORS] Synced {len(self._biome_colors)} colors from biomes.json")
 
         # Wait a moment for engine to process before sending buildWorld
         self.pending_bootstrap = True
@@ -701,13 +715,16 @@ class SimulationTestClient(ctk.CTk):
         if not tiles:
             return
 
-        COLORS = {
-            0: (26, 59, 92), 1: (41, 128, 185), 2: (245, 230, 200), 3: (46, 204, 113),
-            4: (39, 174, 96), 5: (127, 140, 141), 6: (243, 156, 18), 7: (230, 126, 34),
-            8: (142, 68, 173), 9: (236, 240, 241), 10: (52, 73, 94), 11: (155, 89, 182),
-            12: (52, 152, 219), 13: (192, 57, 43), 14: (60, 176, 67), 15: (31, 97, 141),
-            16: (88, 214, 141), 17: (211, 84, 0), 18: (85, 85, 85)
-        }
+        # Biome colors: read from loaded biomes.json data if available, else fallback
+        if not hasattr(self, '_biome_colors') or not self._biome_colors:
+            self._biome_colors = {
+                0: (26, 59, 92), 1: (41, 128, 185), 2: (245, 230, 200), 3: (46, 204, 113),
+                4: (39, 174, 96), 5: (127, 140, 141), 6: (243, 156, 18), 7: (230, 126, 34),
+                8: (142, 68, 173), 9: (236, 240, 241), 10: (52, 73, 94), 11: (155, 89, 182),
+                12: (52, 152, 219), 13: (192, 57, 43), 14: (60, 176, 67), 15: (31, 97, 141),
+                16: (88, 214, 141), 17: (211, 84, 0), 18: (85, 85, 85)
+            }
+        COLORS = self._biome_colors
 
         img = Image.new('RGB', (w, h))
         img.putdata([COLORS.get(t, (0, 0, 0)) for t in tiles])
@@ -808,7 +825,7 @@ class SimulationTestClient(ctk.CTk):
                 self.path_to_var.set(names[min(1, len(names) - 1)])
 
     def _test_pathfinding(self):
-        """Run pathfinding test via engine gmCommand."""
+        """Run pathfinding test via engine findPath command."""
         if not self.world_data:
             return
         locs = self.world_data["map"].get("locations", {})
@@ -823,13 +840,16 @@ class SimulationTestClient(ctk.CTk):
             return
 
         loc1, loc2 = locs[from_id], locs[to_id]
+        move_type = self.move_type_var.get()
+        # FIX: Use findPath command instead of gmBuildHighway
         self.engine.send({
-            "command": "gmCommand",
-            "cmd": "gmBuildHighway",
-            "args": {"fromRegion": from_id, "toRegion": to_id}
+            "command": "findPath",
+            "fromRegion": from_id,
+            "toRegion": to_id,
+            "moveType": move_type
         })
         self._set_path_info(f"Запрос отправлен: {loc1.get('name')} -> {loc2.get('name')}\n"
-                           f"Тип движения: {self.move_type_var.get()}\n"
+                           f"Тип движения: {move_type}\n"
                            f"Ожидайте результат...")
 
     def _show_path_on_map(self):

@@ -23,7 +23,7 @@ ModAPI.on('onModsInitialized', async () => {
         'hackTerminal',
         async (args) => {
             if (!player) return "[ERROR] Игрок не найден.";
-            const roll = Math.floor(Math.random() * 20) + 1 + Math.floor((player.stats.int - 10) / 2);
+            const roll = Math.floor(Math.random() * 20) + 1 + Math.floor(((player.stats.intelligence || player.stats.int || 10) - 10) / 2);
             
             if (roll >= 15) {
                 const credits = 100 + Math.floor(Math.random() * 400);
@@ -33,7 +33,7 @@ ModAPI.on('onModsInitialized', async () => {
                 return `[СИСТЕМА ВЗЛОМА] Игрок успешно обошел лед корпорации (Бросок: ${roll}). Получено ${credits} кредитов. Опиши, как он скачал данные и деньги.`;
             } else {
                 const dmg = 10 + Math.floor(Math.random() * 20);
-                player.stats.hp -= dmg;
+                if (typeof damagePlayerHP === 'function') damagePlayerHP(dmg); else player.stats.hp -= dmg;
                 ModAPI.notify(`Провал взлома! Нейро-шок нанес ${dmg} урона.`, "system-message");
                 if (typeof updateCharacterSheet === 'function') updateCharacterSheet();
                 return `[СИСТЕМА ВЗЛОМА] Игрок провалил взлом (Бросок: ${roll}). Защитный лед нанес ${dmg} нейронного урона. Опиши искры из деки и боль в голове.`;
@@ -106,7 +106,7 @@ ModAPI.on('onModsInitialized', async () => {
             
             if (neonToxicity > 80 && Math.random() < 0.1) {
                 ModAPI.notify("КРИТИЧЕСКАЯ ТОКСИЧНОСТЬ! Ваши импланты сбоят.", "system-message");
-                if (player) player.stats.hp -= 5;
+                if (player) damagePlayerHP(5);
                 if (typeof updateCharacterSheet === 'function') updateCharacterSheet();
             }
         }

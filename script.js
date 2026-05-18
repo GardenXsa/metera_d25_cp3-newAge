@@ -78,20 +78,33 @@ function resolveSpecialContainerId(containerId) {
     if (containerId === 'guard_confiscation_chest') {
         const existing = Array.from(ContainerRegistry.values()).find(c => c.custom_props?.system_id === 'guard_confiscation_chest');
         if (existing) return existing.id;
-        return CoreInventorySystem.createContainer(
-            'static_chest',
-            'city_guard',
-            9999,
-            999,
-            resolveActorLocation('player'),
-            {
-                custom_props: { system_id: 'guard_confiscation_chest', hidden: true },
-                lock_data: { is_locked: false, difficulty: 0, trap: null },
-                physical_props: { health: 250, flammable: false }
-            }
-        );
+        // FIX: Don't create containers as a side-effect of resolve.
+        // Return null — caller must use ensureGuardConfiscationChest() explicitly.
+        console.warn('[resolveSpecialContainerId] guard_confiscation_chest not found. Call ensureGuardConfiscationChest() first.');
+        return null;
     }
     return containerId;
+}
+
+/**
+ * Ensures the guard_confiscation_chest container exists, creating it if needed.
+ * Call this explicitly before resolveSpecialContainerId('guard_confiscation_chest').
+ */
+function ensureGuardConfiscationChest() {
+    const existing = Array.from(ContainerRegistry.values()).find(c => c.custom_props?.system_id === 'guard_confiscation_chest');
+    if (existing) return existing.id;
+    return CoreInventorySystem.createContainer(
+        'static_chest',
+        'city_guard',
+        9999,
+        999,
+        resolveActorLocation('player'),
+        {
+            custom_props: { system_id: 'guard_confiscation_chest', hidden: true },
+            lock_data: { is_locked: false, difficulty: 0, trap: null },
+            physical_props: { health: 250, flammable: false }
+        }
+    );
 }
 
 
@@ -360,7 +373,11 @@ const OldCoreInventorySystem = {
         let createdItemId = null;
         if (requestedQuantity < item.stack_size) {
             item.stack_size -= requestedQuantity;
-            createdItemId = this.createItem(item.prototype_id, requestedQuantity, resolvedSourceId, {
+            // FIX: Create the split item directly in the TARGET container, not source.
+            // Previously passed resolvedSourceId which added it to source,
+            // then it was moved via filter+push — but createItem already adds to container's .items array,
+            // causing a duplicate in source or missed addition to target.
+            createdItemId = this.createItem(item.prototype_id, requestedQuantity, null, {
                 ...structuredClone(item.custom_props || {}),
                 flags: structuredClone(item.flags || {}),
                 durability: item.durability,
@@ -377,6 +394,7 @@ const OldCoreInventorySystem = {
         if (sourceContainer.id !== targetContainer.id) {
             if (!targetContainer.items) targetContainer.items = [];
             targetContainer.items.push(movingItem.id);
+            movingItem.container_id = actualTargetId;
         }
         movingItem.container_id = actualTargetId;
 
@@ -476,7 +494,7 @@ const OldCoreInventorySystem = {
         } else {
             let trapMsg = "";
             if (cont.lock_data.trap) {
-                if (cont.lock_data.trap.stat === 'hp') player.stats.hp -= cont.lock_data.trap.amount;
+                if (cont.lock_data.trap.stat === 'hp') damagePlayerHP(cont.lock_data.trap.amount);
                 trapMsg = ` Сработала ловушка! Урон: ${cont.lock_data.trap.amount}.`;
             }
             return { success: false, error: "Lockpick broke, failed to unlock." + trapMsg };
@@ -661,7 +679,7 @@ const CoreInventorySystemAsync = {
         } else {
             let trapMsg = "";
             if (cont.lock_data.trap) {
-                if (cont.lock_data.trap.stat === 'hp') player.stats.hp -= cont.lock_data.trap.amount;
+                if (cont.lock_data.trap.stat === 'hp') damagePlayerHP(cont.lock_data.trap.amount);
                 trapMsg = ` Сработала ловушка! Урон: ${cont.lock_data.trap.amount}.`;
             }
             return { success: false, error: "Lockpick broke, failed to unlock." + trapMsg };
@@ -3156,6 +3174,15 @@ function mutatePlayer(mutator) {
     }
     mutator(player);
     return true;
+}
+
+/**
+ * Damage the player's HP, clamping to 0 (never negative).
+ * Use this instead of `player.stats.hp -= amount` to prevent negative HP.
+ */
+function damagePlayerHP(amount) {
+    if (!player || !player.stats) return;
+    player.stats.hp = Math.max(0, (player.stats.hp || 0) - amount);
 }
 
 let conversationHistory = [];
@@ -10284,7 +10311,7 @@ async function handleUserInput() {
                     let costVal = parseInt(skill.cost) || 0;
                     let costType = (skill.costType || '').toLowerCase();
                     if (costType.includes('mp') || costType.includes('ман')) player.stats.mana -= costVal;
-                    else if (costType.includes('hp') || costType.includes('здоровь')) player.stats.hp -= costVal;
+                    else if (costType.includes('hp') || costType.includes('здоровь')) damagePlayerHP(costVal);
 
                     let cdVal = parseInt(skill.cooldown) || 0;
                     if (cdVal > 0) skill.currentCooldown = cdVal;
@@ -10440,7 +10467,7 @@ async function handleUserInput() {
                     enemyRollsText += "- " + logLine + "\n";
                 });
                 if (combatRes.total_damage > 0) {
-                    player.stats.hp -= combatRes.total_damage;
+                    damagePlayerHP(combatRes.total_damage);
                     enemyRollsText += `ИТОГО УРОНА ПО ИГРОКУ: ${combatRes.total_damage}. HP игрока снижено.\n`;
                 } else {
                     enemyRollsText += "Игрок успешно уклонился/заблокировал все атаки.\n";
