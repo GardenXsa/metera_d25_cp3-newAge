@@ -156,7 +156,18 @@ class SimulationTestClient(ctk.CTk):
         ctk.CTkLabel(sf, text="Время симуляции:", anchor="w").pack(fill="x")
         self.time_var = ctk.StringVar(value="1 год")
         ctk.CTkOptionMenu(sf, variable=self.time_var,
-                          values=["1 месяц", "6 месяцев", "1 год", "2 года", "5 лет"]).pack(fill="x", pady=(0, 15))
+                          values=["1 месяц", "6 месяцев", "1 год", "2 года", "5 лет"]).pack(fill="x", pady=(0, 10))
+
+        # Data path
+        ctk.CTkLabel(sf, text="Папка data/:", anchor="w").pack(fill="x")
+        data_row = ctk.CTkFrame(sf, fg_color="transparent")
+        data_row.pack(fill="x", pady=(0, 10))
+        self.data_path_var = ctk.StringVar(value="")
+        self.data_path_entry = ctk.CTkEntry(data_row, textvariable=self.data_path_var,
+                                             placeholder_text="авто-поиск или путь...")
+        self.data_path_entry.pack(side="left", fill="x", expand=True)
+        ctk.CTkButton(data_row, text="...", width=32,
+                      command=self._browse_data_dir).pack(side="right", padx=(4, 0))
 
         # Control buttons
         ctk.CTkButton(self.sidebar, text="1. Инициализация", command=self.start_generation,
@@ -420,8 +431,26 @@ class SimulationTestClient(ctk.CTk):
             print(f"[ERROR] Failed to load {path}: {e}")
             return default
 
+    def _browse_data_dir(self):
+        """Open folder picker to select data/ directory."""
+        from tkinter import filedialog
+        selected = filedialog.askdirectory(title="Выберите папку data/")
+        if selected:
+            self.data_path_var.set(selected)
+
     def _find_data_dir(self):
-        """Find the data/ directory by searching multiple locations."""
+        """Find the data/ directory: custom path first, then auto-search."""
+        # 1. User-specified path takes priority
+        custom = self.data_path_var.get().strip()
+        if custom:
+            custom = os.path.normpath(custom)
+            if os.path.isdir(custom) and os.path.exists(os.path.join(custom, 'biomes.json')):
+                print(f"[INFO] Data directory (custom): {custom}")
+                return custom
+            else:
+                print(f"[WARN] Custom data path invalid: {custom}")
+
+        # 2. Auto-search relative to script location
         base_dir = os.path.dirname(os.path.abspath(__file__))
         candidates = [
             os.path.join(os.path.dirname(base_dir), 'data'),  # engine/../data
@@ -439,6 +468,7 @@ class SimulationTestClient(ctk.CTk):
             dp = os.path.normpath(d)
             if os.path.isdir(dp) and os.path.exists(os.path.join(dp, 'biomes.json')):
                 print(f"[INFO] Data directory found: {dp}")
+                self.data_path_var.set(dp)
                 return dp
         # Fallback: return the first candidate anyway
         print(f"[WARN] Data directory not found! Tried: {candidates}")
@@ -455,6 +485,11 @@ class SimulationTestClient(ctk.CTk):
         self.progress.start()
 
         data_dir = self._find_data_dir()
+        if not os.path.exists(os.path.join(data_dir, 'biomes.json')):
+            self.progress.stop()
+            self.status_lbl.configure(text="data/ не найдена!", text_color="#e74c3c")
+            messagebox.showerror("Ошибка", f"Папка data/ не найдена!\n\nУкажите путь вручную в поле 'Папка data/:'\nИли убедитесь что biomes.json существует по пути:\n{data_dir}")
+            return
         print(f"[INFO] Loading database from: {data_dir}")
 
         # Array fields (engine expects JsonValue::ARRAY) — default to []
