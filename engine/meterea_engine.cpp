@@ -11833,15 +11833,42 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
             } else if (moveType == MovementType::ANY) {
                 uint8_t b_id = map.grid[nIdx].biome_id;
                 const BiomeDef* biome_a = getBiomeById(b_id);
-                cost = biome_a ? biome_a->movement_cost : 9999;
-                if (!has_road[nIdx]) cost *= 4; else cost = 1;
+                bool is_water_a = biome_a ? biome_a->is_water : false;
+                bool is_impassable_a = biome_a ? biome_a->is_impassable : false;
+                int base_cost_a = biome_a ? biome_a->movement_cost : 9999;
+
+                if (has_road[nIdx]) {
+                    cost = 1;
+                } else if (is_water_a) {
+                    // ANY может пересекать воду, но с высоким штрафом (для генерации мостов/паромов)
+                    if (hasBiomeTag(b_id, "river")) {
+                        cost = (map.grid[nIdx].water_depth <= 1) ? 15 : 25; // Брод или паром
+                    } else if (hasBiomeTag(b_id, "lake")) {
+                        cost = 30; // Паром через озеро
+                    } else {
+                        cost = 50; // Морской маршрут
+                    }
+                } else if (is_impassable_a) {
+                    // ANY может проходить через горы/вулканы с огромным штрафом (для генерации тоннелей)
+                    cost = base_cost_a; // 9999 * 1 = тоннель крайне дорог, но возможен
+                } else {
+                    cost = base_cost_a * 2; // Обычное бездорожье
+                }
                 if (path_status[nIdx] == 1) cost *= 3;
             }
-                    
-                    if (cost >= 999) {
-                        if (nx == goalX && ny == goalY) cost = 5;
-                        else continue;
-                    }
+
+            // Блокировка только для заблокированных дорог (status==2) и импассабл без ANY
+            if (path_status[nIdx] == 2 && !(nx == goalX && ny == goalY)) {
+                // Заблокированные дороги непроходимы, кроме самой цели
+                if (moveType != MovementType::ANY) continue;
+                // Для ANY - заблокированные дороги очень дороги, но не непроходимы
+                cost = std::max(cost, 200);
+            }
+
+            if (cost >= 9000) {
+                if (nx == goalX && ny == goalY) cost = 5;
+                else continue;
+            }
 
             int new_g = curr.g + cost * (i >= 4 ? 14 : 10);
             if (new_g < g_cost[nIdx]) {
@@ -12100,6 +12127,9 @@ void generateRoads(WorldMap& map, const World& w) {
     };
 
     // 1. Сначала прокладываем внутренние (грунтовые) дороги
+    // Собираем регионы, которые не получили дороги (для fallback-пасса)
+    std::vector<std::pair<std::string, std::string>> isolated_regions; // {regionId, capitalId}
+
     for (const auto& [fid, f] : w.factions) {
         if (f.regions.empty()) continue;
         std::string capital = f.regions[0];
@@ -12109,14 +12139,65 @@ void generateRoads(WorldMap& map, const World& w) {
         for (size_t i = 1; i < f.regions.size(); ++i) {
             std::string rid = f.regions[i];
             if (!map.locations.count(rid)) continue;
-            if (map.locations.at(rid).no_road) continue; // Пропуск изолированных точек
             auto rLoc = map.locations.at(rid);
+
+            // Пропускаем только если no_road=true И нет населения (действительно изолированные)
+            bool is_truly_isolated = rLoc.no_road;
+            auto regIt = w.regions.find(rid);
+            if (regIt != w.regions.end() && regIt->second.population > 0) {
+                is_truly_isolated = false; // Жилые города ВСЕГДА получают дороги
+            }
+            if (is_truly_isolated) continue;
 
             auto path = findPath(map, rLoc.x, rLoc.y, capLoc.x, capLoc.y, pathfinding_helper, path_status_helper, MovementType::ANY);
             if (!path.empty()) {
                 MapRoad road; road.from = rid; road.to = capital; road.condition = "dirt"; road.waypoints = path;
                 auto segments = processRoadSegment(road, 1);
                 map.roads.insert(map.roads.end(), segments.begin(), segments.end());
+            } else {
+                // Запоминаем изолированный регион для fallback-пасса
+                isolated_regions.push_back({rid, capital});
+            }
+        }
+    }
+
+    // 1.5 Fallback-пасс: пытаемся соединить изолированные жилые города
+    // с ближайшим ЛЮБЫМ городом, у которого есть дорога
+    for (const auto& [isolatedId, origCapital] : isolated_regions) {
+        if (!map.locations.count(isolatedId)) continue;
+        auto isoLoc = map.locations.at(isolatedId);
+        auto regIt = w.regions.find(isolatedId);
+        if (regIt != w.regions.end() && regIt->second.population <= 0) continue; // Только жилые
+
+        // Ищем ближайший город с дорогой
+        std::string bestTarget = "";
+        int bestDist = 999999;
+        for (const auto& [lid, lloc] : map.locations) {
+            if (lid == isolatedId) continue;
+            // Проверяем, есть ли у этого города дорога
+            bool hasRoadConnection = false;
+            for (const auto& road : map.roads) {
+                if (road.from == lid || road.to == lid) { hasRoadConnection = true; break; }
+            }
+            if (!hasRoadConnection) continue;
+
+            int d = std::abs(lloc.x - isoLoc.x) + std::abs(lloc.y - isoLoc.y);
+            if (d < bestDist) {
+                bestDist = d;
+                bestTarget = lid;
+            }
+        }
+
+        if (!bestTarget.empty()) {
+            auto targetLoc = map.locations.at(bestTarget);
+            auto path = findPath(map, isoLoc.x, isoLoc.y, targetLoc.x, targetLoc.y, pathfinding_helper, path_status_helper, MovementType::ANY);
+            if (!path.empty()) {
+                MapRoad road; road.from = isolatedId; road.to = bestTarget; road.condition = "dirt"; road.waypoints = path;
+                auto segments = processRoadSegment(road, 1);
+                map.roads.insert(map.roads.end(), segments.begin(), segments.end());
+                // Снимаем флаг no_road
+                map.locations[isolatedId].no_road = false;
+                if (regIt != w.regions.end()) regIt->second.no_road = false;
             }
         }
     }
@@ -12130,7 +12211,14 @@ void generateRoads(WorldMap& map, const World& w) {
     for (size_t i = 0; i < capitals.size(); ++i) {
         for (size_t j = i + 1; j < capitals.size(); ++j) {
             std::string cap1 = capitals[i]; std::string cap2 = capitals[j];
-            if (map.locations.at(cap1).no_road || map.locations.at(cap2).no_road) continue; // Пропуск
+            // Пропускаем только если оба города нежилые и имеют no_road
+            bool skip1 = map.locations.at(cap1).no_road;
+            bool skip2 = map.locations.at(cap2).no_road;
+            auto r1It = w.regions.find(cap1);
+            auto r2It = w.regions.find(cap2);
+            if (r1It != w.regions.end() && r1It->second.population > 0) skip1 = false;
+            if (r2It != w.regions.end() && r2It->second.population > 0) skip2 = false;
+            if (skip1 || skip2) continue;
             if (w.factions.at(map.locations.at(cap1).faction).diplomacy.count(map.locations.at(cap2).faction)) {
                 if (w.factions.at(map.locations.at(cap1).faction).diplomacy.at(map.locations.at(cap2).faction) == "war") continue;
             }
