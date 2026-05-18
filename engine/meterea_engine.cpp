@@ -74,6 +74,7 @@ struct Database {
     // New Data-Driven Registries
     std::vector<BiomeDef> biomes;
     std::unordered_map<std::string, uint8_t> biome_string_to_id;
+    std::unordered_map<uint8_t, size_t> biome_numeric_to_index;
     CityGenDef city_gen_rules;
     std::unordered_map<std::string, MonsterDef> monsters;
     std::unordered_map<std::string, DisasterDef> disasters;
@@ -191,8 +192,9 @@ namespace NpcGen {
 }
 
 bool hasBiomeTag(uint8_t biome_id, const std::string& tag) {
-    if (biome_id >= g_db.biomes.size()) return false;
-    const auto& tags = g_db.biomes[biome_id].tags;
+    auto it = g_db.biome_numeric_to_index.find(biome_id);
+    if (it == g_db.biome_numeric_to_index.end()) return false;
+    const auto& tags = g_db.biomes[it->second].tags;
     return std::find(tags.begin(), tags.end(), tag) != tags.end();
 }
 
@@ -201,6 +203,19 @@ uint8_t getBiomeIdByTag(const std::string& tag, uint8_t fallback = 0) {
         if (std::find(b.tags.begin(), b.tags.end(), tag) != b.tags.end()) return b.numeric_id;
     }
     return fallback;
+}
+
+// Safely get BiomeDef pointer by numeric_id (uses lookup map instead of direct array index)
+const BiomeDef* getBiomeById(uint8_t biome_id) {
+    auto it = g_db.biome_numeric_to_index.find(biome_id);
+    if (it == g_db.biome_numeric_to_index.end()) return nullptr;
+    return &g_db.biomes[it->second];
+}
+
+// Helper: get biome string_id by numeric_id
+std::string getBiomeStringId(uint8_t biome_id) {
+    auto* b = getBiomeById(biome_id);
+    return b ? b->string_id : "";
 }
 
 
@@ -5991,7 +6006,7 @@ void processDailyMilitary() {
                     if (path_status[nIdx] == 1) speed /= 3.0;
 
                     uint8_t b_id = g_world.map.grid[nIdx].biome_id;
-                    std::string b_str = (b_id < g_db.biomes.size()) ? g_db.biomes[b_id].string_id : "";
+                    std::string b_str = getBiomeStringId(b_id);
                     bool is_water = (b_str == "ocean" || b_str == "shallow_water" || b_str == "lake" || b_str == "river");
                     bool has_bridge = g_world.map.grid[nIdx].bridge_flag;
                     
@@ -6911,7 +6926,7 @@ void processInfrastructureProjects() {
                             int nx = loc.x + dx, ny = loc.y + dy;
                             if (nx >= 0 && nx < g_world.map.width && ny >= 0 && ny < g_world.map.height) {
                                 uint8_t b_id = g_world.map.grid[ny * g_world.map.width + nx].biome_id;
-                                std::string b_str = (b_id < g_db.biomes.size()) ? g_db.biomes[b_id].string_id : "";
+                                std::string b_str = getBiomeStringId(b_id);
                                 if (b_str == "river") has_river = true;
                             }
                         }
@@ -6928,7 +6943,7 @@ void processInfrastructureProjects() {
                                 if (nx >= 0 && nx < g_world.map.width && ny >= 0 && ny < g_world.map.height) {
                                                                     int idx = ny * g_world.map.width + nx;
                                 uint8_t b_id = g_world.map.grid[idx].biome_id;
-                                std::string b_str = (b_id < g_db.biomes.size()) ? g_db.biomes[b_id].string_id : "";
+                                std::string b_str = getBiomeStringId(b_id);
                                 if (b_str == "floodplain") {
                                     g_world.map.grid[idx].biome_id = g_db.biome_string_to_id.count("plains") ? g_db.biome_string_to_id["plains"] : 0;
                                 }
@@ -6986,7 +7001,7 @@ void processInfrastructureProjects() {
                         
                         int initial_idx = path[0].second * g_world.map.width + path[0].first;
                         uint8_t initial_b_id = g_world.map.grid[initial_idx].biome_id;
-                        std::string initial_t = (initial_b_id < g_db.biomes.size()) ? g_db.biomes[initial_b_id].string_id : "";
+                        std::string initial_t = getBiomeStringId(initial_b_id);
                         if (initial_t == "river" || initial_t == "shallow_water" || initial_t == "ocean" || initial_t == "lake") {
                             current_segment.type = (g_world.map.grid[initial_idx].water_depth >= 3) ? "ferry" : "bridge";
                         } else if (initial_t == "mountains" || initial_t == "hills") {
@@ -7000,7 +7015,7 @@ void processInfrastructureProjects() {
                             int idx = wp.second * g_world.map.width + wp.first;
                             
                             uint8_t b_id = g_world.map.grid[idx].biome_id;
-                            std::string t = (b_id < g_db.biomes.size()) ? g_db.biomes[b_id].string_id : "";
+                            std::string t = getBiomeStringId(b_id);
                             bool is_water = (t == "river" || t == "shallow_water" || t == "ocean" || t == "lake");
                             
                             std::string target_type;
@@ -7564,8 +7579,9 @@ void processTrekTick() {
     int tile_idx = current_tile_y * g_world.map.width + current_tile_x;
     uint8_t current_biome_id = g_world.map.grid[tile_idx].biome_id;
     bool is_water_tile = false;
-    if (current_biome_id < g_db.biomes.size()) {
-        is_water_tile = g_db.biomes[current_biome_id].is_water;
+    const BiomeDef* biome = getBiomeById(current_biome_id);
+    if (biome) {
+        is_water_tile = biome->is_water;
     }
 
     // Calculate speed with transport multiplier
@@ -7634,7 +7650,7 @@ void processTrekTick() {
     if (icx >= 0 && icx < g_world.map.width && icy >= 0 && icy < g_world.map.height) {
         int idx = icy * g_world.map.width + icx;
         uint8_t t = g_world.map.grid[idx].biome_id;
-        std::string b_str = (t < g_db.biomes.size()) ? g_db.biomes[t].string_id : "";
+        std::string b_str = getBiomeStringId(t);
 
         if (b_str == "river" && g_world.map.grid[idx].bridge_flag == 0 && g_world.map.grid[idx].road_level == 0) {
             std::string rKey = "river_" + std::to_string(icx) + "_" + std::to_string(icy);
@@ -8851,7 +8867,7 @@ std::string processGmIntervention(const JsonValue& command) {
                         if (std::hypot(x - d.epicenter_x, y - d.epicenter_y) <= d.radius) {
                             int idx = y * g_world.map.width + x;
                             uint8_t b_id = g_world.map.grid[idx].biome_id;
-                            std::string b_str = (b_id < g_db.biomes.size()) ? g_db.biomes[b_id].string_id : "";
+                            std::string b_str = getBiomeStringId(b_id);
                             if (b_str == "riverbank" || b_str == "floodplain" || b_str == "plains") {
                                 g_world.map.grid[idx].is_flooded = true;
                                 d.affected_tiles.push_back({x, y});
@@ -9505,7 +9521,7 @@ void processDailyThreat() {
                     for (int x = std::max(0, blockX - radius); x <= std::min(g_world.map.width - 1, blockX + radius); ++x) {
                         if (std::hypot(x - blockX, y - blockY) <= radius) {
                             uint8_t b_id = g_world.map.grid[y * g_world.map.width + x].biome_id;
-                            std::string b_str = (b_id < g_db.biomes.size()) ? g_db.biomes[b_id].string_id : "";
+                            std::string b_str = getBiomeStringId(b_id);
                             if (b_str == "volcano") {
                                 g_world.map.grid[y * g_world.map.width + x].biome_id = g_db.biome_string_to_id.count("plains") ? g_db.biome_string_to_id["plains"] : 0;
                             }
@@ -10585,7 +10601,7 @@ void processNavalCombat() {
                 bx = std::clamp(bx, 1, g_world.map.width - 2);
                 by = std::clamp(by, 1, g_world.map.height - 2);
                 uint8_t b_id = g_world.map.grid[by * g_world.map.width + bx].biome_id;
-                std::string b_str = (b_id < g_db.biomes.size()) ? g_db.biomes[b_id].string_id : "";
+                std::string b_str = getBiomeStringId(b_id);
                 if (b_str == "ocean") {
                     std::string baseId = "pirate_base_" + generateUUID();
                     MapLocation pBase;
@@ -10884,7 +10900,7 @@ void processDisasters() {
             // Hardcoded specific conditions mapped to JSON tags
             if (d_id == "plague" && !(r.population > r.storage_capacity * 1.2 && (!r.custom_props.has("has_well") || !r.custom_props["has_well"].asBool()))) climate_match = false;
             uint8_t b_id = g_world.map.grid[loc.y * g_world.map.width + loc.x].biome_id;
-            std::string b_str = (b_id < g_db.biomes.size()) ? g_db.biomes[b_id].string_id : "";
+            std::string b_str = getBiomeStringId(b_id);
             if (d_id == "volcano" && b_str != "volcano") climate_match = false;
             if ((d_id == "storm" || d_id == "tsunami" || d_id == "sea_monster") && !r.available_raw_resources.count("fish")) climate_match = false;
             
@@ -10909,7 +10925,7 @@ void processDisasters() {
                     if (std::hypot(x - d.epicenter_x, y - d.epicenter_y) <= d.radius) {
                         int idx = y * g_world.map.width + x;
                         uint8_t b_id = g_world.map.grid[idx].biome_id;
-                        std::string b_str = (b_id < g_db.biomes.size()) ? g_db.biomes[b_id].string_id : "";
+                        std::string b_str = getBiomeStringId(b_id);
                         bool is_affected = d_def.affected_biomes.empty();
                         for (const auto& ab : d_def.affected_biomes) if (b_str == ab) is_affected = true;
                         if (is_affected) {
@@ -10955,7 +10971,7 @@ void processDisasters() {
                     if (std::hypot(x - d.epicenter_x, y - d.epicenter_y) <= d.radius) {
                         int idx = y * g_world.map.width + x;
                         uint8_t b_id = g_world.map.grid[idx].biome_id;
-                        std::string b_str = (b_id < g_db.biomes.size()) ? g_db.biomes[b_id].string_id : "";
+                        std::string b_str = getBiomeStringId(b_id);
                         bool is_affected = d_def.affected_biomes.empty();
                         for (const auto& ab : d_def.affected_biomes) if (b_str == ab) is_affected = true;
                         if (is_affected) {
@@ -11761,10 +11777,11 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
                 bool is_impassable = false;
                 int base_cost = 9999;
                 std::string b_str = "";
-                if (b_id < g_db.biomes.size()) {
-                    is_water = g_db.biomes[b_id].is_water;
-                    is_impassable = g_db.biomes[b_id].is_impassable;
-                    base_cost = g_db.biomes[b_id].movement_cost;
+                const BiomeDef* biome = getBiomeById(b_id);
+                if (biome) {
+                    is_water = biome->is_water;
+                    is_impassable = biome->is_impassable;
+                    base_cost = biome->movement_cost;
                 }
                 
                 if (has_road[nIdx]) {
@@ -11796,8 +11813,9 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
             } else if (moveType == MovementType::WATER) {
                 uint8_t b_id = map.grid[nIdx].biome_id;
                 bool is_water = false;
-                if (b_id < g_db.biomes.size()) {
-                    is_water = g_db.biomes[b_id].is_water;
+                const BiomeDef* biome_w = getBiomeById(b_id);
+                if (biome_w) {
+                    is_water = biome_w->is_water;
                 }
                 
                 if (!is_water) {
@@ -11814,7 +11832,8 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
                 }
             } else if (moveType == MovementType::ANY) {
                 uint8_t b_id = map.grid[nIdx].biome_id;
-                cost = (b_id < g_db.biomes.size()) ? g_db.biomes[b_id].movement_cost : 9999;
+                const BiomeDef* biome_a = getBiomeById(b_id);
+                cost = biome_a ? biome_a->movement_cost : 9999;
                 if (!has_road[nIdx]) cost *= 4; else cost = 1;
                 if (path_status[nIdx] == 1) cost *= 3;
             }
@@ -12553,7 +12572,8 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
                             int ny = loc.y + dy;
                             if (nx >= 0 && nx < g_world.map.width && ny >= 0 && ny < g_world.map.height) {
                                 uint8_t t = g_world.map.grid[ny * g_world.map.width + nx].biome_id;
-                                if (t < g_db.biomes.size() && g_db.biomes[t].is_water) {
+                                const BiomeDef* biome_n = getBiomeById(t);
+                                if (biome_n && biome_n->is_water) {
                                     near_water = true;
                                 }
                             }
@@ -13205,6 +13225,7 @@ int main() {
             // Parse Biomes
             g_db.biomes.clear();
             g_db.biome_string_to_id.clear();
+            g_db.biome_numeric_to_index.clear();
             if (command.has("biomes") && command["biomes"].type == JsonValue::ARRAY) {
                 JsonValue biomesArr = command["biomes"];
                 for (size_t i = 0; i < biomesArr.size(); i++) {
@@ -13232,6 +13253,7 @@ int main() {
                     }
                     g_db.biomes.push_back(b);
                     g_db.biome_string_to_id[b.string_id] = b.numeric_id;
+                    g_db.biome_numeric_to_index[b.numeric_id] = g_db.biomes.size() - 1;
                 }
             }
 
@@ -14363,7 +14385,8 @@ response.set("world", g_world.toJson());
                         int y = g_world.player_trek.path[i].second;
                         int idx = y * g_world.map.width + x;
                         uint8_t tile_type = g_world.map.grid[idx].biome_id;
-                        bool is_water = (tile_type < g_db.biomes.size()) ? g_db.biomes[tile_type].is_water : false;
+                        const BiomeDef* biome_p = getBiomeById(tile_type);
+                        bool is_water = biome_p ? biome_p->is_water : false;
 
                         double segment_dist = std::hypot(g_world.player_trek.path[i+1].first - g_world.player_trek.path[i].first,
                                                          g_world.player_trek.path[i+1].second - g_world.player_trek.path[i].second);

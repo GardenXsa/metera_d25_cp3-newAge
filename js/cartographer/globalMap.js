@@ -573,10 +573,10 @@ window.Cartographer = {
         ctx.fillRect(0, 0, this.bgCacheCanvas.width, this.bgCacheCanvas.height);
 
         const colors = [
-            '#1a3b5c', '#2980b9', '#2ecc71', '#27ae60', '#7f8c8d', 
-            '#f39c12', '#e67e22', '#8e44ad', '#ecf0f1', '#34495e', 
-            '#9b59b6', '#3498db', '#c0392b',
-            '#3cb043', '#1f618d', '#58d68d', '#d35400', '#555555'
+            '#1a3b5c', '#2980b9', '#f5e6c8', '#2ecc71', '#27ae60',
+            '#7f8c8d', '#f39c12', '#e67e22', '#8e44ad', '#ecf0f1',
+            '#34495e', '#9b59b6', '#3498db', '#c0392b', '#3cb043',
+            '#1f618d', '#58d68d', '#d35400', '#555555'
         ];
 
         // Pass 1: Base terrain
