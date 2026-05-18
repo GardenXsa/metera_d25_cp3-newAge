@@ -79,14 +79,21 @@ class EngineProcess:
                 continue
             try:
                 data = json.loads(line)
+                cmd = data.get("message", "") or data.get("command", "")
+                has_world = "world" in data
+                has_map = "map" in data
+                status = data.get("status", "?")
+                print(f"[ENGINE->CLIENT] status={status} world={has_world} map={has_map} msg={cmd[:60]} len={len(line)}")
                 if data.get("status") == "progress":
                     self.on_progress(data.get("message", ""))
                 elif data.get("status") in ("ok", "realtime_update"):
                     self.on_result(data)
                 elif data.get("status") == "error":
                     self.on_error(data.get("message", "Ошибка движка"))
-            except json.JSONDecodeError:
-                print(f"[RAW] {line}")
+                else:
+                    print(f"[ENGINE->CLIENT] Unknown status: {data.get('status')}")
+            except json.JSONDecodeError as e:
+                print(f"[RAW] JSON parse error: {e}, line_len={len(line)}, first200={line[:200]}")
         self.is_running = False
         if self.proc:
             self.proc.poll()
@@ -418,18 +425,32 @@ class SimulationTestClient(ctk.CTk):
             with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 if not data:
-                    print(f"[WARN] {path} loaded but empty, using default")
+                    self._log(f"[WARN] {path} empty")
                     return default
+                t = type(data).__name__
+                l = len(data) if isinstance(data, (list, dict)) else '?'
+                self._log(f"[OK] {os.path.basename(path)}: {t}({l})")
                 return data
         except FileNotFoundError:
-            print(f"[ERROR] File not found: {path}")
+            self._log(f"[ERR] Not found: {path}")
             return default
         except json.JSONDecodeError as e:
-            print(f"[ERROR] Invalid JSON in {path}: {e}")
+            self._log(f"[ERR] Bad JSON: {path}: {e}")
             return default
         except Exception as e:
-            print(f"[ERROR] Failed to load {path}: {e}")
+            self._log(f"[ERR] Load fail: {path}: {e}")
             return default
+
+    def _log(self, msg):
+        """Log message to diagnostics tab and console."""
+        print(msg)
+        try:
+            self.diag_text.configure(state="normal")
+            self.diag_text.insert(tk.END, msg + "\n")
+            self.diag_text.see(tk.END)
+            self.diag_text.configure(state="disabled")
+        except:
+            pass
 
     def _browse_data_dir(self):
         """Open folder picker to select data/ directory."""
@@ -488,13 +509,15 @@ class SimulationTestClient(ctk.CTk):
         if not os.path.exists(os.path.join(data_dir, 'biomes.json')):
             self.progress.stop()
             self.status_lbl.configure(text="data/ не найдена!", text_color="#e74c3c")
+            self._log(f"[ERROR] data/ not found at: {data_dir}")
+            self._log(f"[HINT] Set the 'Папка data/:' field to your data directory")
             messagebox.showerror("Ошибка", f"Папка data/ не найдена!\n\nУкажите путь вручную в поле 'Папка data/:'\nИли убедитесь что biomes.json существует по пути:\n{data_dir}")
             return
-        print(f"[INFO] Loading database from: {data_dir}")
+        self._log(f"=== Loading database from: {data_dir} ===")
 
         # Array fields (engine expects JsonValue::ARRAY) — default to []
         # Object fields (engine expects JsonValue::OBJECT) — default to {}
-        self.engine.send({
+        db_payload = {
             "command": "loadDatabase",
             "items": self._load_json(os.path.join(data_dir, 'economy_items.json'), {}),
             "recipes": self._load_json(os.path.join(data_dir, 'economy_recipes.json'), []),
@@ -509,9 +532,17 @@ class SimulationTestClient(ctk.CTk):
             "npc_names": self._load_json(os.path.join(data_dir, 'npc_names.json'), {}),
             "faction_relations": self._load_json(os.path.join(data_dir, 'faction_relations.json'), {}),
             "world_config": self._load_json(os.path.join(data_dir, 'world_config.json'), {}),
-        })
+        }
+        payload_size = len(json.dumps(db_payload, ensure_ascii=False))
+        self._log(f"Sending loadDatabase ({payload_size} bytes)...")
+        self.engine.send(db_payload)
 
+        # Wait a moment for engine to process before sending buildWorld
         self.pending_bootstrap = True
+        self.after(500, lambda: self._send_build_world())
+
+    def _send_build_world(self):
+        self._log(f"Sending buildWorld (era={self.era_var.get()}, agents={self.agents_var.get()})...")
         self.engine.send({
             "command": "buildWorld",
             "player_id": "test_admin",
@@ -559,10 +590,22 @@ class SimulationTestClient(ctk.CTk):
 
     def handle_result(self, data):
         def update():
+            # Логируем каждый входящий ответ
+            has_world = "world" in data
+            has_map = "map" in data
+            status = data.get("status", "?")
+            msg = data.get("message", "")
+            self._log(f"[RECV] status={status} world={has_world} map={has_map} msg={msg[:80]}")
+
+            # Ответы без world/map — просто ack, не стопаем прогресс зря
+            if not has_world and not has_map and status != "realtime_update":
+                self._log(f"[RECV] ack, skipping")
+                return
+
             self.progress.stop()
             self.progress.set(1)
 
-            if "map" in data and "world" not in data:
+            if has_map and not has_world:
                 if not self.world_data:
                     self.world_data = {}
                 self.world_data["map"] = data["map"]
@@ -576,7 +619,7 @@ class SimulationTestClient(ctk.CTk):
                 self._auto_refresh_all()
                 return
 
-            if "world" in data:
+            if has_world:
                 self.world_data = data["world"]
                 for c in data.get("containers", []):
                     self.containers_data[c[0]] = c[1]
@@ -587,11 +630,18 @@ class SimulationTestClient(ctk.CTk):
                 for iid in data.get("deleted_items", []):
                     self.items_data.pop(iid, None)
 
+                # Логируем содержимое мира
+                regions = self.world_data.get("regions", {})
+                factions = self.world_data.get("factions", {})
+                locs = self.world_data.get("map", {}).get("locations", {})
+                self._log(f"[WORLD] regions={len(regions)} factions={len(factions)} locations={len(locs)} tick={self.world_data.get('tick',0)}")
+
                 if self.pending_bootstrap:
                     self.pending_bootstrap = False
                     self.status_lbl.configure(text="Балансировка...", text_color="#f39c12")
-                    pop = sum(r.get("population", 0) for r in self.world_data.get("regions", {}).values())
+                    pop = sum(r.get("population", 0) for r in regions.values())
                     days = max(30, 30 + pop // 10000)
+                    self._log(f"[BOOTSTRAP] pop={pop}, days={days}")
                     self.engine.send({"command": "bootstrapWorld", "days": days})
                     return
 
