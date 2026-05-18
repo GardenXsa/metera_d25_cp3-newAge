@@ -62,6 +62,8 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         database.traits = await modLoader.readJsonFile('./data/traits.json');
         database.npc_names = await modLoader.readJsonFile('./data/npc_names.json');
         database.faction_relations = await modLoader.readJsonFile('./data/faction_relations.json');
+        // World generation config
+        database.world_config = await modLoader.readJsonFile('./data/world_config.json');
         // --- END REFACTOR ---
 
         // Apply data-driven stats to JS constants (BASE_CLASS_STATS, RACE_MODIFIERS)

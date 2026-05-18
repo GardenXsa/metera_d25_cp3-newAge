@@ -91,6 +91,42 @@ struct Database {
 
     // Phase 1: Faction Relations Registry
     FactionRelationsDef faction_relations;
+
+    // World Generation Config
+    struct WorldContinentConfig {
+        double noise_frequency = 0.8;
+        int noise_octaves = 4;
+        double elevation_shift = 0.42;
+        double edge_falloff_power = 2.5;
+        double edge_falloff_range = 0.65;
+        double edge_ocean_elevation = -0.6;
+        double min_land_ratio = 0.55;
+        bool connectivity_pass = true;
+        int land_bridge_max_gap = 4;
+        int remove_islands_under = 80;
+        int smoothing_passes = 2;
+    };
+    struct WorldRiverConfig {
+        double noise_frequency = 3.0;
+        int noise_octaves = 3;
+        double threshold_default = 0.025;
+        double threshold_plains = 0.04;
+        double threshold_mountains = 0.015;
+    };
+    struct WorldVolcanoConfig {
+        int count = 5;
+        int min_radius = 3;
+        int max_radius = 6;
+    };
+    struct WorldConfigDef {
+        int map_width = 256;
+        int map_height = 256;
+        std::string landform = "continent";
+        WorldContinentConfig continent;
+        WorldRiverConfig rivers;
+        WorldVolcanoConfig volcanoes;
+    };
+    WorldConfigDef world_config;
 };
 
 
@@ -11221,9 +11257,13 @@ public:
 };
 
 void generateWorldMapTerrain(WorldMap& map, int seed) {
+    auto& cfg = g_db.world_config;
     map.grid.resize(map.width * map.height);
     std::vector<double> elevation(map.width * map.height);
-    
+
+    // ====================================================================
+    // PASS 1: Elevation + Biome assignment (data-driven continent generation)
+    // ====================================================================
     int num_threads = std::thread::hardware_concurrency();
     if (num_threads == 0) num_threads = 4;
     std::vector<std::future<void>> futures;
@@ -11233,37 +11273,51 @@ void generateWorldMapTerrain(WorldMap& map, int seed) {
         int start_y = t * chunk_size;
         int end_y = (t == num_threads - 1) ? map.height : (t + 1) * chunk_size;
 
-        futures.push_back(getThreadPool()->enqueue([start_y, end_y, &map, &elevation, seed]() {
+        futures.push_back(getThreadPool()->enqueue([start_y, end_y, &map, &elevation, seed, &cfg]() {
             PerlinNoise perlin(seed);
+            PerlinNoise detail_noise(seed + 10);  // Higher-freq detail layer
             PerlinNoise temp_noise(seed + 1);
             PerlinNoise moist_noise(seed + 2);
-            
+
             for (int y = start_y; y < end_y; ++y) {
                 for (int x = 0; x < map.width; ++x) {
                     double nx = (double)x / map.width;
                     double ny = (double)y / map.height;
-                    
-                    double e = perlin.fbm(nx * 2.0, ny * 2.0, 6, 0.5, 2.0);
-                    
-                    // Shift elevation range up: fbm returns ~[-0.5, 0.5], we need ~60% land
-                    e = e + 0.3;
-                    
-                    // Edge falloff: push map edges below sea level to create a continent
+
+                    // Low frequency = large landforms (continent, not islands)
+                    double e = perlin.fbm(nx * cfg.continent.noise_frequency,
+                                          ny * cfg.continent.noise_frequency,
+                                          cfg.continent.noise_octaves, 0.5, 2.0);
+
+                    // Shift elevation up for more land area
+                    e = e + cfg.continent.elevation_shift;
+
+                    // Edge falloff: push map edges below sea level to create continent shape
                     double dx = nx - 0.5;
                     double dy = ny - 0.5;
-                    double dist = std::sqrt(dx * dx + dy * dy) * 2.0; // 0 at center, ~1.41 at corners
-                    double falloff = 1.0 - std::pow(std::min(dist * 0.8, 1.0), 3.0);
-                    e = e * falloff + (1.0 - falloff) * (-0.5); // Blend toward ocean at edges
-                    
+                    double dist = std::sqrt(dx * dx + dy * dy) * 2.0;
+                    double falloff = 1.0 - std::pow(std::min(dist * cfg.continent.edge_falloff_range, 1.0),
+                                                     cfg.continent.edge_falloff_power);
+                    e = e * falloff + (1.0 - falloff) * cfg.continent.edge_ocean_elevation;
+
+                    // Add terrain detail (mountains, hills) within the continent
+                    // Only apply where there's land — don't raise ocean tiles
+                    if (e > -0.05) {
+                        double detail = detail_noise.fbm(nx * 3.0, ny * 3.0, 5, 0.55, 2.0);
+                        // Scale detail by distance from coast (more variation inland)
+                        double land_factor = std::clamp((e + 0.05) / 0.3, 0.0, 1.0);
+                        e += detail * 0.55 * land_factor;
+                    }
+
                     elevation[y * map.width + x] = e;
-                    
+
                     double dist_to_equator = std::abs(y - map.height / 2.0) / (map.height / 2.0);
-                    double base_t = 0.7 - dist_to_equator * 0.5; // Range: 0.2 (poles) to 0.7 (equator)
+                    double base_t = 0.7 - dist_to_equator * 0.5;
                     double t_noise = temp_noise.fbm(nx * 3.0, ny * 3.0, 3, 0.5, 2.0) * 0.15;
                     double temperature = std::clamp(base_t + t_noise, 0.0, 1.0);
 
                     double m = moist_noise.fbm(nx * 5.0, ny * 5.0, 4, 0.5, 2.0) + 0.5;
-                    
+
                     uint8_t selected_biome = 0;
                     double best_score = 999.0;
                     for (const auto& b : g_db.biomes) {
@@ -11273,7 +11327,6 @@ void generateWorldMapTerrain(WorldMap& map, int seed) {
                             selected_biome = b.numeric_id;
                             break;
                         }
-                        // Fallback: find closest biome by elevation (ignoring temp/moisture constraints)
                         if (!b.is_water && e >= b.min_elevation && e <= b.max_elevation) {
                             double score = std::abs(e - (b.min_elevation + b.max_elevation) / 2.0);
                             if (score < best_score) {
@@ -11289,40 +11342,179 @@ void generateWorldMapTerrain(WorldMap& map, int seed) {
     }
     for (auto& f : futures) f.get();
 
-    // Сглаживание биомов (Cellular Automata) для устранения резких переходов
-    std::vector<uint8_t> smoothed(map.width * map.height);
-    for (int y = 0; y < map.height; ++y) {
-        for (int x = 0; x < map.width; ++x) {
-            int idx = y * map.width + x;
-            uint8_t current = map.grid[idx].biome_id;
-            if (hasBiomeTag(current, "ocean") || hasBiomeTag(current, "shallow_water")) {
-                smoothed[idx] = current; continue;
+    // ====================================================================
+    // PASS 2: Connectivity — ensure one connected continent, no small islands
+    // ====================================================================
+    if (cfg.continent.connectivity_pass && cfg.landform == "continent") {
+        int w = map.width, h = map.height;
+        uint8_t ocean_id = getBiomeIdByTag("ocean");
+        uint8_t shallow_id = getBiomeIdByTag("shallow_water");
+        uint8_t beach_id = getBiomeIdByTag("beach");
+        uint8_t plains_id = getBiomeIdByTag("plains");
+
+        auto isLand = [&](int idx) -> bool {
+            uint8_t b = map.grid[idx].biome_id;
+            return (b != ocean_id && b != shallow_id);
+        };
+
+        // Flood-fill to find all connected land components
+        std::vector<int> component(w * h, -1);
+        int num_components = 0;
+        std::vector<int> component_size;
+        int largest_component = 0;
+        int largest_size = 0;
+
+        int flood_dx[] = {0, 1, 0, -1};
+        int flood_dy[] = {-1, 0, 1, 0};
+
+        for (int y = 0; y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+                int idx = y * w + x;
+                if (!isLand(idx) || component[idx] >= 0) continue;
+
+                int cid = num_components++;
+                component_size.push_back(0);
+                std::queue<std::pair<int,int>> q;
+                q.push({x, y});
+                component[idx] = cid;
+
+                while (!q.empty()) {
+                    auto [cx, cy] = q.front(); q.pop();
+                    component_size[cid]++;
+
+                    for (int d = 0; d < 4; ++d) {
+                        int nx = cx + flood_dx[d];
+                        int ny = cy + flood_dy[d];
+                        if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+                        int nIdx = ny * w + nx;
+                        if (isLand(nIdx) && component[nIdx] < 0) {
+                            component[nIdx] = cid;
+                            q.push({nx, ny});
+                        }
+                    }
+                }
+
+                if (component_size[cid] > largest_size) {
+                    largest_size = component_size[cid];
+                    largest_component = cid;
+                }
             }
-            std::map<uint8_t, int> counts;
-            for(int dy=-1; dy<=1; dy++) {
-                for(int dx=-1; dx<=1; dx++) {
-                    if(dx==0 && dy==0) continue;
-                    int nx = x+dx, ny = y+dy;
-                    if(nx>=0 && nx<map.width && ny>=0 && ny<map.height) {
-                        counts[map.grid[ny*map.width+nx].biome_id]++;
+        }
+
+        // Remove small islands: convert land tiles of small components to ocean
+        int remove_threshold = cfg.continent.remove_islands_under;
+        for (int i = 0; i < w * h; ++i) {
+            if (isLand(i) && component[i] >= 0 && component[i] != largest_component) {
+                if (component_size[component[i]] < remove_threshold) {
+                    // Small island → convert to ocean
+                    map.grid[i].biome_id = ocean_id;
+                    elevation[i] = -0.4;
+                    component[i] = -1;
+                }
+            }
+        }
+
+        // Land bridge pass: find narrow ocean gaps between land components and fill them
+        // For each water tile that separates two land areas within max_gap distance, fill with land
+        int max_gap = cfg.continent.land_bridge_max_gap;
+        if (max_gap > 0) {
+            // Multiple dilation passes to connect nearby landmasses
+            for (int pass = 0; pass < max_gap; ++pass) {
+                std::vector<uint8_t> bridged(w * h);
+                for (int i = 0; i < w * h; ++i) bridged[i] = map.grid[i].biome_id;
+
+                for (int y = 1; y < h - 1; ++y) {
+                    for (int x = 1; x < w - 1; ++x) {
+                        int idx = y * w + x;
+                        if (isLand(idx)) continue;
+                        // Check if this water tile is between two land tiles (horizontally or vertically)
+                        bool left_land = isLand(y * w + (x - 1));
+                        bool right_land = isLand(y * w + (x + 1));
+                        bool up_land = isLand((y - 1) * w + x);
+                        bool down_land = isLand((y + 1) * w + x);
+
+                        if ((left_land && right_land) || (up_land && down_land)) {
+                            // This is a narrow gap — fill with land (beach/plains)
+                            bridged[idx] = (elevation[idx] >= -0.1) ? plains_id : beach_id;
+                            elevation[idx] = 0.08; // Just above beach threshold
+                        }
+                    }
+                }
+                for (int i = 0; i < w * h; ++i) map.grid[i].biome_id = bridged[i];
+            }
+        }
+
+        // Ensure minimum land ratio: if too little land, raise elevation near center
+        double land_ratio = 0;
+        for (int i = 0; i < w * h; ++i) {
+            if (isLand(i)) land_ratio++;
+        }
+        land_ratio /= (w * h);
+
+        if (land_ratio < cfg.continent.min_land_ratio) {
+            // Raise a band around the continent core
+            double deficit = cfg.continent.min_land_ratio - land_ratio;
+            double expand_range = 0.65 + deficit * 2.0; // Expand the continent further
+
+            for (int y = 0; y < h; ++y) {
+                for (int x = 0; x < w; ++x) {
+                    double nx = (double)x / w;
+                    double ny = (double)y / h;
+                    double ddx = nx - 0.5;
+                    double ddy = ny - 0.5;
+                    double d = std::sqrt(ddx * ddx + ddy * ddy) * 2.0;
+
+                    if (d < expand_range && !isLand(y * w + x)) {
+                        // Raise to land level
+                        double t = 1.0 - (d / expand_range);
+                        elevation[y * w + x] = 0.08 * t;
+                        map.grid[y * w + x].biome_id = (t > 0.3) ? plains_id : beach_id;
                     }
                 }
             }
-            uint8_t dominant = current;
-            int max_c = 0;
-            for (auto& [t, c] : counts) {
-                if (c > max_c) { max_c = c; dominant = t; }
-            }
-            if (max_c >= 5) smoothed[idx] = dominant;
-            else smoothed[idx] = current;
         }
     }
-    for (int i = 0; i < map.width * map.height; ++i) map.grid[i].biome_id = smoothed[i];
 
-    // --- Формирование шельфа (Мелководье вокруг суши) ---
+    // ====================================================================
+    // PASS 3: Biome smoothing (multiple passes from config)
+    // ====================================================================
+    for (int smooth_pass = 0; smooth_pass < cfg.continent.smoothing_passes; ++smooth_pass) {
+        std::vector<uint8_t> smoothed(map.width * map.height);
+        for (int y = 0; y < map.height; ++y) {
+            for (int x = 0; x < map.width; ++x) {
+                int idx = y * map.width + x;
+                uint8_t current = map.grid[idx].biome_id;
+                if (hasBiomeTag(current, "ocean") || hasBiomeTag(current, "shallow_water")) {
+                    smoothed[idx] = current; continue;
+                }
+                std::map<uint8_t, int> counts;
+                for(int dy=-1; dy<=1; dy++) {
+                    for(int dx=-1; dx<=1; dx++) {
+                        if(dx==0 && dy==0) continue;
+                        int nnx = x+dx, nny = y+dy;
+                        if(nnx>=0 && nnx<map.width && nny>=0 && nny<map.height) {
+                            counts[map.grid[nny*map.width+nnx].biome_id]++;
+                        }
+                    }
+                }
+                uint8_t dominant = current;
+                int max_c = 0;
+                for (auto& [t, c] : counts) {
+                    if (c > max_c) { max_c = c; dominant = t; }
+                }
+                if (max_c >= 5) smoothed[idx] = dominant;
+                else smoothed[idx] = current;
+            }
+        }
+        for (int i = 0; i < map.width * map.height; ++i) map.grid[i].biome_id = smoothed[i];
+    }
+
+    // ====================================================================
+    // PASS 4: Continental shelf (shallow water around land)
+    // ====================================================================
     std::vector<uint8_t> shelf_types(map.width * map.height);
     for (int i = 0; i < map.width * map.height; ++i) shelf_types[i] = map.grid[i].biome_id;
-    
+
     uint8_t ocean_id = getBiomeIdByTag("ocean");
     uint8_t shallow_id = getBiomeIdByTag("shallow_water");
 
@@ -11330,14 +11522,14 @@ void generateWorldMapTerrain(WorldMap& map, int seed) {
         for (int x = 0; x < map.width; ++x) {
             if (map.grid[y * map.width + x].biome_id == ocean_id) {
                 bool near_land = false;
-                int radius = 3; // Ширина прибрежного мелководья
+                int radius = 3;
                 for (int dy = -radius; dy <= radius; ++dy) {
-                    for (int dx = -radius; dx <= radius; ++dx) {
-                        if (dx*dx + dy*dy <= radius*radius) {
-                            int nx = x + dx;
-                            int ny = y + dy;
-                            if (nx >= 0 && nx < map.width && ny >= 0 && ny < map.height) {
-                                uint8_t nt = map.grid[ny * map.width + nx].biome_id;
+                    for (int ddx = -radius; ddx <= radius; ++ddx) {
+                        if (ddx*ddx + dy*dy <= radius*radius) {
+                            int nnx = x + ddx;
+                            int nny = y + dy;
+                            if (nnx >= 0 && nnx < map.width && nny >= 0 && nny < map.height) {
+                                uint8_t nt = map.grid[nny * map.width + nnx].biome_id;
                                 if (nt != ocean_id && nt != shallow_id) {
                                     near_land = true;
                                     break;
@@ -11359,28 +11551,30 @@ void generateWorldMapTerrain(WorldMap& map, int seed) {
     int dx[] = {0, 1, 0, -1, 1, 1, -1, -1};
     int dy[] = {-1, 0, 1, 0, -1, 1, 1, -1};
 
-    // Алгоритм Рек на основе Шума (Minecraft-style)
+    // ====================================================================
+    // PASS 5: Rivers (data-driven from config)
+    // ====================================================================
     int w = map.width, h = map.height;
     PerlinNoise river_noise(seed + 123);
-    
+
     for (int y = 0; y < h; ++y) {
         for (int x = 0; x < w; ++x) {
             int idx = y * w + x;
             uint8_t b_id = map.grid[idx].biome_id;
             if (hasBiomeTag(b_id, "ocean") || hasBiomeTag(b_id, "shallow_water")) continue;
-            
-            double nx = (double)x / w;
-            double ny = (double)y / h;
-            
-            // Генерируем "хребты" шума. Там, где значение близко к 0 - течет река.
-            double r_val = river_noise.fbm(nx * 4.0, ny * 4.0, 4, 0.5, 2.0);
-            
-            // Чем ниже высота, тем шире река (имитация скопления воды)
+
+            double nnx = (double)x / w;
+            double nny = (double)y / h;
+
+            double r_val = river_noise.fbm(nnx * cfg.rivers.noise_frequency,
+                                            nny * cfg.rivers.noise_frequency,
+                                            cfg.rivers.noise_octaves, 0.5, 2.0);
+
             double e = elevation[idx];
-            double threshold = 0.025; 
-            if (e < 0.2) threshold = 0.04; // На равнинах реки шире
-            if (e > 0.6) threshold = 0.015; // В горах реки узкие (ручьи)
-            
+            double threshold = cfg.rivers.threshold_default;
+            if (e < 0.2) threshold = cfg.rivers.threshold_plains;
+            if (e > 0.6) threshold = cfg.rivers.threshold_mountains;
+
             if (std::abs(r_val) < threshold) {
                 map.grid[idx].biome_id = getBiomeIdByTag("river");
                 map.grid[idx].water_depth = (e < 0.2) ? 3 : 1;
@@ -11388,10 +11582,12 @@ void generateWorldMapTerrain(WorldMap& map, int seed) {
         }
     }
 
-    // Добавление берегов, пойм и озер
+    // ====================================================================
+    // PASS 6: River banks, floodplains, lakes
+    // ====================================================================
     std::vector<uint8_t> new_types(w * h);
     for (int i = 0; i < w * h; ++i) new_types[i] = map.grid[i].biome_id;
-    
+
     uint8_t river_id = getBiomeIdByTag("river");
     uint8_t lake_id = getBiomeIdByTag("lake");
     uint8_t riverbank_id = getBiomeIdByTag("riverbank");
@@ -11402,40 +11598,38 @@ void generateWorldMapTerrain(WorldMap& map, int seed) {
             if (map.grid[y * w + x].biome_id == river_id) {
                 int depth = map.grid[y * w + x].water_depth;
                 int radius = (depth >= 3) ? 2 : 1;
-                
-                // Проверяем соседей для создания берегов
-                for (int dy = -radius; dy <= radius; ++dy) {
-                    for (int dx = -radius; dx <= radius; ++dx) {
-                        int nx = x + dx, ny = y + dy;
-                        if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
-                            uint8_t orig_t = map.grid[ny * w + nx].biome_id;
+
+                for (int ddy = -radius; ddy <= radius; ++ddy) {
+                    for (int ddx = -radius; ddx <= radius; ++ddx) {
+                        int nnx = x + ddx, nny = y + ddy;
+                        if (nnx >= 0 && nnx < w && nny >= 0 && nny < h) {
+                            uint8_t orig_t = map.grid[nny * w + nnx].biome_id;
                             if (!hasBiomeTag(orig_t, "water")) {
-                                double dist = std::hypot(dx, dy);
-                                
+                                double dist = std::hypot(ddx, ddy);
+
                                 if (hasBiomeTag(orig_t, "tundra")) {
                                     continue;
                                 } else if (hasBiomeTag(orig_t, "desert")) {
-                                    if (dist <= 1.5) new_types[ny * w + nx] = riverbank_id;
+                                    if (dist <= 1.5) new_types[nny * w + nnx] = riverbank_id;
                                 } else if (hasBiomeTag(orig_t, "swamp")) {
                                     continue;
                                 } else {
                                     if (dist <= 1.5) {
-                                        new_types[ny * w + nx] = riverbank_id;
-                                    } else if (dist <= 2.5 && new_types[ny * w + nx] != riverbank_id) {
-                                        new_types[ny * w + nx] = floodplain_id;
+                                        new_types[nny * w + nnx] = riverbank_id;
+                                    } else if (dist <= 2.5 && new_types[nny * w + nnx] != riverbank_id) {
+                                        new_types[nny * w + nnx] = floodplain_id;
                                     }
                                 }
                             }
                         }
                     }
                 }
-                
-                // Если река разливается слишком широко, превращаем центр в озеро
+
                 int river_neighbors = 0;
-                for (int dy = -1; dy <= 1; ++dy) {
-                    for (int dx = -1; dx <= 1; ++dx) {
-                        int nx = x + dx, ny = y + dy;
-                        if (nx >= 0 && nx < w && ny >= 0 && ny < h && map.grid[ny * w + nx].biome_id == river_id) {
+                for (int ddy = -1; ddy <= 1; ++ddy) {
+                    for (int ddx = -1; ddx <= 1; ++ddx) {
+                        int nnx = x + ddx, nny = y + ddy;
+                        if (nnx >= 0 && nnx < w && nny >= 0 && nny < h && map.grid[nny * w + nnx].biome_id == river_id) {
                             river_neighbors++;
                         }
                     }
@@ -11448,8 +11642,10 @@ void generateWorldMapTerrain(WorldMap& map, int seed) {
     }
     for (int i = 0; i < w * h; ++i) map.grid[i].biome_id = new_types[i];
 
-    // Генерация вулканов (Органическая форма с пеплом)
-    int num_volcanoes = 5;
+    // ====================================================================
+    // PASS 7: Volcanoes (data-driven from config)
+    // ====================================================================
+    int num_volcanoes = cfg.volcanoes.count;
     PerlinNoise vol_noise(seed + 999);
     uint8_t mountains_id = getBiomeIdByTag("mountain");
     uint8_t volcano_id = getBiomeIdByTag("volcano");
@@ -11466,21 +11662,21 @@ void generateWorldMapTerrain(WorldMap& map, int seed) {
             attempts++;
         }
         if (attempts < 100) {
-            int radius = 3 + rand() % 4;
-            for (int dy = -radius; dy <= radius; ++dy) {
-                for (int dx = -radius; dx <= radius; ++dx) {
-                    int nx = vx + dx;
-                    int ny = vy + dy;
-                    if (nx >= 0 && nx < map.width && ny >= 0 && ny < map.height) {
-                        double dist = std::hypot(dx, dy);
-                        double n_val = vol_noise.fbm(nx * 8.0, ny * 8.0, 2, 0.5, 2.0);
+            int radius = cfg.volcanoes.min_radius + rand() % (cfg.volcanoes.max_radius - cfg.volcanoes.min_radius + 1);
+            for (int ddy = -radius; ddy <= radius; ++ddy) {
+                for (int ddx = -radius; ddx <= radius; ++ddx) {
+                    int nnx = vx + ddx;
+                    int nny = vy + ddy;
+                    if (nnx >= 0 && nnx < map.width && nny >= 0 && nny < map.height) {
+                        double dist = std::hypot(ddx, ddy);
+                        double n_val = vol_noise.fbm(nnx * 8.0, nny * 8.0, 2, 0.5, 2.0);
                         if (dist + n_val * 2.5 < radius) {
-                            if (dist < 1.5) map.grid[ny * map.width + nx].biome_id = volcano_id;
-                            else if (dist < 2.5) map.grid[ny * map.width + nx].biome_id = lava_id;
+                            if (dist < 1.5) map.grid[nny * map.width + nnx].biome_id = volcano_id;
+                            else if (dist < 2.5) map.grid[nny * map.width + nnx].biome_id = lava_id;
                             else {
-                                uint8_t cur_b = map.grid[ny * map.width + nx].biome_id;
+                                uint8_t cur_b = map.grid[nny * map.width + nnx].biome_id;
                                 if (!hasBiomeTag(cur_b, "water")) {
-                                    map.grid[ny * map.width + nx].biome_id = ash_id;
+                                    map.grid[nny * map.width + nnx].biome_id = ash_id;
                                 }
                             }
                         }
@@ -12565,8 +12761,8 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
 
 
     // Generate Global World Map
-    g_world.map.width = 256;
-    g_world.map.height = 256;
+    g_world.map.width = g_db.world_config.map_width;
+    g_world.map.height = g_db.world_config.map_height;
     generateWorldMapTerrain(g_world.map, rand());
     placeRegionsOnMap(g_world.map, g_world);
     generateRoads(g_world.map, g_world);
@@ -13221,6 +13417,42 @@ int main() {
                         }
                         g_db.faction_relations.era_relations[eraKey] = rules;
                     }
+                }
+            }
+
+            // Parse World Config
+            if (command.has("world_config") && command["world_config"].type == JsonValue::OBJECT) {
+                JsonValue wc = command["world_config"];
+                if (wc.has("map_width")) g_db.world_config.map_width = wc["map_width"].asInt();
+                if (wc.has("map_height")) g_db.world_config.map_height = wc["map_height"].asInt();
+                if (wc.has("landform")) g_db.world_config.landform = wc["landform"].asString();
+                if (wc.has("continent") && wc["continent"].type == JsonValue::OBJECT) {
+                    JsonValue cc = wc["continent"];
+                    if (cc.has("noise_frequency")) g_db.world_config.continent.noise_frequency = cc["noise_frequency"].asDouble();
+                    if (cc.has("noise_octaves")) g_db.world_config.continent.noise_octaves = cc["noise_octaves"].asInt();
+                    if (cc.has("elevation_shift")) g_db.world_config.continent.elevation_shift = cc["elevation_shift"].asDouble();
+                    if (cc.has("edge_falloff_power")) g_db.world_config.continent.edge_falloff_power = cc["edge_falloff_power"].asDouble();
+                    if (cc.has("edge_falloff_range")) g_db.world_config.continent.edge_falloff_range = cc["edge_falloff_range"].asDouble();
+                    if (cc.has("edge_ocean_elevation")) g_db.world_config.continent.edge_ocean_elevation = cc["edge_ocean_elevation"].asDouble();
+                    if (cc.has("min_land_ratio")) g_db.world_config.continent.min_land_ratio = cc["min_land_ratio"].asDouble();
+                    if (cc.has("connectivity_pass")) g_db.world_config.continent.connectivity_pass = cc["connectivity_pass"].asBool();
+                    if (cc.has("land_bridge_max_gap")) g_db.world_config.continent.land_bridge_max_gap = cc["land_bridge_max_gap"].asInt();
+                    if (cc.has("remove_islands_under")) g_db.world_config.continent.remove_islands_under = cc["remove_islands_under"].asInt();
+                    if (cc.has("smoothing_passes")) g_db.world_config.continent.smoothing_passes = cc["smoothing_passes"].asInt();
+                }
+                if (wc.has("rivers") && wc["rivers"].type == JsonValue::OBJECT) {
+                    JsonValue rc = wc["rivers"];
+                    if (rc.has("noise_frequency")) g_db.world_config.rivers.noise_frequency = rc["noise_frequency"].asDouble();
+                    if (rc.has("noise_octaves")) g_db.world_config.rivers.noise_octaves = rc["noise_octaves"].asInt();
+                    if (rc.has("threshold_default")) g_db.world_config.rivers.threshold_default = rc["threshold_default"].asDouble();
+                    if (rc.has("threshold_plains")) g_db.world_config.rivers.threshold_plains = rc["threshold_plains"].asDouble();
+                    if (rc.has("threshold_mountains")) g_db.world_config.rivers.threshold_mountains = rc["threshold_mountains"].asDouble();
+                }
+                if (wc.has("volcanoes") && wc["volcanoes"].type == JsonValue::OBJECT) {
+                    JsonValue vc = wc["volcanoes"];
+                    if (vc.has("count")) g_db.world_config.volcanoes.count = vc["count"].asInt();
+                    if (vc.has("min_radius")) g_db.world_config.volcanoes.min_radius = vc["min_radius"].asInt();
+                    if (vc.has("max_radius")) g_db.world_config.volcanoes.max_radius = vc["max_radius"].asInt();
                 }
             }
 
