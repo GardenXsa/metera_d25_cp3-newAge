@@ -32,3 +32,4 @@ engine/raw_test.exe
 dist/
 *.exeengine/*.lib
 engine/*.pdb
+engine/meterea_engine.lib
