@@ -12195,9 +12195,9 @@ void generateRoads(WorldMap& map, const World& w) {
                 MapRoad road; road.from = isolatedId; road.to = bestTarget; road.condition = "dirt"; road.waypoints = path;
                 auto segments = processRoadSegment(road, 1);
                 map.roads.insert(map.roads.end(), segments.begin(), segments.end());
-                // Снимаем флаг no_road
+                // Снимаем флаг no_road на карте
+                // (w.regions — const, менять нельзя, но map.locations достаточно)
                 map.locations[isolatedId].no_road = false;
-                if (regIt != w.regions.end()) regIt->second.no_road = false;
             }
         }
     }
