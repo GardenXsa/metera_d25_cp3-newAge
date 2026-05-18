@@ -3,7 +3,11 @@ from tkinter import filedialog, messagebox, simpledialog
 import customtkinter as ctk
 from PIL import Image, ImageTk
 import json
-import requests
+try:
+    import requests
+except ImportError:
+    requests = None  # Will be checked before API calls
+
 import io
 import base64
 import threading
@@ -13,6 +17,8 @@ import time
 
 # ========== НАСТРОЙКИ ==========
 LLMOST_API_KEY = os.environ.get("LLMOST_API_KEY", "")
+if not LLMOST_API_KEY:
+    print("[TileMapperCloud] WARNING: LLMOST_API_KEY environment variable not set. Cloud AI features disabled.")
 LLMOST_BASE_URL = "https://llmost.ru/api/v1"
 VISION_MODEL = "openai/gpt-4o"
 BATCH_SIZE = 10
@@ -553,7 +559,19 @@ class TileMapperUltimate(ctk.CTk):
     # ------------------------------------------------------------
     #  AI методы (одиночный и пакетные) – без изменений
     # ------------------------------------------------------------
+    def _check_api_available(self):
+        """Check if cloud AI is available (requests library + API key)."""
+        if requests is None:
+            messagebox.showerror("Зависимость отсутствует", "Библиотека 'requests' не установлена. Установите: pip install requests")
+            return False
+        if not LLMOST_API_KEY:
+            messagebox.showerror("API ключ отсутствует", "Переменная окружения LLMOST_API_KEY не задана.\nЭкспортируйте ключ: export LLMOST_API_KEY=your_key")
+            return False
+        return True
+
     def ask_cloud_ai(self):
+        if not self._check_api_available():
+            return
         if self.selected_tiles:
             self.batch_recognize_selected()
         else:
@@ -598,6 +616,8 @@ class TileMapperUltimate(ctk.CTk):
             self.after(0, lambda: self.update_status(f"Сбой: {str(e)[:30]}", "#e74c3c"))
 
     def batch_recognize_selected(self):
+        if not self._check_api_available():
+            return
         if self.is_processing_selected:
             return
         if not self.img_source:

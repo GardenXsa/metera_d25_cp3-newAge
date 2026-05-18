@@ -765,10 +765,15 @@ const CoreInventorySystem = new Proxy(OldCoreInventorySystem, {
             // Return the async version but log a deprecation warning
             const asyncFn = CoreInventorySystemAsync[prop];
             return function(...args) {
-                console.warn(`[DEPRECATED] CoreInventorySystem.${prop}() called — this may return a Promise. Use CoreInventorySystemAsync.${prop}() with await instead.`);
+                const stackHint = new Error().stack?.split('\n')[2]?.trim() || 'unknown caller';
+                console.warn(`[DEPRECATED] CoreInventorySystem.${prop}() called — this returns a Promise. Use "await CoreInventorySystemAsync.${prop}()" instead. Called from: ${stackHint}`);
                 const result = asyncFn.apply(this, args);
-                // If the result is a promise, the caller is likely not awaiting it
-                // This is a silent failure — we can't fix it here, only warn
+                // If the result is a promise, check if it's being awaited
+                if (result && typeof result.then === 'function') {
+                    result.catch(err => {
+                        console.error(`[CoreInventorySystem] Unhandled async error in ${prop}():`, err);
+                    });
+                }
                 return result;
             };
         }
@@ -2619,7 +2624,9 @@ function parseLocString(str, disableLoc = window.DISABLE_LOCALIZATION) {
                 try {
                     let data = JSON.parse(match);
                     if (data && data.loc_key) return processParsed(data, match);
-                } catch(err) {}
+                } catch(err) {
+                    console.warn('[i18n] Failed to parse location JSON fragment:', match, err.message);
+                }
                 return match;
             });
         }

@@ -1,5 +1,7 @@
 // --- Константы и Настройки ---
-const DEBUG_MODE = true;
+// DEBUG_MODE: controlled by environment. In Electron, set via NODE_ENV.
+// Defaults to false for production safety; set to true only in development.
+const DEBUG_MODE = (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development') || false;
 
 const SAVE_FILE_PREFIX = 'meterea_save_';
 const SAVE_FILE_EXTENSION = '.json';

@@ -41,7 +41,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     nexusInit: (forceRestart, activeMods) => ipcRenderer.invoke('nexus-init', forceRestart, activeMods),
 
-    nexusLoadDatabase: (items, recipes, facilities) => ipcRenderer.invoke('nexus-load-database', items, recipes, facilities),
+    nexusLoadDatabase: (databaseString) => ipcRenderer.invoke('nexus-load-database', databaseString),
     nexusBuildWorld: (playerId, era, initialAgents, globalLocations, startDay) => ipcRenderer.invoke('nexus-build-world', playerId, era, initialAgents, globalLocations, startDay),
 
     nexusBootstrap: (days, startDay) => ipcRenderer.invoke('nexus-bootstrap', days, startDay),

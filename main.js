@@ -812,7 +812,10 @@ ipcMain.handle('gemini-request', async (event, model, contents) => {
                 const settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
                 apiKey = settings.geminiApiKey || settings.apiKey || '';
             }
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+            console.error('[gemini-request] Failed to read settings.json:', e.message);
+            return reject(new Error('Failed to read API key from settings: ' + e.message));
+        }
         if (!apiKey) {
             return reject(new Error('API key not configured in settings'));
         }

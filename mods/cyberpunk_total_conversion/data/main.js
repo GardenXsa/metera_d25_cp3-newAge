@@ -98,7 +98,7 @@ function cyberpunkUpdateCharacterSheet() {
     if (!cyberpunkSheetInjected) {
         const sheetPanel = document.querySelector('.character-sheet');
         if (sheetPanel) {
-            sheetPanel.innerHTML = getCyberpunkCharacterSheetHTML();
+            sheetPanel.innerHTML = ModAPI._sanitizeHTML(getCyberpunkCharacterSheetHTML());
             window.charNameDisplay = document.getElementById('cyberpunk-char-name');
             window.charRaceDisplay = document.getElementById('cyberpunk-char-origin');
             window.charClassDisplay = document.getElementById('cyberpunk-char-class');
@@ -132,7 +132,7 @@ function cyberpunkUpdateCharacterSheet() {
 function injectCyberpunkCreationScreen() {
     const screen = document.getElementById('character-creation-screen');
     if (!screen) return;
-    screen.innerHTML = getCyberpunkCreationHTML();
+    screen.innerHTML = ModAPI._sanitizeHTML(getCyberpunkCreationHTML());
     const statsContainer = document.getElementById('stats-container-cp');
     CYBERPUNK_STATS.forEach(stat => {
         const statRow = document.createElement('div');

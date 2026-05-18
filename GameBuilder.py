@@ -32,7 +32,8 @@ class GameBuilderApp(ctk.CTk):
             with open("package.json", "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return data.get("version", "1.0.0")
-        except Exception:
+        except Exception as e:
+            print(f"[GameBuilder] Failed to read package.json version: {e}")
             return "1.0.0"
 
     def setup_ui(self):

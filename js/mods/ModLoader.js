@@ -52,10 +52,14 @@ window.ModAPI = {
     _sanitizeHTML: function(html) {
         // Remove script tags
         html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+        // Remove dangerous tags (iframe, object, embed, applet, base, form, meta, link)
+        html = html.replace(/<(iframe|object|embed|applet|base|form|meta|link)\b[^>]*>/gi, '');
         // Remove on* event handlers
         html = html.replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
         // Remove javascript: URLs
         html = html.replace(/href\s*=\s*["']javascript:/gi, 'href="');
+        // Remove data: URLs in src attributes (can embed scripts)
+        html = html.replace(/src\s*=\s*["']data:text\/html[^"']*["']/gi, 'src=""');
         return html;
     },
 

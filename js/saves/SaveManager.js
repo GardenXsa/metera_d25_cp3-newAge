@@ -1,6 +1,7 @@
 // --- ЯДРО СИСТЕМЫ СОХРАНЕНИЙ (Логика, Таймеры, Сборка данных) ---
 
 let _saving = false; // Mutex-флаг для предотвращения гонки сохранений
+let _savingTimer = null; // Safety timeout to reset mutex if finally block is skipped
 
 /**
  * Обрабатывает один распарсенный блок сохранения.
@@ -42,7 +43,10 @@ function processSaveBlock(parsed, rawWorld) {
 async function saveGame(slotType, slotId) {
     if (_saving) return false;
     _saving = true;
-    if (isWaitingForAI || !player) { _saving = false; return false; }
+    // Safety: reset mutex after 60s even if finally doesn't run
+    clearTimeout(_savingTimer);
+    _savingTimer = setTimeout(() => { console.warn('[SaveManager] Mutex safety timeout — forcing reset'); _saving = false; }, 60000);
+    if (isWaitingForAI || !player) { _saving = false; clearTimeout(_savingTimer); return false; }
     showLoadingScreen('loadingScreen.saving', 'Подготовка к сохранению...');
     await yieldThread();
 
@@ -149,6 +153,7 @@ async function saveGame(slotType, slotId) {
         return false;
     } finally {
         _saving = false;
+        clearTimeout(_savingTimer);
     }
 }
 

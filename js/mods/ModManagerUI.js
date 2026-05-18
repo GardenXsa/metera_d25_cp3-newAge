@@ -30,6 +30,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let activeModIds = []; // Массив строк, строго определяющий порядок загрузки
     let selectedModId = null;
 
+    // --- HTML Escaping utility (prevents XSS from mod metadata) ---
+    function escapeHTML(str) {
+        if (typeof str !== 'string') return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
     // --- Навигация и базовые события ---
     modsButton.addEventListener('click', () => {
         console.log('[ModManagerUI] "Mods" button clicked!');
@@ -77,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderLists();
         } else {
             modErrorsContainer.style.display = 'block';
-            modErrorsList.innerHTML = `Критическая ошибка: не удалось прочитать папку модов.`;
+            modErrorsList.textContent = 'Критическая ошибка: не удалось прочитать папку модов.';
         }
     }
 
@@ -117,32 +125,60 @@ document.addEventListener('DOMContentLoaded', () => {
         if (errorMsg || mod.error) classes += ' has-error';
         el.className = classes;
 
-        let controlsHtml = '';
-        if (mod.id !== 'base_game') {
-            if (isActive) {
-                controlsHtml = `
-                    <div class="rw-mod-controls">
-                        <div class="rw-btn" onclick="moveModUp(${index}, event)" title="Вверх"><i class="fas fa-chevron-up"></i></div>
-                        <div class="rw-btn" onclick="moveModDown(${index}, event)" title="Вниз"><i class="fas fa-chevron-down"></i></div>
-                        <div class="rw-btn rw-btn-remove" onclick="toggleMod('${mod.id}', false, event)" title="Отключить"><i class="fas fa-times"></i></div>
-                    </div>
-                `;
-            } else {
-                controlsHtml = `
-                    <div class="rw-mod-controls">
-                        <div class="rw-btn rw-btn-add" onclick="toggleMod('${mod.id}', true, event)" title="Включить"><i class="fas fa-plus"></i></div>
-                    </div>
-                `;
-            }
-        }
+        // Build info section using safe DOM API (no innerHTML with user data)
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'rw-mod-info';
 
-        el.innerHTML = `
-            <div class="rw-mod-info">
-                <span class="rw-mod-title">${mod.name || mod.id}</span>
-                <span class="rw-mod-author">${mod.author || 'Неизвестно'}</span>
-            </div>
-            ${controlsHtml}
-        `;
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'rw-mod-title';
+        titleSpan.textContent = mod.name || mod.id; // textContent = auto-escaped
+
+        const authorSpan = document.createElement('span');
+        authorSpan.className = 'rw-mod-author';
+        authorSpan.textContent = mod.author || 'Неизвестно'; // textContent = auto-escaped
+
+        infoDiv.appendChild(titleSpan);
+        infoDiv.appendChild(authorSpan);
+        el.appendChild(infoDiv);
+
+        // Controls (only onclick handlers with escaped mod.id)
+        const safeModId = escapeHTML(mod.id);
+        if (mod.id !== 'base_game') {
+            const controlsDiv = document.createElement('div');
+            controlsDiv.className = 'rw-mod-controls';
+            if (isActive) {
+                const upBtn = document.createElement('div');
+                upBtn.className = 'rw-btn';
+                upBtn.title = 'Вверх';
+                upBtn.innerHTML = '<i class="fas fa-chevron-up"></i>';
+                upBtn.addEventListener('click', (e) => { e.stopPropagation(); moveModUp(index); });
+
+                const downBtn = document.createElement('div');
+                downBtn.className = 'rw-btn';
+                downBtn.title = 'Вниз';
+                downBtn.innerHTML = '<i class="fas fa-chevron-down"></i>';
+                downBtn.addEventListener('click', (e) => { e.stopPropagation(); moveModDown(index); });
+
+                const removeBtn = document.createElement('div');
+                removeBtn.className = 'rw-btn rw-btn-remove';
+                removeBtn.title = 'Отключить';
+                removeBtn.innerHTML = '<i class="fas fa-times"></i>';
+                removeBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMod(mod.id, false); });
+
+                controlsDiv.appendChild(upBtn);
+                controlsDiv.appendChild(downBtn);
+                controlsDiv.appendChild(removeBtn);
+            } else {
+                const addBtn = document.createElement('div');
+                addBtn.className = 'rw-btn rw-btn-add';
+                addBtn.title = 'Включить';
+                addBtn.innerHTML = '<i class="fas fa-plus"></i>';
+                addBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMod(mod.id, true); });
+
+                controlsDiv.appendChild(addBtn);
+            }
+            el.appendChild(controlsDiv);
+        }
 
         el.addEventListener('click', () => {
             selectedModId = mod.id;
@@ -152,28 +188,25 @@ document.addEventListener('DOMContentLoaded', () => {
         return el;
     }
 
-    window.moveModUp = async function(index, e) {
-        e.stopPropagation();
+    async function moveModUp(index) {
         if (index <= 1) return; // Нельзя двигать выше base_game (индекс 0)
         const temp = activeModIds[index - 1];
         activeModIds[index - 1] = activeModIds[index];
         activeModIds[index] = temp;
         await saveModSettings();
         renderLists();
-    };
+    }
 
-    window.moveModDown = async function(index, e) {
-        e.stopPropagation();
+    async function moveModDown(index) {
         if (index === 0 || index >= activeModIds.length - 1) return;
         const temp = activeModIds[index + 1];
         activeModIds[index + 1] = activeModIds[index];
         activeModIds[index] = temp;
         await saveModSettings();
         renderLists();
-    };
+    }
 
-    window.toggleMod = async function(modId, enable, e) {
-        e.stopPropagation();
+    async function toggleMod(modId, enable) {
         if (enable) {
             if (!activeModIds.includes(modId)) activeModIds.push(modId);
         } else {
@@ -181,35 +214,87 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         await saveModSettings();
         renderLists();
-    };
+    }
 
     function renderModDetails(mod) {
+        // Use safe DOM API — textContent auto-escapes, prevents XSS from mod metadata
+        modDetailsContent.innerHTML = '';
+
         if (mod.error) {
-            modDetailsContent.innerHTML = `
-                <h3>${mod.name || mod.id}</h3>
-                <p class="error-text"><strong>Ошибка загрузки:</strong> ${mod.error}</p>
-                <p>Этот мод не может быть загружен. Проверьте файл mod.json.</p>
-            `;
+            const h3 = document.createElement('h3');
+            h3.textContent = mod.name || mod.id;
+
+            const errP = document.createElement('p');
+            errP.className = 'error-text';
+            const strong = document.createElement('strong');
+            strong.textContent = 'Ошибка загрузки: ';
+            errP.appendChild(strong);
+            errP.appendChild(document.createTextNode(mod.error));
+
+            const hintP = document.createElement('p');
+            hintP.textContent = 'Этот мод не может быть загружен. Проверьте файл mod.json.';
+
+            modDetailsContent.appendChild(h3);
+            modDetailsContent.appendChild(errP);
+            modDetailsContent.appendChild(hintP);
             return;
         }
 
-        modDetailsContent.innerHTML = `
-            <h2 style="color: #5dade2; margin-top: 0; margin-bottom: 5px;">${mod.name}</h2>
-            <p style="color: #7f8c8d; font-family: monospace; margin-top: 0;">ID: ${mod.id} | Версия: ${mod.version || '1.0'}</p>
-            <p style="color: #f39c12; font-size: 0.9em;"><i class="fas fa-user"></i> Автор: ${mod.author || 'Неизвестный автор'}</p>
-            <div style="background: rgba(0,0,0,0.4); padding: 10px; border-radius: 6px; border-left: 3px solid #3498db; margin: 15px 0;">
-                <p style="margin: 0; color: #ecf0f1;">${mod.description || 'Описание отсутствует.'}</p>
-            </div>
-            <div class="mod-dependencies" style="margin-top: 15px;">
-                <h4 style="color: #aeb6bf; margin-bottom: 5px;"><i class="fas fa-link"></i> Зависимости:</h4>
-                <ul style="margin: 0; padding-left: 20px; color: #95a5a6;">
-                    ${(mod.dependencies && mod.dependencies.length > 0) ? 
-                        mod.dependencies.map(dep => `<li>${dep}</li>`).join('') : 
-                        '<li><i>Нет зависимостей (только base_game)</i></li>'
-                    }
-                </ul>
-            </div>
-        `;
+        const h2 = document.createElement('h2');
+        h2.style.cssText = 'color: #5dade2; margin-top: 0; margin-bottom: 5px;';
+        h2.textContent = mod.name;
+
+        const idP = document.createElement('p');
+        idP.style.cssText = 'color: #7f8c8d; font-family: monospace; margin-top: 0;';
+        idP.textContent = `ID: ${mod.id} | Версия: ${mod.version || '1.0'}`;
+
+        const authorP = document.createElement('p');
+        authorP.style.cssText = 'color: #f39c12; font-size: 0.9em;';
+        const authorIcon = document.createElement('i');
+        authorIcon.className = 'fas fa-user';
+        authorP.appendChild(authorIcon);
+        authorP.appendChild(document.createTextNode(` Автор: ${mod.author || 'Неизвестный автор'}`));
+
+        const descDiv = document.createElement('div');
+        descDiv.style.cssText = 'background: rgba(0,0,0,0.4); padding: 10px; border-radius: 6px; border-left: 3px solid #3498db; margin: 15px 0;';
+        const descP = document.createElement('p');
+        descP.style.cssText = 'margin: 0; color: #ecf0f1;';
+        descP.textContent = mod.description || 'Описание отсутствует.';
+        descDiv.appendChild(descP);
+
+        const depsDiv = document.createElement('div');
+        depsDiv.className = 'mod-dependencies';
+        depsDiv.style.cssText = 'margin-top: 15px;';
+        const depsH4 = document.createElement('h4');
+        depsH4.style.cssText = 'color: #aeb6bf; margin-bottom: 5px;';
+        const depsIcon = document.createElement('i');
+        depsIcon.className = 'fas fa-link';
+        depsH4.appendChild(depsIcon);
+        depsH4.appendChild(document.createTextNode(' Зависимости:'));
+        depsDiv.appendChild(depsH4);
+
+        const depsUl = document.createElement('ul');
+        depsUl.style.cssText = 'margin: 0; padding-left: 20px; color: #95a5a6;';
+        if (mod.dependencies && mod.dependencies.length > 0) {
+            for (const dep of mod.dependencies) {
+                const li = document.createElement('li');
+                li.textContent = dep; // auto-escaped
+                depsUl.appendChild(li);
+            }
+        } else {
+            const li = document.createElement('li');
+            const em = document.createElement('i');
+            em.textContent = 'Нет зависимостей (только base_game)';
+            li.appendChild(em);
+            depsUl.appendChild(li);
+        }
+        depsDiv.appendChild(depsUl);
+
+        modDetailsContent.appendChild(h2);
+        modDetailsContent.appendChild(idP);
+        modDetailsContent.appendChild(authorP);
+        modDetailsContent.appendChild(descDiv);
+        modDetailsContent.appendChild(depsDiv);
     }
 
     async function saveModSettings() {
@@ -220,10 +305,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function validateLoadOrder() {
         const errors = {};
-        let globalErrorHtml = '';
 
         // Проходим по списку активных модов СВЕРХУ ВНИЗ
         const loadedSoFar = new Set();
+
+        // Clear and rebuild error list safely
+        modErrorsList.innerHTML = '';
+        let hasErrors = false;
 
         activeModIds.forEach(id => {
             const mod = allMods.find(m => m.id === id);
@@ -231,7 +319,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (mod.error) {
                 errors[id] = mod.error;
-                globalErrorHtml += `<div><b>${mod.name}:</b> Поврежденный файл mod.json</div>`;
+                const errDiv = document.createElement('div');
+                const bold = document.createElement('b');
+                bold.textContent = mod.name + ':';
+                errDiv.appendChild(bold);
+                errDiv.appendChild(document.createTextNode(' Поврежденный файл mod.json'));
+                modErrorsList.appendChild(errDiv);
+                hasErrors = true;
             }
 
             if (mod.dependencies && Array.isArray(mod.dependencies)) {
@@ -240,16 +334,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Ошибка: зависимость не загружена ДО этого мода
                         const errMsg = `Требует мод '${dep}', который должен быть загружен ДО него.`;
                         errors[id] = errMsg;
-                        globalErrorHtml += `<div><b>${mod.name}:</b> ${errMsg}</div>`;
+                        const errDiv = document.createElement('div');
+                        const bold = document.createElement('b');
+                        bold.textContent = mod.name + ':';
+                        errDiv.appendChild(bold);
+                        errDiv.appendChild(document.createTextNode(' ' + errMsg));
+                        modErrorsList.appendChild(errDiv);
+                        hasErrors = true;
                     }
                 }
             }
             loadedSoFar.add(id);
         });
 
-        if (globalErrorHtml) {
+        if (hasErrors) {
             modErrorsContainer.style.display = 'block';
-            modErrorsList.innerHTML = globalErrorHtml;
         } else {
             modErrorsContainer.style.display = 'none';
         }
