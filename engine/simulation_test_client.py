@@ -399,12 +399,50 @@ class SimulationTestClient(ctk.CTk):
     # -------------------------------------------------------------------------
     # ENGINE COMMANDS
     # -------------------------------------------------------------------------
-    def _load_json(self, path):
+    def _load_json(self, path, default=None):
+        """Load JSON file. default: [] for array fields, {} for object fields."""
+        if default is None:
+            default = {}
         try:
             with open(path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            return {}
+                data = json.load(f)
+                if not data:
+                    print(f"[WARN] {path} loaded but empty, using default")
+                    return default
+                return data
+        except FileNotFoundError:
+            print(f"[ERROR] File not found: {path}")
+            return default
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] Invalid JSON in {path}: {e}")
+            return default
+        except Exception as e:
+            print(f"[ERROR] Failed to load {path}: {e}")
+            return default
+
+    def _find_data_dir(self):
+        """Find the data/ directory by searching multiple locations."""
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        candidates = [
+            os.path.join(os.path.dirname(base_dir), 'data'),  # engine/../data
+            os.path.join(base_dir, 'data'),                    # engine/data
+            os.path.join(base_dir, '..', 'data'),              # relative ../data
+            os.path.join(base_dir, '..', '..', 'data'),        # relative ../../data
+        ]
+        # Also try CWD-based paths
+        cwd = os.getcwd()
+        candidates.extend([
+            os.path.join(cwd, 'data'),
+            os.path.join(cwd, '..', 'data'),
+        ])
+        for d in candidates:
+            dp = os.path.normpath(d)
+            if os.path.isdir(dp) and os.path.exists(os.path.join(dp, 'biomes.json')):
+                print(f"[INFO] Data directory found: {dp}")
+                return dp
+        # Fallback: return the first candidate anyway
+        print(f"[WARN] Data directory not found! Tried: {candidates}")
+        return os.path.normpath(candidates[0])
 
     def start_generation(self):
         if not self.engine.is_running:
@@ -416,24 +454,26 @@ class SimulationTestClient(ctk.CTk):
         self.progress.configure(mode="indeterminate")
         self.progress.start()
 
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        data_dir = os.path.join(os.path.dirname(base_dir), 'data')
+        data_dir = self._find_data_dir()
+        print(f"[INFO] Loading database from: {data_dir}")
 
+        # Array fields (engine expects JsonValue::ARRAY) — default to []
+        # Object fields (engine expects JsonValue::OBJECT) — default to {}
         self.engine.send({
             "command": "loadDatabase",
-            "items": self._load_json(os.path.join(data_dir, 'economy_items.json')),
-            "recipes": self._load_json(os.path.join(data_dir, 'economy_recipes.json')),
-            "facilities": self._load_json(os.path.join(data_dir, 'facility_names.json')),
-            "biomes": self._load_json(os.path.join(data_dir, 'biomes.json')),
-            "city_gen": self._load_json(os.path.join(data_dir, 'city_gen.json')),
-            "monsters": self._load_json(os.path.join(data_dir, 'monsters.json')),
-            "disasters": self._load_json(os.path.join(data_dir, 'disasters.json')),
-            "races": self._load_json(os.path.join(data_dir, 'races.json')),
-            "professions": self._load_json(os.path.join(data_dir, 'professions.json')),
-            "traits": self._load_json(os.path.join(data_dir, 'traits.json')),
-            "npc_names": self._load_json(os.path.join(data_dir, 'npc_names.json')),
-            "faction_relations": self._load_json(os.path.join(data_dir, 'faction_relations.json')),
-            "world_config": self._load_json(os.path.join(data_dir, 'world_config.json')),
+            "items": self._load_json(os.path.join(data_dir, 'economy_items.json'), {}),
+            "recipes": self._load_json(os.path.join(data_dir, 'economy_recipes.json'), []),
+            "facilities": self._load_json(os.path.join(data_dir, 'facility_names.json'), {}),
+            "biomes": self._load_json(os.path.join(data_dir, 'biomes.json'), []),
+            "city_gen": self._load_json(os.path.join(data_dir, 'city_gen.json'), {}),
+            "monsters": self._load_json(os.path.join(data_dir, 'monsters.json'), []),
+            "disasters": self._load_json(os.path.join(data_dir, 'disasters.json'), []),
+            "races": self._load_json(os.path.join(data_dir, 'races.json'), []),
+            "professions": self._load_json(os.path.join(data_dir, 'professions.json'), []),
+            "traits": self._load_json(os.path.join(data_dir, 'traits.json'), []),
+            "npc_names": self._load_json(os.path.join(data_dir, 'npc_names.json'), {}),
+            "faction_relations": self._load_json(os.path.join(data_dir, 'faction_relations.json'), {}),
+            "world_config": self._load_json(os.path.join(data_dir, 'world_config.json'), {}),
         })
 
         self.pending_bootstrap = True
