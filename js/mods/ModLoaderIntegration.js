@@ -56,7 +56,18 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         database.city_gen = await modLoader.readJsonFile('./data/city_gen.json');
         database.monsters = await modLoader.readJsonFile('./data/monsters.json');
         database.disasters = await modLoader.readJsonFile('./data/disasters.json');
+        // Phase 1: Character registries
+        database.races = await modLoader.readJsonFile('./data/races.json');
+        database.professions = await modLoader.readJsonFile('./data/professions.json');
+        database.traits = await modLoader.readJsonFile('./data/traits.json');
+        database.npc_names = await modLoader.readJsonFile('./data/npc_names.json');
+        database.faction_relations = await modLoader.readJsonFile('./data/faction_relations.json');
         // --- END REFACTOR ---
+
+        // Apply data-driven stats to JS constants (BASE_CLASS_STATS, RACE_MODIFIERS)
+        if (typeof applyDatabaseStats === 'function' && database.races) {
+            applyDatabaseStats(database.races);
+        }
 
         await window.ModAPI.emit('onDatabaseLoad', database);
 

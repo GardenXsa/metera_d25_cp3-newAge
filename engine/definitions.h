@@ -63,3 +63,49 @@ struct DisasterDef {
     std::string spawn_item = "";
     int spawn_item_qty = 0;
 };
+
+// 2.5. Реестр Рас (Race Registry)
+struct RaceDef {
+    std::string string_id;
+    std::string name;
+    bool base_race = false;
+    std::vector<std::string> faction_preference;
+    std::string biome_preference;
+    std::unordered_map<std::string, int> stat_modifiers;  // str, dex, int, con, cha
+    std::unordered_map<std::string, std::unordered_map<std::string, int>> class_stats;  // class -> stat -> value
+};
+
+// 2.6. Реестр Профессий (Profession Registry)
+struct ProfessionDef {
+    std::string string_id;
+    std::string name;
+    std::string profession_type;  // farmer, artisan, merchant, innkeeper, etc.
+    std::string tool_tag;
+    int tool_chance = 0;
+};
+
+// 2.7. Реестр Черт Характера (Trait Registry)
+struct TraitDef {
+    std::string string_id;
+    std::string name;
+    std::unordered_map<std::string, int> personality_bias;  // aggression, greed, etc.
+};
+
+// 2.8. Реестр Имён по Расам (Name Group Registry)
+struct NameGroupDef {
+    std::vector<std::string> first_names;
+    std::vector<std::string> last_names;
+};
+
+// 2.9. Реестр Отношений Фракций (Faction Relations Registry)
+struct FactionRelationRule {
+    std::string f1;
+    std::string f2;
+    int modifier = 0;
+};
+
+struct FactionRelationsDef {
+    std::unordered_map<std::string, std::string> faction_biome_preference;
+    std::unordered_map<std::string, std::string> faction_corrupt_biome;
+    std::unordered_map<std::string, std::vector<FactionRelationRule>> era_relations;
+};

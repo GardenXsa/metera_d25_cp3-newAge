@@ -31,6 +31,8 @@ const backgroundFiles = [
 ];
 const BACKGROUND_CHANGE_INTERVAL = 3.5 * 60 * 1000; // 3.5 минуты
 
+// --- Data-driven: BASE_CLASS_STATS and RACE_MODIFIERS are now loaded from races.json ---
+// Hardcoded defaults remain as fallback; applyDatabaseStats() overwrites them at runtime.
 const BASE_CLASS_STATS = {
     warrior: { str: 13, dex: 10, int: 8, con: 12, cha: 9, res: 12 },
     mage: { str: 8, dex: 11, int: 13, con: 9, cha: 11, res: 8 },
@@ -44,6 +46,34 @@ const RACE_MODIFIERS = {
     elf: { str: 0, dex: 2, int: 1, con: 0, cha: 0 },
     dwarf: { str: 1, dex: 0, int: 0, con: 2, cha: 0 }
 };
+
+// Called by loadDatabaseWithModsAndInitEngine after database.races is populated.
+// Overwrites the hardcoded defaults above with data from races.json.
+function applyDatabaseStats(racesArray) {
+    if (!Array.isArray(racesArray) || racesArray.length === 0) return;
+
+    // Build RACE_MODIFIERS from races[].stat_modifiers
+    for (const race of racesArray) {
+        if (race.id && race.stat_modifiers) {
+            RACE_MODIFIERS[race.id] = race.stat_modifiers;
+        }
+    }
+
+    // Build BASE_CLASS_STATS from races[].class_stats (first base_race wins per class)
+    for (const race of racesArray) {
+        if (race.class_stats) {
+            for (const [className, stats] of Object.entries(race.class_stats)) {
+                // Only set if not already defined (first base_race defines the class template)
+                if (!BASE_CLASS_STATS[className] || race.base_race) {
+                    BASE_CLASS_STATS[className] = stats;
+                }
+            }
+        }
+    }
+
+    console.log('[Constants] BASE_CLASS_STATS and RACE_MODIFIERS loaded from database.',
+        Object.keys(RACE_MODIFIERS).length, 'races,', Object.keys(BASE_CLASS_STATS).length, 'classes');
+}
 
 let predefinedStatusEffects = {
     // --- Негативные эффекты (Дебаффы) ---

@@ -48,6 +48,7 @@
 #include "core_types.h"
 #include "definitions.h"
 #include "item_system.h"
+#include "npc_personality.h"
 #include <fstream>
 
 // SINGLE DEFINITION OF GLOBAL REGISTRIES
@@ -96,7 +97,62 @@ struct Database {
 
 
 // Global database instance
-static Database g_db;
+Database g_db;
+
+// ============================================================================
+// NpcGen — Data-driven implementation (was in npc_personality.h)
+// ============================================================================
+namespace NpcGen {
+
+    std::string generateName(const std::string& factionId, std::mt19937& gen) {
+        // Resolve race from faction, or fall back to first available race
+        std::string raceId = "human";
+        auto ftrIt = g_db.faction_to_race.find(factionId);
+        if (ftrIt != g_db.faction_to_race.end()) raceId = ftrIt->second;
+
+        // Look up name group for this race
+        auto ngIt = g_db.name_groups.find(raceId);
+        if (ngIt != g_db.name_groups.end() && !ngIt->second.first_names.empty() && !ngIt->second.last_names.empty()) {
+            const auto& ng = ngIt->second;
+            const std::string& fn = ng.first_names[gen() % ng.first_names.size()];
+            const std::string& ln = ng.last_names[gen() % ng.last_names.size()];
+            return fn + " " + ln;
+        }
+
+        // Fallback: try any available name group
+        for (const auto& [rid, ng] : g_db.name_groups) {
+            if (!ng.first_names.empty() && !ng.last_names.empty()) {
+                const std::string& fn = ng.first_names[gen() % ng.first_names.size()];
+                const std::string& ln = ng.last_names[gen() % ng.last_names.size()];
+                return fn + " " + ln;
+            }
+        }
+
+        // Last resort: generic placeholder
+        return "Unknown " + std::to_string(gen() % 9999);
+    }
+
+    std::string generateBackground(int wealth_level, int paranoia, std::mt19937& gen) {
+        std::string category;
+        if (paranoia > 80) category = "insane";
+        else if (wealth_level > 70) category = "rich";
+        else if (wealth_level > 30) category = "middle";
+        else category = "poor";
+
+        auto bgIt = g_db.backgrounds.find(category);
+        if (bgIt != g_db.backgrounds.end() && !bgIt->second.empty()) {
+            return bgIt->second[gen() % bgIt->second.size()];
+        }
+
+        // Fallback: try "poor" category
+        bgIt = g_db.backgrounds.find("poor");
+        if (bgIt != g_db.backgrounds.end() && !bgIt->second.empty()) {
+            return bgIt->second[gen() % bgIt->second.size()];
+        }
+
+        return "No background available.";
+    }
+}
 
 bool hasBiomeTag(uint8_t biome_id, const std::string& tag) {
     if (biome_id >= g_db.biomes.size()) return false;
@@ -282,7 +338,9 @@ std::string createItem(const std::string& requestedPrototypeId, int quantity, co
         item.custom_props = g_db.items[prototypeId].properties;
     }
     
-    if (prototypeId == "gold_ingot" || prototypeId == "gold") item.custom_props.set("weight_per_unit", 0.01);
+    // Data-driven: gold weight from item properties, fallback to tag-based check
+    const ItemTemplate* goldTpl = g_itemRegistry.getTemplate(prototypeId);
+    if (goldTpl && goldTpl->hasTag("currency")) item.custom_props.set("weight_per_unit", 0.01);
     else if (!item.custom_props.has("weight_per_unit")) item.custom_props.set("weight_per_unit", 1.0);
     
     g_items[item.id] = item;
@@ -3297,12 +3355,10 @@ void processSpoilage() {
             int age = g_world.current_day - item.batch_day;
             
             double effectiveAge = age;
-            if (item.prototype_id == "meat" || 
-                item.prototype_id == "fish" ||
-                item.prototype_id == "bread" ||
-                item.prototype_id == "wheat" ||
-                item.prototype_id == "smoked_meat" ||
-                item.prototype_id == "herbs") {
+            // Data-driven: use tags from ItemRegistry instead of hardcoded IDs
+            const ItemTemplate* tpl = g_itemRegistry.getTemplate(item.prototype_id);
+            bool isPerishable = (tpl && (tpl->hasTag("food") || tpl->hasTag("raw_food") || tpl->hasTag("consumable")));
+            if (isPerishable) {
                 effectiveAge = age * heatMod * coldMod;
             }
             
@@ -3314,9 +3370,9 @@ void processSpoilage() {
                 double freshness = 1.0 - (effectiveAge / (double)maxLife);
                 freshness = std::max(0.1, freshness);
                 
-                if (item.prototype_id == "iron_ore" ||
-                    item.prototype_id == "weapons" ||
-                    item.prototype_id == "armor") {
+                // Data-driven: use tags instead of hardcoded IDs
+                bool isDegrading = (tpl && (tpl->hasTag("raw_material") || tpl->hasTag("weapon") || tpl->hasTag("armor")));
+                if (isDegrading) {
                     if (effectiveAge > maxLife * 0.5) {
                         freshness *= 0.5;
                         item.durability = std::max(1, (int)(item.durability * 0.5));
@@ -12281,9 +12337,6 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
         npc.id = "npc_" + generateUUID();
         // Data-driven: select profession from g_db.profession_ids
         std::string profId = g_db.profession_ids.empty() ? "farmer" : g_db.profession_ids[rand() % g_db.profession_ids.size()];
-        npc.name = NpcGen::generateName("", *(new std::mt19937(rand()))) + " " + profId;
-        npc.type = "npc";
-        
         std::string homeReg = regionIds[rand() % regionIds.size()];
 
         // Data-driven: resolve race from faction or pick random
@@ -12292,6 +12345,10 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
         auto ftrIt = g_db.faction_to_race.find(homeFaction);
         if (ftrIt != g_db.faction_to_race.end()) npc.race = ftrIt->second;
         else if (!g_db.race_ids.empty()) npc.race = g_db.race_ids[rand() % g_db.race_ids.size()];
+
+        // Data-driven: name from g_db.name_groups (via faction→race resolution)
+        npc.name = NpcGen::generateName(homeFaction, *(new std::mt19937(rand()))) + " " + profId;
+        npc.type = "npc";
 
         npc.profession = profId;
         // Data-driven: resolve profession_type from g_db.professions
