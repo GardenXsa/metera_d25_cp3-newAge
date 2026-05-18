@@ -542,12 +542,30 @@ class SimulationTestClient(ctk.CTk):
         self.after(500, lambda: self._send_build_world())
 
     def _send_build_world(self):
-        self._log(f"Sending buildWorld (era={self.era_var.get()}, agents={self.agents_var.get()})...")
+        era = self.era_var.get()
+        # Load era-specific locations
+        data_dir = self._find_data_dir()
+        loc_file_map = {
+            "rebirth": "locations_rebirth.json",
+            "architects": "locations_architects.json",
+            "sundering": "locations_sundering.json",
+            "silence": "locations_silence.json",
+        }
+        loc_file = loc_file_map.get(era, "locations_rebirth.json")
+        loc_path = os.path.join(data_dir, loc_file)
+        global_locations = self._load_json(loc_path, {})
+        loc_count = len(global_locations) if isinstance(global_locations, dict) else 0
+        self._log(f"[LOCATIONS] era={era} file={loc_file} count={loc_count}")
+        if loc_count == 0:
+            self._log(f"[WARN] No locations loaded! World will be empty.")
+
+        self._log(f"Sending buildWorld (era={era}, agents={self.agents_var.get()}, locations={loc_count})...")
         self.engine.send({
             "command": "buildWorld",
             "player_id": "test_admin",
-            "era": self.era_var.get(),
-            "initial_agents": self.agents_var.get()
+            "era": era,
+            "initial_agents": self.agents_var.get(),
+            "global_locations": global_locations
         })
 
     def start_simulation(self):
