@@ -100,7 +100,7 @@ function getGoldAmountInContainer(containerId) {
     const resolvedId = resolveSpecialContainerId(containerId);
     if (!resolvedId || !ContainerRegistry.has(resolvedId)) return 0;
     const cont = ContainerRegistry.get(resolvedId);
-    const physicalGold = cont.items.reduce((sum, itemId) => {
+    const physicalGold = getContainerItems(cont).reduce((sum, itemId) => {
         const item = ItemRegistry.get(itemId);
         return sum + ((item?.prototype_id === 'gold' || item?.prototype_id === 'gold_ingot' || item?.custom_props?.aiIdentifier === 'gold') ? item.stack_size : 0);
     }, 0);
@@ -111,7 +111,7 @@ function getGoldAmountInContainer(containerId) {
 function syncPlayerGoldFromInventory() {
     if (!player?.container_backpack || !ContainerRegistry.has(player.container_backpack)) return 0;
     const backpack = ContainerRegistry.get(player.container_backpack);
-    const totalGold = backpack.items.reduce((sum, itemId) => {
+    const totalGold = getContainerItems(backpack).reduce((sum, itemId) => {
         const item = ItemRegistry.get(itemId);
         return sum + ((item?.prototype_id === 'gold' || item?.prototype_id === 'gold_ingot' || item?.custom_props?.aiIdentifier === 'gold') ? item.stack_size : 0);
     }, 0);
@@ -270,7 +270,11 @@ const OldCoreInventorySystem = {
             last_moved_at: customProps.last_moved_at ?? (player ? player.stats.turnCount : 0)
         };
         ItemRegistry.set(id, item);
-        if (resolvedContainerId && ContainerRegistry.has(resolvedContainerId)) ContainerRegistry.get(resolvedContainerId).items.push(id);
+        if (resolvedContainerId && ContainerRegistry.has(resolvedContainerId)) {
+            const targetCont = ContainerRegistry.get(resolvedContainerId);
+            if (!targetCont.items) targetCont.items = [];
+            targetCont.items.push(id);
+        }
         return id;
     },
     updateContainerLocation: async function(containerId, locationData) {
@@ -284,7 +288,7 @@ const OldCoreInventorySystem = {
     getContainerWeight: function(containerId) {
         const cont = ContainerRegistry.get(containerId);
         if (!cont) return 0;
-        return cont.items.reduce((sum, itemId) => {
+        return getContainerItems(cont).reduce((sum, itemId) => {
             const it = ItemRegistry.get(itemId);
             return sum + (it ? (it.custom_props.weight_per_unit || 1) * it.stack_size : 0);
         }, 0);
@@ -292,7 +296,7 @@ const OldCoreInventorySystem = {
     findItemByPrototype: function(containerId, protoId) {
         const cont = ContainerRegistry.get(containerId);
         if (!cont) return null;
-        return cont.items.find(id => {
+        return getContainerItems(cont).find(id => {
             const it = ItemRegistry.get(id);
             return it && (it.prototype_id === protoId || it.custom_props?.aiIdentifier === protoId);
         });
@@ -344,7 +348,7 @@ const OldCoreInventorySystem = {
         if (!Number.isFinite(requestedQuantity) || requestedQuantity <= 0) return { success: false, error: "Invalid quantity" };
         if (requestedQuantity > item.stack_size) return { success: false, error: "Not enough quantity in stack" };
         if (item.flags?.bound_to_owner && targetContainer.owner_id !== item.flags.bound_to_owner) return { success: false, error: "Item is soulbound" };
-        if (sourceContainer.id !== targetContainer.id && targetContainer.items.length >= targetContainer.max_slots) return { success: false, error: "Target container is full (slots)" };
+        if (sourceContainer.id !== targetContainer.id && getContainerItems(targetContainer).length >= targetContainer.max_slots) return { success: false, error: "Target container is full (slots)" };
 
         const currentWeight = this.getContainerWeight(actualTargetId);
         const itemWeight = (item.custom_props.weight_per_unit || 1) * requestedQuantity;
@@ -368,8 +372,12 @@ const OldCoreInventorySystem = {
             movingItem = ItemRegistry.get(createdItemId);
         }
 
+        if (!sourceContainer.items) sourceContainer.items = [];
         sourceContainer.items = sourceContainer.items.filter(id => id !== movingItem.id);
-        if (sourceContainer.id !== targetContainer.id) targetContainer.items.push(movingItem.id);
+        if (sourceContainer.id !== targetContainer.id) {
+            if (!targetContainer.items) targetContainer.items = [];
+            targetContainer.items.push(movingItem.id);
+        }
         movingItem.container_id = actualTargetId;
 
         const movedIntoPlayerOwned = player && (
@@ -423,6 +431,7 @@ const OldCoreInventorySystem = {
         if (item.stack_size <= quantity) {
             if (item.container_id && ContainerRegistry.has(item.container_id)) {
                 const cont = ContainerRegistry.get(item.container_id);
+                if (!cont.items) cont.items = [];
                 cont.items = cont.items.filter(id => id !== itemId);
             }
             ItemRegistry.delete(itemId);
@@ -438,7 +447,7 @@ const OldCoreInventorySystem = {
         if (!cont) return false;
 
         const groundPileId = getOrCreateGroundPile(resolveContainerLocation(resolvedContainerId));
-        const itemsToMove = [...cont.items];
+        const itemsToMove = [...(cont.items || [])];
         itemsToMove.forEach(itemId => this.moveItem(itemId, resolvedContainerId, groundPileId, null, {
             actorId: 'system',
             ignoreAccess: true,
@@ -457,7 +466,7 @@ const OldCoreInventorySystem = {
         const actorContId = actorId === 'player' ? player.container_backpack : null;
         if (!actorContId) return { success: false, error: "Actor inventory not found" };
         const actorCont = ContainerRegistry.get(actorContId);
-        const lockpickId = actorCont.items.find(id => ItemRegistry.get(id)?.prototype_id === 'lockpicks_common');
+        const lockpickId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'lockpicks_common');
         if (!lockpickId) return { success: false, error: "No lockpicks" };
         this.removeItem(lockpickId, 1);
         const roll = Math.floor(Math.random() * 20) + 1 + (player.stats.dex - 10)/2;
@@ -478,7 +487,7 @@ const OldCoreInventorySystem = {
         const resolvedDestId = resolveSpecialContainerId(destContainerId);
         const src = ContainerRegistry.get(resolvedSourceId);
         if (!src) return 0;
-        const stolenItems = src.items.filter(id => ItemRegistry.get(id)?.flags?.stolen);
+        const stolenItems = getContainerItems(src).filter(id => ItemRegistry.get(id)?.flags?.stolen);
         let count = 0;
         stolenItems.forEach(id => {
             if (this.moveItem(id, resolvedSourceId, resolvedDestId, null, { actorId: 'system', ignoreAccess: true, ignoreDistance: true }).success) count++;
@@ -489,7 +498,7 @@ const OldCoreInventorySystem = {
         const actorContId = actorId === 'player' ? player.container_backpack : null;
         if (!actorContId) return null;
         const actorCont = ContainerRegistry.get(actorContId);
-        const woodId = actorCont.items.find(id => ItemRegistry.get(id)?.prototype_id === 'wood');
+        const woodId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'wood');
         const woodItem = woodId ? ItemRegistry.get(woodId) : null;
         if (!woodItem || woodItem.stack_size < 5) return null;
         this.removeItem(woodId, 5);
@@ -534,7 +543,7 @@ async function consumeRealItemsAsync(containerId, prototypeId, quantity) {
     if (!cont) return 0;
     let remaining = quantity;
     let taken = 0;
-    for (const itemId of [...cont.items]) {
+    for (const itemId of [...getContainerItems(cont)]) {
         const item = ItemRegistry.get(itemId);
         if (!item || item.prototype_id !== prototypeId) continue;
         const take = Math.min(item.stack_size, remaining);
@@ -590,7 +599,7 @@ const CoreInventorySystemAsync = {
     getContainerWeight: function(containerId) {
         const cont = ContainerRegistry.get(containerId);
         if (!cont) return 0;
-        return cont.items.reduce((sum, itemId) => {
+        return getContainerItems(cont).reduce((sum, itemId) => {
             const it = ItemRegistry.get(itemId);
             return sum + (it ? (it.custom_props.weight_per_unit || 1) * it.stack_size : 0);
         }, 0);
@@ -598,7 +607,7 @@ const CoreInventorySystemAsync = {
     findItemByPrototype: function(containerId, protoId) {
         const cont = ContainerRegistry.get(containerId);
         if (!cont) return null;
-        return cont.items.find(id => {
+        return getContainerItems(cont).find(id => {
             const it = ItemRegistry.get(id);
             return it && (it.prototype_id === protoId || it.custom_props?.aiIdentifier === protoId);
         });
@@ -642,7 +651,7 @@ const CoreInventorySystemAsync = {
         const actorContId = actorId === 'player' ? player.container_backpack : null;
         if (!actorContId) return { success: false, error: "Actor inventory not found" };
         const actorCont = ContainerRegistry.get(actorContId);
-        const lockpickId = actorCont.items.find(id => ItemRegistry.get(id)?.prototype_id === 'lockpicks_common');
+        const lockpickId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'lockpicks_common');
         if (!lockpickId) return { success: false, error: "No lockpicks" };
         await this.removeItem(lockpickId, 1);
         const roll = Math.floor(Math.random() * 20) + 1 + (player.stats.dex - 10)/2;
@@ -668,7 +677,7 @@ const CoreInventorySystemAsync = {
         }
         const src = ContainerRegistry.get(resolvedSourceId);
         if (!src) return 0;
-        const stolenItems = src.items.filter(id => ItemRegistry.get(id)?.flags?.stolen);
+        const stolenItems = getContainerItems(src).filter(id => ItemRegistry.get(id)?.flags?.stolen);
         let count = 0;
         for (const id of stolenItems) {
             const res = await this.moveItem(id, resolvedSourceId, resolvedDestId, null, { actorId: 'system', ignoreAccess: true, ignoreDistance: true });
@@ -680,7 +689,7 @@ const CoreInventorySystemAsync = {
         const actorContId = actorId === 'player' ? player.container_backpack : null;
         if (!actorContId) return null;
         const actorCont = ContainerRegistry.get(actorContId);
-        const woodId = actorCont.items.find(id => ItemRegistry.get(id)?.prototype_id === 'wood');
+        const woodId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'wood');
         const woodItem = woodId ? ItemRegistry.get(woodId) : null;
         if (!woodItem || woodItem.stack_size < 5) return null;
         await this.removeItem(woodId, 5);
@@ -698,7 +707,7 @@ async function equipItemAsync(itemId, targetSlot = null) {
         const allPossibleSlots = bodySlots.filter(s => !itemToEquip.custom_props.slot || itemToEquip.custom_props.slot === s || (['right_hand', 'left_hand'].includes(s) && ['right_hand', 'left_hand'].includes(itemToEquip.custom_props.slot)));
         if (allPossibleSlots.length === 0) return t('gameInterface.commandFeedback.itemNotEquipable', { itemName: itemToEquip.custom_props.name });
         const eqCont = ContainerRegistry.get(player.container_equipment);
-        targetSlot = allPossibleSlots.find(s => !eqCont.items.find(id => ItemRegistry.get(id).slot_index === s));
+        targetSlot = allPossibleSlots.find(s => !getContainerItems(eqCont).find(id => ItemRegistry.get(id).slot_index === s));
         if (!targetSlot) targetSlot = allPossibleSlots[0];
     }
 
@@ -722,13 +731,13 @@ async function equipItemAsync(itemId, targetSlot = null) {
 async function unequipItemAsync(slot) {
     if (!player || !player.container_equipment || !player.container_backpack) return null;
     const eqCont = ContainerRegistry.get(player.container_equipment);
-    const itemId = eqCont.items.find(id => ItemRegistry.get(id).slot_index === slot);
+    const itemId = getContainerItems(eqCont).find(id => ItemRegistry.get(id).slot_index === slot);
     if (!itemId) return t('gameInterface.commandFeedback.slotIsEmpty', { slot: slot });
 
     const itemToUnequip = ItemRegistry.get(itemId);
     const backpack = ContainerRegistry.get(player.container_backpack);
 
-    if (backpack.items.length >= player.inventoryCapacity) {
+    if (getContainerItems(backpack).length >= player.inventoryCapacity) {
         return t('gameInterface.commandFeedback.inventoryFullOnUnequip', { itemName: itemToUnequip.custom_props.name });
     }
 
@@ -989,7 +998,7 @@ const TradeSystemAsync = {
         const targetContainer = ContainerRegistry.get(trade.target_container);
         if (!targetContainer) return { success: false, error: "Merchant container not found" };
 
-        const physicalGoldItems = [...targetContainer.items].filter(itemId => {
+        const physicalGoldItems = [...getContainerItems(targetContainer)].filter(itemId => {
             const it = ItemRegistry.get(itemId);
             return it && (it.prototype_id === 'gold' || it.prototype_id === 'gold_ingot' || it.custom_props?.aiIdentifier === 'gold');
         });
@@ -1012,7 +1021,7 @@ const TradeSystemAsync = {
             const existingGoldId = CoreInventorySystemAsync.findItemByPrototype(trade.initiator_container, 'gold');
             const currentWeight = CoreInventorySystemAsync.getContainerWeight(trade.initiator_container);
             const addedWeight = remaining * 0.01;
-            if (!existingGoldId && buyerContainer.items.length >= buyerContainer.max_slots) {
+            if (!existingGoldId && getContainerItems(buyerContainer).length >= buyerContainer.max_slots) {
                 return { success: false, error: "Buyer container has no free slot for gold" };
             }
             if (currentWeight + addedWeight > buyerContainer.max_weight_kg) {
@@ -1190,7 +1199,7 @@ async function executeCommand(command, args) {
                     }
 
                     const cont = ContainerRegistry.get(targetContId);
-                    let existingItemId = cont.items.find(id => {
+                    let existingItemId = getContainerItems(cont).find(id => {
                         let it = ItemRegistry.get(id);
                         return it && (it.prototype_id.toLowerCase() === aiId.toLowerCase() || it.custom_props?.aiIdentifier?.toLowerCase() === aiId.toLowerCase());
                     });
@@ -1214,7 +1223,7 @@ async function executeCommand(command, args) {
                         break;
                     }
 
-                    if (cont.items.length >= cont.max_slots) {
+                    if (getContainerItems(cont).length >= cont.max_slots) {
                             feedback = t('gameInterface.commandFeedback.inventoryFull', { itemName: name });
                         } else {
                             // Проверка транспорта через централизованный реестр
@@ -1271,17 +1280,17 @@ async function executeCommand(command, args) {
 
                 // 2. Поиск предмета
                 const backpack = ContainerRegistry.get(player.container_backpack);
-                let foundKey = backpack.items.find(id => id === searchTerm);
+                let foundKey = getContainerItems(backpack).find(id => id === searchTerm);
                 
                 if (!foundKey) {
-                    foundKey = backpack.items.find(id => {
+                    foundKey = getContainerItems(backpack).find(id => {
                         const it = ItemRegistry.get(id);
                         return it && (it.prototype_id === searchTerm || it.custom_props?.aiIdentifier === searchTerm);
                     });
                 }
 
                 if (!foundKey) {
-                    foundKey = backpack.items.find(id => {
+                    foundKey = getContainerItems(backpack).find(id => {
                         const it = ItemRegistry.get(id);
                         return it && it.custom_props?.name?.toLowerCase() === searchTerm.toLowerCase();
                     });
@@ -1322,15 +1331,15 @@ async function executeCommand(command, args) {
                     break;
                 }
 
-                let itemKey = backpack.items.find(id => id === searchTerm);
+                let itemKey = getContainerItems(backpack).find(id => id === searchTerm);
                 if (!itemKey) {
-                    itemKey = backpack.items.find(id => {
+                    itemKey = getContainerItems(backpack).find(id => {
                         const it = ItemRegistry.get(id);
                         return it && (it.prototype_id === searchTerm || it.custom_props?.aiIdentifier === searchTerm);
                     });
                 }
                 if (!itemKey) {
-                    itemKey = backpack.items.find(id => {
+                    itemKey = getContainerItems(backpack).find(id => {
                         const it = ItemRegistry.get(id);
                         return it && it.custom_props?.name?.toLowerCase() === searchTerm.toLowerCase();
                     });
@@ -1525,7 +1534,7 @@ async function executeCommand(command, args) {
                     for (const cont of Array.from(ContainerRegistry.values())) {
                         if (resolveContainerLocation(cont.id)?.region_id === args.location && cont.physical_props) {
                             cont.physical_props.health -= args.damage;
-                            for (const itemId of cont.items) {
+                            for (const itemId of getContainerItems(cont)) {
                                 const item = ItemRegistry.get(itemId);
                                 if (item) {
                                     await sendInventoryCommand('updateItemStat', { itemId: item.id, stat: 'durability', change: -Math.floor(args.damage / 2) });
@@ -1601,12 +1610,12 @@ async function executeCommand(command, args) {
 
                     if (player.container_backpack) {
                         const bp = ContainerRegistry.get(player.container_backpack);
-                        const id = bp.items.find(i => i === searchTerm || ItemRegistry.get(i).prototype_id === searchTerm);
+                        const id = getContainerItems(bp).find(i => i === searchTerm || ItemRegistry.get(i).prototype_id === searchTerm);
                         if (id) item = ItemRegistry.get(id);
                     }
                     if (!item && player.container_equipment) {
                         const eq = ContainerRegistry.get(player.container_equipment);
-                        const id = eq.items.find(i => i === searchTerm || ItemRegistry.get(i).prototype_id === searchTerm);
+                        const id = getContainerItems(eq).find(i => i === searchTerm || ItemRegistry.get(i).prototype_id === searchTerm);
                         if (id) {
                             item = ItemRegistry.get(id);
                             isEquipped = true;
@@ -1642,7 +1651,7 @@ async function executeCommand(command, args) {
                     break;
                 }
 
-                const item = backpack.items.map(id => ItemRegistry.get(id)).find(it =>
+                const item = getContainerItems(backpack).map(id => ItemRegistry.get(id)).find(it =>
                     it && (it.id === itemId || it.prototype_id === itemId || it.custom_props?.aiIdentifier === itemId)
                 );
 
@@ -1745,7 +1754,7 @@ const OldTradeSystem = {
         containerIds.forEach(containerId => {
             const cont = ContainerRegistry.get(containerId);
             if (cont) {
-                cont.items.forEach(itemId => {
+                getContainerItems(cont).forEach(itemId => {
                     const it = ItemRegistry.get(itemId);
                     if (it && (it.prototype_id === 'gold' || it.prototype_id === 'gold_ingot' || it.custom_props?.aiIdentifier === 'gold')) itemIds.add(itemId);
                 });
@@ -1966,7 +1975,7 @@ const OldTradeSystem = {
         const targetContainer = ContainerRegistry.get(trade.target_container);
         if (!targetContainer) return { success: false, error: "Merchant container not found" };
 
-        const physicalGoldItems = [...targetContainer.items].filter(itemId => {
+        const physicalGoldItems = [...getContainerItems(targetContainer)].filter(itemId => {
             const it = ItemRegistry.get(itemId);
             return it && (it.prototype_id === 'gold' || it.prototype_id === 'gold_ingot' || it.custom_props?.aiIdentifier === 'gold');
         });
@@ -1992,7 +2001,7 @@ const OldTradeSystem = {
             const existingGoldId = CoreInventorySystem.findItemByPrototype(trade.initiator_container, 'gold');
             const currentWeight = CoreInventorySystem.getContainerWeight(trade.initiator_container);
             const addedWeight = remaining * 0.01;
-            if (!existingGoldId && buyerContainer.items.length >= buyerContainer.max_slots) {
+            if (!existingGoldId && getContainerItems(buyerContainer).length >= buyerContainer.max_slots) {
                 return { success: false, error: "Buyer container has no free slot for gold" };
             }
             if (currentWeight + addedWeight > buyerContainer.max_weight_kg) {
@@ -2791,7 +2800,7 @@ async function runWorldSimulationTick() {
             if (r.vault_id && ContainerRegistry.has(r.vault_id)) {
                 let vault = ContainerRegistry.get(r.vault_id);
                 let counts = {};
-                vault.items.forEach(itemId => {
+                getContainerItems(vault).forEach(itemId => {
                     let item = ItemRegistry.get(itemId);
                     if (item) {
                         counts[item.prototype_id] = (counts[item.prototype_id] || 0) + item.stack_size;
@@ -3688,7 +3697,7 @@ function buildFullPlayerSnapshot() {
             if (!containerLocation || !playerPhysicalLocation) return false;
             return checkDistance(playerPhysicalLocation, containerLocation);
         })
-        .filter(c => c.items.length > 0 || c.type === 'faction_vault' || c.owner_id === 'player');
+        .filter(c => getContainerItems(c).length > 0 || c.type === 'faction_vault' || c.owner_id === 'player');
         
     filteredContainers.sort((a, b) => {
         if (a.owner_id === 'player' && b.owner_id !== 'player') return -1;
@@ -3705,7 +3714,7 @@ function buildFullPlayerSnapshot() {
             owner: c.owner_id,
             location: resolveContainerLocation(c.id)?.region_id || null,
             items: (!c.lock_data?.is_locked && OwnershipService.canAccess('player', c.id, { allowLocked: true, ignoreDistance: false }))
-                ? c.items.map(id => {
+                ? getContainerItems(c).map(id => {
                     const item = ItemRegistry.get(id);
                     if (!item) return null;
                     return {
@@ -3738,8 +3747,8 @@ function buildFullPlayerSnapshot() {
     "backpack_id": "${player.container_backpack}", "equipment_id": "${player.container_equipment}",
     "eroticIntensityLevel": ${eroticIntensityLevel}, "eroticPreferences": ${JSON.stringify(eroticPreferences)}
   },
-  "inventory_CARRYING_NOW": ${JSON.stringify(player.container_backpack ? ContainerRegistry.get(player.container_backpack).items.map(id => { let it = ItemRegistry.get(id); return it ? { instance_id: it.id, prototype_id: it.prototype_id, name: it.custom_props?.name || it.name || it.prototype_id, quantity: it.stack_size, container_id: it.container_id, slot_index: it.slot_index, flags: it.flags } : null; }).filter(Boolean) : [])},
-  "equipment": ${JSON.stringify(player.container_equipment ? ContainerRegistry.get(player.container_equipment).items.map(id => { let it = ItemRegistry.get(id); return it ? { slot: it.slot_index, instance_id: it.id, prototype_id: it.prototype_id, name: it.custom_props?.name || it.name || it.prototype_id } : null; }).filter(Boolean) : [])},
+  "inventory_CARRYING_NOW": ${JSON.stringify(player.container_backpack ? getContainerItems(ContainerRegistry.get(player.container_backpack)).map(id => { let it = ItemRegistry.get(id); return it ? { instance_id: it.id, prototype_id: it.prototype_id, name: it.custom_props?.name || it.name || it.prototype_id, quantity: it.stack_size, container_id: it.container_id, slot_index: it.slot_index, flags: it.flags } : null; }).filter(Boolean) : [])},
+  "equipment": ${JSON.stringify(player.container_equipment ? getContainerItems(ContainerRegistry.get(player.container_equipment)).map(id => { let it = ItemRegistry.get(id); return it ? { slot: it.slot_index, instance_id: it.id, prototype_id: it.prototype_id, name: it.custom_props?.name || it.name || it.prototype_id } : null; }).filter(Boolean) : [])},
   "nearby_containers": ${JSON.stringify(nearbyContainers)},
   "nearby_npcs": ${JSON.stringify(nearbyNpcs)},
   "quests": ${JSON.stringify(Object.values(player.quests || {}).filter(q => q.status === 'active'))},
@@ -8344,7 +8353,7 @@ function updateInventoryDisplay() {
     if (!player || !inventoryList || !player.container_backpack) return;
     inventoryList.innerHTML = '';
     const backpack = ContainerRegistry.get(player.container_backpack);
-    const allItems = backpack ? backpack.items.map(id => ItemRegistry.get(id)).filter(Boolean) : [];
+    const allItems = backpack ? getContainerItems(backpack).map(id => ItemRegistry.get(id)).filter(Boolean) : [];
 
     const countEl = document.getElementById('inventory-count');
     if (countEl) countEl.textContent = allItems.length;
@@ -10433,7 +10442,7 @@ async function handleUserInput() {
         let hasGuards = Object.values(player.visibleEntities).some(e => e.type === 'npc' && (e.profession?.toLowerCase().includes('страж') || (e.traits && e.traits.includes('Стражник'))));
     if (hasGuards) {
         let bp = ContainerRegistry.get(player.container_backpack);
-        let hasStolen = bp && bp.items.some(id => ItemRegistry.get(id)?.flags?.stolen);
+        let hasStolen = bp && getContainerItems(bp).some(id => ItemRegistry.get(id)?.flags?.stolen);
         if (hasStolen) {
             let count = CoreInventorySystem.confiscateStolen(player.container_backpack, "guard_confiscation_chest");
             finalMessageForGM += `\n\n[SYSTEM CRITICAL: Стража АВТОНОМНО обыскала игрока и нашла краденое! Изъято предметов: ${count}. ТЫ ОБЯЗАН описать сцену ареста, штрафа или нападения стражи!]`;
@@ -10838,14 +10847,14 @@ async function handlePlayerDeath() {
     });
     
     const backpack = ContainerRegistry.get(player.container_backpack);
-    if (backpack && backpack.items.length > 0) {
-        const itemsToMove = backpack.items.map(id => ({ id: id, quantity: ItemRegistry.get(id).stack_size }));
+    if (backpack && getContainerItems(backpack).length > 0) {
+        const itemsToMove = getContainerItems(backpack).map(id => ({ id: id, quantity: ItemRegistry.get(id).stack_size }));
         await CoreInventorySystem.moveItems(player.container_backpack, corpseId, itemsToMove, { actorId: 'system', ignoreAccess: true });
     }
     
     const equipment = ContainerRegistry.get(player.container_equipment);
-    if (equipment && equipment.items.length > 0) {
-        const itemsToMove = equipment.items.map(id => ({ id: id, quantity: ItemRegistry.get(id).stack_size }));
+    if (equipment && getContainerItems(equipment).length > 0) {
+        const itemsToMove = getContainerItems(equipment).map(id => ({ id: id, quantity: ItemRegistry.get(id).stack_size }));
         await CoreInventorySystem.moveItems(player.container_equipment, corpseId, itemsToMove, { actorId: 'system', ignoreAccess: true });
     }
 
@@ -12319,7 +12328,7 @@ async function executeNonInventoryCommand(command, args) {
                     }
 
                     const cont = ContainerRegistry.get(targetContId);
-                    let existingItemId = cont.items.find(id => {
+                    let existingItemId = getContainerItems(cont).find(id => {
                         let it = ItemRegistry.get(id);
                         return it && it.prototype_id.toLowerCase() === aiId.toLowerCase();
                     });
@@ -12343,7 +12352,7 @@ async function executeNonInventoryCommand(command, args) {
                         break;
                     }
 
-                    if (cont.items.length >= cont.max_slots) {
+                    if (getContainerItems(cont).length >= cont.max_slots) {
                             feedback = t('gameInterface.commandFeedback.inventoryFull', { itemName: name });
                         } else {
                             const customProps = {
@@ -12390,7 +12399,7 @@ async function executeNonInventoryCommand(command, args) {
                     const searchTerm = String(args.aiIdentifier).toLowerCase();
                     const quantity = (args.quantity !== undefined && !isNaN(parseInt(args.quantity))) ? parseInt(args.quantity, 10) : 1;
                     const backpack = ContainerRegistry.get(player.container_backpack);
-                    let itemKey = backpack.items.find(id => {
+                    let itemKey = getContainerItems(backpack).find(id => {
                         let it = ItemRegistry.get(id);
                         return it && (it.prototype_id.toLowerCase() === searchTerm || it.custom_props?.aiIdentifier?.toLowerCase() === searchTerm || (it.custom_props.name && it.custom_props.name.toLowerCase() === searchTerm));
                     });
@@ -13262,9 +13271,9 @@ if (player.nexusData && player.nexusData[args.id]) {
                     break;
                 }
 
-                let itemKey = backpack.items.find(id => id === rawId);
+                let itemKey = getContainerItems(backpack).find(id => id === rawId);
                 if (!itemKey) {
-                    itemKey = backpack.items.find(id => {
+                    itemKey = getContainerItems(backpack).find(id => {
                         const it = ItemRegistry.get(id);
                         return it && (it.prototype_id.toLowerCase() === searchTerm || 
                                       (it.custom_props?.aiIdentifier || '').toLowerCase() === searchTerm || 
@@ -13590,7 +13599,7 @@ if (player.nexusData && player.nexusData[args.id]) {
                                 let chestId = player.travel.interactTarget.data.chest_id;
                                 if (chestId && ContainerRegistry.has(chestId)) {
                                     let cont = ContainerRegistry.get(chestId);
-                                    let itemsToMove = cont.items.map(id => {
+                                    let itemsToMove = getContainerItems(cont).map(id => {
                                         let it = ItemRegistry.get(id);
                                         return it ? { id: id, quantity: it.stack_size } : null;
                                     }).filter(Boolean);
@@ -13758,7 +13767,7 @@ case 'setEntityBinding':
                         feedback = `[ERROR] Рюкзак игрока не найден в реестре.`;
                         break;
                     }
-                    const itemKey = backpack.items.find(id => {
+                    const itemKey = getContainerItems(backpack).find(id => {
                         let it = ItemRegistry.get(id);
                         return it && (it.prototype_id === args.aiIdentifier || it.custom_props?.aiIdentifier === args.aiIdentifier);
                     });
@@ -13959,7 +13968,7 @@ case 'setEntityBinding':
                     ContainerRegistry.forEach(cont => {
                         if (resolveContainerLocation(cont.id)?.region_id === args.location && cont.physical_props) {
                             cont.physical_props.health -= args.damage;
-                            cont.items.forEach(itemId => {
+                            getContainerItems(cont).forEach(itemId => {
                                 const item = ItemRegistry.get(itemId);
                                 if (item) item.durability -= Math.floor(args.damage / 2);
                             });
@@ -14030,12 +14039,12 @@ case 'setEntityBinding':
                     let isEquipped = false;
                     if (player.container_backpack) {
                         const bp = ContainerRegistry.get(player.container_backpack);
-                        const id = bp.items.find(i => ItemRegistry.get(i).prototype_id === args.aiIdentifier);
+                        const id = getContainerItems(bp).find(i => ItemRegistry.get(i).prototype_id === args.aiIdentifier);
                         if (id) item = ItemRegistry.get(id);
                     }
                     if (!item && player.container_equipment) {
                         const eq = ContainerRegistry.get(player.container_equipment);
-                        const id = eq.items.find(i => ItemRegistry.get(i).prototype_id === args.aiIdentifier);
+                        const id = getContainerItems(eq).find(i => ItemRegistry.get(i).prototype_id === args.aiIdentifier);
                         if (id) {
                             item = ItemRegistry.get(id);
                             isEquipped = true;
@@ -14313,14 +14322,14 @@ function equipItem(itemId, targetSlot = null) {
         const allPossibleSlots = bodySlots.filter(s => !itemToEquip.custom_props.slot || itemToEquip.custom_props.slot === s || (['right_hand', 'left_hand'].includes(s) && ['right_hand', 'left_hand'].includes(itemToEquip.custom_props.slot)));
         if (allPossibleSlots.length === 0) return t('gameInterface.commandFeedback.itemNotEquipable', { itemName: itemToEquip.custom_props.name });
         const eqCont = ContainerRegistry.get(player.container_equipment);
-        targetSlot = allPossibleSlots.find(s => !eqCont.items.find(id => ItemRegistry.get(id).slot_index === s));
+        targetSlot = allPossibleSlots.find(s => !getContainerItems(eqCont).find(id => ItemRegistry.get(id).slot_index === s));
         if (!targetSlot) targetSlot = allPossibleSlots[0];
     }
 
     if (!bodySlots.includes(targetSlot)) return `[ERROR] Попытка экипировать в несуществующий слот: '${targetSlot}'`;
 
     const eqCont = ContainerRegistry.get(player.container_equipment);
-    const existingItemInSlot = eqCont.items.find(id => ItemRegistry.get(id).slot_index === targetSlot);
+    const existingItemInSlot = getContainerItems(eqCont).find(id => ItemRegistry.get(id).slot_index === targetSlot);
     
     if (existingItemInSlot) {
         const unequipFeedback = unequipItem(targetSlot);
@@ -14378,13 +14387,13 @@ function handleDrop(event) {
 function unequipItem(slot) {
     if (!player || !player.container_equipment || !player.container_backpack) return null;
     const eqCont = ContainerRegistry.get(player.container_equipment);
-    const itemId = eqCont.items.find(id => ItemRegistry.get(id).slot_index === slot);
+    const itemId = getContainerItems(eqCont).find(id => ItemRegistry.get(id).slot_index === slot);
     if (!itemId) return t('gameInterface.commandFeedback.slotIsEmpty', { slot: slot });
 
     const itemToUnequip = ItemRegistry.get(itemId);
     const backpack = ContainerRegistry.get(player.container_backpack);
 
-    if (backpack.items.length >= player.inventoryCapacity) {
+    if (getContainerItems(backpack).length >= player.inventoryCapacity) {
         return t('gameInterface.commandFeedback.inventoryFullOnUnequip', { itemName: itemToUnequip.custom_props.name });
     }
 
@@ -14411,7 +14420,7 @@ function updateEquipmentDisplay() {
     if (!eqCont) return;
 
     bodySlots.forEach(slot => {
-        const itemId = eqCont.items.find(id => {
+        const itemId = getContainerItems(eqCont).find(id => {
             const it = ItemRegistry.get(id);
             return it && it.slot_index === slot;
         });
@@ -16088,7 +16097,7 @@ window.openBusinessModal = async function(bId) {
     const storage = ContainerRegistry.get(bus.local_storage_id);
     let currentWeight = 0;
     if (storage) {
-        storage.items.forEach(id => {
+        getContainerItems(storage).forEach(id => {
             let it = ItemRegistry.get(id);
             if (it) {
                 let w = it.custom_props?.weight_per_unit || 1;
@@ -16100,9 +16109,9 @@ window.openBusinessModal = async function(bId) {
     let maxWeight = storage ? storage.max_weight_kg : 0;
     
     let invListHtml = '';
-    if (storage && storage.items.length > 0) {
+    if (storage && getContainerItems(storage).length > 0) {
         let itemsMap = {};
-        storage.items.forEach(id => {
+        getContainerItems(storage).forEach(id => {
             let it = ItemRegistry.get(id);
             if (it) itemsMap[it.prototype_id] = (itemsMap[it.prototype_id] || 0) + it.stack_size;
         });
@@ -16365,11 +16374,11 @@ function updatePortPanel() {
     html += `<h4 style="color:#f1c40f; margin: 10px 0 5px 0; font-size: 0.9em; border-bottom:1px solid #f1c40f; padding-bottom:3px;">${t('extraLoc.portPanel.warehouse')}</h4><ul style="list-style:none; padding:0; margin:0; max-height: 120px; overflow-y: auto; font-size: 0.85em;">`;
     if (port.dock_container_id && ContainerRegistry.has(port.dock_container_id)) {
         const dockCont = ContainerRegistry.get(port.dock_container_id);
-        if (dockCont.items.length === 0) {
+        if (getContainerItems(dockCont).length === 0) {
             html += `<li style="color:#7f8c8d; padding: 3px;">${t('extraLoc.portPanel.warehouseEmpty')}</li>`;
         } else {
             let itemsMap = {};
-            dockCont.items.forEach(id => {
+            getContainerItems(dockCont).forEach(id => {
                 let it = ItemRegistry.get(id);
                 if (it) itemsMap[it.prototype_id] = (itemsMap[it.prototype_id] || 0) + it.stack_size;
             });

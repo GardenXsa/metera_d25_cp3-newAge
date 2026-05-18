@@ -3881,7 +3881,7 @@ void updateWeather() {
 void checkGlobalEvents() {
     // Еженедельные глобальные события
     if ((rand() % 100) < 2) {
-        addNews("Глобальные эфирные течения изменили свое направление. Маги по всему миру чувствуют беспокойство.", "global", 3, "misc");
+        addNews(locStr("engine.news.magic_currents_changed"), "global", 3, "misc");
     }
 }
 
@@ -6627,7 +6627,7 @@ void processMonthlyBusinesses() {
                     g_world.businesses[b.id] = b;
                     
                     placePrivateBusinessOnMap(r, b, g_world);
-                    addNews("Успешный купец " + npc.name + " вложил капитал в новое предприятие: " + b.facility_type + ".", b.region_id, 1, "business");
+                    addNews(locStr("engine.news.merchant_investment", {{"merchant", npc.name}, {"business", b.facility_type}}), b.region_id, 1, "business");
                 }
             }
         }
@@ -6896,7 +6896,7 @@ void processInfrastructureProjects() {
                             }
                         }
                         g_world.map.generation_tick = g_world.tick;
-                        addNews("ИНФРАСТРУКТУРА: Фракция " + f.name + " построила Дамбу в " + r.name + ", укротив реку и осушив поймы под пашни.", rid, 3, "politics");
+                        addNews(locStr("engine.news.infrastructure.dam_built", {{"faction", f.name}, {"region", r.name}}), rid, 3, "politics");
                     }
                 }
             }
@@ -6908,7 +6908,7 @@ void processInfrastructureProjects() {
                 gold -= 8000; iron -= 500;
                 r.custom_props.set("has_aqueduct", true);
                 r.fertility += 0.5;
-                addNews("ИНФРАСТРУКТУРА: В " + r.name + " возведен величественный Акведук. Урожайность земель значительно возросла.", rid, 3, "politics");
+                addNews(locStr("engine.news.infrastructure.aqueduct_built", {{"region", r.name}}), rid, 3, "politics");
             }
             
             // 2.5 Колодцы (Санитария) - предотвращение эпидемий
@@ -6916,7 +6916,7 @@ void processInfrastructureProjects() {
                 consumeItemsFromContainer(g_world.regions[capId].vault_id, g_id, 2000);
                 gold -= 2000;
                 r.custom_props.set("has_well", true);
-                addNews("САНИТАРИЯ: В " + r.name + " построена сеть каменных колодцев, предотвращающая эпидемии.", rid, 2, "politics");
+                addNews(locStr("engine.news.infrastructure.wells_built", {{"region", r.name}}), rid, 2, "politics");
             }
         }
         
@@ -6996,7 +6996,7 @@ void processInfrastructureProjects() {
                         
                         g_path_cache_dirty = true;
                         g_world.map.generation_tick = g_world.tick;
-                        addNews("ИНФРАСТРУКТУРА: Инженеры " + f.name + " проложили грандиозный тракт с мостами к изолированному региону " + g_world.regions[rid].name + ".", rid, 4, "politics");
+                        addNews(locStr("engine.news.infrastructure.road_built", {{"faction", f.name}, {"region", g_world.regions[rid].name}}), rid, 4, "politics");
                     }
                 }
             }
@@ -7105,11 +7105,11 @@ void processShips() {
                     if (target->cannons > 0 || target->marines > 0) {
                         ship.hull -= (target->cannons * 10 + target->marines * 5);
                         target->hull -= 30;
-                        addNews("БИТВА С ЧУДОВИЩЕМ: Военный корабль сражается с морским левиафаном!", "global", 4, "war");
-                        if (ship.hull <= 0) addNews("ПОБЕДА: Морское чудовище убито военным флотом!", "global", 5, "war");
+                        addNews(locStr("engine.news.naval.sea_monster_battle"), "global", 4, "war");
+                        if (ship.hull <= 0) addNews(locStr("engine.news.naval.sea_monster_killed"), "global", 5, "war");
                     } else {
                         target->hull -= 50;
-                        addNews("КАТАСТРОФА: Морское чудовище атакует торговое судно!", "global", 4, "disaster");
+                        addNews(locStr("engine.news.naval.sea_monster_attacks_trade"), "global", 4, "disaster");
                     }
                 } else {
                     double dx = target->x - ship.x;
@@ -7152,7 +7152,7 @@ void processShips() {
             std::string dest = ship.destination;
             if (g_world.regions.count(dest) && g_world.port_facilities.count(dest)) {
                 if (g_world.port_facilities[dest].is_blockaded) {
-                    addNews("БЛОКАДА: Торговое судно не смогло войти в заблокированный порт " + g_world.regions[dest].name + " и сбросило груз в море.", dest, 3, "trade");
+                    addNews(locStr("engine.news.naval.blockade_trade_blocked", {{"port", g_world.regions[dest].name}}), dest, 3, "trade");
                     ship.path.clear();
                     ship.path_index = 0;
                     continue;
@@ -7216,7 +7216,7 @@ void processShips() {
                     }
                     if (goodsList.empty()) goodsList = "ничего";
                     
-                    addNews("МОРСКАЯ ТОРГОВЛЯ: Судно прибыло в порт " + destReg.name + "! Доставлено: " + goodsList + ". Выручка: " + std::to_string((int)totalRevenue) + " з. (Пошлина: " + std::to_string(portFee) + " з.)", dest, 2, "trade");
+                    addNews(locStr("engine.news.naval.trade_arrived", {{"port", destReg.name}, {"goods", goodsList}, {"revenue", std::to_string((int)totalRevenue)}, {"fee", std::to_string(portFee)}}), dest, 2, "trade");
                 }
             }
             ship.path.clear();
@@ -7316,7 +7316,7 @@ void processNavalTrade() {
                     ship.path = path;
                     ship.path_index = 0;
                     ship.destination = bestDest;
-                    addNews("ФЛОТ: Торговое судно '" + ship.id + "' отбыло из " + localReg.name + " в " + g_world.regions[bestDest].name + " с грузом " + getGoodName(bestGood), current_port, 1, "logistics");
+                    addNews(locStr("engine.news.naval.ship_departed", {{"ship", ship.id}, {"origin", localReg.name}, {"dest", g_world.regions[bestDest].name}, {"cargo", getGoodName(bestGood)}}), current_port, 1, "logistics");
                 } else {
                     moveItem(countItemsInContainer(ship.chest_id, bestGood) > 0 ? "TODO_FIX_ME" : "", localPort.dock_container_id); // This part is tricky without itemId
                     // Simplified: just put it back if no path
@@ -7895,7 +7895,7 @@ void processRulerDiplomacy() {
                     ruler.currentGoal = "offer_alliance -> " + best_ally;
                     faction.relations[best_ally] = std::min(100, faction.relations[best_ally] + 20);
                     g_world.factions[best_ally].relations[ruler.factionId] = std::min(100, g_world.factions[best_ally].relations[ruler.factionId] + 20);
-                    addNews("ДИПЛОМАТИЯ: Опасаясь агрессии, " + ruler.name + " заключает оборонительный пакт с фракцией " + g_world.factions[best_ally].name + ".", "global", 3, "diplomacy");
+                    addNews(locStr("engine.news.diplomacy.defensive_pact", {{"ruler", ruler.name}, {"ally", g_world.factions[best_ally].name}}), "global", 3, "diplomacy");
                 }
                 continue;
             }
@@ -7936,7 +7936,7 @@ void processRulerDiplomacy() {
                 if (faction.warExhaustion > 80 && targetFaction.warExhaustion > 80) {
                     faction.diplomacy[targetF] = "neutral";
                     targetFaction.diplomacy[ruler.factionId] = "neutral";
-                    addNews("МИРНЫЙ ДОГОВОР: Истощенные долгой войной, " + faction.name + " и " + targetFaction.name + " заключили перемирие.", "global", 5, "war");
+                    addNews(locStr("engine.news.diplomacy.peace_treaty", {{"faction1", faction.name}, {"faction2", targetFaction.name}}), "global", 5, "war");
                     continue;
                 }
             }
@@ -8003,7 +8003,7 @@ void processRulerDiplomacy() {
                         faction.activeWarGoal.targetRegionId = targetFaction.regions[0];
                         faction.activeWarGoal.deadlineDays = 60;
                     }
-                    addNews("ВОЙНА: " + ruler.name + " (" + faction.name + ") объявляет войну фракции " + targetFaction.name + "! Мотив: " + motiveText + ".", "global", 5, "war");
+                    addNews(locStr("engine.news.war.war_declared", {{"ruler", ruler.name}, {"faction", faction.name}, {"target", targetFaction.name}, {"motive", motiveText}}), "global", 5, "war");
                 }
             }
             // 3. ИНТРИГИ
@@ -8037,7 +8037,7 @@ void processRulerDiplomacy() {
                 intr.startDay = g_world.current_day;
                     g_world.intrigues.push_back(intr);
                     
-                    addNews("ИНТРИГА: " + ruler.name + " запускает тайную операцию (" + selectedType + ") против " + targetFaction.name + "!", "global", 3, "war");
+                    addNews(locStr("engine.news.war.intrigue_launched", {{"ruler", ruler.name}, {"type", selectedType}, {"target", targetFaction.name}}), "global", 3, "war");
                     }
                 }
             }
@@ -8049,7 +8049,7 @@ void processRulerDiplomacy() {
                     createItem("gold_ingot", 2000, capitalVault, g_world.current_day, "Торговое соглашение");
                     vaultStocks[capitalRegionId]["gold_ingot"] += 2000;
                 }
-                addNews("ЭКОНОМИКА: " + ruler.name + " заключает выгодное торговое соглашение с " + targetFaction.name + ".", "global", 2, "misc");
+                addNews(locStr("engine.news.diplomacy.trade_agreement", {{"ruler", ruler.name}, {"target", targetFaction.name}}), "global", 2, "misc");
             }
             // 5. ДИПЛОМАТИЯ И БРАКИ
             else if (ruler.rulerPersonality.diplomacy > 55 && faction.relations[targetF] > 50) {
@@ -8060,11 +8060,11 @@ void processRulerDiplomacy() {
                     ruler.currentGoal = "marriage_alliance -> " + targetF;
                     faction.relations[targetF] = 100;
                     targetFaction.relations[ruler.factionId] = 100;
-                    addNews("ДИНАСТИЧЕСКИЙ БРАК: Дома " + faction.name + " и " + targetFaction.name + " объединились узами брака!", "global", 5, "misc");
+                    addNews(locStr("engine.news.diplomacy.dynastic_marriage", {{"faction1", faction.name}, {"faction2", targetFaction.name}}), "global", 5, "misc");
                 } else {
                     ruler.currentGoal = "offer_alliance -> " + targetF;
                     faction.relations[targetF] = std::min(100, faction.relations[targetF] + 20);
-                    addNews("ДИПЛОМАТИЯ: " + ruler.name + " укрепляет союз с " + targetFaction.name + ".", "global", 2, "misc");
+                    addNews(locStr("engine.news.diplomacy.alliance_strengthened", {{"ruler", ruler.name}, {"target", targetFaction.name}}), "global", 2, "misc");
                 }
             }
         }
@@ -8174,7 +8174,7 @@ void processRulerDiplomacy() {
                     
                     faction.armies.push_back(army);
                     std::string targetName = g_world.regions.count(targetRegionId) ? g_world.regions[targetRegionId].name : targetRegionId;
-                    addNews("Снаряженная армия " + faction.name + " (" + std::to_string(armySize) + " воинов) выступила из " + homeRegion.name + " в поход на " + targetName + ".", homeRegionId, 4, "war");
+                    addNews(locStr("engine.news.warmy_deployed", {{"faction", faction.name}, {"size", std::to_string(armySize)}, {"origin", homeRegion.name}, {"target", targetName}}), homeRegionId, 4, "war");
                 }
             }
         }
@@ -9757,7 +9757,7 @@ void processDiplomacy() {
                             nfac.relations[fid] = std::max(-100, nfac.relations[fid] - 20);
                         }
                     }
-                    addNews("АГРЕССИЯ: Фракция " + f.name + " начала войну без повода! Мировое сообщество осуждает это.", "global", 5, "diplomacy");
+                    addNews(locStr("engine.news.war.unprovoked_aggression", {{"faction", f.name}}), "global", 5, "diplomacy");
                 }
             }
 
@@ -9780,7 +9780,7 @@ void processDiplomacy() {
                 f.warType = DiplomaticState::PEACE;
                 f.legitimacy -= 30;
                 f.warExhaustion = 0;
-                addNews("ПРИНУДИТЕЛЬНЫЙ МИР: Фракция " + f.name + " полностью истощена войной и капитулирует на условиях статус-кво.", "global", 5, "diplomacy");
+                addNews(locStr("engine.news.diplomacy.forced_peace", {{"faction", f.name}}), "global", 5, "diplomacy");
                 for (auto& [otherId, state] : f.diplomacy) {
                     if (state == "war") {
                         f.diplomacy[otherId] = "neutral";
@@ -9793,7 +9793,7 @@ void processDiplomacy() {
                     }
                 }
             } else if (f.warExhaustion >= 80 && (thread_safe_rand() % 100) < 10) {
-                addNews("ИСТОЩЕНИЕ: Фракция " + f.name + " умоляет о мире.", "global", 4, "diplomacy");
+                addNews(locStr("engine.news.diplomacy.exhaustion_peace", {{"faction", f.name}}), "global", 4, "diplomacy");
             }
         }
 
@@ -9803,7 +9803,7 @@ void processDiplomacy() {
                 f.activeWarGoal.deadlineDays--;
                 if (f.activeWarGoal.deadlineDays == 0 && !f.activeWarGoal.achieved && f.legitimacy > 50) {
                     f.warType = DiplomaticState::TOTAL_WAR;
-                    addNews("ТОТАЛЬНАЯ ВОЙНА: " + f.name + " не достигла целей ограниченной войны и бросает все силы в бой!", "global", 5, "war");
+                    addNews(locStr("engine.news.war.total_war", {{"faction", f.name}}), "global", 5, "war");
                 }
             }
         }
@@ -9819,7 +9819,7 @@ void processDiplomacy() {
                             issuer.warType = DiplomaticState::LIMITED_WAR;
                             issuer.diplomacy[fid] = "war";
                             f.diplomacy[issuer.id] = "war";
-                            addNews("УЛЬТИМАТУМ ОТВЕРГНУТ: " + issuer.name + " вступает в войну против " + f.name + "!", "global", 5, "diplomacy");
+                            addNews(locStr("engine.news.diplomacy.ultimatum_rejected_war", {{"issuer", issuer.name}, {"faction", f.name}}), "global", 5, "diplomacy");
                             
                             bool hasCoalition = false;
                             for (auto& c : issuer.coalitions) {
@@ -9832,10 +9832,10 @@ void processDiplomacy() {
                                 c.formedOnDay = g_world.current_day;
                                 c.members.push_back(issuer.id);
                                 issuer.coalitions.push_back(c);
-                                addNews("Сформирована коалиция против " + f.name + " во главе с " + issuer.name + ".", "global", 5, "diplomacy");
+                                addNews(locStr("engine.news.diplomacy.coalition_formed", {{"faction", f.name}, {"leader", issuer.name}}), "global", 5, "diplomacy");
                             }
                         } else {
-                            addNews("УЛЬТИМАТУМ ОТВЕРГНУТ: " + issuer.name + " грозит последствиями, но открытая война пока не начата.", "global", 4, "diplomacy");
+                            addNews(locStr("engine.news.diplomacy.ultimatum_rejected_threat", {{"issuer", issuer.name}}), "global", 4, "diplomacy");
                         }
                     }
                 }
@@ -9864,7 +9864,7 @@ void processDiplomacy() {
                                 u.demand = "stop_war";
                                 u.expiresDay = 7;
                                 f.ultimatums.push_back(u);
-                                addNews("УЛЬТИМАТУМ: " + nFac.name + " требует от " + f.name + " немедленно прекратить войну, иначе они вмешаются!", "global", 5, "diplomacy");
+                                addNews(locStr("engine.news.diplomacy.ultimatum_issued", {{"issuer", nFac.name}, {"faction", f.name}}), "global", 5, "diplomacy");
                             }
                         }
                     }
@@ -9884,7 +9884,7 @@ void processDiplomacy() {
                         if (nFac.relations[fid] > 40 && nFac.relations[enemyId] > 40 && (thread_safe_rand() % 100) < 2) {
                             f.warExhaustion = std::max(0, f.warExhaustion - 10);
                             g_world.factions[enemyId].warExhaustion = std::max(0, g_world.factions[enemyId].warExhaustion - 10);
-                            addNews("ПОСРЕДНИЧЕСТВО: " + nFac.name + " организовала мирные переговоры между " + f.name + " и " + g_world.factions[enemyId].name + ". Напряжение спадает.", "global", 4, "diplomacy");
+                            addNews(locStr("engine.news.diplomacy.mediation", {{"mediator", nFac.name}, {"faction1", f.name}, {"faction2", g_world.factions[enemyId].name}}), "global", 4, "diplomacy");
                         }
                     }
                 }
@@ -11022,7 +11022,7 @@ void processFactionTrade() {
                                 if (!caravan.path.empty()) { caravan.x = caravan.path[0].first; caravan.y = caravan.path[0].second; }
                             }
                             g_world.regions[capitalId].caravans.push_back(caravan);
-                            addNews("СНАБЖЕНИЕ: Фракция " + f.name + " отправила обоз с продовольствием в голодающий регион " + g_world.regions[rid].name + ".", rid, 2, "logistics");
+                            addNews(locStr("engine.news.logistics.supply_convoy", {{"faction", f.name}, {"region", g_world.regions[rid].name}}), rid, 2, "logistics");
                         }
                     }
                 }
@@ -11081,7 +11081,7 @@ void processFactionTrade() {
                         if (!caravan.path.empty()) { caravan.x = caravan.path[0].first; caravan.y = caravan.path[0].second; }
                     }
                     g_world.regions[sellerCapId].caravans.push_back(caravan);
-                    addNews("ГОСЗАКУПКА: Голодающая фракция " + f.name + " закупила " + std::to_string(buyAmount) + " продовольствия у " + g_world.factions[bestSellerId].name + " за " + std::to_string(cost) + " золота.", capitalId, 4, "trade");
+                    addNews(locStr("engine.news.trade.state_purchase", {{"faction", f.name}, {"amount", std::to_string(buyAmount)}, {"seller", g_world.factions[bestSellerId].name}, {"cost", std::to_string(cost)}}), capitalId, 4, "trade");
                 }
             }
         }
@@ -11124,7 +11124,7 @@ void processFactionTrade() {
                         f.relations[ofid] = std::min(100, f.relations[ofid] + 30);
                         g_world.factions[ofid].relations[fid] = std::min(100, g_world.factions[ofid].relations[fid] + 30);
                         
-                        addNews("ПОМОЩЬ: Фракция " + f.name + " отправила гуманитарный конвой с едой в страдающую от голода фракцию " + g_world.factions[ofid].name + ". Отношения значительно улучшились.", oCapId, 4, "diplomacy");
+                        addNews(locStr("engine.news.diplomacy.humanitarian_aid", {{"faction", f.name}, {"target", g_world.factions[ofid].name}}), oCapId, 4, "diplomacy");
                         // Лимит на одну фракцию снят, но чтобы не спамить караванами, помогаем максимум 2 фракциям за день
                         static int aid_count = 0;
                         aid_count++;

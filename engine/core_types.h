@@ -244,5 +244,28 @@ inline JsonValue parseJson(const std::string& s) {
 }
 
 inline std::string locStr(const std::string& key, const std::unordered_map<std::string, std::string>& replacements = {}) {
-    return key;
+    std::string json = "{\"loc_key\":\"" + key + "\"";
+    if (!replacements.empty()) {
+        json += ",\"loc_args\":{";
+        bool first = true;
+        for (const auto& [k, v] : replacements) {
+            if (!first) json += ",";
+            // Escape quotes and backslashes in values for JSON safety
+            std::string escaped;
+            for (char c : v) {
+                if (c == '"' || c == '\\') escaped += '\\';
+                escaped += c;
+            }
+            std::string escapedKey;
+            for (char c : k) {
+                if (c == '"' || c == '\\') escapedKey += '\\';
+                escapedKey += c;
+            }
+            json += "\"" + escapedKey + "\":\"" + escaped + "\"";
+            first = false;
+        }
+        json += "}";
+    }
+    json += "}";
+    return json;
 }

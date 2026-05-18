@@ -29,9 +29,9 @@
     "geminiApiKeyLabel": "Gemini API Key:",
     "llmostApiKeyLabel": "LLMost API Key:",
     "openrouterApiKeyLabel": "OpenRouter API Key:",
-		"deepseekApiKeyLabel": "DeepSeek API Key:",
-		"omnirouteApiKeyLabel": "OmniRoute API Key:",
-		"omnirouteBaseUrlLabel": "OmniRoute Base URL:",
+                "deepseekApiKeyLabel": "DeepSeek API Key:",
+                "omnirouteApiKeyLabel": "OmniRoute API Key:",
+                "omnirouteBaseUrlLabel": "OmniRoute Base URL:",
     "localUrlLabel": "URL Локального Сервера:",
     "localModelLabel": "Имя модели (ID):",
     "localModelWarning": "⚠️ ВНИМАНИЕ: Контекст игры достигает 100,000 токенов! Для локальных моделей требуется ОЧЕНЬ мощная видеокарта (от 16-24 ГБ VRAM).",
@@ -1253,5 +1253,53 @@
     "cart": "Тележка",
     "wagon": "Повозка",
     "ship": "Корабль"
+  },
+  "engine": {
+    "news": {
+      "magic_currents_changed": "Глобальные эфирные течения изменили свое направление. Маги по всему миру чувствуют беспокойство.",
+      "merchant_investment": "Успешный купец {merchant} вложил капитал в новое предприятие: {business}.",
+      "infrastructure": {
+        "dam_built": "ИНФРАСТРУКТУРА: Фракция {faction} построила Дамбу в {region}, укротив реку и осушив поймы под пашни.",
+        "aqueduct_built": "ИНФРАСТРУКТУРА: В {region} возведен величественный Акведук. Урожайность земель значительно возросла.",
+        "wells_built": "САНИТАРИЯ: В {region} построена сеть каменных колодцев, предотвращающая эпидемии.",
+        "road_built": "ИНФРАСТРУКТУРА: Инженеры {faction} проложили грандиозный тракт с мостами к изолированному региону {region}."
+      },
+      "naval": {
+        "sea_monster_battle": "БИТВА С ЧУДОВИЩЕМ: Военный корабль сражается с морским левиафаном!",
+        "sea_monster_killed": "ПОБЕДА: Морское чудовище убито военным флотом!",
+        "sea_monster_attacks_trade": "КАТАСТРОФА: Морское чудовище атакует торговое судно!",
+        "blockade_trade_blocked": "БЛОКАДА: Торговое судно не смогло войти в заблокированный порт {port} и сбросило груз в море.",
+        "trade_arrived": "МОРСКАЯ ТОРГОВЛЯ: Судно прибыло в порт {port}! Доставлено: {goods}. Выручка: {revenue} з. (Пошлина: {fee} з.)",
+        "ship_departed": "ФЛОТ: Торговое судно '{ship}' отбыло из {origin} в {dest} с грузом {cargo}"
+      },
+      "diplomacy": {
+        "defensive_pact": "ДИПЛОМАТИЯ: Опасаясь агрессии, {ruler} заключает оборонительный пакт с фракцией {ally}.",
+        "peace_treaty": "МИРНЫЙ ДОГОВОР: Истощенные долгой войной, {faction1} и {faction2} заключили перемирие.",
+        "trade_agreement": "ЭКОНОМИКА: {ruler} заключает выгодное торговое соглашение с {target}.",
+        "dynastic_marriage": "ДИНАСТИЧЕСКИЙ БРАК: Дома {faction1} и {faction2} объединились узами брака!",
+        "alliance_strengthened": "ДИПЛОМАТИЯ: {ruler} укрепляет союз с {target}.",
+        "forced_peace": "ПРИНУДИТЕЛЬНЫЙ МИР: Фракция {faction} полностью истощена войной и капитулирует на условиях статус-кво.",
+        "exhaustion_peace": "ИСТОЩЕНИЕ: Фракция {faction} умоляет о мире.",
+        "ultimatum_rejected_war": "УЛЬТИМАТУМ ОТВЕРГНУТ: {issuer} вступает в войну против {faction}!",
+        "coalition_formed": "Сформирована коалиция против {faction} во главе с {leader}.",
+        "ultimatum_rejected_threat": "УЛЬТИМАТУМ ОТВЕРГНУТ: {issuer} грозит последствиями, но открытая война пока не начата.",
+        "ultimatum_issued": "УЛЬТИМАТУМ: {issuer} требует от {faction} немедленно прекратить войну, иначе они вмешаются!",
+        "mediation": "ПОСРЕДНИЧЕСТВО: {mediator} организовала мирные переговоры между {faction1} и {faction2}. Напряжение спадает.",
+        "humanitarian_aid": "ПОМОЩЬ: Фракция {faction} отправила гуманитарный конвой с едой в страдающую от голода фракцию {target}. Отношения значительно улучшились."
+      },
+      "war": {
+        "war_declared": "ВОЙНА: {ruler} ({faction}) объявляет войну фракции {target}! Мотив: {motive}.",
+        "intrigue_launched": "ИНТРИГА: {ruler} запускает тайную операцию ({type}) против {target}!",
+        "unprovoked_aggression": "АГРЕССИЯ: Фракция {faction} начала войну без повода! Мировое сообщество осуждает это.",
+        "total_war": "ТОТАЛЬНАЯ ВОЙНА: {faction} не достигла целей ограниченной войны и бросает все силы в бой!"
+      },
+      "army_deployed": "Снаряженная армия {faction} ({size} воинов) выступила из {origin} в поход на {target}.",
+      "logistics": {
+        "supply_convoy": "СНАБЖЕНИЕ: Фракция {faction} отправила обоз с продовольствием в голодающий регион {region}."
+      },
+      "trade": {
+        "state_purchase": "ГОСЗАКУПКА: Голодающая фракция {faction} закупила {amount} продовольствия у {seller} за {cost} золота."
+      }
+    }
   }
 }

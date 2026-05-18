@@ -64,10 +64,22 @@ const ContainerRegistry = new Map();
 // Normalize container data from engine (engine sends 'item_ids', JS expects 'items')
 function normalizeContainer(cont) {
     if (!cont) return cont;
+    // Ensure items array always exists
     if (!cont.items && cont.item_ids) cont.items = cont.item_ids;
-    if (!cont.items) cont.items = [];
+    if (!Array.isArray(cont.items)) cont.items = [];
     if (!cont.item_ids) cont.item_ids = cont.items;
+    // Ensure other critical fields exist
+    if (!cont.lock_data) cont.lock_data = { is_locked: false, difficulty: 10, trap: null };
+    if (!cont.physical_props) cont.physical_props = {};
+    if (!cont.custom_props) cont.custom_props = {};
+    if (!cont.location) cont.location = {};
     return cont;
+}
+
+// Safe helper: get items array from container (never undefined)
+function getContainerItems(container) {
+    if (!container || !container.items) return [];
+    return Array.isArray(container.items) ? container.items : [];
 }
 
 // Safe setter that normalizes container data

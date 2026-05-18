@@ -29,9 +29,9 @@
     "geminiApiKeyLabel": "Gemini API Key:",
     "llmostApiKeyLabel": "LLMost API Key:",
     "openrouterApiKeyLabel": "OpenRouter API Key:",
-		"deepseekApiKeyLabel": "DeepSeek API Key:",
-		"omnirouteApiKeyLabel": "OmniRoute API Key:",
-		"omnirouteBaseUrlLabel": "OmniRoute Base URL:",
+                "deepseekApiKeyLabel": "DeepSeek API Key:",
+                "omnirouteApiKeyLabel": "OmniRoute API Key:",
+                "omnirouteBaseUrlLabel": "OmniRoute Base URL:",
     "localUrlLabel": "Local Server URL:",
     "localModelLabel": "Model Name (ID):",
     "localModelWarning": "⚠️ WARNING: Game context reaches 100,000 tokens! Local models require a VERY powerful GPU (16-24+ GB VRAM).",
@@ -1255,5 +1255,53 @@
     "cart": "Cart",
     "wagon": "Wagon",
     "ship": "Ship"
+  },
+  "engine": {
+    "news": {
+      "magic_currents_changed": "Global aether currents have shifted their direction. Mages across the world feel uneasy.",
+      "merchant_investment": "Successful merchant {merchant} invested capital in a new enterprise: {business}.",
+      "infrastructure": {
+        "dam_built": "INFRASTRUCTURE: Faction {faction} built a Dam in {region}, taming the river and draining floodplains for farmland.",
+        "aqueduct_built": "INFRASTRUCTURE: A magnificent Aqueduct was erected in {region}. Land fertility has significantly increased.",
+        "wells_built": "SANITATION: A network of stone wells was built in {region}, preventing epidemics.",
+        "road_built": "INFRASTRUCTURE: Engineers of {faction} built a grand highway with bridges to the isolated region of {region}."
+      },
+      "naval": {
+        "sea_monster_battle": "MONSTER BATTLE: A warship fights a sea leviathan!",
+        "sea_monster_killed": "VICTORY: The sea monster was slain by the navy!",
+        "sea_monster_attacks_trade": "DISASTER: A sea monster attacks a trade vessel!",
+        "blockade_trade_blocked": "BLOCKADE: A trade ship could not enter the blockaded port of {port} and dumped its cargo into the sea.",
+        "trade_arrived": "MARITIME TRADE: A vessel arrived at port {port}! Delivered: {goods}. Revenue: {revenue} g. (Port fee: {fee} g.)",
+        "ship_departed": "FLEET: Trade vessel '{ship}' departed from {origin} to {dest} with cargo {cargo}"
+      },
+      "diplomacy": {
+        "defensive_pact": "DIPLOMACY: Fearing aggression, {ruler} signs a defensive pact with faction {ally}.",
+        "peace_treaty": "PEACE TREATY: Exhausted by prolonged war, {faction1} and {faction2} have agreed to a ceasefire.",
+        "trade_agreement": "ECONOMY: {ruler} signs a lucrative trade agreement with {target}.",
+        "dynastic_marriage": "DYNASTIC MARRIAGE: Houses {faction1} and {faction2} are united in marriage!",
+        "alliance_strengthened": "DIPLOMACY: {ruler} strengthens the alliance with {target}.",
+        "forced_peace": "FORCED PEACE: Faction {faction} is completely exhausted by war and capitulates to the status quo.",
+        "exhaustion_peace": "EXHAUSTION: Faction {faction} begs for peace.",
+        "ultimatum_rejected_war": "ULTIMATUM REJECTED: {issuer} goes to war against {faction}!",
+        "coalition_formed": "A coalition against {faction} has been formed, led by {leader}.",
+        "ultimatum_rejected_threat": "ULTIMATUM REJECTED: {issuer} threatens consequences, but open war has not yet begun.",
+        "ultimatum_issued": "ULTIMATUM: {issuer} demands {faction} immediately cease hostilities, or they will intervene!",
+        "mediation": "MEDIATION: {mediator} organized peace talks between {faction1} and {faction2}. Tensions are easing.",
+        "humanitarian_aid": "AID: Faction {faction} sent a humanitarian food convoy to famine-stricken faction {target}. Relations significantly improved."
+      },
+      "war": {
+        "war_declared": "WAR: {ruler} ({faction}) declares war on faction {target}! Motive: {motive}.",
+        "intrigue_launched": "INTRIGUE: {ruler} launches a covert operation ({type}) against {target}!",
+        "unprovoked_aggression": "AGGRESSION: Faction {faction} started a war without provocation! The world community condemns this.",
+        "total_war": "TOTAL WAR: {faction} failed to achieve limited war objectives and throws all forces into battle!"
+      },
+      "army_deployed": "An army of {faction} ({size} warriors) marched from {origin} on campaign against {target}.",
+      "logistics": {
+        "supply_convoy": "SUPPLY: Faction {faction} sent a food convoy to the starving region of {region}."
+      },
+      "trade": {
+        "state_purchase": "STATE PURCHASE: Starving faction {faction} bought {amount} food from {seller} for {cost} gold."
+      }
+    }
   }
 }
