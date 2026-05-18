@@ -3,24 +3,24 @@
   "map_height": 256,
   "landform": "continent",
   "continent": {
-    "noise_frequency": 3.5,
-    "noise_octaves": 5,
-    "elevation_shift": 0.45,
+    "noise_frequency": 2.5,
+    "noise_octaves": 6,
+    "elevation_shift": 0.3,
     "edge_falloff_power": 2.0,
-    "edge_falloff_range": 0.55,
-    "edge_ocean_elevation": -0.6,
-    "min_land_ratio": 0.55,
+    "edge_falloff_range": 0.6,
+    "edge_ocean_elevation": -0.5,
+    "min_land_ratio": 0.5,
     "connectivity_pass": true,
-    "land_bridge_max_gap": 5,
-    "remove_islands_under": 100,
+    "land_bridge_max_gap": 4,
+    "remove_islands_under": 80,
     "smoothing_passes": 2
   },
   "rivers": {
     "noise_frequency": 3.0,
     "noise_octaves": 3,
-    "threshold_default": 0.025,
-    "threshold_plains": 0.04,
-    "threshold_mountains": 0.015
+    "threshold_default": 0.02,
+    "threshold_plains": 0.035,
+    "threshold_mountains": 0.012
   },
   "volcanoes": {
     "count": 5,

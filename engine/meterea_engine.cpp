@@ -11306,8 +11306,11 @@ void generateWorldMapTerrain(WorldMap& map, int seed) {
                         double detail = detail_noise.fbm(nx * 3.0, ny * 3.0, 5, 0.55, 2.0);
                         // Scale detail by distance from coast (more variation inland)
                         double land_factor = std::clamp((e + 0.05) / 0.3, 0.0, 1.0);
-                        e += detail * 0.55 * land_factor;
+                        e += detail * 0.35 * land_factor;
                     }
+
+                    // Clamp elevation to valid range for biome matching
+                    e = std::clamp(e, -1.0, 1.0);
 
                     elevation[y * map.width + x] = e;
 
@@ -11327,13 +11330,26 @@ void generateWorldMapTerrain(WorldMap& map, int seed) {
                             selected_biome = b.numeric_id;
                             break;
                         }
-                        if (!b.is_water && e >= b.min_elevation && e <= b.max_elevation) {
-                            double score = std::abs(e - (b.min_elevation + b.max_elevation) / 2.0);
-                            if (score < best_score) {
-                                best_score = score;
-                                selected_biome = b.numeric_id;
+                        // Fallback: match by elevation only (closest land biome)
+                        // Skip special biomes (ruins, river, etc.) with min_elev >= 2.0
+                        if (!b.is_water && b.min_elevation < 2.0) {
+                            double b_min = b.min_elevation;
+                            double b_max = b.max_elevation;
+                            // Extend mountain range upward to catch clamped high elevations
+                            if (b_max >= 0.9) b_max = 2.0;
+                            if (e >= b_min && e <= b_max) {
+                                double score = std::abs(e - (b.min_elevation + b.max_elevation) / 2.0);
+                                if (score < best_score) {
+                                    best_score = score;
+                                    selected_biome = b.numeric_id;
+                                }
                             }
                         }
+                    }
+                    // Ultimate fallback: high elevation → mountains, low → ocean
+                    if (selected_biome == 0 && e > 0.05) {
+                        uint8_t mtn_id = getBiomeIdByTag("mountain", 4);
+                        selected_biome = mtn_id;
                     }
                     map.grid[y * map.width + x].biome_id = selected_biome;
                 }

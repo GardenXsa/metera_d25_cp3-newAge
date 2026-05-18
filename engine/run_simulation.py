@@ -171,15 +171,6 @@ class SimulationApp(ctk.CTk):
         self.speed_lbl = ctk.CTkLabel(self.sidebar, text="Скорость: 500 мс/день", font=ctk.CTkFont(size=11))
         self.speed_lbl.pack(pady=(0, 10))
         
-        self.btn_realtime = ctk.CTkButton(self.sidebar, text="▶ Реал-тайм Симуляция", command=self.toggle_realtime, state="disabled", fg_color="#8e44ad", hover_color="#9b59b6")
-        self.btn_realtime.pack(fill="x", padx=15, pady=5)
-        
-        self.speed_var = ctk.IntVar(value=500)
-        self.speed_slider = ctk.CTkSlider(self.sidebar, from_=50, to=2000, variable=self.speed_var, command=self.update_speed)
-        self.speed_slider.pack(fill="x", padx=15, pady=5)
-        self.speed_lbl = ctk.CTkLabel(self.sidebar, text="Скорость: 500 мс/день", font=ctk.CTkFont(size=11))
-        self.speed_lbl.pack(pady=(0, 10))
-        
 
         self.btn_stop = ctk.CTkButton(self.sidebar, text="Остановить Движок", command=self.stop_engine, fg_color="#c0392b", hover_color="#e74c3c")
         self.btn_stop.pack(fill="x", padx=15, pady=20)
@@ -281,19 +272,52 @@ class SimulationApp(ctk.CTk):
             if self.world_data:
                 self.render_content()
 
+    def _load_json(self, path):
+        """Load a JSON file, return empty dict/list on failure."""
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[WARN] Failed to load {path}: {e}")
+            return {}
+
     def start_generation(self):
         if not self.engine.is_running:
             if not self.engine.start():
                 return
             self.engine.send({"command": "init"})
-            
-        self.status_lbl.configure(text="Генерация мира...", text_color="#f1c40f")
+
+        self.status_lbl.configure(text="Загрузка базы данных...", text_color="#f1c40f")
         self.progress_bar.configure(mode="indeterminate")
         self.progress_bar.start()
         self.btn_init.configure(state="disabled")
-        
-        self.pending_bootstrap = True # Флаг для запуска балансировки после генерации
-        
+
+        # Load all game data from JSON files (mirrors ModLoaderIntegration.js)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        data_dir = os.path.join(os.path.dirname(base_dir), 'data')
+
+        database = {
+            "command": "loadDatabase",
+            "items": self._load_json(os.path.join(data_dir, 'economy_items.json')),
+            "recipes": self._load_json(os.path.join(data_dir, 'economy_recipes.json')),
+            "facilities": self._load_json(os.path.join(data_dir, 'facility_names.json')),
+            "biomes": self._load_json(os.path.join(data_dir, 'biomes.json')),
+            "city_gen": self._load_json(os.path.join(data_dir, 'city_gen.json')),
+            "monsters": self._load_json(os.path.join(data_dir, 'monsters.json')),
+            "disasters": self._load_json(os.path.join(data_dir, 'disasters.json')),
+            "races": self._load_json(os.path.join(data_dir, 'races.json')),
+            "professions": self._load_json(os.path.join(data_dir, 'professions.json')),
+            "traits": self._load_json(os.path.join(data_dir, 'traits.json')),
+            "npc_names": self._load_json(os.path.join(data_dir, 'npc_names.json')),
+            "faction_relations": self._load_json(os.path.join(data_dir, 'faction_relations.json')),
+            "world_config": self._load_json(os.path.join(data_dir, 'world_config.json')),
+        }
+
+        # Send loadDatabase command (critical step that was missing!)
+        self.engine.send(database)
+
+        self.pending_bootstrap = True
+
         cmd = {
             "command": "buildWorld",
             "player_id": "sim_admin",
@@ -342,27 +366,6 @@ class SimulationApp(ctk.CTk):
         
         self.engine.send({"command": "simulateTicks", "ticks": ticks})
 
-    def update_speed(self, val):
-        speed = int(val)
-        self.speed_lbl.configure(text=f"Скорость: {speed} мс/день")
-        if getattr(self, 'realtime_active', False):
-            self.engine.send({"command": "startRealtime", "interval": speed})
-
-    def toggle_realtime(self):
-        if not getattr(self, 'realtime_active', False):
-            self.realtime_active = True
-            self.btn_realtime.configure(text="⏸ Остановить Реал-тайм", fg_color="#e74c3c", hover_color="#c0392b")
-            self.btn_sim.configure(state="disabled")
-            self.btn_init.configure(state="disabled")
-            self.engine.send({"command": "startRealtime", "interval": int(self.speed_var.get())})
-        else:
-            self.realtime_active = False
-            self.btn_realtime.configure(text="▶ Реал-тайм Симуляция", fg_color="#8e44ad", hover_color="#9b59b6")
-            self.btn_sim.configure(state="normal")
-            self.btn_init.configure(state="normal")
-            self.engine.send({"command": "stopRealtime"})
-            self.status_lbl.configure(text="Реал-тайм остановлен", text_color="#f39c12")
-
     def request_map(self):
         self.engine.send({"command": "getWorldMap"})
 
@@ -403,15 +406,12 @@ class SimulationApp(ctk.CTk):
         self.engine.stop()
 
         self.realtime_active = False
-        self.realtime_active = False
         self.status_lbl.configure(text="Движок остановлен", text_color="#e74c3c")
         self.progress_bar.stop()
         self.progress_bar.set(0)
         self.btn_init.configure(state="normal")
         self.btn_sim.configure(state="disabled")
 
-        if hasattr(self, 'btn_realtime'):
-            self.btn_realtime.configure(state="disabled", text="▶ Реал-тайм Симуляция", fg_color="#8e44ad")
         if hasattr(self, 'btn_realtime'):
             self.btn_realtime.configure(state="disabled", text="▶ Реал-тайм Симуляция", fg_color="#8e44ad")
 
@@ -423,16 +423,6 @@ class SimulationApp(ctk.CTk):
             self.progress_bar.stop()
             self.progress_bar.set(1)
 
-            
-            if data.get("status") == "realtime_update":
-                self.world_data = data.get("world", self.world_data)
-                self.status_lbl.configure(text=f"Реал-тайм: Тик {self.world_data.get('tick', 0)}", text_color="#8e44ad")
-                if self.current_filter == "map":
-                    self.render_map()
-                else:
-                    self.render_content()
-                return
-            
             # Если пришла только карта (от getWorldMap)
             if "map" in data and "world" not in data:
                 if self.world_data is None:
@@ -443,7 +433,7 @@ class SimulationApp(ctk.CTk):
                 return
 
             if data.get("status") == "realtime_update":
-                self.world_data = data["world"]
+                self.world_data = data.get("world", self.world_data)
                 self.status_lbl.configure(text=f"Реал-тайм: Тик {self.world_data.get('tick', 0)}", text_color="#8e44ad")
                 if self.current_filter == "map":
                     self.render_map()
