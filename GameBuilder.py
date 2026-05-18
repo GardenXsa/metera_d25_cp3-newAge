@@ -1,7 +1,9 @@
 import os
 import json
+import platform
 import subprocess
 import re
+import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
@@ -30,7 +32,7 @@ class GameBuilderApp(ctk.CTk):
             with open("package.json", "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return data.get("version", "1.0.0")
-        except:
+        except Exception:
             return "1.0.0"
 
     def setup_ui(self):
@@ -101,9 +103,12 @@ class GameBuilderApp(ctk.CTk):
     def convert_icon(self, source_path):
         target_path = os.path.join(self.project_path, "assets", "icon.ico")
         os.makedirs(os.path.dirname(target_path), exist_ok=True)
-        img = Image.open(source_path)
-        img = img.resize((256, 256), Image.Resampling.LANCZOS)
-        img.save(target_path, format='ICO', sizes=[(256, 256)])
+        try:
+            img = Image.open(source_path)
+            img = img.resize((256, 256), Image.Resampling.LANCZOS)
+            img.save(target_path, format='ICO', sizes=[(256, 256)])
+        except Exception as e:
+            raise Exception(f"Failed to convert icon: {e}. Make sure the image is a valid format (PNG, JPG, etc).")
         return target_path
 
     def update_package_json(self, version):
@@ -183,35 +188,32 @@ class GameBuilderApp(ctk.CTk):
             messagebox.showerror("Ошибка", "Выберите изображение для иконки!")
             return
 
+        self.btn_build.configure(state="disabled")
+        threading.Thread(target=self._run_build, args=(version, icon), daemon=True).start()
+
+    def _run_build(self, version, icon):
         try:
-            self.btn_build.configure(state="disabled")
-            
             if icon:
-                self.status_label.configure(text="📦 Конвертация иконки...", text_color="white")
-                self.update()
+                self.after(0, lambda: self.status_label.configure(text="📦 Конвертация иконки...", text_color="white"))
                 self.convert_icon(icon)
             
-            self.status_label.configure(text="📝 Обновление package.json...", text_color="white")
-            self.progress_bar.set(0.2)
-            self.update()
+            self.after(0, lambda: self.status_label.configure(text="📝 Обновление package.json...", text_color="white"))
+            self.after(0, lambda: self.progress_bar.set(0.2))
             self.update_package_json(version)
 
-            self.status_label.configure(text="⚙️ Настройка DEBUG_MODE...", text_color="white")
-            self.progress_bar.set(0.3)
-            self.update()
+            self.after(0, lambda: self.status_label.configure(text="⚙️ Настройка DEBUG_MODE...", text_color="white"))
+            self.after(0, lambda: self.progress_bar.set(0.3))
             self.update_script_debug_mode(self.debug_var.get())
 
-            self.status_label.configure(text="🔨 Компиляция C++ ядра (Nexus Engine)...", text_color="#3498db")
-            self.progress_bar.set(0.4)
-            self.update()
+            self.after(0, lambda: self.status_label.configure(text="🔨 Компиляция C++ ядра (Nexus Engine)...", text_color="#3498db"))
+            self.after(0, lambda: self.progress_bar.set(0.4))
             self.compile_engine()
 
-            self.status_label.configure(text="🏗️ Сборка пошла (может занять 2-5 минут)...", text_color="#f1c40f")
-            self.progress_bar.set(0.6)
-            self.update()
+            self.after(0, lambda: self.status_label.configure(text="🏗️ Сборка пошла (может занять 2-5 минут)...", text_color="#f1c40f"))
+            self.after(0, lambda: self.progress_bar.set(0.6))
 
             # Запуск npm run dist
-            process = subprocess.Popen("npm run dist", shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            process = subprocess.Popen(["npm", "run", "dist"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             
             for line in process.stdout:
                 print(line, end="") # Вывод в консоль для отладки
@@ -219,18 +221,24 @@ class GameBuilderApp(ctk.CTk):
             process.wait()
 
             if process.returncode == 0:
-                self.progress_bar.set(1.0)
-                self.status_label.configure(text="✅ ГОТОВО!", text_color="#2ecc71")
-                messagebox.showinfo("Успех", f"Сборка завершена успешно!\nРежим отладки: {'ВКЛ' if self.debug_var.get() else 'ВЫКЛ'}")
-                os.startfile(os.path.join(self.project_path, "dist"))
+                self.after(0, lambda: self.progress_bar.set(1.0))
+                self.after(0, lambda: self.status_label.configure(text="✅ ГОТОВО!", text_color="#2ecc71"))
+                self.after(0, lambda: messagebox.showinfo("Успех", f"Сборка завершена успешно!\nРежим отладки: {'ВКЛ' if self.debug_var.get() else 'ВЫКЛ'}"))
+                output_path = os.path.join(self.project_path, "dist")
+                if platform.system() == 'Windows':
+                    os.startfile(output_path)
+                elif platform.system() == 'Darwin':
+                    subprocess.Popen(['open', output_path])
+                else:
+                    subprocess.Popen(['xdg-open', output_path])
             else:
                 raise Exception("Electron-builder завершился с ошибкой. Проверь терминал.")
 
         except Exception as e:
-            self.status_label.configure(text="❌ ОШИБКА", text_color="#e74c3c")
-            messagebox.showerror("Ошибка билда", str(e))
+            self.after(0, lambda: self.status_label.configure(text="❌ ОШИБКА", text_color="#e74c3c"))
+            self.after(0, lambda: messagebox.showerror("Ошибка билда", str(e)))
         finally:
-            self.btn_build.configure(state="normal")
+            self.after(0, lambda: self.btn_build.configure(state="normal"))
 
 if __name__ == "__main__":
     app = GameBuilderApp()

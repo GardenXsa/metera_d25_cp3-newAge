@@ -1,5 +1,10 @@
 // --- ИНТЕРФЕЙС СОХРАНЕНИЙ (Отрисовка списков, Модальные окна) ---
 
+function escapeHTML(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 async function showLoadGameScreen() {
     await populateLoadGameScreen();
     setActiveScreen('load-game-screen');
@@ -70,12 +75,12 @@ function createSaveListItem(saveData) {
 
     li.innerHTML = `
         <div class="save-info">
-            <span class="slot-name">${slotDesc} - ${playerName} ${sourceInfo}</span>
-            <span class="save-time">${formattedDate}</span>
+            <span class="slot-name">${escapeHTML(slotDesc)} - ${escapeHTML(playerName)} ${escapeHTML(sourceInfo)}</span>
+            <span class="save-time">${escapeHTML(formattedDate)}</span>
         </div>
         <div class="save-actions">
-            <button class="load-button" data-type="${saveData.slotType}" data-id="${saveData.slotId}">${t('loadGame.loadButton')}</button>
-            <button class="delete-button" data-type="${saveData.slotType}" data-id="${saveData.slotId}">${t('loadGame.deleteButton')}</button>
+            <button class="load-button" data-type="${escapeHTML(saveData.slotType)}" data-id="${escapeHTML(saveData.slotId)}">${t('loadGame.loadButton')}</button>
+            <button class="delete-button" data-type="${escapeHTML(saveData.slotType)}" data-id="${escapeHTML(saveData.slotId)}">${t('loadGame.deleteButton')}</button>
         </div>
     `;
 
@@ -132,15 +137,15 @@ async function promptManualSave() {
             const file = currentSaves.find(f => f.filename.includes(`_manual_${i}.json`));
             if (file) {
                 const dateStr = file.timestamp ? new Date(file.timestamp).toLocaleString() : "Занято";
-                const name = file.playerData?.name || "Герой";
+                const name = escapeHTML(file.playerData?.name || "Герой");
                 const lvl = file.playerData?.stats?.level || "?";
-                existingInfo = `${name} (Ур.${lvl}) - ${dateStr}`;
+                existingInfo = `${name} (Ур.${lvl}) - ${escapeHTML(dateStr)}`;
             }
         } else {
             const save = currentSaves.find(s => s.slotId === i);
             if (save) {
                 const dateStr = new Date(save.timestamp).toLocaleString();
-                existingInfo = `${save.playerData.name} (Ур.${save.playerData.stats.level}) - ${dateStr}`;
+                existingInfo = `${escapeHTML(save.playerData.name)} (Ур.${save.playerData.stats.level}) - ${escapeHTML(dateStr)}`;
             }
         }
 
@@ -148,12 +153,18 @@ async function promptManualSave() {
 
         btn.innerHTML = `
             <span class="save-slot-id">Слот ${i}</span>
-            <span class="save-slot-info">${infoText}</span>
+            <span class="save-slot-info">${escapeHTML(infoText)}</span>
         `;
 
         btn.onclick = async () => {
             if (existingInfo) {
-                if (!confirm(`Перезаписать слот ${i}?\n(${infoText})`)) return;
+                const confirmMsg = `Перезаписать слот ${i}?\n(${infoText})`;
+                if (typeof showCustomConfirm === 'function') {
+                    const confirmed = await new Promise(resolve => showCustomConfirm(confirmMsg, () => resolve(true)));
+                    if (!confirmed) return;
+                } else {
+                    if (!confirm(confirmMsg)) return;
+                }
             }
 
             btn.innerHTML = `<span class="save-slot-info" style="text-align:center; width:100%; color:#f1c40f;"><i class="fas fa-spinner fa-spin"></i> Сохранение...</span>`;

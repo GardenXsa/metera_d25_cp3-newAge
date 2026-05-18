@@ -271,8 +271,11 @@ async function saveDirectoryHandleToDB(dirHandle) {
         request.onerror = () => reject(request.error);
     });
     const tx = db.transaction("handles", "readwrite");
-    await tx.objectStore("handles").put(dirHandle, "saveDirectory");
-    await tx.done;
+    tx.objectStore("handles").put(dirHandle, "saveDirectory");
+    await new Promise((resolve, reject) => {
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+    });
     console.log("Хэндл директории сохранен в IndexedDB.");
 }
 
@@ -286,8 +289,15 @@ async function getDirectoryHandleFromDB() {
             request.onerror = () => reject(request.error);
         });
         const tx = db.transaction("handles", "readonly");
-        const handle = await tx.objectStore("handles").get("saveDirectory");
-        await tx.done;
+        const handle = await new Promise((resolve, reject) => {
+            const req = tx.objectStore("handles").get("saveDirectory");
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+        await new Promise((resolve, reject) => {
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+        });
         if (handle) {
             console.log("Хэндл директории успешно загружен из IndexedDB.");
         }

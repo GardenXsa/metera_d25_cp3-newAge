@@ -2,8 +2,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
     isElectron: true,
-    // Generic invoke for flexibility
-    invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
 
     // Settings
     loadSettings: () => ipcRenderer.invoke('load-settings'),
@@ -30,10 +28,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readSaveChunk: (filename, position, size) => ipcRenderer.invoke('read-save-chunk', filename, position, size),
 
     speakText: (text, voiceModel) => ipcRenderer.invoke('speak-text', text, voiceModel),
-    sendGeminiRequest: (model, apiKey, contents) => ipcRenderer.invoke('gemini-request', model, apiKey, contents),
+    sendGeminiRequest: (model, contents) => ipcRenderer.invoke('gemini-request', model, contents),
     getSavePath: () => ipcRenderer.invoke('get-save-path')
 ,
-    onNexusHookRequest: (callback) => ipcRenderer.on('nexus-hook-request', (event, hook, world) => callback(hook, world)),
+    onNexusHookRequest: (callback) => {
+        const handler = (event, hook, world) => callback(hook, world);
+        ipcRenderer.on('nexus-hook-request', handler);
+        return () => ipcRenderer.removeListener('nexus-hook-request', handler);
+    },
     sendNexusHookResponse: (world) => ipcRenderer.invoke('nexus-hook-response', world),
     nexusRegisterHooks: (hooks) => ipcRenderer.invoke('nexus-register-hooks', hooks),
 
@@ -63,5 +65,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     nexusManageBusiness: (params) => ipcRenderer.invoke('nexus-manage-business', params)
 ,
     nexusSendRawCommand: (command, params) => ipcRenderer.invoke('nexus-send-raw-command', command, params),
-    onNexusProgress: (callback) => ipcRenderer.on('nexus-progress-update', (event, message) => callback(message))
+    onNexusProgress: (callback) => {
+        const handler = (event, message) => callback(message);
+        ipcRenderer.on('nexus-progress-update', handler);
+        return () => ipcRenderer.removeListener('nexus-progress-update', handler);
+    }
 });

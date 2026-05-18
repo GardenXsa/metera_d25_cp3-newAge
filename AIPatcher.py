@@ -66,7 +66,7 @@ class BackupManagerWindow(ctk.CTkToplevel):
                     with open(meta_path, 'r', encoding='utf-8') as f:
                         meta = json.load(f)
                         name = f"[{meta['timestamp']}] {meta['patch_name']}"
-                except: pass
+                except Exception: pass
 
             frame = ctk.CTkFrame(self.scroll_frame, fg_color=BG_COLOR)
             frame.pack(fill="x", pady=3, padx=5)
@@ -289,7 +289,11 @@ class AIPatcherPro(ctk.CTk):
 
     def paste(self):
         self.txt_json.delete("1.0", "end")
-        self.txt_json.insert("end", self.clipboard_get())
+        try:
+            text = self.clipboard_get()
+        except Exception:
+            text = ""
+        self.txt_json.insert("end", text)
 
     def clear(self):
         self.txt_json.delete("1.0", "end")
@@ -412,7 +416,7 @@ class AIPatcherPro(ctk.CTk):
                         res['suggestions'] = suggestions
                         raise ValueError("Текст для привязки не найден. ИИ сильно изменил код.")
 
-                if action == "replace": new_c = old_c.replace(actual_search, content)
+                if action == "replace": new_c = old_c.replace(actual_search, content, 1)
                 elif action == "insert_after": new_c = old_c.replace(actual_search, actual_search + "\n" + content)
                 elif action == "insert_before": new_c = old_c.replace(actual_search, content + "\n" + actual_search)
                 elif action == "delete": new_c = old_c.replace(actual_search, "")
@@ -756,16 +760,22 @@ class AIPatcherPro(ctk.CTk):
         with open(os.path.join(b_path, "patch_meta.json"), "w", encoding="utf-8") as f:
             json.dump({"timestamp": ts, "patch_name": self.current_patch_name}, f, ensure_ascii=False)
 
-        for p, content in self.memory_files.items():
-            if os.path.exists(p):
-                rel = os.path.relpath(p, os.getcwd())
-                bp = os.path.join(b_path, rel)
-                os.makedirs(os.path.dirname(bp), exist_ok=True)
-                shutil.copy2(p, bp)
-            
-            os.makedirs(os.path.dirname(p), exist_ok=True)
-            with open(p, 'w', encoding='utf-8') as f: 
-                f.write(content)
+        written_files = []
+        try:
+            for p, content in self.memory_files.items():
+                if os.path.exists(p):
+                    rel = os.path.relpath(p, os.getcwd())
+                    bp = os.path.join(b_path, rel)
+                    os.makedirs(os.path.dirname(bp), exist_ok=True)
+                    shutil.copy2(p, bp)
+                
+                os.makedirs(os.path.dirname(p), exist_ok=True)
+                with open(p, 'w', encoding='utf-8') as f: 
+                    f.write(content)
+                written_files.append(p)
+        except Exception as e:
+            messagebox.showerror("Ошибка применения", f"Запись прервана на файле:\n{p}\n\nОшибка: {e}\n\nУже записанные файлы ({len(written_files)}):\n" + "\n".join(written_files) + "\n\nВосстановите из бэкапа.")
+            return
             
         messagebox.showinfo("Успех", f"Патч '{self.current_patch_name}' успешно применен!")
         self.clear()

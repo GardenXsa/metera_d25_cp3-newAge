@@ -1,3 +1,8 @@
+function _escapeHTML(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 window.Cartographer = {
     mapContext: null,
     
@@ -24,8 +29,8 @@ window.Cartographer = {
             if (displayName === sub.type) {
                 displayName = typeof getFacilityName === 'function' ? getFacilityName(sub.type, typeof player !== 'undefined' && player ? player.era : 'rebirth') : sub.name;
             }
-            html += `<li class="location-poi-item" title="${sub.description || ''}" style="color: #bdc3c7; padding: 2px 0; list-style-type: none; position: relative;">`;
-            html += `<span style="color: #7f8c8d; margin-right: 4px;">${depth === 0 ? '›' : '└'}</span>${displayName}`;
+            html += `<li class="location-poi-item" title="${_escapeHTML(sub.description || '')}" style="color: #bdc3c7; padding: 2px 0; list-style-type: none; position: relative;">`;
+            html += `<span style="color: #7f8c8d; margin-right: 4px;">${depth === 0 ? '›' : '└'}</span>${_escapeHTML(displayName)}`;
             html += this.buildSubLocationsTreeHTML(sub.id, depth + 1);
             html += `</li>`;
         });
@@ -55,6 +60,9 @@ window.Cartographer = {
     currentFilter: 'none',
     filterCacheCanvas: null,
     animationFrameId: null,
+    _needsRender: false,
+    _politicalCache: null,
+    _politicalCacheKey: null,
     TILE_SIZE: 10,
 
         /**
@@ -168,11 +176,11 @@ window.Cartographer = {
                 if (monsterFound) {
                     this.hoveredMapPoint = { id: monsterFound.id, isMonster: true, x: monsterFound.lair_x, y: monsterFound.lair_y };
                     this.mapCanvas.style.cursor = 'pointer';
-                    let mHtml = `<h4 style="color:#e74c3c; border-bottom: 1px solid #e74c3c; margin:0 0 5px 0; padding-bottom:5px;"><i class="fas fa-skull"></i> ${monsterFound.name}</h4>`;
-                    mHtml += `<p style="color:#f1c40f; font-weight:bold; margin:0 0 5px 0; font-size:0.9em;">Угроза: Экстремальная (Ур. ${monsterFound.level})</p>`;
-                    mHtml += `<p style="margin:0 0 5px 0; color:#bdc3c7; font-size:0.9em;">Тип: ${monsterFound.type}</p>`;
+                    let mHtml = `<h4 style="color:#e74c3c; border-bottom: 1px solid #e74c3c; margin:0 0 5px 0; padding-bottom:5px;"><i class="fas fa-skull"></i> ${_escapeHTML(monsterFound.name)}</h4>`;
+                    mHtml += `<p style="color:#f1c40f; font-weight:bold; margin:0 0 5px 0; font-size:0.9em;">Угроза: Экстремальная (Ур. ${_escapeHTML(monsterFound.level)})</p>`;
+                    mHtml += `<p style="margin:0 0 5px 0; color:#bdc3c7; font-size:0.9em;">Тип: ${_escapeHTML(monsterFound.type)}</p>`;
                     mHtml += `<div style="width:100%; height:8px; background:rgba(0,0,0,0.5); border-radius:4px; margin-bottom:5px; border:1px solid #e74c3c;"><div style="height:100%; background:#e74c3c; border-radius:3px; width:${(monsterFound.health/monsterFound.maxHealth)*100}%;"></div></div>`;
-                    mHtml += `<p style="margin:0; font-size:0.85em; color:#ecf0f1;">Атака: <span style="color:#e74c3c">${monsterFound.attack}</span> | Защита: <span style="color:#3498db">${monsterFound.defense}</span></p>`;
+                    mHtml += `<p style="margin:0; font-size:0.85em; color:#ecf0f1;">Атака: <span style="color:#e74c3c">${_escapeHTML(monsterFound.attack)}</span> | Защита: <span style="color:#3498db">${_escapeHTML(monsterFound.defense)}</span></p>`;
                     this.mapTooltipElement.innerHTML = mHtml;
                     this.mapTooltipElement.style.display = 'block';
                     this.mapTooltipElement.style.opacity = '1';
@@ -239,7 +247,7 @@ window.Cartographer = {
                             residentsHtml = '<div style="margin-top: 8px; border-top: 1px dashed rgba(243, 229, 171, 0.4); padding-top: 5px;">';
                             residentsHtml += '<strong style="color: #f1c40f; font-size: 0.85em;">Известные жители:</strong><ul style="margin: 3px 0 0 0; padding-left: 15px; font-size: 0.85em; color: #ecf0f1;">';
                             displayedRes.forEach(res => {
-                                residentsHtml += `<li>${res.name}</li>`;
+                                residentsHtml += `<li>${_escapeHTML(res.name)}</li>`;
                             });
                             if (hiddenRes > 0) {
                                 residentsHtml += `<li style="color: #7f8c8d; font-style: italic; list-style-type: none;">...и ещё ${hiddenRes}</li>`;
@@ -259,7 +267,7 @@ window.Cartographer = {
                         let isPlayerFaction = false;
 
                         if (actualFactionId && World.factions && World.factions[actualFactionId]) {
-                            factionName = World.factions[actualFactionId].name;
+                            factionName = _escapeHTML(World.factions[actualFactionId].name);
                             if (World.factions[actualFactionId].rulerId === 'player') {
                                 factionName = "👑 [ВАША] " + factionName;
                                 isPlayerFaction = true;
@@ -271,14 +279,14 @@ window.Cartographer = {
                         }
                         
                         let popText = reg.population > 0 ? reg.population : "<span style='color:#e74c3c; font-style:italic;'>Заброшено</span>";
-                        let occText = reg.isOccupied ? `<div style="color:#e74c3c; font-weight:bold; margin-top:2px;">⚠️ Оккупировано (${reg.occupierFactionId})</div>` : '';
+                        let occText = reg.isOccupied ? `<div style="color:#e74c3c; font-weight:bold; margin-top:2px;">⚠️ Оккупировано (${_escapeHTML(reg.occupierFactionId)})</div>` : '';
                         
                         let armyText = '';
                         let armiesHere = [];
                         for (let fid in World.factions) {
                             World.factions[fid].armies.forEach(a => {
                                 if (a.location === pointFound.id || a.destination === pointFound.id) {
-                                    let aName = World.factions[fid].name;
+                                    let aName = _escapeHTML(World.factions[fid].name);
                                     if (World.factions[fid].rulerId === 'player') aName = "👑 Ваша армия";
                                     armiesHere.push(`${aName} (${a.size} чел.)`);
                                 }
@@ -316,7 +324,7 @@ window.Cartographer = {
                         }
                     }
 
-                    this.mapTooltipElement.innerHTML = `<h4>${pointFound.name}</h4><p>${pointFound.description || ''}</p>${statsHtml}${resourcesHtml}${subLocsHtml}${residentsHtml}`;
+                    this.mapTooltipElement.innerHTML = `<h4>${_escapeHTML(pointFound.name)}</h4><p>${_escapeHTML(pointFound.description || '')}</p>${statsHtml}${resourcesHtml}${subLocsHtml}${residentsHtml}`;
                     this.mapTooltipElement.style.display = 'block';
                     this.mapTooltipElement.style.opacity = '1';
 
@@ -572,12 +580,16 @@ window.Cartographer = {
         ctx.fillStyle = '#0a0a0a';
         ctx.fillRect(0, 0, this.bgCacheCanvas.width, this.bgCacheCanvas.height);
 
-        const colors = [
-            '#1a3b5c', '#2980b9', '#f5e6c8', '#2ecc71', '#27ae60',
-            '#7f8c8d', '#f39c12', '#e67e22', '#8e44ad', '#ecf0f1',
-            '#34495e', '#9b59b6', '#3498db', '#c0392b', '#3cb043',
-            '#1f618d', '#58d68d', '#d35400', '#555555'
-        ];
+        // Biome colors loaded from biomes.json data (synchronized with C++ engine)
+        // Previously hardcoded — this caused desync when biomes.json was modified
+        const colors = (typeof BIOME_COLORS !== 'undefined' && BIOME_COLORS.length > 0)
+            ? BIOME_COLORS
+            : [
+                '#1a3b5c', '#2980b9', '#f5e6c8', '#2ecc71', '#27ae60',
+                '#7f8c8d', '#f39c12', '#e67e22', '#8e44ad', '#ecf0f1',
+                '#34495e', '#9b59b6', '#3498db', '#c0392b', '#3cb043',
+                '#1f618d', '#58d68d', '#d35400', '#555555'
+            ];
 
         // Pass 1: Base terrain
         for (let y = 0; y < map.height; y++) {
@@ -704,31 +716,42 @@ window.Cartographer = {
 
         if (this.currentFilter === 'political') {
             // --- ПОЛИТИЧЕСКАЯ КАРТА (CIV 5 STYLE) ---
-            const ownership = new Array(map.width * map.height).fill(null);
-            const MAX_TERRITORY_RADIUS = 25; // Максимальный радиус владений от города
+            // TODO: Оптимизация O(n*m) — заменить на пре-компутированную диаграмму Вороного.
+            // Текущая реализация для каждого тайла перебирает все локации.
+            // Используем кэш, который пересчитывается только при изменении локаций.
+            const locsKey = JSON.stringify(locs.map(l => `${l.id}:${l.x}:${l.y}:${l.faction}`));
+            let ownership;
+            if (this._politicalCache && this._politicalCacheKey === locsKey) {
+                ownership = this._politicalCache;
+            } else {
+                ownership = new Array(map.width * map.height).fill(null);
+                const MAX_TERRITORY_RADIUS = 25; // Максимальный радиус владений от города
 
-            // 1. Определяем владельца каждого тайла
-            for (let y = 0; y < map.height; y++) {
-                for (let x = 0; x < map.width; x++) {
-                    const tileType = map.grid ? map.grid[y * map.width + x][0] : map.tiles[y * map.width + x];
-                    if (tileType === 0) continue; // Океаны (0) никому не принадлежат
+                // 1. Определяем владельца каждого тайла
+                for (let y = 0; y < map.height; y++) {
+                    for (let x = 0; x < map.width; x++) {
+                        const tileType = map.grid ? map.grid[y * map.width + x][0] : map.tiles[y * map.width + x];
+                        if (tileType === 0) continue; // Океаны (0) никому не принадлежат
 
-                    let nearestLoc = null;
-                    let minDist = Infinity;
-                    for (let i = 0; i < locs.length; i++) {
-                        const dx = locs[i].x - x;
-                        const dy = locs[i].y - y;
-                        const dist = Math.sqrt(dx*dx + dy*dy);
-                        if (dist < minDist) {
-                            minDist = dist;
-                            nearestLoc = locs[i];
+                        let nearestLoc = null;
+                        let minDist = Infinity;
+                        for (let i = 0; i < locs.length; i++) {
+                            const dx = locs[i].x - x;
+                            const dy = locs[i].y - y;
+                            const dist = Math.sqrt(dx*dx + dy*dy);
+                            if (dist < minDist) {
+                                minDist = dist;
+                                nearestLoc = locs[i];
+                            }
+                        }
+
+                        if (nearestLoc && minDist <= MAX_TERRITORY_RADIUS) {
+                            ownership[y * map.width + x] = nearestLoc.faction;
                         }
                     }
-
-                    if (nearestLoc && minDist <= MAX_TERRITORY_RADIUS) {
-                        ownership[y * map.width + x] = nearestLoc.faction;
-                    }
                 }
+                this._politicalCache = ownership;
+                this._politicalCacheKey = locsKey;
             }
 
             // Функция для получения цвета фракции
@@ -830,8 +853,34 @@ window.Cartographer = {
     /**
      * Главный цикл отрисовки карты. Комбинирует кэшированный фон, фильтры и динамические маркеры.
      */
+    /** Отмечает, что карту нужно перерисовать, и запускает RAF, если он не активен */
+    requestRender: function() {
+        this._needsRender = true;
+        if (!this.animationFrameId) {
+            this.animationFrameId = requestAnimationFrame(() => this.render());
+        }
+    },
+
+    /** Останавливает цикл отрисовки (вызывать при скрытии карты) */
+    stopRenderLoop: function() {
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+    },
+
     render: function() {
-        if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = null; // Сбрасываем — RAF сработал
+
+        if (!this._needsRender && this.mapState.isFollowingPlayer) {
+            // isFollowingPlayer нуждается в анимации для плавного следования
+        } else if (!this._needsRender) {
+            // Ничего не изменилось — не рисуем, но продолжаем RAF только для пульсации игрока
+            // Пульсация требует перерисовки, поэтому запускаем следующий кадр
+            this.animationFrameId = requestAnimationFrame(() => this.render());
+            return;
+        }
+        this._needsRender = false;
 
         if (!this.mapContext || !this.mapCanvas || typeof player === 'undefined' || !player) return;
 
@@ -1199,6 +1248,7 @@ window.Cartographer = {
                     this.mapState.offsetX = (width / 2) - ((playerPoint.x + 0.5) * this.TILE_SIZE * this.mapState.zoom);
                     this.mapState.offsetY = (height / 2) - ((playerPoint.y + 0.5) * this.TILE_SIZE * this.mapState.zoom);
                     this.isMapInitialized = true;
+                    this._needsRender = true;
                     this.animationFrameId = requestAnimationFrame(() => this.render());
                     return;
                 }
@@ -1227,7 +1277,12 @@ window.Cartographer = {
         }
 
         this.drawCompassRose(ctx, width - 30, 30, 15);
-        this.animationFrameId = requestAnimationFrame(() => this.render());
+
+        // Запускаем следующий кадр только если нужно (пульсация игрока / follow) или есть запрос
+        if (this.mapState.isFollowingPlayer || (typeof player !== 'undefined' && player.travel && player.travel.active)) {
+            this.animationFrameId = requestAnimationFrame(() => this.render());
+        }
+        // Если ничего не требует постоянной анимации — не планируем следующий кадр
     },
 
     /**
@@ -1255,7 +1310,7 @@ window.Cartographer = {
             displayableGlobalKeys.forEach(key => {
                 const loc = locationsData[key];
                 const li = document.createElement('li');
-                li.innerHTML = `<span class="location-name">${loc.name}</span>`;
+                li.innerHTML = `<span class="location-name">${_escapeHTML(loc.name)}</span>`;
                 
                 let resourcesHtml = '';
                 if (typeof World !== 'undefined' && World && World.regions && World.regions[key]) {
@@ -1267,7 +1322,7 @@ window.Cartographer = {
                 }
                 
                 if (loc.description) {
-                    li.innerHTML += `<span class="location-desc" title="${loc.description}">${loc.description}</span>`;
+                    li.innerHTML += `<span class="location-desc" title="${_escapeHTML(loc.description)}">${_escapeHTML(loc.description)}</span>`;
                 }
                 li.innerHTML += resourcesHtml;
                 li.innerHTML += this.buildSubLocationsTreeHTML(key);
@@ -1284,9 +1339,9 @@ window.Cartographer = {
                 markerEntries.sort(([, a], [, b]) => (a.name || '').localeCompare(b.name || ''));
                 markerEntries.forEach(([, marker]) => {
                     const li = document.createElement('li');
-                    li.innerHTML = `<span class="location-name">${marker.name}</span>`;
+                    li.innerHTML = `<span class="location-name">${_escapeHTML(marker.name)}</span>`;
                     if (marker.description) {
-                        li.innerHTML += `<span class="location-desc" title="${marker.description}">${marker.description}</span>`;
+                        li.innerHTML += `<span class="location-desc" title="${_escapeHTML(marker.description)}">${_escapeHTML(marker.description)}</span>`;
                     }
                     li.innerHTML += this.buildSubLocationsTreeHTML(marker.id);
                     customLocationsList.appendChild(li);

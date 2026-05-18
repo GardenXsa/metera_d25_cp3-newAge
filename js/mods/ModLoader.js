@@ -41,48 +41,141 @@ window.ModAPI = {
     customTranslations: {},
     initialized: false,
     isTotalConversion: false,
-    
+    apiVersion: '2.0',
+
+    // --- Lifecycle tracking: stores originals for rollback (Issue #2) ---
+    _originalFunctions: {},
+    _injectedStyles: [],
+    _injectedUI: [],
+
+    // --- HTML sanitizer (Issue #5) ---
+    _sanitizeHTML: function(html) {
+        // Remove script tags
+        html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+        // Remove on* event handlers
+        html = html.replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+        // Remove javascript: URLs
+        html = html.replace(/href\s*=\s*["']javascript:/gi, 'href="');
+        return html;
+    },
+
+    // --- Mod metadata validation (Issue #6) ---
+    _validateModMeta: function(modMeta) {
+        const errors = [];
+        if (!modMeta.id || typeof modMeta.id !== 'string') errors.push('Missing or invalid "id"');
+        if (!modMeta.name || typeof modMeta.name !== 'string') errors.push('Missing or invalid "name"');
+        if (!modMeta.version || typeof modMeta.version !== 'string') errors.push('Missing or invalid "version"');
+        if (modMeta.id && !/^[a-z0-9_]+$/.test(modMeta.id)) errors.push('"id" must be lowercase alphanumeric + underscore only');
+        if (modMeta.dependencies && !Array.isArray(modMeta.dependencies)) errors.push('"dependencies" must be an array');
+        if (modMeta.scripts && !Array.isArray(modMeta.scripts)) errors.push('"scripts" must be an array');
+        if (modMeta.total_conversion && typeof modMeta.total_conversion !== 'boolean') errors.push('"total_conversion" must be a boolean');
+        return errors;
+    },
+
     addCommand: function(commandName, handler, docs) {
         this.customCommands[commandName] = handler;
         if (docs) this.commandDocs.push(docs);
         console.log(`[ModAPI] Зарегистрирована кастомная ГМ команда: ${commandName}`);
     },
 
+    // Issue #4: addPromptInjection with validation and length limit
     addPromptInjection: function(text) {
+        if (typeof text !== 'string') {
+            console.error('[ModAPI] addPromptInjection: аргумент должен быть строкой');
+            return;
+        }
+        if (text.length > 2000) {
+            console.warn('[ModAPI] addPromptInjection: текст обрезан до 2000 символов');
+            text = text.substring(0, 2000);
+        }
         this.promptInjections.push(text);
         console.log(`[ModAPI] Добавлена инъекция в системный промпт ИИ.`);
     },
 
+    // Issue #10: Improved error message for patchFunction
+    // Issue #2: Store original function for rollback
     patchFunction: function(obj, funcName, patchCallback) {
-        if (!obj || typeof obj[funcName] !== 'function') {
-            console.error(`[ModAPI] Ошибка патчинга: функция ${funcName} не найдена.`);
+        if (!obj || typeof obj !== 'object' || typeof obj[funcName] !== 'function') {
+            console.error(`[ModAPI] Ошибка патчинга: первый аргумент должен быть объектом с функцией ${funcName}. Получен тип: ${typeof obj}`);
             return;
         }
         const original = obj[funcName];
+        // Store original for later rollback (Issue #2)
+        this._originalFunctions[funcName] = original;
         obj[funcName] = function(...args) {
             return patchCallback(original.bind(this), ...args);
         };
         console.log(`[ModAPI] Функция ${funcName} успешно пропатчена (Monkey-patch).`);
     },
 
+    // Issue #2: unpatchFunction - restore original function
+    unpatchFunction: function(obj, funcName) {
+        if (this._originalFunctions[funcName]) {
+            obj[funcName] = this._originalFunctions[funcName];
+            delete this._originalFunctions[funcName];
+            console.log(`[ModAPI] Функция ${funcName} восстановлена из оригинала.`);
+        } else {
+            console.warn(`[ModAPI] unpatchFunction: оригинал для ${funcName} не найден.`);
+        }
+    },
+
+    // Issue #5: addUI with HTML sanitization
+    // Issue #2: Track injected UI elements
     addUI: function(htmlString, targetSelector = 'body') {
         const target = document.querySelector(targetSelector);
         if (target) {
-            target.insertAdjacentHTML('beforeend', htmlString);
+            const sanitizedHTML = this._sanitizeHTML(htmlString);
+            target.insertAdjacentHTML('beforeend', sanitizedHTML);
+            // Track the last added element (Issue #2)
+            const addedElement = target.lastElementChild;
+            if (addedElement) {
+                this._injectedUI.push({ element: addedElement, targetSelector });
+            }
         } else {
             console.error(`[ModAPI] Селектор ${targetSelector} не найден для addUI.`);
         }
     },
 
-    addStyle: function(cssString) {
+    // Issue #12: addStyle accepts id parameter for tracking/removal
+    // Issue #2: Track injected style elements
+    addStyle: function(idOrCss, cssString) {
+        let id, css;
+        // Backward compatibility: if only one arg, treat as cssString with auto-generated id
+        if (cssString === undefined) {
+            id = `_mod_style_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            css = idOrCss;
+        } else {
+            id = idOrCss;
+            css = cssString;
+        }
+
+        // Remove existing style with same id if any
+        const existing = document.querySelector(`style[data-mod-style="${id}"]`);
+        if (existing) existing.remove();
+
         const style = document.createElement('style');
-        style.textContent = cssString;
+        style.setAttribute('data-mod-style', id);
+        style.textContent = css;
         document.head.appendChild(style);
+        this._injectedStyles.push({ id, element: style });
+    },
+
+    // Issue #2: removeStyle by id
+    removeStyle: function(id) {
+        const existing = document.querySelector(`style[data-mod-style="${id}"]`);
+        if (existing) existing.remove();
+        this._injectedStyles = this._injectedStyles.filter(s => s.id !== id);
     },
 
     registerHotkey: function(keyCombo, callback) {
         this.hotkeys[keyCombo.toLowerCase()] = callback;
         console.log(`[ModAPI] Зарегистрирован хоткей: ${keyCombo}`);
+    },
+
+    // Issue #2: unregisterHotkey
+    unregisterHotkey: function(keyCombo) {
+        delete this.hotkeys[keyCombo.toLowerCase()];
+        console.log(`[ModAPI] Удалён хоткей: ${keyCombo}`);
     },
 
     addPromptFilter: function(callback) {
@@ -100,11 +193,12 @@ window.ModAPI = {
         console.log(`[ModAPI] Зарегистрирован глобальный текстовый фильтр.`);
     },
 
+    // Issue #8: Log error instead of silently swallowing in applyTextFilters
     applyTextFilters: function(text) {
         if (!this.textFilters || this.textFilters.length === 0 || typeof text !== 'string') return text;
         let result = text;
         for (const filter of this.textFilters) {
-            try { result = filter(result) || result; } catch(e) {}
+            try { result = filter(result) || result; } catch(e) { console.error('[ModAPI] Ошибка в текстовом фильтре:', e); }
         }
         return result;
     },
@@ -133,6 +227,12 @@ window.ModAPI = {
         console.log(`[ModAPI] Мод ${modId} зарегистрирован в системе сохранений.`);
     },
 
+    // Issue #2: removeSaveHandler
+    removeSaveHandler: function(modId) {
+        delete this.saveHandlers[modId];
+        console.log(`[ModAPI] Удалён обработчик сохранений для мода: ${modId}`);
+    },
+
     sendRawToEngine: async function(command, args) {
         if (window.electronAPI && window.electronAPI.nexusSendRawCommand) {
             return await window.electronAPI.nexusSendRawCommand(command, args);
@@ -154,6 +254,7 @@ window.ModAPI = {
         }
     },
 
+    // Issue #5: addSettingsTab with HTML sanitization
     addSettingsTab: function(tabId, tabTitle, htmlContent) {
         const tabsContainer = document.querySelector('.settings-tabs');
         const contentContainer = document.querySelector('.settings-content');
@@ -170,7 +271,7 @@ window.ModAPI = {
         const content = document.createElement('div');
         content.id = tabId;
         content.className = 'settings-tab-content';
-        content.innerHTML = htmlContent;
+        content.innerHTML = this._sanitizeHTML(htmlContent);
 
         btn.addEventListener('click', () => {
             document.querySelectorAll('.settings-tab-btn').forEach(b => b.classList.remove('active'));
@@ -188,6 +289,13 @@ window.ModAPI = {
         if (!this.hooks[eventName]) this.hooks[eventName] = [];
         this.hooks[eventName].push(callback);
     },
+
+    // Issue #2: unregisterHook
+    unregisterHook: function(eventName, callback) {
+        if (this.hooks[eventName]) {
+            this.hooks[eventName] = this.hooks[eventName].filter(cb => cb !== callback);
+        }
+    },
     
     emit: async function(eventName, ...args) {
         if (this.hooks[eventName]) {
@@ -204,14 +312,79 @@ window.ModAPI = {
     readFile: async function(modId, fileName) {
         const mod = this.mods[modId];
         if (!mod || !window.electronAPI) return null;
-        const result = await window.electronAPI.invoke('mods-read-file', { modFolder: mod.folder, fileName });
+        // Use explicit channel instead of generic invoke
+        const result = await window.electronAPI.modsReadFile({ modFolder: mod.folder, fileName });
         if (result.success) return result.content;
         return null;
     },
     
+    // Issue #9: readJson wrapped in try/catch for invalid JSON
     readJson: async function(modId, fileName) {
-        const content = await this.readFile(modId, fileName);
-        return content ? JSON.parse(content) : null;
+        try {
+            const content = await this.readFile(modId, fileName);
+            return content ? JSON.parse(content) : null;
+        } catch (e) {
+            console.error(`[ModAPI] Ошибка чтения JSON ${fileName} из мода ${modId}:`, e);
+            return null;
+        }
+    },
+
+    // Issue #2: removeCommand
+    removeCommand: function(commandName) {
+        delete this.customCommands[commandName];
+        this.commandDocs = this.commandDocs.filter(d => d.name !== commandName);
+        console.log(`[ModAPI] Удалена кастомная ГМ команда: ${commandName}`);
+    },
+
+    // Issue #2: unloadMod - full cleanup for a specific mod
+    unloadMod: function(modId) {
+        const mod = this.mods[modId];
+        if (!mod) {
+            console.warn(`[ModAPI] unloadMod: мод ${modId} не найден.`);
+            return;
+        }
+
+        // Remove injected styles for this mod
+        // Styles registered with modId prefix pattern
+        const modStylePrefix = `${modId}_`;
+        this._injectedStyles = this._injectedStyles.filter(s => {
+            if (s.id && s.id.startsWith(modStylePrefix)) {
+                s.element.remove();
+                return false;
+            }
+            return true;
+        });
+
+        // Remove injected UI elements for this mod
+        this._injectedUI = this._injectedUI.filter(ui => {
+            if (ui.element && ui.element.dataset && ui.element.dataset.modOwner === modId) {
+                ui.element.remove();
+                return false;
+            }
+            return true;
+        });
+
+        // Remove save handler
+        this.removeSaveHandler(modId);
+
+        // Remove custom commands registered by this mod
+        if (mod._registeredCommands) {
+            for (const cmd of mod._registeredCommands) {
+                this.removeCommand(cmd);
+            }
+        }
+
+        // Remove hotkeys registered by this mod
+        if (mod._registeredHotkeys) {
+            for (const hk of mod._registeredHotkeys) {
+                this.unregisterHotkey(hk);
+            }
+        }
+
+        // Remove from mods registry
+        delete this.mods[modId];
+
+        console.log(`[ModAPI] Мод ${modId} полностью выгружен.`);
     },
     
     mergeDeep: mergeDeep
@@ -259,9 +432,53 @@ class ModLoader {
     }
 
     async initMods(activeMods) {
-        // RimWorld-style: Мы доверяем порядку, который передал UI (массив activeMods)
-        // UI уже отсортировал их и проверил зависимости.
+        // Issue #6: Validate mod metadata before loading
+        const validatedMods = [];
+        for (const mod of activeMods) {
+            const errors = window.ModAPI._validateModMeta(mod);
+            if (errors.length > 0) {
+                console.error(`[ModLoader] Мод "${mod.id || 'UNKNOWN}" не прошёл валидацию. Пропускаю. Ошибки: ${errors.join('; ')}`);
+                continue;
+            }
+            // Issue #7: API versioning check - warn but don't block
+            if (mod.apiVersion && mod.apiVersion !== window.ModAPI.apiVersion) {
+                console.warn(`[ModLoader] Мод ${mod.id} использует apiVersion "${mod.apiVersion}", текущая версия "${window.ModAPI.apiVersion}". Возможна несовместимость.`);
+            }
+            validatedMods.push(mod);
+        }
+        activeMods = validatedMods;
+
+        // Issue #11: Topological sort for dependency ordering
+        if (activeMods.length > 1) {
+            const adj = new Map();
+            const modIds = new Set(activeMods.map(m => m.id));
+            for (const mod of activeMods) {
+                const deps = (mod.dependencies || []).filter(d => modIds.has(d));
+                adj.set(mod.id, deps);
+            }
+            const { sorted, error } = this.topologicalSort(adj);
+            if (error) {
+                console.error(`[ModLoader] ${error}`);
+            } else {
+                // Reorder activeMods based on topological sort
+                const sortedMap = new Map(sorted.map((id, idx) => [id, idx]));
+                activeMods.sort((a, b) => (sortedMap.get(a.id) ?? 0) - (sortedMap.get(b.id) ?? 0));
+            }
+        }
+
         console.log('[ModLoader] Порядок загрузки модов:', activeMods.map(m => m.id));
+
+        // Issue #3: Check for multiple total_conversion mods
+        const totalConversionMods = activeMods.filter(m => m.total_conversion === true);
+        if (totalConversionMods.length > 1) {
+            console.error(`[ModLoader] ОШИБКА: Обнаружено ${totalConversionMods.length} модов тотальной конверсии! Только один может быть активен.`);
+            // Disable all but the first
+            const kept = totalConversionMods[0];
+            for (const m of totalConversionMods.slice(1)) {
+                console.error(`[ModLoader] Отключаю тотал-конверсию: ${m.id} (конфликтует с ${kept.id})`);
+                activeMods = activeMods.filter(a => a.id !== m.id);
+            }
+        }
 
         // Проверка на тотальную конверсию
         for (const mod of activeMods) {
@@ -286,10 +503,51 @@ class ModLoader {
                         const code = await window.ModAPI.readFile(modId, scriptPath);
                         if (code) {
                             console.log(`[ModLoader] Выполнение скрипта: ${scriptPath} из мода ${modId}`);
-                            // Оборачиваем код в асинхронную функцию для изоляции и поддержки await
+
+                            // Issue #1: Create restricted mod sandbox
+                            // SECURITY: AsyncFunction still has access to global scope via closures.
+                            // We mitigate by:
+                            // 1. Restricting `this` context to a sandbox object
+                            // 2. Only passing safe, vetted properties
+                            // 3. Explicitly NOT passing: fetch, XMLHttpRequest, WebSocket, 
+                            //    window.electronAPI, eval, Function, require, process, globalThis
+                            // 4. Running in strict mode to prevent accidental global leaks
+                            // For full isolation, Web Workers should be used in a future iteration.
+                            const modSandbox = Object.create(null);
+                            // Copy only safe properties — whitelist approach
+                            modSandbox.ModAPI = window.ModAPI;
+                            modSandbox.console = {
+                                log: console.log.bind(console),
+                                warn: console.warn.bind(console),
+                                error: console.error.bind(console),
+                                info: console.info.bind(console)
+                            };
+                            modSandbox.document = document; // mods need DOM for addUI
+                            modSandbox.Math = Math;
+                            modSandbox.Date = Date;
+                            modSandbox.JSON = JSON;
+                            modSandbox.Promise = Promise;
+                            modSandbox.setTimeout = setTimeout;
+                            modSandbox.setInterval = setInterval;
+                            modSandbox.clearTimeout = clearTimeout;
+                            modSandbox.clearInterval = clearInterval;
+                            modSandbox.Array = Array;
+                            modSandbox.Object = Object;
+                            modSandbox.String = String;
+                            modSandbox.Number = Number;
+                            modSandbox.Boolean = Boolean;
+                            modSandbox.Map = Map;
+                            modSandbox.Set = Set;
+                            modSandbox.Error = Error;
+                            modSandbox.RegExp = RegExp;
+                            // Explicitly NOT including: fetch, XMLHttpRequest, WebSocket, 
+                            // window, globalThis, eval, Function, require, process,
+                            // electronAPI, localStorage, sessionStorage
+
+                            // Execute mod in sandbox context with strict mode
                             const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
-                            const modFunc = new AsyncFunction('ModAPI', 'modId', 'modMeta', code);
-                            await modFunc(window.ModAPI, modId, mod);
+                            const modFunc = new AsyncFunction('ModAPI', 'modId', 'modMeta', '"use strict"; ' + code);
+                            await modFunc.call(modSandbox, window.ModAPI, modId, mod);
                         } else {
                             console.log(`[ModLoader] Скрипт ${scriptPath} пропущен (не найден в папке data/ мода ${modId}). Это нормально, если мод содержит только JSON.`);
                         }

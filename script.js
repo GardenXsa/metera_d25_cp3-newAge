@@ -696,7 +696,37 @@ const CoreInventorySystemAsync = {
         return await this.createContainer(type, actorId, 100, 20, { world_coords: [0,0,0], parent_entity: null, parent_container: null, region_id: location });
     }
 };
-const CoreInventorySystem = CoreInventorySystemAsync;
+// DEPRECATED: CoreInventorySystem alias removed.
+// Previously, this was: const CoreInventorySystem = CoreInventorySystemAsync;
+// This was DANGEROUS because callers used sync patterns (no await) on async functions,
+// causing silent failures (promises not awaited, operations silently dropped).
+// 
+// MIGRATION GUIDE:
+// - For code that NEEDS sync behavior (UI helpers, pure local calculations):
+//   Use OldCoreInventorySystem directly — it operates on local registries only.
+// - For code that NEEDS engine synchronization (persisting to C++ engine):
+//   Use CoreInventorySystemAsync and ALWAYS await the result.
+// - NEVER call CoreInventorySystemAsync methods without await.
+// - If you see "CoreInventorySystem" in code, replace it with either
+//   OldCoreInventorySystem (sync, local) or CoreInventorySystemAsync (async, networked).
+
+// Backward compatibility wrapper that warns when used without proper async handling
+const CoreInventorySystem = new Proxy(OldCoreInventorySystem, {
+    get(target, prop) {
+        if (prop in CoreInventorySystemAsync && typeof CoreInventorySystemAsync[prop] === 'function') {
+            // Return the async version but log a deprecation warning
+            const asyncFn = CoreInventorySystemAsync[prop];
+            return function(...args) {
+                console.warn(`[DEPRECATED] CoreInventorySystem.${prop}() called — this may return a Promise. Use CoreInventorySystemAsync.${prop}() with await instead.`);
+                const result = asyncFn.apply(this, args);
+                // If the result is a promise, the caller is likely not awaiting it
+                // This is a silent failure — we can't fix it here, only warn
+                return result;
+            };
+        }
+        return target[prop];
+    }
+});
 
 async function equipItemAsync(itemId, targetSlot = null) {
     if (!player || !player.container_backpack || !player.container_equipment) return null;
@@ -2580,6 +2610,21 @@ function generateWorldNews(text, location, importance, category) {
 }
 
 let World = null;
+// Defensive getter for World state — prevents null reference errors
+function getWorld() {
+    return World;
+}
+function setWorld(newWorld) {
+    World = newWorld;
+}
+function mutateWorld(mutator) {
+    if (!World) {
+        console.error('[State] Attempted to mutate null World. Call ignored.');
+        return false;
+    }
+    mutator(World);
+    return true;
+}
 
 // worldWorker удален, используется нативный C++ Nexus Engine
 
@@ -3096,6 +3141,23 @@ let currentLanguage = DEFAULT_LANGUAGE;
 let translations = {};
 
 let player = null;
+// Defensive getter for player state — prevents null reference errors
+// Usage: getPlayer()?.stats.hp instead of player?.stats.hp (same effect, but centralized)
+function getPlayer() {
+    return player;
+}
+function setPlayer(newPlayer) {
+    player = newPlayer;
+}
+function mutatePlayer(mutator) {
+    if (!player) {
+        console.error('[State] Attempted to mutate null player. Call ignored.');
+        return false;
+    }
+    mutator(player);
+    return true;
+}
+
 let conversationHistory = [];
 let isWaitingForAI = false;
 let currentCreationStats = {};

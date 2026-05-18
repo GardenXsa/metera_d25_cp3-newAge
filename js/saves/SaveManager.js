@@ -1,7 +1,48 @@
 // --- ЯДРО СИСТЕМЫ СОХРАНЕНИЙ (Логика, Таймеры, Сборка данных) ---
 
+let _saving = false; // Mutex-флаг для предотвращения гонки сохранений
+
+/**
+ * Обрабатывает один распарсенный блок сохранения.
+ * Выделено из трёх дублирующихся switch-блоков (Electron chunk loop, leftover, localStorage).
+ */
+function processSaveBlock(parsed, rawWorld) {
+    switch(parsed.block) {
+        case 'player': return { rawPlayer: parsed.data };
+        case 'history': return { rawHistory: parsed.data };
+        case 'item_registry': ItemRegistry.clear(); parsed.data.forEach(([k, v]) => ItemRegistry.set(k, v)); break;
+        case 'container_registry': ContainerRegistry.clear(); parsed.data.forEach(([k, v]) => setContainer(k, v)); break;
+        case 'world_base': Object.assign(rawWorld, parsed.data); break;
+        case 'world_regions': rawWorld.regions = parsed.data; break;
+        case 'world_factions': rawWorld.factions = parsed.data; break;
+        case 'world_npcs': rawWorld.npcs = parsed.data; break;
+        case 'world_rulers': rawWorld.rulers = parsed.data.rulers; rawWorld.intrigues = parsed.data.intrigues; break;
+        case 'world_businesses': rawWorld.businesses = parsed.data; break;
+        case 'world_ships': rawWorld.ships = parsed.data.ships; rawWorld.fleets = parsed.data.fleets; rawWorld.port_facilities = parsed.data.ports; break;
+        case 'world_monsters': rawWorld.monsters = parsed.data; break;
+        case 'world_sublocations': rawWorld.subLocations = parsed.data; break;
+        case 'world_map': rawWorld.map = parsed.data; break;
+        case 'world_trek': rawWorld.player_trek = parsed.data; break;
+        case 'world_misc': Object.assign(rawWorld, parsed.data); break;
+        case 'mod_data':
+            if (window.ModAPI && window.ModAPI.saveHandlers) {
+                for (const [modId, data] of Object.entries(parsed.data || {})) {
+                    try {
+                        if (window.ModAPI.saveHandlers[modId] && window.ModAPI.saveHandlers[modId].onLoad) {
+                            window.ModAPI.saveHandlers[modId].onLoad(data);
+                        }
+                    } catch(e) { console.error(`[ModAPI] Ошибка загрузки в моде ${modId}:`, e); }
+                }
+            }
+            break;
+    }
+    return {};
+}
+
 async function saveGame(slotType, slotId) {
-    if (isWaitingForAI || !player) return false;
+    if (_saving) return false;
+    _saving = true;
+    if (isWaitingForAI || !player) { _saving = false; return false; }
     showLoadingScreen('loadingScreen.saving', 'Подготовка к сохранению...');
     await yieldThread();
 
@@ -106,6 +147,8 @@ async function saveGame(slotType, slotId) {
         console.error(e);
         hideLoadingScreen();
         return false;
+    } finally {
+        _saving = false;
     }
 }
 
@@ -155,67 +198,19 @@ async function loadGame(slotType, slotId) {
                         updateLoadingText(`Читаем блок ${blockCount++}: ${parsed.block}...`);
                         await yieldThread();
 
-                        switch(parsed.block) {
-                            case 'player': rawPlayer = parsed.data; break;
-                            case 'history': rawHistory = parsed.data; break;
-                            case 'item_registry': ItemRegistry.clear(); parsed.data.forEach(([k, v]) => ItemRegistry.set(k, v)); break;
-                            case 'container_registry': ContainerRegistry.clear(); parsed.data.forEach(([k, v]) => setContainer(k, v)); break;
-                            case 'world_base': Object.assign(rawWorld, parsed.data); break;
-                            case 'world_regions': rawWorld.regions = parsed.data; break;
-                            case 'world_factions': rawWorld.factions = parsed.data; break;
-                            case 'world_npcs': rawWorld.npcs = parsed.data; break;
-                            case 'world_rulers': rawWorld.rulers = parsed.data.rulers; rawWorld.intrigues = parsed.data.intrigues; break;
-                            case 'world_businesses': rawWorld.businesses = parsed.data; break;
-                            case 'world_ships': rawWorld.ships = parsed.data.ships; rawWorld.fleets = parsed.data.fleets; rawWorld.port_facilities = parsed.data.ports; break;
-                            case 'world_monsters': rawWorld.monsters = parsed.data; break;
-                            case 'world_sublocations': rawWorld.subLocations = parsed.data; break;
-                            case 'world_map': rawWorld.map = parsed.data; break;
-                            case 'world_trek': rawWorld.player_trek = parsed.data; break;
-                            case 'world_misc': Object.assign(rawWorld, parsed.data); break;
-                            case 'mod_data':
-                                if (window.ModAPI && window.ModAPI.saveHandlers) {
-                                    for (const [modId, data] of Object.entries(parsed.data || {})) {
-                                        try {
-                                            if (window.ModAPI.saveHandlers[modId] && window.ModAPI.saveHandlers[modId].onLoad) {
-                                                window.ModAPI.saveHandlers[modId].onLoad(data);
-                                            }
-                                        } catch(e) { console.error(`[ModAPI] Ошибка загрузки в моде ${modId}:`, e); }
-                                    }
-                                }
-                                break;
-                        }
+                        const result = processSaveBlock(parsed, rawWorld);
+                        if (result.rawPlayer !== undefined) rawPlayer = result.rawPlayer;
+                        if (result.rawHistory !== undefined) rawHistory = result.rawHistory;
                     }
                 }
                 if (leftover.trim()) {
-                    const parsed = JSON.parse(leftover);
-                    switch(parsed.block) {
-                        case 'player': rawPlayer = parsed.data; break;
-                        case 'history': rawHistory = parsed.data; break;
-                        case 'item_registry': ItemRegistry.clear(); parsed.data.forEach(([k, v]) => ItemRegistry.set(k, v)); break;
-                        case 'container_registry': ContainerRegistry.clear(); parsed.data.forEach(([k, v]) => setContainer(k, v)); break;
-                        case 'world_base': Object.assign(rawWorld, parsed.data); break;
-                        case 'world_regions': rawWorld.regions = parsed.data; break;
-                        case 'world_factions': rawWorld.factions = parsed.data; break;
-                        case 'world_npcs': rawWorld.npcs = parsed.data; break;
-                        case 'world_rulers': rawWorld.rulers = parsed.data.rulers; rawWorld.intrigues = parsed.data.intrigues; break;
-                        case 'world_businesses': rawWorld.businesses = parsed.data; break;
-                        case 'world_ships': rawWorld.ships = parsed.data.ships; rawWorld.fleets = parsed.data.fleets; rawWorld.port_facilities = parsed.data.ports; break;
-                        case 'world_monsters': rawWorld.monsters = parsed.data; break;
-                        case 'world_sublocations': rawWorld.subLocations = parsed.data; break;
-                        case 'world_map': rawWorld.map = parsed.data; break;
-                        case 'world_trek': rawWorld.player_trek = parsed.data; break;
-                        case 'world_misc': Object.assign(rawWorld, parsed.data); break;
-                        case 'mod_data':
-                            if (window.ModAPI && window.ModAPI.saveHandlers) {
-                                for (const [modId, data] of Object.entries(parsed.data || {})) {
-                                    try {
-                                        if (window.ModAPI.saveHandlers[modId] && window.ModAPI.saveHandlers[modId].onLoad) {
-                                            window.ModAPI.saveHandlers[modId].onLoad(data);
-                                        }
-                                    } catch(e) { console.error(`[ModAPI] Ошибка загрузки в моде ${modId}:`, e); }
-                                }
-                            }
-                            break;
+                    try {
+                        const parsed = JSON.parse(leftover);
+                        const result = processSaveBlock(parsed, rawWorld);
+                        if (result.rawPlayer !== undefined) rawPlayer = result.rawPlayer;
+                        if (result.rawHistory !== undefined) rawHistory = result.rawHistory;
+                    } catch(e) {
+                        console.warn('[SaveManager] Не удалось распарсить остаток чанка:', e);
                     }
                 }
                 loadedSuccessfully = true;
@@ -229,35 +224,9 @@ async function loadGame(slotType, slotId) {
                     const parsed = JSON.parse(line);
                     updateLoadingText(`Читаем блок ${blockCount++}: ${parsed.block}...`);
                     await yieldThread();
-                    switch(parsed.block) {
-                        case 'player': rawPlayer = parsed.data; break;
-                        case 'history': rawHistory = parsed.data; break;
-                        case 'item_registry': ItemRegistry.clear(); parsed.data.forEach(([k, v]) => ItemRegistry.set(k, v)); break;
-                        case 'container_registry': ContainerRegistry.clear(); parsed.data.forEach(([k, v]) => setContainer(k, v)); break;
-                        case 'world_base': Object.assign(rawWorld, parsed.data); break;
-                        case 'world_regions': rawWorld.regions = parsed.data; break;
-                        case 'world_factions': rawWorld.factions = parsed.data; break;
-                        case 'world_npcs': rawWorld.npcs = parsed.data; break;
-                        case 'world_rulers': rawWorld.rulers = parsed.data.rulers; rawWorld.intrigues = parsed.data.intrigues; break;
-                        case 'world_businesses': rawWorld.businesses = parsed.data; break;
-                        case 'world_ships': rawWorld.ships = parsed.data.ships; rawWorld.fleets = parsed.data.fleets; rawWorld.port_facilities = parsed.data.ports; break;
-                        case 'world_monsters': rawWorld.monsters = parsed.data; break;
-                        case 'world_sublocations': rawWorld.subLocations = parsed.data; break;
-                        case 'world_map': rawWorld.map = parsed.data; break;
-                        case 'world_trek': rawWorld.player_trek = parsed.data; break;
-                        case 'world_misc': Object.assign(rawWorld, parsed.data); break;
-                        case 'mod_data':
-                            if (window.ModAPI && window.ModAPI.saveHandlers) {
-                                for (const [modId, data] of Object.entries(parsed.data || {})) {
-                                    try {
-                                        if (window.ModAPI.saveHandlers[modId] && window.ModAPI.saveHandlers[modId].onLoad) {
-                                            window.ModAPI.saveHandlers[modId].onLoad(data);
-                                        }
-                                    } catch(e) { console.error(`[ModAPI] Ошибка загрузки в моде ${modId}:`, e); }
-                                }
-                            }
-                            break;
-                    }
+                    const result = processSaveBlock(parsed, rawWorld);
+                    if (result.rawPlayer !== undefined) rawPlayer = result.rawPlayer;
+                    if (result.rawHistory !== undefined) rawHistory = result.rawHistory;
                 }
                 loadedSuccessfully = true;
             } else {

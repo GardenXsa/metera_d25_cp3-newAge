@@ -66,6 +66,18 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         database.world_config = await modLoader.readJsonFile('./data/world_config.json');
         // --- END REFACTOR ---
 
+        // --- BIOME COLOR SYNC ---
+        // Extract biome colors from biomes.json and expose as global BIOME_COLORS array.
+        // This ensures the JS Cartographer uses the same colors as the C++ engine,
+        // preventing biome color desync between clients and the map renderer.
+        if (Array.isArray(database.biomes)) {
+            window.BIOME_COLORS = database.biomes
+                .sort((a, b) => (a.numeric_id ?? 0) - (b.numeric_id ?? 0))
+                .map(b => b.color_hex || '#000000');
+            console.log(`[ModLoader] BIOME_COLORS synchronized from biomes.json (${window.BIOME_COLORS.length} biomes)`);
+        }
+        // --- END BIOME COLOR SYNC ---
+
         // Apply data-driven stats to JS constants (BASE_CLASS_STATS, RACE_MODIFIERS)
         if (typeof applyDatabaseStats === 'function' && database.races) {
             applyDatabaseStats(database.races);

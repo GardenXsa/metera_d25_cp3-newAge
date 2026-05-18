@@ -1,6 +1,7 @@
 import os
 import json
 import platform
+import re
 import subprocess
 import customtkinter as ctk
 from tkinter import messagebox
@@ -83,6 +84,8 @@ class ModKitApp(ctk.CTk):
         self.bind("<Control-s>", lambda e: self.save_file())
 
     def open_mods_folder(self):
+        if not os.path.exists(self.mods_dir):
+            os.makedirs(self.mods_dir, exist_ok=True)
         if platform.system() == "Windows":
             os.startfile(self.mods_dir)
         elif platform.system() == "Darwin":
@@ -166,6 +169,11 @@ class ModKitApp(ctk.CTk):
         if not mod_id: return
         
         mod_id = mod_id.strip().lower().replace(" ", "_")
+        
+        if not re.match(r'^[a-z][a-z0-9_]*$', mod_id):
+            messagebox.showerror("Error", "Mod ID must be lowercase alphanumeric + underscore, starting with a letter")
+            return
+        
         mod_path = os.path.join(self.mods_dir, mod_id)
         
         if os.path.exists(mod_path):
@@ -190,7 +198,7 @@ class ModKitApp(ctk.CTk):
             json.dump(meta, f, indent=4, ensure_ascii=False)
             
         with open(os.path.join(mod_path, "data", "main.js"), "w", encoding="utf-8") as f:
-            f.write("// Инициализация мода\nModAPI.on('onModsInitialized', async () => {\n    console.log('Мод " + mod_id + " успешно загружен!');\n    \n    // Пример хука: добавление предмета в БД\n    /*\n    ModAPI.on('onDatabaseLoad', async (db) => {\n        db.items['my_custom_sword'] = { basePrice: 500, category: 'weapon' };\n    });\n    */\n});\n")
+            f.write("// Инициализация мода\nModAPI.on('onModsInitialized', async () => {\n    console.log('Мод " + json.dumps(mod_id) + " успешно загружен!');\n    \n    // Пример хука: добавление предмета в БД\n    /*\n    ModAPI.on('onDatabaseLoad', async (db) => {\n        db.items['my_custom_sword'] = { basePrice: 500, category: 'weapon' };\n    });\n    */\n});\n")
             
         self.load_mods()
         self.select_mod(mod_id)
@@ -204,7 +212,11 @@ class ModKitApp(ctk.CTk):
         rel_path = dialog.get_input()
         if not rel_path: return
         
-        full_path = os.path.join(self.mods_dir, self.current_mod_id, rel_path)
+        mod_path = os.path.join(self.mods_dir, self.current_mod_id)
+        full_path = os.path.realpath(os.path.join(mod_path, rel_path))
+        if not full_path.startswith(os.path.realpath(mod_path)):
+            messagebox.showerror("Error", "Invalid file path")
+            return
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
         
         if not os.path.exists(full_path):

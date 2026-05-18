@@ -30,6 +30,24 @@ engine/raw_test.exe
 
 # Electron build artifacts
 dist/
-*.exeengine/*.lib
+*.exe
+engine/*.lib
 engine/*.pdb
 engine/meterea_engine.lib
+
+# IDE / Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Sensitive / personal files (should never be in repo)
+conversation-*.txt
+.env
+.env.*
+
+# OS artifacts
+desktop.ini
+
+# Claude Code settings (development tool)
+.claude/

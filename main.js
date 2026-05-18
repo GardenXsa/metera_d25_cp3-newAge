@@ -25,6 +25,7 @@ let engineProcess = null;
 let engineReady = false;
 let commandQueue = [];
 let currentResolve = null;
+let engineStartResolve = null;
 
 function getEnginePath() {
     const exeName = process.platform === 'win32' ? 'meterea_engine.exe' : 'meterea_engine';
@@ -64,6 +65,15 @@ function startEngine() {
 
             for (const line of lines) {
                 if (!line.trim()) continue;
+
+                // Detect engine ready signal during startup
+                if (!engineReady && engineStartResolve && line.toLowerCase().includes('ready')) {
+                    engineReady = true;
+                    const startResolve = engineStartResolve;
+                    engineStartResolve = null;
+                    startResolve({ status: 'ok', message: 'Engine started' });
+                }
+
                 try {
                     const response = JSON.parse(line);
                     
@@ -125,11 +135,23 @@ function startEngine() {
             reject(err);
         });
 
-        // Ждем немного чтобы процесс успел стартовать
+        // Wait for engine to signal readiness, with 10-second fallback timeout
+        let startResolved = false;
+        engineStartResolve = (result) => {
+            if (startResolved) return;
+            startResolved = true;
+            engineStartResolve = null;
+            resolve(result);
+        };
+
         setTimeout(() => {
-            engineReady = true;
-            resolve({ status: 'ok', message: 'Engine started' });
-        }, 500);
+            if (!startResolved) {
+                startResolved = true;
+                engineStartResolve = null;
+                engineReady = true;
+                resolve({ status: 'ok', message: 'Engine started (ready signal timeout)' });
+            }
+        }, 10000);
     });
 }
 
@@ -140,8 +162,27 @@ function sendCommand(command, params = {}) {
             return;
         }
 
-        const message = JSON.stringify({ command, ...params }) + '\n';
-        commandQueue.push({ message, resolve, reject });
+        const message = JSON.stringify({ command, params }) + '\n';
+
+        // 30-second timeout to prevent hanging promises
+        const timeoutId = setTimeout(() => {
+            // If this command is currently pending, clear it so queue can proceed
+            if (currentResolve === wrappedResolve) {
+                currentResolve = null;
+                processQueue();
+            }
+            // Remove from queue if not yet processed
+            const idx = commandQueue.findIndex(t => t.resolve === wrappedResolve);
+            if (idx !== -1) commandQueue.splice(idx, 1);
+            resolve({ status: 'error', message: 'Command timed out (30s)' });
+        }, 30000);
+
+        const wrappedResolve = (result) => {
+            clearTimeout(timeoutId);
+            resolve(result);
+        };
+
+        commandQueue.push({ message, resolve: wrappedResolve, reject });
         processQueue();
     });
 }
@@ -251,7 +292,12 @@ ipcMain.handle('nexus-init', async (event, forceRestart = false, activeMods = []
 
 
 ipcMain.handle('nexus-load-database', async (event, databaseString) => {
-    const dbObj = JSON.parse(databaseString);
+    let dbObj;
+    try {
+        dbObj = JSON.parse(databaseString);
+    } catch (e) {
+        return { status: 'error', message: 'Invalid JSON: ' + e.message };
+    }
     return await sendCommand('loadDatabase', dbObj);
 });
 
@@ -311,7 +357,18 @@ ipcMain.handle('nexus-manage-business', async (event, params) => {
     return await sendCommand('playerManageBusiness', params);
 });
 
+// Whitelist of allowed commands for nexus-send-raw-command (security: prevents arbitrary command execution)
+const ALLOWED_RAW_COMMANDS = new Set([
+    'getWorldMap',
+    'getGraphContext',
+    'getFullState'
+]);
+
 ipcMain.handle('nexus-send-raw-command', async (event, command, params) => {
+    if (!ALLOWED_RAW_COMMANDS.has(command)) {
+        console.error(`[Security] Blocked raw command: "${command}". Not in whitelist.`);
+        return { status: 'error', message: `Command "${command}" is not allowed. Use specific IPC handlers.` };
+    }
     return await sendCommand(command, params);
 });
 
@@ -324,8 +381,43 @@ function isSafeFileName(filename) {
 }
 
 const server = http.createServer((req, res) => {
-    let urlPath = decodeURI(req.url.split('?')[0]);
+    // Auth check: only allow requests from same origin (127.0.0.1)
+    const origin = req.headers.origin || req.headers.referer || '';
+    if (origin && !origin.includes(`127.0.0.1:${PORT}`)) {
+        res.statusCode = 403;
+        res.end('Forbidden');
+        return;
+    }
+
+    let urlPath;
+    try {
+        urlPath = decodeURI(req.url.split('?')[0]);
+    } catch (e) {
+        // Malformed URI (e.g. %E0%A4%A or other invalid percent-encoding)
+        res.statusCode = 400;
+        res.end('Bad Request');
+        return;
+    }
     let filePath = path.join(__dirname, urlPath === '/' ? 'index.html' : urlPath);
+
+    // Path traversal protection: ensure resolved path stays within __dirname
+    filePath = path.resolve(filePath);
+    if (!filePath.startsWith(path.resolve(__dirname))) {
+        res.statusCode = 403;
+        res.end('Forbidden');
+        return;
+    }
+
+    // Deny access to sensitive files
+    const basename = path.basename(filePath);
+    const SENSITIVE_FILES = new Set([
+        'settings.json', '.env', '.gitignore', 'conversation-', 'project_scan.txt'
+    ]);
+    if (SENSITIVE_FILES.has(basename) || filePath.includes('conversation-')) {
+        res.statusCode = 403;
+        res.end('Forbidden');
+        return;
+    }
 
     fs.readFile(filePath, (err, data) => {
         if (err) {
@@ -340,7 +432,11 @@ const server = http.createServer((req, res) => {
             '.jpeg': 'image/jpeg', '.mp3': 'audio/mpeg', '.wav': 'audio/wav'
         };
         res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
-        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Origin', `http://127.0.0.1:${PORT}`);
+        // Security headers
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('X-Frame-Options', 'DENY');
+        res.setHeader('X-XSS-Protection', '1; mode=block');
         res.end(data);
     });
 });
@@ -355,7 +451,7 @@ function createWindow () {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false,
+      ...(process.env.NODE_ENV === 'development' ? { webSecurity: false } : {}),
       preload: path.join(__dirname, 'preload.js')
     }
   });
@@ -607,24 +703,25 @@ ipcMain.handle('mods-open-folder', () => {
 });
 
 ipcMain.handle('mods-read-file', async (event, { modFolder, fileName }) => {
-    // Безопасность: Убедимся, что путь не выходит за пределы папки мода.
+    // Security: Normalize and resolve paths to prevent traversal
     const safeModFolder = path.normalize(modFolder).replace(/^(\.\.(\/|\\|$))+/, '');
     const safeFileName = path.normalize(fileName).replace(/^(\.\.(\/|\\|$))+/, '');
     
-            let fullPath = path.join(MODS_DIR, safeModFolder, safeFileName);
-        if (!fs.existsSync(fullPath)) {
-            // Fallback для старых модов, которые предполагали, что корень - это папка data
-            fullPath = path.join(MODS_DIR, safeModFolder, 'data', safeFileName);
-        }
+    let fullPath = path.join(MODS_DIR, safeModFolder, safeFileName);
+    if (!fs.existsSync(fullPath)) {
+        // Fallback for older mods that assumed the root was the data folder
+        fullPath = path.join(MODS_DIR, safeModFolder, 'data', safeFileName);
+    }
 
-        // Безопасность: Дважды проверим, что итоговый путь все еще внутри MODS_DIR
-        if (!fullPath.startsWith(path.join(MODS_DIR, safeModFolder))) {
+    // Security: Resolve the full path and verify it stays within MODS_DIR
+    const resolvedPath = path.resolve(fullPath);
+    if (!resolvedPath.startsWith(path.resolve(MODS_DIR))) {
         return { success: false, error: 'Access denied' };
     }
 
     try {
-        if (fs.existsSync(fullPath)) {
-            const content = await fs.promises.readFile(fullPath, 'utf-8');
+        if (fs.existsSync(resolvedPath)) {
+            const content = await fs.promises.readFile(resolvedPath, 'utf-8');
             return { success: true, content };
         } else {
             return { success: false, error: 'File not found (ENOENT)' };
@@ -705,23 +802,40 @@ ipcMain.handle('speak-text', async (event, text, voiceModel) => {
     });
 });
 
-ipcMain.handle('gemini-request', async (event, model, apiKey, contents) => {
+ipcMain.handle('gemini-request', async (event, model, contents) => {
     const { net } = require('electron');
     return new Promise((resolve, reject) => {
+        // Read API key from settings instead of accepting from renderer
+        let apiKey = '';
+        try {
+            if (fs.existsSync(SETTINGS_FILE)) {
+                const settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
+                apiKey = settings.geminiApiKey || settings.apiKey || '';
+            }
+        } catch (e) { /* ignore */ }
+        if (!apiKey) {
+            return reject(new Error('API key not configured in settings'));
+        }
+        // TODO: Make safety settings configurable via app settings.
+        // Current defaults are permissive; override via settings if needed.
+        const safetySettings = [ 
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }, 
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" }, 
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" }, 
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" } 
+        ];
         const requestBody = JSON.stringify({ 
             contents, 
             generationConfig: { maxOutputTokens: 8192, temperature: 0.8, topP: 0.95 }, 
-            safetySettings: [ 
-                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }, 
-                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" }, 
-                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" }, 
-                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" } 
-            ] 
+            safetySettings
         });
         const request = net.request({
             method: 'POST', protocol: 'https:', hostname: 'generativelanguage.googleapis.com',
-            path: `/v1beta/models/${model}:generateContent?key=${apiKey}`,
-            headers: { 'Content-Type': 'application/json' }
+            path: `/v1beta/models/${model}:generateContent`,
+            headers: { 
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey
+            }
         });
         request.on('response', (res) => {
             let body = '';

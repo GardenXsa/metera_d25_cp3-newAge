@@ -272,14 +272,30 @@ class SimulationApp(ctk.CTk):
             if self.world_data:
                 self.render_content()
 
-    def _load_json(self, path):
-        """Load a JSON file, return empty dict/list on failure."""
+    def _load_json(self, path, default=None):
+        """Load a JSON file. Returns `default` on failure.
+        
+        IMPORTANT: Array-type fields (recipes, biomes, monsters, disasters, races,
+        professions, traits) MUST use default=[] to prevent C++ engine crashes.
+        Object-type fields use default={} (the original behavior).
+        """
+        if default is None:
+            default = {}
         try:
             with open(path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
+                if not data:
+                    return default
+                return data
+        except FileNotFoundError:
+            print(f"[WARN] File not found: {path}")
+            return default
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] Invalid JSON in {path}: {e}")
+            return default
         except Exception as e:
             print(f"[WARN] Failed to load {path}: {e}")
-            return {}
+            return default
 
     def start_generation(self):
         if not self.engine.is_running:
@@ -293,24 +309,25 @@ class SimulationApp(ctk.CTk):
         self.btn_init.configure(state="disabled")
 
         # Load all game data from JSON files (mirrors ModLoaderIntegration.js)
+        # CRITICAL: Array fields MUST default to [] — returning {} causes C++ engine crash
         base_dir = os.path.dirname(os.path.abspath(__file__))
         data_dir = os.path.join(os.path.dirname(base_dir), 'data')
 
         database = {
             "command": "loadDatabase",
-            "items": self._load_json(os.path.join(data_dir, 'economy_items.json')),
-            "recipes": self._load_json(os.path.join(data_dir, 'economy_recipes.json')),
-            "facilities": self._load_json(os.path.join(data_dir, 'facility_names.json')),
-            "biomes": self._load_json(os.path.join(data_dir, 'biomes.json')),
-            "city_gen": self._load_json(os.path.join(data_dir, 'city_gen.json')),
-            "monsters": self._load_json(os.path.join(data_dir, 'monsters.json')),
-            "disasters": self._load_json(os.path.join(data_dir, 'disasters.json')),
-            "races": self._load_json(os.path.join(data_dir, 'races.json')),
-            "professions": self._load_json(os.path.join(data_dir, 'professions.json')),
-            "traits": self._load_json(os.path.join(data_dir, 'traits.json')),
-            "npc_names": self._load_json(os.path.join(data_dir, 'npc_names.json')),
-            "faction_relations": self._load_json(os.path.join(data_dir, 'faction_relations.json')),
-            "world_config": self._load_json(os.path.join(data_dir, 'world_config.json')),
+            "items": self._load_json(os.path.join(data_dir, 'economy_items.json'), {}),
+            "recipes": self._load_json(os.path.join(data_dir, 'economy_recipes.json'), []),
+            "facilities": self._load_json(os.path.join(data_dir, 'facility_names.json'), {}),
+            "biomes": self._load_json(os.path.join(data_dir, 'biomes.json'), []),
+            "city_gen": self._load_json(os.path.join(data_dir, 'city_gen.json'), {}),
+            "monsters": self._load_json(os.path.join(data_dir, 'monsters.json'), []),
+            "disasters": self._load_json(os.path.join(data_dir, 'disasters.json'), []),
+            "races": self._load_json(os.path.join(data_dir, 'races.json'), []),
+            "professions": self._load_json(os.path.join(data_dir, 'professions.json'), []),
+            "traits": self._load_json(os.path.join(data_dir, 'traits.json'), []),
+            "npc_names": self._load_json(os.path.join(data_dir, 'npc_names.json'), {}),
+            "faction_relations": self._load_json(os.path.join(data_dir, 'faction_relations.json'), {}),
+            "world_config": self._load_json(os.path.join(data_dir, 'world_config.json'), {}),
         }
 
         # Send loadDatabase command (critical step that was missing!)
