@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)",
+      "Bash(git config:*)",
+      "Bash(git count-objects:*)",
+      "Bash(g++ -std=c++17 -O2 -o meterea_engine.exe meterea_engine.cpp)",
+      "Bash(py:*)"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+    "id": "neon_abyss",
+    "name": "Neon Abyss (Cyberpunk Overhaul)",
+    "version": "1.0.0",
+    "author": "MrKins",
+    "description": "Тотальная конверсия. Превращает фэнтези Метеры в мрачный подземный киберпанк. Добавляет неон, импланты, хакерство и корпорации.",
+    "dependencies": ["base_game"],
+    "scripts": ["main.js"],
+    "data": {
+        "items": ["data/items.json"],
+        "locations": ["data/locations.json"]
+    }
+}

@@ -1,0 +1,11 @@
+[
+  { "id": "greedy", "name": "Жадный", "personality_bias": { "greed": 20 } },
+  { "id": "cowardly", "name": "Трусливый", "personality_bias": { "aggression": -20, "loyalty": -10 } },
+  { "id": "brave", "name": "Храбрый", "personality_bias": { "aggression": 15, "loyalty": 10 } },
+  { "id": "lustful", "name": "Похотливый", "personality_bias": { "lust": 25 } },
+  { "id": "humble", "name": "Смиренный", "personality_bias": { "greed": -15, "sociability": 5 } },
+  { "id": "romantic", "name": "Романтичный", "personality_bias": { "lust": 10, "sociability": 10 } },
+  { "id": "cruel", "name": "Жестокий", "personality_bias": { "aggression": 20, "sociability": -10 } },
+  { "id": "kind", "name": "Добрый", "personality_bias": { "aggression": -15, "sociability": 15, "loyalty": 5 } },
+  { "id": "pervert", "name": "Извращенец", "personality_bias": { "lust": 30, "sociability": -5 } }
+]

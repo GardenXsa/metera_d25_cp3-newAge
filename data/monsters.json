@@ -1,0 +1,42 @@
+[
+  { 
+    "id": "dragon", 
+    "name": "Древний Дракон", 
+    "base_hp": 1000, 
+    "base_attack": 50, 
+    "base_defense": 30,
+    "spawn_biome_tag": "mountain",
+    "corrupt_biome_to": "ash",
+    "loot_table_id": "dragon_hoard" 
+  },
+  { 
+    "id": "kraken", 
+    "name": "Кракен Бездны", 
+    "base_hp": 1200, 
+    "base_attack": 60, 
+    "base_defense": 20,
+    "spawn_biome_tag": "ocean",
+    "corrupt_biome_to": "shallow_water",
+    "loot_table_id": "kraken_hoard" 
+  },
+  { 
+    "id": "lich_king", 
+    "name": "Король-Лич", 
+    "base_hp": 800, 
+    "base_attack": 70, 
+    "base_defense": 40,
+    "spawn_biome_tag": "ruins",
+    "corrupt_biome_to": "swamp",
+    "loot_table_id": "undead_hoard" 
+  },
+  { 
+    "id": "fire_elemental", 
+    "name": "Лорд Ифритов", 
+    "base_hp": 900, 
+    "base_attack": 80, 
+    "base_defense": 10,
+    "spawn_biome_tag": "desert",
+    "corrupt_biome_to": "volcano",
+    "loot_table_id": "fire_hoard" 
+  }
+]

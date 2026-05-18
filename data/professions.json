@@ -1,0 +1,96 @@
+[
+  {
+    "id": "blacksmith",
+    "name": "Кузнец",
+    "profession_type": "artisan",
+    "tool_tag": "hammer",
+    "tool_chance": 5
+  },
+  {
+    "id": "farmer",
+    "name": "Фермер",
+    "profession_type": "farmer",
+    "tool_tag": "sickle",
+    "tool_chance": 5
+  },
+  {
+    "id": "guard",
+    "name": "Стражник",
+    "profession_type": "mercenary"
+  },
+  {
+    "id": "merchant",
+    "name": "Торговец",
+    "profession_type": "merchant"
+  },
+  {
+    "id": "mage",
+    "name": "Маг",
+    "profession_type": "mage"
+  },
+  {
+    "id": "innkeeper",
+    "name": "Трактирщик",
+    "profession_type": "innkeeper"
+  },
+  {
+    "id": "courier",
+    "name": "Курьер",
+    "profession_type": "farmer"
+  },
+  {
+    "id": "clerk",
+    "name": "Клерк",
+    "profession_type": "farmer"
+  },
+  {
+    "id": "weaver",
+    "name": "Ткач",
+    "profession_type": "artisan"
+  },
+  {
+    "id": "baker",
+    "name": "Пекарь",
+    "profession_type": "artisan"
+  },
+  {
+    "id": "jeweler",
+    "name": "Ювелир",
+    "profession_type": "artisan"
+  },
+  {
+    "id": "astronomer",
+    "name": "Астроном",
+    "profession_type": "gatherer"
+  },
+  {
+    "id": "hunter",
+    "name": "Охотник",
+    "profession_type": "farmer"
+  },
+  {
+    "id": "beekeeper",
+    "name": "Пчеловод",
+    "profession_type": "farmer"
+  },
+  {
+    "id": "shipwright",
+    "name": "Корабел",
+    "profession_type": "shipwright"
+  },
+  {
+    "id": "fisherman",
+    "name": "Рыбак",
+    "profession_type": "fisherman"
+  },
+  {
+    "id": "sailor",
+    "name": "Матрос",
+    "profession_type": "sailor"
+  },
+  {
+    "id": "pirate",
+    "name": "Пират",
+    "profession_type": "pirate"
+  }
+]

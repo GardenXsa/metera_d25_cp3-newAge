@@ -1,0 +1,112 @@
+async function initModKit() {
+    if (window.ModAPI && window.ModAPI.initialized) return;
+    console.log('[ModKit] Инициализация глобального API модов...');
+    const modLoader = new ModLoader();
+    
+    if (!window.electronAPI || !window.electronAPI.isElectron) {
+        if (window.ModAPI) window.ModAPI.initialized = true;
+        return;
+    }
+
+    const modsResponse = await window.electronAPI.modsGetList();
+    if (!modsResponse.success) return;
+    
+    const settings = await window.electronAPI.loadSettings();
+    const activeIds = (settings && settings.mods) ? settings.mods.active : ['base_game'];
+    const activeMods = modsResponse.mods.filter(m => activeIds.includes(m.id) && !m.error);
+    
+    // Настройка моста между C++ хуками и JS модами
+    if (window.electronAPI && window.electronAPI.onNexusHookRequest) {
+        window.electronAPI.onNexusHookRequest(async (hook, world) => {
+            // Передаем состояние мира модам для модификации
+            await window.ModAPI.emit(hook, world);
+            // Возвращаем измененный мир обратно в C++ ядро, чтобы оно продолжило симуляцию
+            await window.electronAPI.sendNexusHookResponse(world);
+        });
+    }
+
+    await modLoader.initMods(activeMods);
+    window.ModAPI.initialized = true;
+}
+
+async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoadMode = false) {
+    if (window.isSimulatorInitialized) return typeof World !== 'undefined' ? World : null;
+    
+    if (typeof showLoadingScreen === 'function') {
+        showLoadingScreen('loadingScreen.generatingWorld', 'Инициализация симулятора (с модами)...');
+    }
+
+    try {
+        if (typeof initModKit === 'function') await initModKit();
+
+        const modLoader = new ModLoader();
+        let database = { items: {}, recipes: [], facilities: {} };
+        if (window.ModAPI && window.ModAPI.isTotalConversion) {
+            console.log('[ModLoader] Тотальная конверсия: пропуск загрузки ванильной БД (items, recipes, facilities).');
+        } else {
+            database.items = await modLoader.readJsonFile('./data/economy_items.json');
+            database.recipes = await modLoader.readJsonFile('./data/economy_recipes.json');
+            database.facilities = await modLoader.readJsonFile('./data/facility_names.json');
+        }
+
+        
+        // --- DATA-DRIVEN REFACTOR ---
+        // Load all game data from JSON files.
+        database.biomes = await modLoader.readJsonFile('./data/biomes.json');
+        database.city_gen = await modLoader.readJsonFile('./data/city_gen.json');
+        database.monsters = await modLoader.readJsonFile('./data/monsters.json');
+        database.disasters = await modLoader.readJsonFile('./data/disasters.json');
+        // --- END REFACTOR ---
+
+        await window.ModAPI.emit('onDatabaseLoad', database);
+
+        console.log('[ModLoader] База данных собрана. Инициализация C++ ядра...');
+        
+        const activeModIds = Object.keys(window.ModAPI.mods);
+        const initResult = await window.electronAPI.nexusInit(true, activeModIds);
+        if (initResult.status !== 'ok') {
+            throw new Error(`Nexus Engine init failed: ${initResult.message}`);
+        }
+
+        console.log('[ModLoader] Ядро запущено. Загрузка базы данных...');
+        
+        // --- DATA-DRIVEN REFACTOR ---
+        // Send the entire database as a single stringified JSON.
+        const databaseString = JSON.stringify(database);
+        const loadDbResult = await window.electronAPI.nexusLoadDatabase(databaseString);
+        // --- END REFACTOR ---
+
+        if (loadDbResult.status !== 'ok') {
+            throw new Error(`Failed to load database into engine: ${loadDbResult.message}`);
+        }
+
+        window.isSimulatorInitialized = true;
+
+        if (isLoadMode) {
+            return typeof World !== 'undefined' ? World : null;
+        }
+
+        if (typeof showLoadingScreen === 'function') {
+            showLoadingScreen('loadingScreen.generatingWorld', 'Построение мира...');
+        }
+        
+        const buildResult = await window.electronAPI.nexusBuildWorld(player.id, player.era, initialAgents, globalLocations, startDay);
+        if (buildResult.status !== 'ok') throw new Error(`World build failed: ${buildResult.message}`);
+        
+        let newWorld = buildResult.world;
+        if (newWorld) {
+            Object.values(newWorld.regions || {}).forEach(r => {
+                if (r.vault_id) ContainerRegistry.set(r.vault_id, { id: r.vault_id, type: 'faction_vault', items: [], owner_id: r.factionId, max_weight_kg: 999999, max_slots: 1000 });
+            });
+        }
+        return newWorld;
+
+    } catch (error) {
+        console.error("CRITICAL: World simulator initialization failed:", error);
+        if (typeof showAiErrorModal === 'function') {
+            showAiErrorModal(error.message, true, null, "Ошибка инициализации ядра");
+        }
+        window.isSimulatorInitialized = false;
+        return null;
+    }
+}

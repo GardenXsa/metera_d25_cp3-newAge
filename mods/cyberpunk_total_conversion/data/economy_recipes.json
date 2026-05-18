@@ -1,0 +1,7 @@
+[
+    { "facility": "scrapper_bench", "inputs": { "scrap_metal": 3 }, "outputs": { "spare_parts": 1 } },
+    { "facility": "chem_lab", "inputs": { "biowaste": 2 }, "outputs": { "basic_chemicals": 1 } },
+    { "facility": "chem_lab", "inputs": { "basic_chemicals": 1, "spare_parts": 1 }, "outputs": { "stim_pack_basic": 1 } },
+    { "facility": "tech_foundry", "inputs": { "spare_parts": 5, "broken_electronics": 2 }, "outputs": { "drone_chassis": 1 } },
+    { "facility": "net_hub", "inputs": { "code_fragments": 3, "broken_electronics": 1 }, "outputs": { "icepick_software": 1 } }
+]

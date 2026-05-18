@@ -1,0 +1,24 @@
+{
+  "faction_biome_preference": {
+    "khazadrim": "mountains",
+    "sylvanesti": "forest",
+    "greencode": "forest",
+    "gronnar": "desert",
+    "consortium": "coast",
+    "aquilon": "plains",
+    "crimson": "plains"
+  },
+  "faction_corrupt_biome": {
+    "sylvanesti": "swamp",
+    "greencode": "swamp",
+    "khazadrim": "hills"
+  },
+  "faction_base_relations": {
+    "rebirth": [
+      { "f1": "aquilon", "f2": "sylvanesti", "modifier": -30 },
+      { "f1": "crimson", "f2": "gronnar", "modifier": -60 },
+      { "f1": "aquilon", "f2": "khazadrim", "modifier": 40 },
+      { "f1": "consortium", "f2": "aquilon", "modifier": -15 }
+    ]
+  }
+}

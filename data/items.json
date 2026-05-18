@@ -1,0 +1,12 @@
+{
+    "bread": {
+        "name": "Хлеб",
+        "basePrice": 5,
+        "tags": ["food", "consumable", "processed_food", "bakery_product"],
+        "properties": {
+            "nutrition": 25.0,
+            "spoil_rate": 0.1,
+            "weight": 0.5
+        }
+    }
+}

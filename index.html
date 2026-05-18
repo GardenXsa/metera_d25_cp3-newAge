@@ -1,0 +1,1294 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-i18n="appName">Хроники Метерии: AI Приключение</title>
+    
+    <!-- Шрифты для атмосферы -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&family=MedievalSharp&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="style.css">
+    <!-- Font Awesome для иконок -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
+    
+</head>
+<body>
+    <!-- ГРАФИЧЕСКИЕ ЭФФЕКТЫ -->
+    <div class="vignette"></div>
+    <div class="film-grain"></div>
+    <div class="universal-particles"></div>
+        <!-- Генератор динамического фрактального тумана -->
+    <div class="fog-wrapper">
+        <div class="fog-base"></div>
+        <div class="fog-extra"></div>
+    </div>
+    <svg style="display:none">
+        <filter id="fog-filter">
+            <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="3" seed="1">
+                <animate attributeName="seed" from="1" to="100" dur="60s" repeatCount="indefinite" />
+            </feTurbulence>
+            <feDisplacementMap in="SourceGraphic" scale="250" />
+        </filter>
+    </svg>
+
+    <!-- Контейнер для динамического фона -->
+    <div id="background-container">
+        <!-- Сюда JS будет добавлять img или video -->
+    </div>
+
+    <!-- Общий контейнер для центрирования контента -->
+    <div class="content-wrapper">
+
+        <!-- Главное Меню -->
+        <div id="main-menu" class="menu-screen active-screen">
+            <h1 data-i18n="mainMenu.title">Хроники Метерии: AI Приключение</h1>
+            <div class="menu-buttons">
+                <button id="new-game-button" data-i18n="mainMenu.newGame">Новая Игра</button>
+                <button id="load-game-button" data-i18n="mainMenu.loadGame">Загрузить Игру</button>
+                <button id="main-settings-button" data-i18n="mainMenu.settings">Настройки</button>
+                <button id="mods-button" data-i18n="mainMenu.mods">Моды</button>
+                <button id="help-button" data-i18n="mainMenu.help">Помощь</button>
+                <button id="community-button" data-i18n="mainMenu.community">Сообщество</button>
+                <p class="api-key-status" id="api-key-status" data-i18n="mainMenu.apiKeyStatusChecking">Статус API ключа: Проверка...</p>
+            </div>
+        </div>
+
+		<!-- Меню Модов (Обновленный Лаунчер) -->
+		<div id="mods-menu" class="menu-screen" style="display: none; max-width: 900px; width: 95%;">
+			<div style="display: flex; justify-content: space-between; align-items: center; width: 100%; border-bottom: 1px solid rgba(52, 152, 219, 0.5); padding-bottom: 15px; margin-bottom: 20px;">
+				<h1 style="margin: 0; border: none; padding: 0;" data-i18n="modsMenu.title">Менеджер Модификаций</h1>
+				<button id="open-mods-folder-button" class="bus-btn btn-blue" style="margin: 0;" title="Открыть папку с модами"><i class="fas fa-folder-open"></i> Папка модов</button>
+			</div>
+			
+			<div class="mod-manager-dashboard" style="display: flex; width: 100%; gap: 15px; height: 60vh; min-height: 450px;">
+				<!-- Колонка 1: Доступные моды -->
+				<div style="flex: 1; display: flex; flex-direction: column; background: rgba(0,0,0,0.3); border: 1px solid rgba(93, 173, 226, 0.3); border-radius: 8px; overflow: hidden;">
+					<div style="background: rgba(41, 128, 185, 0.2); padding: 10px; font-weight: bold; color: #5dade2; border-bottom: 1px solid rgba(93, 173, 226, 0.3); text-align: center;">
+						Доступные моды
+					</div>
+					<div id="available-mods-list" class="rw-mod-list" style="flex-grow: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 5px;"></div>
+				</div>
+
+				<!-- Колонка 2: Активные моды (Порядок загрузки) -->
+				<div style="flex: 1.2; display: flex; flex-direction: column; background: rgba(0,0,0,0.3); border: 1px solid #2ecc71; border-radius: 8px; overflow: hidden; box-shadow: 0 0 15px rgba(46, 204, 113, 0.1);">
+					<div style="background: rgba(46, 204, 113, 0.2); padding: 10px; font-weight: bold; color: #2ecc71; border-bottom: 1px solid rgba(46, 204, 113, 0.3); text-align: center;">
+						Активные моды (Порядок загрузки)
+					</div>
+					<div id="active-mods-list" class="rw-mod-list" style="flex-grow: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 5px;"></div>
+				</div>
+
+				<!-- Колонка 3: Детали -->
+				<div style="flex: 1; display: flex; flex-direction: column; gap: 10px;">
+					<div style="flex: 1; background: rgba(0,0,0,0.3); border: 1px solid rgba(93, 173, 226, 0.3); border-radius: 8px; padding: 15px; overflow-y: auto;">
+						<h3 style="color: #f1c40f; margin-top: 0; border-bottom: 1px dashed rgba(241, 196, 15, 0.3); padding-bottom: 8px;"><i class="fas fa-info-circle"></i> Детали</h3>
+						<div id="mod-details-content" style="color: #bdc3c7; font-size: 0.9em; line-height: 1.4;">
+							<p style="text-align: center; font-style: italic; color: #7f8c8d; margin-top: 50px;">Выберите мод</p>
+						</div>
+					</div>
+					<div id="mod-errors-container" style="display: none; padding: 10px; background: rgba(231, 76, 60, 0.1); border: 1px solid #e74c3c; border-radius: 8px;">
+						<strong style="color: #e74c3c; display: block; margin-bottom: 5px;"><i class="fas fa-exclamation-triangle"></i> Ошибки:</strong>
+						<div id="mod-errors-list" style="color: #ffcccc; font-size: 0.85em; line-height: 1.3;"></div>
+					</div>
+				</div>
+			</div>
+			<div style="width: 100%; display: flex; justify-content: center; margin-top: 20px;">
+				<button class="back-button" id="mods-back-button" data-i18n="settingsMenu.backButton" style="width: 200px;">Назад</button>
+			</div>
+		</div>
+
+		<!-- Меню Настроек -->
+		<div id="settings-menu" class="menu-screen" style="display: none;">
+			<h1 data-i18n="settingsMenu.title">Настройки</h1>
+			<div class="settings-tabs">
+				<button class="settings-tab-btn active" data-tab="settings-general" data-i18n="settingsMenu.tabs.general">Общие</button>
+				<button class="settings-tab-btn" data-tab="settings-ai" data-i18n="settingsMenu.tabs.ai">ИИ и API</button>
+				<button class="settings-tab-btn" data-tab="settings-audio" data-i18n="settingsMenu.tabs.audio">Звук</button>
+				<button class="settings-tab-btn" data-tab="settings-visuals" data-i18n="extraLoc.settings.visuals">Визуал</button>
+				<button class="settings-tab-btn" data-tab="settings-data" data-i18n="settingsMenu.tabs.data">Данные</button>
+			</div>
+			<div class="settings-content">
+				<!-- Вкладка: Общие -->
+
+					
+				<div id="settings-general" class="settings-tab-content active">
+					<div class="bus-card-modern" style="margin-bottom: 15px; border-left: 3px solid #3498db;">
+						<h4 class="bus-card-title-modern"><i class="fas fa-globe"></i> Локализация и Озвучка</h4>
+						<p style="font-size: 0.85em; color: #9ba4b5; margin-bottom: 15px;">Настройте язык интерфейса и выберите голос для синтезатора речи (TTS).</p>
+						
+						<div class="form-group">
+							<label class="bus-label" for="language-select" data-i18n="settingsMenu.languageLabel">Язык:</label>
+							<select id="language-select" class="bus-input" required></select>
+						</div>
+						
+						<div class="form-group" id="tts-voice-selector-group" style="display: none; margin-bottom: 0;">
+							<label class="bus-label" for="tts-voice-select" data-i18n="settingsMenu.ttsVoiceLabel">Голос озвучки:</label>
+							<select id="tts-voice-select" class="bus-input">
+								<option value="" data-i18n="settingsMenu.ttsVoiceLoading">Загрузка голосов...</option>
+							</select>
+						</div>
+					</div>
+				</div>
+
+				<!-- Вкладка: ИИ и API -->
+				<div id="settings-ai" class="settings-tab-content">
+					<!-- Внутренние вкладки для разделения ГМ и Картинок -->
+					<div class="sub-tabs">
+						<button class="sub-tab-btn active" data-subtab="settings-ai-gm"><i class="fas fa-brain"></i> <span data-i18n="extraLoc.settings.aiGm">Настройки ГМ</span></button>
+						<button class="sub-tab-btn" data-subtab="settings-ai-nsfw"><i class="fas fa-fire"></i> <span data-i18n="extraLoc.settings.aiNsfw">NSFW / 18+</span></button>
+						<button class="sub-tab-btn" data-subtab="settings-ai-img"><i class="fas fa-image"></i> <span data-i18n="extraLoc.settings.aiVision">Эфирное Видение</span></button>
+						<button class="sub-tab-btn" data-subtab="settings-ai-extra"><i class="fas fa-cogs"></i> <span data-i18n="extraLoc.settings.aiExtra">Доп. функции</span></button>
+						<button class="sub-tab-btn" data-subtab="settings-ai-player"><i class="fas fa-robot"></i> <span data-i18n="extraLoc.settings.aiAutoTester">AI Игрок (Тест)</span></button>
+					</div>
+
+					<!-- ПОД-ВКЛАДКА: НАСТРОЙКИ ГМ -->
+					<div id="settings-ai-gm" class="sub-tab-content active">
+						
+						<!-- БЛОК 1: Провайдер и Ключ -->
+						<div class="settings-card" style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 3px solid #3498db;">
+							<div class="form-group" style="margin-bottom: 10px;">
+								<label for="api-provider-select" data-i18n="settingsMenu.apiProviderLabel">Провайдер ИИ:</label>
+								<select id="api-provider-select" class="bus-input" style="width: 100%; cursor: pointer;">
+									<option value="gemini">Google Gemini</option>
+									<option value="llmost">LLMost.ru</option>
+									<option value="openrouter">OpenRouter</option>
+									<option value="deepseek">DeepSeek</option>
+									<option value="omniroute">OmniRoute</option>
+									<option value="local">LM Studio / Local</option>
+									<option value="dummy">Заглушка (Тест UI/Движка)</option>
+								</select>
+							</div>
+							<div id="dynamic-keys-container">
+
+								<div id="gemini-settings-group" class="provider-settings-group" style="display: none; margin: 0; padding: 0; border: none; border-top: 1px solid rgba(93, 123, 151, 0.2); padding-top: 10px;">
+									<div class="form-group" style="margin-bottom: 0;">
+										<label for="gemini-api-key-input">Gemini API Key:</label>
+										<div style="display: flex; gap: 5px;">
+											<input type="password" id="gemini-api-key-input" class="bus-input" placeholder="Ключ..." style="flex-grow: 1;">
+											<button class="toggle-key-btn bus-btn btn-gray" data-target="gemini-api-key-input" style="min-width: 40px; padding: 8px; margin: 0;"><i class="fas fa-eye"></i></button>
+										</div>
+									</div>
+								</div>
+								<div id="llmost-settings-group" class="provider-settings-group" style="display: none; margin: 0; padding: 0; border: none; border-top: 1px solid rgba(93, 123, 151, 0.2); padding-top: 10px;">
+									<div class="form-group" style="margin-bottom: 0;">
+										<label for="llmost-api-key-input">LLMost API Key:</label>
+										<div style="display: flex; gap: 5px;">
+											<input type="password" id="llmost-api-key-input" class="bus-input" placeholder="Ключ..." style="flex-grow: 1;">
+											<button class="toggle-key-btn bus-btn btn-gray" data-target="llmost-api-key-input" style="min-width: 40px; padding: 8px; margin: 0;"><i class="fas fa-eye"></i></button>
+										</div>
+									</div>
+								</div>
+								<div id="deepseek-settings-group" class="provider-settings-group" style="display: none; margin: 0; padding: 0; border: none; border-top: 1px solid rgba(93, 123, 151, 0.2); padding-top: 10px;">
+									<div class="form-group" style="margin-bottom: 0;">
+										<label for="deepseek-api-key-input">DeepSeek API Key:</label>
+										<div style="display: flex; gap: 5px;">
+											<input type="password" id="deepseek-api-key-input" class="bus-input" placeholder="Ключ..." style="flex-grow: 1;">
+											<button class="toggle-key-btn bus-btn btn-gray" data-target="deepseek-api-key-input" style="min-width: 40px; padding: 8px; margin: 0;"><i class="fas fa-eye"></i></button>
+										</div>
+									</div>
+								</div>
+								<div id="omniroute-settings-group" class="provider-settings-group" style="display: none; margin: 0; padding: 0; border: none; border-top: 1px solid rgba(93, 123, 151, 0.2); padding-top: 10px;">
+									<div class="form-group" style="margin-bottom: 10px;">
+										<label for="omniroute-base-url-input" data-i18n="settingsMenu.omnirouteBaseUrlLabel">OmniRoute Base URL:</label>
+										<input type="text" id="omniroute-base-url-input" class="bus-input" placeholder="https://api.omniroute.ai/v1/chat/completions" style="width: 100%;">
+									</div>
+									<div class="form-group" style="margin-bottom: 0;">
+										<label for="omniroute-api-key-input" data-i18n="settingsMenu.omnirouteApiKeyLabel">OmniRoute API Key:</label>
+										<div style="display: flex; gap: 5px;">
+											<input type="password" id="omniroute-api-key-input" class="bus-input" placeholder="Ключ..." style="flex-grow: 1;">
+											<button class="toggle-key-btn bus-btn btn-gray" data-target="omniroute-api-key-input" style="min-width: 40px; padding: 8px; margin: 0;"><i class="fas fa-eye"></i></button>
+										</div>
+									</div>
+								</div>
+								<div id="openrouter-settings-group" class="provider-settings-group" style="display: none; margin: 0; padding: 0; border: none; border-top: 1px solid rgba(93, 123, 151, 0.2); padding-top: 10px;">
+									<div class="form-group" style="margin-bottom: 0;">
+										<label for="openrouter-api-key-input">OpenRouter API Key:</label>
+										<div style="display: flex; gap: 5px;">
+											<input type="password" id="openrouter-api-key-input" class="bus-input" placeholder="Ключ..." style="flex-grow: 1;">
+											<button class="toggle-key-btn bus-btn btn-gray" data-target="openrouter-api-key-input" style="min-width: 40px; padding: 8px; margin: 0;"><i class="fas fa-eye"></i></button>
+										</div>
+									</div>
+								</div>
+								<div id="local-settings-group" class="provider-settings-group" style="display: none; margin: 0; padding: 0; border: none; border-top: 1px solid rgba(93, 123, 151, 0.2); padding-top: 10px;">
+									<div class="form-group" style="margin-bottom: 0;">
+										<label for="local-url-input">URL Сервера:</label>
+										<input type="text" id="local-url-input" class="bus-input" placeholder="http://localhost:1234/v1/chat/completions">
+										<p style="color: #e74c3c; font-size: 0.85em; margin-top: 8px; font-weight: bold; line-height: 1.3;" data-i18n="settingsMenu.localModelWarning">⚠️ ВНИМАНИЕ: Контекст игры достигает 100,000 токенов! Для локальных моделей требуется ОЧЕНЬ мощная видеокарта (от 16-24 ГБ VRAM).</p>
+									</div>
+								</div>
+							</div>
+						</div>
+
+						<!-- КНОПКА ПРОВЕРКИ СВЯЗИ (ПИНГ) -->
+						<div class="form-group" style="margin-bottom: 15px;">
+							<button id="ping-provider-btn" class="bus-btn btn-blue" style="width: 100%; margin: 0; padding: 10px; justify-content: center;"><i class="fas fa-wifi"></i> <span data-i18n="extraLoc.settings.testConnection">Проверить связь с провайдером (Пинг)</span></button>
+							<div id="ping-provider-result" style="font-size: 0.9em; margin-top: 8px; text-align: center; display: none; font-weight: bold;"></div>
+						</div>
+
+												<!-- БЛОК 2: Выбор Модели -->
+						<div class="settings-card" style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 3px solid #2ecc71;">
+							<div class="form-group" id="model-id-input-group" style="margin-bottom: 0;">
+								<label for="model-id-input" data-i18n="settingsMenu.modelIdLabel">ID Модели:</label>
+								<div style="display: flex; gap: 8px;">
+									<input type="text" id="model-id-input" class="bus-input" placeholder="gemini-3.1-flash-lite-preview" style="flex-grow: 1;">
+									<button id="fetch-models-btn" class="bus-btn btn-blue" style="min-width: 45px; padding: 0 15px; margin: 0;" title="Загрузить список доступных моделей"><i class="fas fa-list"></i></button>
+								</div>
+							</div>
+						</div>
+
+						<!-- БЛОК 3: Продвинутые параметры -->
+						<div class="settings-card" style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 3px solid #f39c12;">
+							<h4 style="margin: 0 0 10px 0; color: #f39c12; font-size: 1em;"><i class="fas fa-cogs"></i> Продвинутые параметры</h4>
+							
+							<div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+								<input type="checkbox" id="prompt-caching-checkbox" style="width: auto; margin: 0; accent-color: #5dade2;">
+								<label for="prompt-caching-checkbox" style="margin: 0; font-size: 0.9em; color: #ecf0f1;" data-i18n="extraLoc.settings.promptCaching">Prompt Caching (Ускоряет ответы и снижает цену)</label>
+							</div>
+							
+							<div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px; flex-wrap: wrap;">
+								<input type="checkbox" id="thinking-mode-checkbox" style="width: auto; margin: 0; accent-color: #f39c12;">
+								<label for="thinking-mode-checkbox" style="margin: 0; color: #f39c12; font-size: 0.9em; font-weight: bold;" data-i18n="extraLoc.settings.thinkingMode">Режим размышления (Thinking / Reasoning)</label>
+                                <div style="width: 100%; font-size: 0.8em; color: #7f8c8d; margin-left: 26px; margin-top: -2px;">Мысли ИИ будут отображаться в панели "Расчеты GM".</div>
+							</div>
+
+							<div id="thinking-settings-group" style="display: none; background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px; margin-top: 10px; border: 1px solid rgba(243, 156, 18, 0.3);">
+								<div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+									<div class="form-group" style="flex: 2; min-width: 200px; margin-bottom: 0;">
+										<label for="thinking-budget-slider" style="font-size: 0.85em; color: #bdc3c7;" data-i18n="extraLoc.settings.thinkingBudget">Бюджет токенов (Anthropic/DeepSeek):</label>
+										<div class="slider-container" style="padding: 6px 10px; background: #181b20; border-color: #323942;">
+											<i class="fas fa-brain" style="color: #f39c12; font-size: 1em;"></i>
+											<input type="range" id="thinking-budget-slider" min="1024" max="8192" step="1024" value="2048">
+											<span id="thinking-budget-value" style="color: #f39c12; font-size: 0.9em;">2048</span>
+										</div>
+									</div>
+									<div class="form-group" style="flex: 1; min-width: 120px; margin-bottom: 0;">
+										<label for="reasoning-effort-select" style="font-size: 0.85em; color: #bdc3c7;" data-i18n="extraLoc.settings.reasoningEffort">Усилие (o1/o3):</label>
+										<select id="reasoning-effort-select" class="bus-input" style="padding: 6px 10px; font-size: 0.9em; cursor: pointer;">
+											<option value="low">Low</option>
+											<option value="medium" selected>Medium</option>
+											<option value="high">High</option>
+										</select>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<!-- ПОД-ВКЛАДКА: NSFW / ЭРОТИКА -->
+					<div id="settings-ai-nsfw" class="sub-tab-content">
+						<div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; background: rgba(0,0,0,0.2); padding: 10px 15px; border-radius: 8px;">
+							<input type="checkbox" id="nsfw-mode-checkbox" style="width: auto; margin: 0;">
+							<label for="nsfw-mode-checkbox" style="margin: 0; color: #e74c3c; font-weight: bold; font-size: 0.9em;" data-i18n="extraLoc.settings.nsfwMode">NSFW / Без цензуры (Разрешить ERP и Жестокость)</label>
+						</div>
+
+						<div id="erotic-settings-group" style="display: none; background: rgba(231, 76, 60, 0.15); padding: 15px; border-radius: 8px; border-left: 3px solid #e74c3c; margin-bottom: 15px;">
+							<h3 style="margin: 0 0 15px 0; color: #e74c3c; font-size: 1em;" data-i18n="extraLoc.settings.eroticContentTitle">⚠️ Настройки эротического контента</h3>
+
+							<!-- Слайдер интенсивности -->
+							<div class="form-group" style="margin-bottom: 15px;">
+								<label for="erotic-intensity-slider" style="font-size: 0.9em; display: block; margin-bottom: 8px;" data-i18n="extraLoc.settings.eroticIntensityLabel">Уровень интенсивности эротики:</label>
+								<div class="slider-container" style="padding: 8px 12px;">
+									<i class="fas fa-fire" style="color: #e74c3c;"></i>
+									<input type="range" id="erotic-intensity-slider" min="0" max="3" value="2" step="1">
+									<span id="erotic-intensity-value" style="color: #e74c3c; font-weight: bold;">2</span>
+								</div>
+								<div style="font-size: 0.75em; color: #95a5a6; margin-top: 5px; line-height: 1.4;">
+									<div data-i18n="extraLoc.settings.eroticIntensityLevel0">• 0 — Fade to black (без описаний)</div>
+									<div data-i18n="extraLoc.settings.eroticIntensityLevel1">• 1 — Sensual (романтика, намёки)</div>
+									<div data-i18n="extraLoc.settings.eroticIntensityLevel2">• 2 — Explicit (детальные описания) — по умолчанию</div>
+									<div data-i18n="extraLoc.settings.eroticIntensityLevel3">• 3 — Extreme (BDSM, фетиши, жёсткий контент)</div>
+								</div>
+							</div>
+
+							<!-- Чекбоксы последствий -->
+							<div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 6px;">
+								<div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+									<input type="checkbox" id="pregnancy-risk-checkbox" checked style="width: auto; margin: 0;">
+									<label for="pregnancy-risk-checkbox" style="margin: 0; font-size: 0.85em;" data-i18n="extraLoc.settings.pregnancyRisk">Риск беременности</label>
+								</div>
+								<div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+									<input type="checkbox" id="disease-risk-checkbox" checked style="width: auto; margin: 0;">
+									<label for="disease-risk-checkbox" style="margin: 0; font-size: 0.85em;" data-i18n="extraLoc.settings.diseaseRisk">Риск ЗППП</label>
+								</div>
+								<div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+									<input type="checkbox" id="reputation-consequences-checkbox" checked style="width: auto; margin: 0;">
+									<label for="reputation-consequences-checkbox" style="margin: 0; font-size: 0.85em;" data-i18n="extraLoc.settings.reputationConsequences">Последствия для репутации</label>
+								</div>
+								<div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-bottom: 0;">
+									<input type="checkbox" id="porno-mode-checkbox" style="width: auto; margin: 0;">
+									<label for="porno-mode-checkbox" style="margin: 0; font-size: 0.85em; color: #e74c3c; font-weight: bold;" data-i18n="extraLoc.settings.pornoMode">🔥 Порно-режим (увеличивает частоту эротических сцен в 3 раза)</label>
+								</div>
+							</div>
+						</div>
+
+						<!-- КНОПКА ПРОВЕРКИ СВЯЗИ (ПИНГ) -->
+						<div class="form-group" style="margin-bottom: 15px;">
+							<button id="ping-provider-btn" class="bus-btn btn-blue" style="width: 100%; margin: 0; padding: 10px; justify-content: center;"><i class="fas fa-wifi"></i> <span data-i18n="extraLoc.settings.testConnection">Проверить связь с провайдером (Пинг)</span></button>
+							<div id="ping-provider-result" style="font-size: 0.9em; margin-top: 8px; text-align: center; display: none; font-weight: bold;"></div>
+						</div>
+					</div>
+
+					<!-- ПОД-ВКЛАДКА: ГЕНЕРАЦИЯ ИЗОБРАЖЕНИЙ -->
+					<div id="settings-ai-img" class="sub-tab-content">
+						<div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px; background: rgba(155, 89, 182, 0.1); padding: 10px; border-radius: 8px; border-left: 3px solid #9b59b6;">
+							<input type="checkbox" id="enable-img-gen-checkbox" style="width: auto; margin: 0;">
+							<label for="enable-img-gen-checkbox" data-i18n="settingsMenu.enableImgGen" style="margin: 0; color: #ecf0f1; font-weight: bold;">Включить генерацию изображений</label>
+						</div>
+
+						<div class="form-group">
+							<label data-i18n="settingsMenu.imgProviderLabel">Провайдер изображений:</label>
+							<select id="img-provider-select">
+								<option value="pollinations" data-i18n="settingsMenu.imgProviderPollinations">Pollinations AI</option>
+								<option value="llmost" selected data-i18n="settingsMenu.imgProviderLLMost">LLMost.ru</option>
+								<option value="openrouter" data-i18n="settingsMenu.imgProviderOpenRouter">OpenRouter / OpenAI</option>
+							</select>
+						</div>
+						<div class="form-group">
+							<label data-i18n="settingsMenu.imgModelLabel">ID Модели (Только для OpenAI/OpenRouter/LLMost):</label>
+							<input type="text" id="img-model-input" data-i18n="[placeholder]settingsMenu.imgModelPlaceholder" placeholder="Например, dall-e-3 или google/gemini-2.5-flash-image">
+						</div>
+						<div class="form-group">
+							<label data-i18n="settingsMenu.imgKeyLabel">API Key (Только для OpenAI/OpenRouter):</label>
+							<div style="display: flex; gap: 10px;">
+								<input type="password" id="img-key-input" data-i18n="[placeholder]settingsMenu.imgKeyPlaceholder" placeholder="Вставьте ключ..." style="flex-grow: 1;">
+							</div>
+						</div>
+					</div>
+
+					<!-- ПОД-ВКЛАДКА: ДОП. ФУНКЦИИ -->
+					<!-- ПОД-ВКЛАДКА: AI ИГРОК (АВТО-ТЕСТЕР) -->
+					<div id="settings-ai-player" class="sub-tab-content">
+						<div class="form-group" style="background: rgba(231, 76, 60, 0.1); padding: 15px; border-radius: 8px; border-left: 3px solid #e74c3c; margin-bottom: 15px;">
+							<h4 style="margin-top: 0; color: #e74c3c;"><i class="fas fa-vial"></i> <span data-i18n="extraLoc.settings.autoTesterTitle">Авто-Тестировщик</span></h4>
+							<p style="font-size: 0.85em; color: #bdc3c7; margin-bottom: 10px;" data-i18n="extraLoc.settings.autoTesterDesc">Этот ИИ будет играть вместо вас. Он получает слепок мира и сам принимает решения. Запуск производится из Admin Menu (F4).</p>
+							
+							<label data-i18n="extraLoc.settings.autoTesterProvider">Провайдер AI-Игрока:</label>
+							<select id="ai-player-provider-select" class="bus-input" style="margin-bottom: 10px;">
+								<option value="openrouter">OpenRouter</option>
+								<option value="llmost">LLMost.ru</option>
+								<option value="gemini">Google Gemini</option>
+								<option value="local">Local (LM Studio)</option>
+							</select>
+
+							<label>ID Модели:</label>
+							<input type="text" id="ai-player-model-input" class="bus-input" placeholder="google/gemma-2-9b-it:free" style="margin-bottom: 10px;">
+
+							<label>API Key (или Local URL):</label>
+							<input type="password" id="ai-player-key-input" class="bus-input" placeholder="Ключ или URL...">
+
+							<label style="margin-top: 10px; display: block;" data-i18n="extraLoc.settings.autoTesterLimit">Лимит ходов (0 = бесконечно):</label>
+							<input type="number" id="ai-player-turn-limit" class="bus-input" value="20" min="0" style="margin-bottom: 10px;">
+
+							<button id="test-ai-player-btn" class="bus-btn btn-blue" style="width: 100%; margin-top: 10px; padding: 10px;"><i class="fas fa-flask"></i> <span data-i18n="extraLoc.settings.autoTesterBtn">Тестовый запрос</span></button>
+							<div id="test-ai-player-result" style="font-size: 0.85em; color: #bdc3c7; margin-top: 10px; white-space: pre-wrap; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px; display: none;"></div>
+						</div>
+					</div>
+					<div id="settings-ai-extra" class="sub-tab-content">
+
+                        <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px; background: rgba(230, 126, 34, 0.1); padding: 10px; border-radius: 8px; border-left: 3px solid #e67e22;">
+                            <input type="checkbox" id="enable-deep-setup-checkbox" style="width: auto; margin: 0;">
+                            <div>
+                                <label for="enable-deep-setup-checkbox" style="margin: 0; color: #e67e22; font-weight: bold; display: block;" data-i18n="extraLoc.settings.deepSetupExp">⚠️ Глубокая генерация предыстории (Deep Setup) [ЭКСПЕРИМЕНТ]</label>
+                                <span style="font-size: 0.8em; color: #bdc3c7; display: block; margin-top: 2px;" data-i18n="extraLoc.settings.deepSetupDesc">Делает 5 последовательных запросов к ИИ при старте новой игры. Создает максимально проработанную биографию, уникальный лут и детальное окружение. Занимает больше времени. Не рекомендуется для бесплатных ключей Gemini из-за лимита запросов.</span>
+                            </div>
+                        </div>
+                        
+					</div>
+				</div>
+
+				<!-- Вкладка: Звук -->
+				<div id="settings-audio" class="settings-tab-content">
+					<div class="bus-card-modern" style="margin-bottom: 15px; border-left: 3px solid #e67e22;">
+						<h4 class="bus-card-title-modern"><i class="fas fa-volume-up"></i> Звуковое сопровождение</h4>
+						<p style="font-size: 0.85em; color: #9ba4b5; margin-bottom: 15px;">Отрегулируйте громкость фоновой музыки и звуковых эффектов интерфейса.</p>
+						
+						<div class="form-group">
+							<label class="bus-label" for="music-volume-slider" data-i18n="settingsMenu.musicVolume">Громкость музыки:</label>
+							<div class="slider-container" style="background: #181b20; border-color: #323942;">
+								<i class="fas fa-music" style="color: #5dade2;"></i>
+								<input type="range" id="music-volume-slider" min="0" max="100" value="20">
+								<span id="music-volume-value" style="color: #f1c40f;">20%</span>
+							</div>
+						</div>
+						
+						<div class="form-group" style="margin-bottom: 0;">
+							<label class="bus-label" for="sfx-volume-slider" data-i18n="settingsMenu.sfxVolume">Громкость эффектов:</label>
+							<div class="slider-container" style="background: #181b20; border-color: #323942;">
+								<i class="fas fa-volume-up" style="color: #2ecc71;"></i>
+								<input type="range" id="sfx-volume-slider" min="0" max="100" value="50">
+								<span id="sfx-volume-value" style="color: #2ecc71;">50%</span>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- Вкладка: Данные -->
+				<!-- Вкладка: Визуал -->
+				<div id="settings-visuals" class="settings-tab-content">
+					<div class="bus-card-modern" style="margin-bottom: 15px; border-left: 3px solid #9b59b6;">
+						<h4 class="bus-card-title-modern"><i class="fas fa-eye"></i> Графика и Производительность</h4>
+						<p style="font-size: 0.85em; color: #9ba4b5; margin-bottom: 15px;">Настройка визуальных эффектов для оптимизации работы игры на слабых ПК.</p>
+						
+						<div class="form-group" style="display: flex; align-items: flex-start; gap: 10px; margin-bottom: 0; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; border-left: 3px solid #8e44ad;">
+							<input type="checkbox" id="low-spec-checkbox" style="width: auto; margin: 3px 0 0 0; accent-color: #9b59b6;">
+							<div>
+								<label for="low-spec-checkbox" style="display:block; margin: 0; color: #ecf0f1; font-weight: bold;" data-i18n="extraLoc.settings.lowSpecMode">Режим низкого качества (Отключить эффекты)</label>
+								<p style="font-size: 0.85em; color: #7f8c8d; margin-top: 5px; margin-bottom: 0;" data-i18n="extraLoc.settings.lowSpecDesc">Отключает туман, частицы и параллакс фона. Значительно снижает нагрузку на процессор и видеокарту.</p>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- Вкладка: Данные -->
+				<div id="settings-data" class="settings-tab-content">
+					<div class="bus-card-modern" style="margin-bottom: 15px; border-left: 3px solid #2ecc71;">
+						<h4 class="bus-card-title-modern"><i class="fas fa-save"></i> Сохранения и Автосейв</h4>
+						<p style="font-size: 0.85em; color: #9ba4b5; margin-bottom: 15px;">Управление интервалом автосохранения и выбором папки на диске (для десктопной версии).</p>
+						
+						<div class="form-group" style="margin-bottom: 20px;">
+							<label class="bus-label" for="autosave-interval-select" data-i18n="extraLoc.settings.autosaveInterval">Интервал автосохранения:</label>
+							<select id="autosave-interval-select" class="bus-input">
+								<option value="300000" data-i18n="extraLoc.settings.autosave5m">Каждые 5 минут</option>
+								<option value="600000" data-i18n="extraLoc.settings.autosave10m">Каждые 10 минут</option>
+								<option value="900000" data-i18n="extraLoc.settings.autosave15m">Каждые 15 минут</option>
+								<option value="1800000" data-i18n="extraLoc.settings.autosave30m">Каждые 30 минут</option>
+								<option value="0" data-i18n="extraLoc.settings.autosaveOff">Отключить автосохранение</option>
+							</select>
+						</div>
+						<div class="form-group" style="margin-bottom: 0;">
+							<label class="bus-label" data-i18n="settingsMenu.fsaLabel">Хранилище сохранений:</label>
+							<button id="fsa-select-directory-button" class="bus-btn btn-blue" style="display:none; width: 100%;" data-i18n="settingsMenu.fsaSelectDirectory"><i class="fas fa-folder-open"></i> Выбрать папку для сохранений</button>
+							<p id="fsa-status" style="font-size: 0.9em; margin-top: 8px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px; text-align: center;" data-i18n="fsa.checking">Проверка...</p>
+						</div>
+					</div>
+				</div>
+
+				<div class="form-group" style="margin-top: 20px;">
+					 <button id="save-settings-button" class="bus-btn btn-green" style="width: 100%; padding: 15px; font-size: 1.1em;" data-i18n="settingsMenu.saveButton"><i class="fas fa-check-circle"></i> Сохранить настройки</button>
+                     <button id="use-user-key-button" style="display:none;">Использовать свой ключ</button>
+                     <button id="use-builtin-key-button" style="display:none;">Использовать встроенный ключ</button>
+				</div>
+			</div>
+			<button class="back-button" id="settings-back-button" data-i18n="settingsMenu.backButton">Назад</button>
+		</div>
+		
+		
+
+        <!-- Экран Создания Персонажа (ОБНОВЛЕННЫЙ ДИЗАЙН) -->
+        <div id="character-creation-screen" class="menu-screen creation-screen-wide" style="display: none;">
+            <h1 data-i18n="characterCreation.title">Создание Персонажа</h1>
+            
+            <div class="creation-layout" style="display: flex; gap: 30px; width: 100%; text-align: left;">
+                <!-- Левая колонка -->
+                <div style="flex: 1;">
+                    <div class="form-group">
+                        <label for="char-name-input" data-i18n="characterCreation.nameLabel">Имя персонажа (макс. 50):</label>
+                        <input type="text" id="char-name-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="char-gender-select" data-i18n="characterCreation.genderLabel">Пол:</label>
+                        <select id="char-gender-select" required>
+                            <option value="" disabled selected data-i18n="characterCreation.genderPlaceholder">-- Выберите пол --</option>
+                            <option value="male" data-i18n="characterCreation.genderMale">Мужской</option>
+                            <option value="female" data-i18n="characterCreation.genderFemale">Женский</option>
+                            <option value="other" data-i18n="characterCreation.genderOther">Другое</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="char-race-select" data-i18n="characterCreation.raceLabel">Раса:</label>
+                        <select id="char-race-select" required>
+                            <option value="" disabled selected data-i18n="characterCreation.racePlaceholder">-- Выберите расу --</option>
+                            <option value="human" data-i18n="characterCreation.raceHuman">Человек</option>
+                            <option value="elf" data-i18n="characterCreation.raceElf">Эльф</option>
+                            <option value="dwarf" data-i18n="characterCreation.raceDwarf">Дварф</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="char-class-select" data-i18n="characterCreation.classLabel">Класс:</label>
+                        <select id="char-class-select" required>
+                            <option value="" disabled selected data-i18n="characterCreation.classPlaceholder">-- Выберите класс --</option>
+                            <option value="warrior" data-i18n="characterCreation.classWarrior">Воин</option>
+                            <option value="mage" data-i18n="characterCreation.classMage">Маг</option>
+                            <option value="rogue" data-i18n="characterCreation.classRogue">Разбойник</option>
+                            <option value="bard" data-i18n="characterCreation.classBard">Бард</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="char-era-select" data-i18n="characterCreation.eraLabel">Стартовая Эпоха:</label>
+                        <select id="char-era-select" required>
+                            <option value="rebirth" selected data-i18n="characterCreation.eraRebirth" data-description-key="characterCreation.eraRebirthDesc">Эпоха Возрождения</option>
+                            <option value="architects" data-i18n="characterCreation.eraArchitects" data-description-key="characterCreation.eraArchitectsDesc">Золотой Век Архитекторов</option>
+                            <option value="sundering" data-i18n="characterCreation.eraSundering" data-description-key="characterCreation.eraSunderingDesc">Великий Разлом</option>
+                            <option value="silence" data-i18n="characterCreation.eraSilence" data-description-key="characterCreation.eraSilenceDesc">Эпоха Тишины</option>
+                        </select>
+                        <div id="era-description-box" class="era-description-box"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="char-start-mode-select" data-i18n="characterCreation.startModeLabel">Тип начала:</label>
+                        <select id="char-start-mode-select">
+                            <option value="calm" data-i18n="characterCreation.startModeCalm">Спокойный старт (Атмосфера)</option>
+                            <option value="adrenaline" selected data-i18n="characterCreation.startModeAdrenaline">В гуще событий (Адреналин)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Правая колонка -->
+                <div style="flex: 1;">
+                    <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <label for="char-desc-input" data-i18n="characterCreation.descLabel" style="margin: 0;">Краткое описание:</label>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" id="generate-backstory-checkbox" style="width: auto; margin: 0; accent-color: #f39c12; cursor: pointer;">
+                                <label for="generate-backstory-checkbox" style="margin: 0; color: #f39c12; font-size: 0.85em; cursor: pointer; font-weight: bold;" data-i18n="characterCreation.generateBackstory">Сгенерировать ИИ</label>
+                            </div>
+                        </div>
+                        <textarea id="char-desc-input" rows="3" required></textarea>
+                    </div>
+                    <div id="stat-distribution" class="form-group">
+                         <h3 data-i18n="characterCreation.statsTitle">Характеристики</h3>
+                         <p style="text-align: center; font-size: 0.9em;">Доступно очков: <span id="stat-points-available">10</span></p>
+                         <div class="stat-row">
+                             <span data-i18n="characterCreation.statSTR">Сила (STR):</span>
+                             <div>
+                                 <button class="stat-button minus" data-stat="str">-</button>
+                                 <span class="stat-value" id="create-stat-str">10</span>
+                                 <button class="stat-button plus" data-stat="str">+</button>
+                             </div>
+                         </div>
+                         <div class="stat-row">
+                            <span data-i18n="characterCreation.statDEX">Ловкость (DEX):</span>
+                            <div>
+                                <button class="stat-button minus" data-stat="dex">-</button>
+                                <span class="stat-value" id="create-stat-dex">10</span>
+                                <button class="stat-button plus" data-stat="dex">+</button>
+                            </div>
+                        </div>
+                        <div class="stat-row">
+                            <span data-i18n="characterCreation.statINT">Интеллект (INT):</span>
+                            <div>
+                                <button class="stat-button minus" data-stat="int">-</button>
+                                <span class="stat-value" id="create-stat-int">10</span>
+                                <button class="stat-button plus" data-stat="int">+</button>
+                            </div>
+                        </div>
+                        <div class="stat-row">
+                            <span data-i18n="characterCreation.statCON">Выносливость (CON):</span>
+                            <div>
+                                <button class="stat-button minus" data-stat="con">-</button>
+                                <span class="stat-value" id="create-stat-con">10</span>
+                                <button class="stat-button plus" data-stat="con">+</button>
+                            </div>
+                        </div>
+                        <div class="stat-row">
+                            <span data-i18n="characterCreation.statCHA">Харизма (CHA):</span>
+                            <div>
+                                <button class="stat-button minus" data-stat="cha">-</button>
+                                <span class="stat-value" id="create-stat-cha">10</span>
+                                <button class="stat-button plus" data-stat="cha">+</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="creation-buttons">
+                 <button id="start-game-button" disabled data-i18n="characterCreation.startGameButton">Далее</button>
+
+                 <button id="quick-start-button" style="background-color: #f39c12;" data-i18n="characterCreation.quickStartButton">Быстрый старт</button>
+                 <button class="back-button" data-target="main-menu" data-i18n="characterCreation.cancelButton">Отмена</button>
+            </div>
+            <p id="creation-error" class="error-message"></p>
+        </div>
+
+        <!-- Экран Выбора Рассказчика -->
+        <!-- Экран Настройки Мира -->
+        <div id="world-setup-screen" class="menu-screen" style="display: none;">
+            <h1 data-i18n="worldSetup.title">Настройка Симуляции Мира</h1>
+            <div style="width: 100%; max-width: 400px; text-align: left;">
+                <div class="form-group">
+                    <label for="world-years-slider" data-i18n="worldSetup.yearsLabel" style="color: #aeb6bf; margin-bottom: 10px; display: block;">Годы предыстории (1-20):</label>
+                    <div class="slider-container">
+                        <i class="fas fa-hourglass-half"></i>
+                        <input type="range" id="world-years-slider" min="1" max="20" value="1">
+                        <span id="world-years-value">1</span>
+                    </div>
+                    <p style="font-size: 0.8em; color: #7f8c8d; margin-top: 5px;" data-i18n="worldSetup.yearsDesc">Определяет, сколько лет мир будет развиваться автономно до вашего появления (войны, экономика, интриги).</p>
+                </div>
+                <div class="form-group" style="margin-top: 25px;">
+                    <label for="world-agents-slider" data-i18n="worldSetup.agentsLabel" style="color: #aeb6bf; margin-bottom: 10px; display: block;">Начальное население (50-200):</label>
+                    <div class="slider-container">
+                        <i class="fas fa-users"></i>
+                        <input type="range" id="world-agents-slider" min="50" max="200" value="100" step="10">
+                        <span id="world-agents-value">100</span>
+                    </div>
+                    <p style="font-size: 0.8em; color: #7f8c8d; margin-top: 5px;" data-i18n="worldSetup.agentsDesc">Количество уникальных NPC со своими потребностями, работами и целями. Больше агентов = более живой мир, но дольше генерация.</p>
+                </div>
+            </div>
+            <div class="form-group" style="margin-top: 20px; border-top: 1px solid #34495e; padding-top: 20px;">
+                <button id="open-load-world-modal-btn" class="bus-btn btn-blue" style="width: 100%;"><i class="fas fa-globe"></i> <span data-i18n="worldSetup.loadWorldBtn">Загрузить готовый мир</span></button>
+                <p id="selected-world-info" style="color: #2ecc71; font-size: 0.9em; display: none; margin-top: 10px; text-align: center;"></p>
+            </div>
+
+            <div class="narrator-buttons" style="margin-top: 30px;">
+                <button id="confirm-world-setup-button" data-i18n="worldSetup.startButton" style="background-color: #27ae60; border-color: #2ecc71;">Создать Мир и Начать</button>
+                <button class="back-button" data-target="character-creation-screen" data-i18n="settingsMenu.backButton">Назад</button>
+            </div>
+        </div>
+<!-- narrator-selection-screen REMOVED BY T3 -->
+
+        <!-- Экран Загрузки Игры -->
+        <div id="load-game-screen" class="menu-screen" style="display: none;">
+            <h1 data-i18n="loadGame.title">Загрузить Игру</h1>
+            <div class="save-slots-container">
+                <h2><span data-i18n="loadGame.manualSavesTitle">Ручные сохранения</span></h2>
+                <ul id="manual-save-slots" class="save-list"></ul>
+                <h2><span data-i18n="loadGame.autoSavesTitle">Автосохранения</span></h2>
+                <ul id="auto-save-slots" class="save-list"></ul>
+            </div>
+             <button class="back-button" data-target="main-menu" data-i18n="settingsMenu.backButton">Назад</button>
+        </div>
+
+        <!-- Экран Помощи (ПОЛНЫЙ И ПОДРОБНЫЙ) -->
+        <div id="help-screen" class="menu-screen help-screen-custom" style="display: none;">
+            <h1 data-i18n="helpScreen.title">Помощь по Игре</h1>
+            
+            <div class="help-content">
+                <div class="help-tabs">
+                    <button class="help-tab-btn active" onclick="openHelpTab(event, 'general-help')" data-i18n="helpScreen.tabs.general">Основы</button>
+                    <button class="help-tab-btn" onclick="openHelpTab(event, 'combat-help')" data-i18n="helpScreen.tabs.combat">Кровь и Сталь</button>
+                    <button class="help-tab-btn" onclick="openHelpTab(event, 'nsfw-help')" data-i18n="helpScreen.tabs.nsfw">Пороки (18+)</button>
+                    <button class="help-tab-btn" onclick="openHelpTab(event, 'economy-help')" data-i18n="helpScreen.tabs.economy">Золото</button>
+                    <button class="help-tab-btn" onclick="openHelpTab(event, 'world-help')" data-i18n="helpScreen.tabs.world">Мир</button>
+                    <button class="help-tab-btn" onclick="openHelpTab(event, 'api-help')" data-i18n="helpScreen.tabs.api">Эфир (API)</button>
+                </div>
+
+                <div id="general-help" class="help-tab-content active">
+                    <div class="wiki-header-quote" data-i18n="helpScreen.general.quote">«Мир не вращается вокруг тебя. Он вращается вокруг тех, кто выжил.»</div>
+                    <div class="wiki-grid">
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-brain"></i> <span data-i18n="helpScreen.general.card1Title">Голос Эфира (Единый ГМ)</span></h3>
+                            <p data-i18n="helpScreen.general.card1Desc">Искусственный Интеллект здесь — это не просто чат-бот. Это безжалостный симулятор. Он одновременно судит ваши характеристики, проверяет инвентарь и пишет историю. <span class="wiki-danger">Вы не можете использовать то, чего у вас нет.</span></p>
+                        </div>
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-comment-slash"></i> <span data-i18n="helpScreen.general.card2Title">Четвертая стена (OOC)</span></h3>
+                            <p data-i18n="helpScreen.general.card2Desc">Хотите спросить правила или попросить ГМа изменить тон? Используйте двойные скобки <span class="wiki-highlight">(( вот так ))</span>. Персонажи внутри мира не услышат этот текст.</p>
+                        </div>
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-dove"></i> <span data-i18n="helpScreen.general.card3Title">Абсолютная свобода</span></h3>
+                            <p data-i18n="helpScreen.general.card3Desc">Здесь нет невидимых стен. Вы можете бросить квест, убить квестодателя, ограбить банк или уйти жить в лес. Но помните: <span class="wiki-danger">у каждого действия есть последствия.</span></p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="combat-help" class="help-tab-content">
+                    <div class="wiki-header-quote" data-i18n="helpScreen.combat.quote">«Сталь не прощает ошибок, а Эфир не знает пощады.»</div>
+                    <div class="wiki-grid">
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-dice-d20"></i> <span data-i18n="helpScreen.combat.card1Title">Танец Стали (Броски)</span></h3>
+                            <p data-i18n="helpScreen.combat.card1Desc">Забудьте про 'нажмите X чтобы победить'. Опишите свой удар и нажмите кнопку макроса (например, ⚔️ Attack) перед отправкой. Нет броска? ГМ посчитает это <span class="wiki-danger">критическим провалом</span>.</p>
+                        </div>
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-tachometer-alt"></i> <span data-i18n="helpScreen.combat.card2Title">Инерция крови (Momentum)</span></h3>
+                            <p data-i18n="helpScreen.combat.card2Desc">Убиваете врагов красиво? Получаете кураж (до +5). Огребаете? Впадаете в панику (до -5). Инерция влияет на то, как мир реагирует на вас: враги могут дрогнуть или, наоборот, добить вас.</p>
+                        </div>
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-skull"></i> <span data-i18n="helpScreen.combat.card3Title">Цена ошибки</span></h3>
+                            <p data-i18n="helpScreen.combat.card3Desc">Враги не манекены. Если вы промахнулись — они бьют в ответ. Урон высчитывается математически. Если ваше HP упадет до 0, вы умрете и попадете в Тень (Изнанку мира). Вы потеряете все вещи и станете призраком. Чтобы воскреснуть, придется найти Эфирный Разлом.</p>
+                        </div>
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-flag-white"></i> <span data-i18n="helpScreen.combat.card4Title">Милость победителя</span></h3>
+                            <p data-i18n="helpScreen.combat.card4Desc">Понимаете, что проигрываете? Напишите <span class="wiki-highlight">«Я сдаюсь»</span>. Бой прекратится, и сцена перейдет в русло пленения, переговоров или... чего-то похуже.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="nsfw-help" class="help-tab-content">
+                    <div class="wiki-header-quote" data-i18n="helpScreen.nsfw.quote">«В темноте таверн и шелках дворцов скрываются самые острые клинки.»</div>
+                    <div class="wiki-grid">
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-heart"></i> <span data-i18n="helpScreen.nsfw.card1Title">Анатомия страсти</span></h3>
+                            <p data-i18n="helpScreen.nsfw.card1Desc">У каждого NPC есть 4 скрытых параметра: <span class="wiki-accent">Привязанность, Влечение, Доверие и Близость</span>. Без высоких показателей или толстого кошелька вы получите лишь пощечину.</p>
+                        </div>
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-fire"></i> <span data-i18n="helpScreen.nsfw.card2Title">Порно-режим</span></h3>
+                            <p data-i18n="helpScreen.nsfw.card2Desc">Включается в настройках. Снижает требования к отношениям вдвое, заставляет NPC проявлять агрессивную инициативу и утраивает шанс пикантных ситуаций.</p>
+                        </div>
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-biohazard"></i> <span data-i18n="helpScreen.nsfw.card3Title">Бремя последствий</span></h3>
+                            <p data-i18n="helpScreen.nsfw.card3Desc">Секс без защиты? Ждите <span class="wiki-danger">ЗППП</span> (постоянный урон) или <span class="wiki-accent">Беременность</span> (штраф к статам на 9 месяцев). Публичный скандал уничтожит вашу репутацию.</p>
+                        </div>
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-book-heart"></i> <span data-i18n="helpScreen.nsfw.card4Title">Интимный дневник</span></h3>
+                            <p data-i18n="helpScreen.nsfw.card4Desc">Все ваши эротические похождения с детальным текстом, датами и именами партнеров автоматически сохраняются в правой панели. Ничто не будет забыто.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="economy-help" class="help-tab-content">
+                    <div class="wiki-header-quote" data-i18n="helpScreen.economy.quote">«Золото говорит громче стали, а голод — громче золота.»</div>
+                    <div class="wiki-grid">
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-balance-scale"></i> <span data-i18n="helpScreen.economy.card1Title">Кровь Империй (Рынок)</span></h3>
+                            <p data-i18n="helpScreen.economy.card1Desc">Цены меняются каждый день. Если город в осаде — хлеб стоит как золото. Если шахта переполнена — руда обесценивается. <span class="wiki-highlight">Покупай дешево, продавай там, где дефицит.</span></p>
+                        </div>
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-industry"></i> <span data-i18n="helpScreen.economy.card2Title">Свое дело</span></h3>
+                            <p data-i18n="helpScreen.economy.card2Desc">Накопили капитал? Напишите ГМу: «Я покупаю лесопилку». В панели «Владения» вы сможете нанимать рабочих, задавать зарплаты и фокус производства.</p>
+                        </div>
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-route"></i> <span data-i18n="helpScreen.economy.card3Title">Караванные тропы</span></h3>
+                            <p data-i18n="helpScreen.economy.card3Desc">Настраивайте логистику. Прикажите своей шахте отправлять руду в вашу кузницу, а готовые мечи — продавать на рынке столицы. Автоматизируйте доход.</p>
+                        </div>
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-university"></i> <span data-i18n="helpScreen.economy.card4Title">Долг платежом красен</span></h3>
+                            <p data-i18n="helpScreen.economy.card4Desc">Банки дают кредиты под процент. Не вернете вовремя? Ждите визита наемников-коллекторов, которые заберут долг вашей кровью.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="world-help" class="help-tab-content">
+                    <div class="wiki-header-quote" data-i18n="helpScreen.world.quote">«Мир живет и умирает, даже когда ты спишь.»</div>
+                    <div class="wiki-grid">
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-shoe-prints"></i> <span data-i18n="helpScreen.world.card1Title">Дорога в неизвестность</span></h3>
+                            <p data-i18n="helpScreen.world.card1Desc">Путешествия занимают реальное игровое время. В пути вы расходуете припасы. Вас могут атаковать бандиты или вы наткнетесь на руины. <span class="wiki-highlight">Лошадь или повозка ускорят путь.</span></p>
+                        </div>
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-chess-king"></i> <span data-i18n="helpScreen.world.card2Title">Игры Престолов</span></h3>
+                            <p data-i18n="helpScreen.world.card2Desc">Фракции воюют, плетут интриги и захватывают города без вашего участия. Вы можете стать наемником, лордом или даже <span class="wiki-accent">основать свое государство</span>.</p>
+                        </div>
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-volcano"></i> <span data-i18n="helpScreen.world.card3Title">Гнев Богов</span></h3>
+                            <p data-i18n="helpScreen.world.card3Desc">Землетрясения, наводнения и эфирные штормы разрушают дороги и убивают население. Эпические чудовища (Драконы, Кракены) могут заблокировать целые регионы.</p>
+                        </div>
+                        <div class="wiki-card">
+                            <h3><i class="fas fa-scroll"></i> <span data-i18n="helpScreen.world.card4Title">Летопись Мира</span></h3>
+                            <p data-i18n="helpScreen.world.card4Desc">Читайте сводку новостей в правой панели. Это ваш главный источник слухов о том, где сейчас безопасно, а где можно заработать на войне.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="api-help" class="help-tab-content">
+                    <div class="wiki-header-quote" data-i18n="helpScreen.api.quote">«Чтобы вдохнуть жизнь в голема, нужна искра Эфира.»</div>
+
+                    <div class="sub-tabs" style="margin-bottom: 20px;">
+                        <button class="sub-tab-btn active" onclick="openHelpSubTab(event, 'api-help-basics')" data-i18n="helpScreen.api.tabs.basics">Базовые понятия</button>
+                        <button class="sub-tab-btn" onclick="openHelpSubTab(event, 'api-help-reqs')" data-i18n="helpScreen.api.tabs.reqs">⚠️ Требования (ВАЖНО)</button>
+                        <button class="sub-tab-btn" onclick="openHelpSubTab(event, 'api-help-providers')" data-i18n="helpScreen.api.tabs.providers">Провайдеры</button>
+                        <button class="sub-tab-btn" onclick="openHelpSubTab(event, 'api-help-trouble')" data-i18n="helpScreen.api.tabs.trouble">Решение проблем</button>
+                    </div>
+
+                    <div id="api-help-basics" class="sub-tab-content active">
+                        <h3 data-i18n="helpScreen.api.basics.title">Что такое API и зачем оно нужно?</h3>
+                        <p data-i18n="helpScreen.api.basics.p1">Игра не имеет встроенного «мозга». Вся логика, генерация текста и управление миром происходят через внешние нейросети (LLM). <b>API-ключ</b> — это ваш личный пропуск к этим нейросетям.</p>
+                        <p data-i18n="helpScreen.api.basics.p2"><b>Токены:</b> Это кусочки слов. Нейросети «читают» и «пишут» токенами. 1000 токенов ≈ 750 слов.</p>
+                        <p data-i18n="helpScreen.api.basics.p3"><b>Контекст (Context Window):</b> Это объем кратковременной памяти нейросети. Сколько текста она может удержать в голове за один раз.</p>
+                    </div>
+
+                    <div id="api-help-reqs" class="sub-tab-content">
+                        <h3 style="color: #e74c3c;" data-i18n="helpScreen.api.reqs.title">ФАТАЛЬНЫЕ ТРЕБОВАНИЯ К МОДЕЛИ</h3>
+                        <div class="api-security-note" style="border-left-color: #e74c3c; background-color: rgba(231, 76, 60, 0.1);">
+                            <p style="color: #e74c3c; font-weight: bold; margin: 0;" data-i18n="helpScreen.api.reqs.warning">ВНИМАНИЕ! Эта игра — не обычный чат-бот. Это сложный симулятор. Если вы выберете слабую модель, игра СЛОМАЕТСЯ на первом же ходу.</p>
+                        </div>
+                        <h4 style="color: #f39c12; margin-top: 15px; font-size: 1.1em;" data-i18n="helpScreen.api.reqs.contextTitle">1. Огромный размер контекста (Минимум 64k, Рекомендуется 128k+)</h4>
+                        <p data-i18n="helpScreen.api.reqs.contextDesc">Каждый ваш ход игра отправляет нейросети <b>гигантский слепок мира</b> (Snapshot): весь ваш инвентарь, статы, надетую броню, список квестов, лор эпохи, правила боевки, список NPC вокруг и экономическую сводку. Это занимает от 15,000 до 30,000 токенов <i>за один запрос</i>. Если у модели лимит 8k токенов (как у многих старых или бесплатных моделей), она просто «забудет» половину правил и начнет галлюцинировать.</p>
+                        <h4 style="color: #f39c12; margin-top: 15px; font-size: 1.1em;" data-i18n="helpScreen.api.reqs.logicTitle">2. Высокий интеллект и строгое следование JSON</h4>
+                        <p data-i18n="helpScreen.api.reqs.logicDesc">Модель работает как <b>игровой движок</b>. Она обязана возвращать ответ СТРОГО в формате программного кода (JSON). Она должна сама высчитывать урон, изменять переменные и выдавать предметы. «Глупые» модели (Llama 3 8B, Gemma 2B, старые GPT-3.5) не справятся с этой задачей. Они начнут писать обычный текст вместо кода, что вызовет <b>КРИТИЧЕСКУЮ ОШИБКУ ПАРСИНГА (JSON Error)</b>.</p>
+                        <h4 style="color: #f39c12; margin-top: 15px; font-size: 1.1em;" data-i18n="helpScreen.api.reqs.censorTitle">3. Отсутствие жесткой цензуры</h4>
+                        <p data-i18n="helpScreen.api.reqs.censorDesc">Мир игры жесток (Dark Fantasy). В запросах к ИИ содержатся инструкции по расчету урона, убийствам, кражам и (при включении) NSFW-контенту. Жестко отцензурированные корпоративные модели могут отказаться отвечать на запрос, заблокировав игру.</p>
+                    </div>
+
+                    <div id="api-help-providers" class="sub-tab-content">
+                        <h3 data-i18n="helpScreen.api.providers.title">Рекомендуемые Провайдеры</h3>
+                        
+                        <div class="api-provider-info" style="border-left-color: #3498db;">
+                            <h4 style="color: #3498db; margin-top: 0; font-size: 1.1em;" data-i18n="helpScreen.api.providers.openrouterTitle">1. OpenRouter.ai (Лучший выбор)</h4>
+                            <p data-i18n="helpScreen.api.providers.openrouterDesc">Агрегатор нейросетей. Позволяет использовать лучшие модели мира без VPN и сложных регистраций. Принимает крипту.</p>
+                            <p data-i18n="helpScreen.api.providers.openrouterRec"><b>Рекомендуемые модели:</b> <code>google/gemini-3.1-flash-lite-preview</code> (Идеал: дешевая и умная), <code>anthropic/claude-3.5-sonnet</code> (Отлично, но дороже).</p>
+                        </div>
+                        
+                        <div class="api-provider-info" style="border-left-color: #e74c3c;">
+                            <h4 style="color: #e74c3c; margin-top: 0; font-size: 1.1em;" data-i18n="helpScreen.api.providers.geminiTitle">2. Google Gemini (Бесплатно, но с лимитами)</h4>
+                            <p data-i18n="helpScreen.api.providers.geminiDesc">Google предоставляет бесплатный доступ к отличным моделям (Gemini 3.1 Flash Lite Preview), но с <b>жесткими лимитами</b> (15 запросов в минуту, 1500 в день). Из-за огромного размера контекста игры, Google может временно блокировать вас (Ошибка 429).</p>
+                        </div>
+
+                        <div class="api-provider-info" style="border-left-color: #9b59b6;">
+                            <h4 style="color: #9b59b6; margin-top: 0; font-size: 1.1em;" data-i18n="helpScreen.api.providers.deepseekTitle">3. DeepSeek (Дешево и умно)</h4>
+                            <p data-i18n="helpScreen.api.providers.deepseekDesc">Модель <code>deepseek-chat</code> (V3) обладает отличной логикой и стоит копейки. Однако их серверы часто бывают перегружены.</p>
+                        </div>
+
+                        <div class="api-provider-info" style="border-left-color: #2ecc71;">
+                            <h4 style="color: #2ecc71; margin-top: 0; font-size: 1.1em;" data-i18n="helpScreen.api.providers.llmostTitle">4. LLMost.ru (Для РФ)</h4>
+                            <p data-i18n="helpScreen.api.providers.llmostDesc">Удобный сервис для игроков из РФ. Оплата рублевыми картами. Рекомендуется использовать модели Claude 3.5 Sonnet или GPT-4o.</p>
+                        </div>
+
+                        <div class="api-provider-info" style="border-left-color: #f1c40f;">
+                            <h4 style="color: #f1c40f; margin-top: 0; font-size: 1.1em;" data-i18n="helpScreen.api.providers.localTitle">5. Локальные модели (LM Studio)</h4>
+                            <p data-i18n="helpScreen.api.providers.localDesc"><b>ПРЕДУПРЕЖДЕНИЕ:</b> Не пытайтесь запускать игру на видеокартах с 8 ГБ памяти! Чтобы загрузить модель, способную удержать 30k+ контекста и выдавать сложный JSON (например, Qwen 2.5 32B или Llama 3 70B), вам потребуется <b>от 24 ГБ VRAM</b> (RTX 3090 / 4090) или мощный Mac (M2/M3 Max с 64+ ГБ памяти).</p>
+                        </div>
+                    </div>
+
+                    <div id="api-help-trouble" class="sub-tab-content">
+                        <h3 data-i18n="helpScreen.api.trouble.title">Решение частых проблем</h3>
+                        
+                        <div style="margin-bottom: 15px; padding: 15px; background: rgba(0,0,0,0.3); border-left: 3px solid #e74c3c; border-radius: 4px;">
+                            <h4 style="margin: 0 0 8px 0; color: #e74c3c; font-size: 1.1em;" data-i18n="helpScreen.api.trouble.errJsonTitle">Ошибка: Ответ Мастера Игры поврежден (JSON Error)</h4>
+                            <p style="margin: 0; font-size: 0.95em; line-height: 1.5;" data-i18n="helpScreen.api.trouble.errJsonDesc"><b>Причина:</b> Выбранная модель слишком «глупая». Она не смогла сформировать правильный код ответа и написала обычный текст.<br><b>Решение:</b> Смените модель на более умную (Claude 3.5 Sonnet, GPT-4o, Gemini 3.1 Flash Lite Preview).</p>
+                        </div>
+
+                        <div style="margin-bottom: 15px; padding: 15px; background: rgba(0,0,0,0.3); border-left: 3px solid #f39c12; border-radius: 4px;">
+                            <h4 style="margin: 0 0 8px 0; color: #f39c12; font-size: 1.1em;" data-i18n="helpScreen.api.trouble.err400Title">Ошибка 400 (Bad Request / Context Length Exceeded)</h4>
+                            <p style="margin: 0; font-size: 0.95em; line-height: 1.5;" data-i18n="helpScreen.api.trouble.err400Desc"><b>Причина:</b> Текст, который игра отправила нейросети, превысил её лимит памяти (Context Window).<br><b>Решение:</b> Выберите модель с контекстом не менее 64k (лучше 128k).</p>
+                        </div>
+
+                        <div style="margin-bottom: 15px; padding: 15px; background: rgba(0,0,0,0.3); border-left: 3px solid #f39c12; border-radius: 4px;">
+                            <h4 style="margin: 0 0 8px 0; color: #f39c12; font-size: 1.1em;" data-i18n="helpScreen.api.trouble.err429Title">Ошибка 429 (Too Many Requests)</h4>
+                            <p style="margin: 0; font-size: 0.95em; line-height: 1.5;" data-i18n="helpScreen.api.trouble.err429Desc"><b>Причина:</b> Вы исчерпали лимит запросов у провайдера (очень часто бывает на бесплатном тарифе Gemini).<br><b>Решение:</b> Подождите несколько минут или перейдите на платный API (например, OpenRouter).</p>
+                        </div>
+
+                        <div style="margin-bottom: 15px; padding: 15px; background: rgba(0,0,0,0.3); border-left: 3px solid #9b59b6; border-radius: 4px;">
+                            <h4 style="margin: 0 0 8px 0; color: #9b59b6; font-size: 1.1em;" data-i18n="helpScreen.api.trouble.errBlockedTitle">Ошибка: Ответ заблокирован (Safety / Blocked)</h4>
+                            <p style="margin: 0; font-size: 0.95em; line-height: 1.5;" data-i18n="helpScreen.api.trouble.errBlockedDesc"><b>Причина:</b> Встроенная цензура нейросети сработала на жестокость или эротику в сцене.<br><b>Решение:</b> Используйте модели без цензуры или с низким уровнем фильтрации через OpenRouter.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <button class="back-button" data-target="main-menu" data-i18n="helpScreen.backButton">Назад в Главное Меню</button>
+        </div>
+
+        <!-- Основной Игровой Интерфейс (ПОЛНЫЙ) -->
+        <div class="game-container" id="game-interface" style="display: none;">
+            <header class="game-header">
+                 <h1 id="game-title">Хроники Метерии: AI Приключение</h1>
+                 <div class="header-controls">
+                     <button id="in-game-menu-button" title="Меню" data-i18n="[title]gameInterface.menuButtonTitle">☰</button>
+                 </div>
+            </header>
+
+            <div class="main-layout">
+                <aside class="sidebar left-sidebar">
+                    <div class="panel character-sheet collapsible-panel expanded">
+                        <h2 class="panel-toggle"><span data-i18n="gameInterface.characterPanel.title">Персонаж</span> <span class="toggle-icon">▼</span></h2>
+                        <div class="panel-content">
+                            <div id="character-name"><span data-i18n="gameInterface.characterPanel.nameLabel">Имя:</span> <span>...</span></div>
+                            <div id="character-race"><span data-i18n="gameInterface.characterPanel.raceLabel">Раса:</span> <span>...</span></div>
+                            <div id="character-class"><span data-i18n="gameInterface.characterPanel.classLabel">Класс:</span> <span>...</span></div>
+                            <div id="level-info"></div>
+                            <div id="time-info" style="font-size: 0.95em; color: #f1c40f; margin-top: 5px; text-align: center; font-weight: bold; background: rgba(0,0,0,0.4); padding: 5px; border-radius: 4px; border: 1px solid rgba(241, 196, 15, 0.3);">☀️ День 1 | 08:00</div>
+                            <div id="transport-indicator" class="transport-indicator" style="display: none;"></div>
+                            <div id="character-stats">
+                                <p class="stat-line"><span data-i18n="gameInterface.characterPanel.hp">❤️ Здоровье:</span><span class="stat-value-group"><span id="stat-hp">100</span> / <span id="stat-max-hp">100</span></span></p>
+                                <p class="stat-line mage-only" id="mana-stat-line" style="display: none;"><span data-i18n="gameInterface.characterPanel.mana">💧 Мана:</span><span class="stat-value-group"><span id="stat-mana">50</span> / <span id="stat-max-mana">50</span></span></p>
+                                <p class="stat-line" data-stat="str"><span data-i18n="gameInterface.characterPanel.str">⚔️ Сила:</span> <span><span id="stat-str">10</span><button class="stat-increase-button" data-stat="str" title="Увеличить">+</button></span></p>
+                                <p class="stat-line" data-stat="dex"><span data-i18n="gameInterface.characterPanel.dex">🤸 Ловкость:</span> <span><span id="stat-dex">10</span><button class="stat-increase-button" data-stat="dex" title="Увеличить">+</button></span></p>
+                                <p class="stat-line" data-stat="int"><span data-i18n="gameInterface.characterPanel.int">💡 Интеллект:</span> <span><span id="stat-int">10</span><button class="stat-increase-button" data-stat="int" title="Увеличить">+</button></span></p>
+                                <p class="stat-line" data-stat="con"><span data-i18n="gameInterface.characterPanel.con">맷 Выносливость:</span> <span><span id="stat-con">10</span><button class="stat-increase-button" data-stat="con" title="Увеличить">+</button></span></p>
+                                <p class="stat-line" data-stat="cha"><span data-i18n="gameInterface.characterPanel.cha">😊 Харизма:</span> <span><span id="stat-cha">10</span><button class="stat-increase-button" data-stat="cha" title="Увеличить">+</button></span></p>
+                                <p class="stat-line" data-stat="res"><span data-i18n="gameInterface.characterPanel.res">🛡️ Стойкость:</span> <span><span id="stat-res">10</span><button class="stat-increase-button" data-stat="res" title="Увеличить">+</button></span></p>
+                                <p class="stat-line"><span data-i18n="gameInterface.characterPanel.gold">💰 Золото:</span> <span id="stat-gold">0</span></p>
+                                <div class="stat-line reputation-line">
+                                    <span data-i18n="gameInterface.characterPanel.reputation">⚖️ Репутация:</span>
+                                    <div class="reputation-display-wrapper">
+                                        <span class="reputation-value-text-above" id="stat-reputation-value-text">0</span>
+                                        <div class="reputation-bar-container"><div class="reputation-marker" id="reputation-marker"></div></div>
+                                    </div>
+                                </div>
+                                <p class="stat-line" id="location-stat-line"><span data-i18n="gameInterface.characterPanel.location">📍 Локация:</span> <span id="stat-location">...</span></p>
+
+                            </div>
+                        </div>
+                    </div>
+                    
+					<!-- ПАНЕЛЬ ЭКИПИРОВКИ V2 -->
+					<div class="panel equipment-panel-v2">
+						<h2 data-i18n="gameInterface.equipmentPanel.title">Экипировка</h2>
+						<div class="panel-content" style="display: block; padding-top: 10px;">
+							<div class="paper-doll-grid">
+								<div class="equipment-slot-v2" id="equipment-slot-face" data-slot="face" title="Лицо"><span class="slot-icon-v2"><i class="fas fa-mask"></i></span></div>
+								<div class="equipment-slot-v2" id="equipment-slot-head" data-slot="head" title="Голова"><span class="slot-icon-v2"><i class="fas fa-crown"></i></span></div>
+								<div class="equipment-slot-v2" id="equipment-slot-neck" data-slot="neck" title="Шея"><span class="slot-icon-v2"><i class="fas fa-gem"></i></span></div>
+								
+								<div class="equipment-slot-v2" id="equipment-slot-shoulders" data-slot="shoulders" title="Плечи"><span class="slot-icon-v2"><i class="fas fa-user-shield"></i></span></div>
+								<div class="equipment-slot-v2" id="equipment-slot-torso" data-slot="torso" title="Туловище"><span class="slot-icon-v2"><i class="fas fa-tshirt"></i></span></div>
+								<div class="equipment-slot-v2" id="equipment-slot-left_hand" data-slot="left_hand" title="Левая рука (Щит/Доп)"><span class="slot-icon-v2"><i class="fas fa-shield-alt"></i></span></div>
+								
+								<div class="equipment-slot-v2" id="equipment-slot-right_hand" data-slot="right_hand" title="Правая рука (Оружие)"><span class="slot-icon-v2"><i class="fas fa-gavel"></i></span></div>
+								<div class="equipment-slot-v2" id="equipment-slot-legs" data-slot="legs" title="Ноги"><span class="slot-icon-v2"><i class="fas fa-socks"></i></span></div>
+								
+								<div class="equipment-slot-v2" id="equipment-slot-feet" data-slot="feet" title="Ступни"><span class="slot-icon-v2"><i class="fas fa-shoe-prints"></i></span></div>
+							</div>
+						</div>
+					</div>
+
+                    <!-- ПАНЕЛЬ ИНВЕНТАРЯ -->
+                    <div class="panel inventory collapsible-panel">
+                        <h2 class="panel-toggle"><span data-i18n="gameInterface.inventoryPanel.title">Инвентарь</span> <span class="toggle-icon">▶</span></h2>
+                        <div class="panel-content">
+                            <div class="inventory-tabs">
+                                <button class="tab-button active" data-category="all" data-i18n="gameInterface.inventoryPanel.tabs.all">Все</button>
+                                <button class="tab-button" data-category="weapon" data-i18n="gameInterface.inventoryPanel.tabs.weapon">Оружие</button>
+                                <button class="tab-button" data-category="armor" data-i18n="gameInterface.inventoryPanel.tabs.armor">Броня</button>
+                                <button class="tab-button" data-category="potion" data-i18n="gameInterface.inventoryPanel.tabs.potion">Зелья</button>
+                                <button class="tab-button" data-category="quest" data-i18n="gameInterface.inventoryPanel.tabs.quest">Квесты</button>
+                            </div>
+                            <ul id="inventory-list"></ul>
+                        </div>
+                    </div>
+
+                    <div class="panel status-effects-panel collapsible-panel">
+                        <h2 class="panel-toggle"><span data-i18n="gameInterface.statusEffectsPanel.title">Статус-эффекты</span> <span class="toggle-icon">▶</span></h2>
+                        <div class="panel-content"><ul id="status-effects-list"></ul></div>
+                    </div>
+                </aside>
+
+                <main class="game-content">
+                    <div class="panel game-log" id="game-log"></div>
+					<div id="quick-tags-bar" class="quick-tags-bar"></div>
+                    <div id="suggested-actions-container" class="suggested-actions-bar" style="display: none;"></div>
+
+                    <div class="input-area">
+                        <button id="trade-confirm-btn" style="display: none; background-color: #27ae60; border-color: #2ecc71; color: white; font-weight: bold;"><i class="fas fa-handshake"></i> Подтвердить сделку</button>
+                        <button id="journey-continue-btn" class="journey-btn-magical" style="display: none;"><i class="fas fa-shoe-prints"></i> Вперед в неизвестность</button>
+                        <input type="text" id="user-input" placeholder="Что вы будете делать?">
+					    <div id="active-rolls-container"></div>
+
+                        <button id="repeat-button" title="Повторить последнее действие (Ctrl+R)" style="min-width: 40px; background-color: rgba(155, 89, 182, 0.6); border-color: rgba(142, 68, 173, 0.5);"><i class="fas fa-redo-alt"></i></button>
+<button id="send-button">Отправить</button>
+                    </div>
+                    <div class="dice-roll-area">
+                        <button id="roll-dice-button" style="display: none;"></button>
+                    </div>
+                </main>
+
+                <aside class="sidebar right-sidebar">
+                     <div class="panel quests collapsible-panel">
+                         <h2 class="panel-toggle"><span data-i18n="gameInterface.questPanel.title">Задания</span> <span class="toggle-icon">▶</span></h2>
+                         <div class="panel-content"><ul id="quest-list"></ul></div>
+                     </div>
+                     <div class="panel skills-panel collapsible-panel">
+                         <h2 class="panel-toggle"><span data-i18n="gameInterface.skillsPanel.title">Умения</span> <span class="toggle-icon">▶</span></h2>
+                         <div class="panel-content"><ul id="skills-list"></ul></div>
+                     </div>
+                     <div class="panel traits-panel collapsible-panel" style="display: none;">
+                         <h2 class="panel-toggle"><span data-i18n="gameInterface.traitsPanel.title">Особые черты</span> <span class="toggle-icon">▶</span></h2>
+                         <div class="panel-content"><ul id="traits-list"></ul></div>
+                     </div>
+                     <div class="panel holdings-panel collapsible-panel" style="display: none;">
+                         <h2 class="panel-toggle"><span data-i18n="gameInterface.holdingsPanel.title">Владения</span> <span class="toggle-icon">▶</span></h2>
+                         <div class="panel-content"><ul id="holdings-list"></ul></div>
+                     </div>
+                     <div id="nexus-panel" class="panel nexus-panel collapsible-panel">
+                        <h2 class="panel-toggle"><span data-i18n="gameInterface.nexusPanel.title">Константы</span> <span class="toggle-icon">▶</span></h2>
+                        <div class="panel-content"><ul id="nexus-list"></ul></div>
+                    </div>
+                     <div id="port-panel" class="panel port-panel collapsible-panel" style="display: none;">
+                         <h2 class="panel-toggle"><span data-i18n="gameInterface.portPanel.title">Порт</span> <span class="toggle-icon">▼</span></h2>
+                         <div class="panel-content" id="port-panel-content"></div>
+                     </div>
+                     <div id="trade-journal-panel" class="panel trade-journal-panel collapsible-panel" style="display: none;">
+                         <h2 class="panel-toggle"><span data-i18n="gameInterface.tradeJournalPanel.title">Торговый Журнал</span> <span class="toggle-icon">▶</span></h2>
+                         <div class="panel-content">
+                             <p style="font-size: 0.85em; color: #bdc3c7; margin-bottom: 10px;">Сводка цен и слухов рынка.</p>
+                             <ul id="trade-journal-list"></ul>
+                         </div>
+                     </div>
+                     <div id="world-chronicles-panel" class="panel world-chronicles-panel collapsible-panel" style="display: none;">
+                         <h2 class="panel-toggle"><span data-i18n="gameInterface.worldChroniclesPanel.title">Летопись Мира</span> <span class="toggle-icon">▼</span></h2>
+                         <div class="chronicle-filters">
+                             <button class="c-filter-btn active" data-filter="all">Все</button>
+                             <button class="c-filter-btn" data-filter="war">⚔️ Войны</button>
+                             <button class="c-filter-btn" data-filter="disaster">🌪️ Бедствия</button>
+                             <button class="c-filter-btn" data-filter="trade">💰 Экономика</button>
+                         </div>
+                         <div class="panel-content"><ul id="world-chronicles-list"></ul></div>
+                     </div>
+                     <div class="panel map-panel collapsible-panel">
+                         <h2 class="panel-toggle"><span data-i18n="gameInterface.mapPanel.title">Карта</span> <span class="toggle-icon">▶</span></h2>
+                         <div class="panel-content">
+                                                        <div class="map-controls-bar">
+                                <button class="map-filter-btn active" data-filter="none" title="Обычный вид"><i class="fas fa-globe"></i></button>
+                                <button class="map-filter-btn" data-filter="political" title="Политическая карта"><i class="fas fa-flag"></i></button>
+                                <button class="map-filter-btn" data-filter="economic" title="Экономика"><i class="fas fa-coins"></i></button>
+                                <button class="map-filter-btn" data-filter="threat" title="Уровень угрозы"><i class="fas fa-skull"></i></button>
+                                <button class="map-filter-btn" id="center-map-btn" title="Центрировать на герое"><i class="fas fa-crosshairs"></i></button>
+                            </div>
+                            <canvas id="visual-map" width="320" height="250"></canvas>
+                             <h3 data-i18n="gameInterface.mapPanel.globalTitle">Известные регионы:</h3>
+                             <ul id="global-locations-list"></ul>
+                             <h3 data-i18n="gameInterface.mapPanel.customTitle">Открытые места:</h3>
+                             <ul id="custom-locations-list"></ul>
+                        </div>
+                     </div>
+
+                     <div class="panel environment-panel collapsible-panel">
+                        <h2 class="panel-toggle"><span data-i18n="gameInterface.environmentPanel.title">Окружение</span> <span class="toggle-icon">▶</span></h2>
+                        <div class="panel-content"><ul id="environment-list"></ul></div>
+                    </div>
+                     <div class="panel calculation-log-panel collapsible-panel">
+                         <h2 class="panel-toggle"><span data-i18n="gameInterface.calcLogPanel.title">Расчеты GM</span> <span class="toggle-icon">▶</span></h2>
+                         <div class="panel-content"><div id="calculation-log" class="calculation-log-area"></div></div>
+                     </div>
+
+                     <div id="dice-log-panel" class="panel dice-log-panel collapsible-panel" style="display: none;">
+                         <h2 class="panel-toggle"><span data-i18n="gameInterface.diceLogPanel.title">История бросков</span> <span class="toggle-icon">▶</span></h2>
+                         <div class="panel-content"><ul id="dice-log-list"></ul></div>
+                     </div>
+                                          <div class="panel echo-memory-panel collapsible-panel">
+                         <h2 class="panel-toggle"><span data-i18n="gameInterface.echoMemoryPanel.title">Эхо-память</span> <span class="toggle-icon">▶</span></h2>
+                         <div class="panel-content">
+                             <ul id="echo-memory-list"></ul>
+                             <button id="clear-echo-memory-btn" style="display: none; width: 100%; margin-top: 10px; background-color: #c0392b; border-color: #e74c3c;" data-i18n="gameInterface.echoMemoryPanel.clearButton">Очистить</button>
+                         </div>
+                     </div>
+
+<div id="gm-notes-panel" class="panel gm-notes-panel-debug collapsible-panel expanded" style="display: none;">
+                         <h2 class="panel-toggle"><span data-i18n="gameInterface.gmNotesPanel.title">Заметки GM (DEBUG)</span> <span class="toggle-icon">▼</span></h2>
+                         <div class="panel-content"><div id="gm-notes-content" class="gm-notes-area"></div></div>
+                     </div>
+                     <!-- ПАНЕЛЬ СИМУЛЯЦИИ МИРА (DEBUG) -->
+                     <div id="world-sim-debug-panel" class="panel world-sim-debug-panel collapsible-panel" style="display: none;">
+                         <h2 class="panel-toggle"><span data-i18n="gameInterface.worldSimDebugPanel.title">Симуляция Мира (DEBUG)</span> <span class="toggle-icon">▶</span></h2>
+                         <div class="panel-content"><div id="world-sim-debug-content" class="world-sim-debug-area"></div></div>
+                     </div>
+
+                     <!-- ПАНЕЛЬ ЭРОТИЧЕСКОГО ЖУРНАЛА -->
+                     <div id="erotic-journal-panel" class="panel erotic-journal-panel collapsible-panel" style="display: none;">
+                         <h2 class="panel-toggle"><span data-i18n="gameInterface.eroticJournalPanel.title">💋 Интимный Дневник</span> <span class="toggle-icon">▶</span></h2>
+                         <div class="panel-content">
+                             <p style="font-size: 0.85em; color: #e74c3c; margin-bottom: 10px; font-style: italic;" data-i18n="gameInterface.eroticJournalPanel.description">Здесь хранятся воспоминания о ваших интимных моментах...</p>
+                             <ul id="erotic-journal-list"></ul>
+                             <button id="clear-erotic-journal-btn" class="btn-danger" style="width: 100%; margin-top: 10px; background-color: #c0392b; border-color: #e74c3c; display: none;" data-i18n="gameInterface.eroticJournalPanel.clearButton">Очистить журнал</button>
+                         </div>
+                     </div>
+                </aside>
+            </div>
+        </div>
+
+    </div> <!-- Конец content-wrapper -->
+
+    <!-- ПЛАВАЮЩЕЕ ОКНО ПУТЕШЕСТВИЯ -->
+    <div id="journey-container" class="journey-modal" style="display: none;">
+        <div class="journey-modal-header">
+            <span id="journey-dest">В пути...</span>
+            <span id="journey-progress-text">0/0 ч.</span>
+        </div>
+        <div class="journey-progress-wrapper">
+            <div id="journey-progress-bar"></div>
+        </div>
+        <div id="journey-loading" style="display: none;">
+            <i class="fas fa-spinner fa-spin"></i> Прокладываем путь...
+        </div>
+        <div id="journey-event-area" style="display: none;">
+            <div id="journey-event-text"></div>
+            <div id="journey-event-actions"></div>
+        </div>
+        <div id="travel-controls" class="travel-controls">
+            <button id="travel-fast-forward-btn" class="travel-btn" title="Ускорить (промотать до конца)"><i class="fas fa-forward"></i></button>
+            <button id="travel-pause-btn" class="travel-btn" title="Остановиться (Пауза)"><i class="fas fa-pause"></i></button>
+            <button id="travel-cancel-btn" class="travel-btn btn-danger" title="Отменить путешествие"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
+
+
+        <!-- Модальное окно сохранения мира -->
+        <div id="save-world-modal" class="custom-alert-overlay">
+            <div class="custom-alert-box">
+                <h3 data-i18n="worldSetup.saveWorldTitle">Мир успешно сгенерирован!</h3>
+                <p data-i18n="worldSetup.saveWorldDesc">Хотите сохранить этот мир, чтобы играть в нем другими персонажами в будущем?</p>
+                <input type="text" id="save-world-name-input" class="bus-input" placeholder="Название мира..." style="margin-bottom: 15px;">
+                <div style="display: flex; justify-content: center; gap: 15px; margin-top: 10px;">
+                    <button id="save-world-confirm-btn" style="background-color: #27ae60; border-color: #2ecc71; min-width: 120px;" data-i18n="worldSetup.saveWorldConfirm">Сохранить</button>
+                    <button id="save-world-skip-btn" class="back-button" style="min-width: 120px;" data-i18n="worldSetup.saveWorldSkip">Пропустить</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно загрузки мира -->
+        <div id="load-world-modal" class="custom-alert-overlay">
+            <div class="custom-alert-box save-modal-box">
+                <h3 data-i18n="worldSetup.loadWorldTitle">Выберите сохраненный мир</h3>
+                <div id="world-slots-container" class="save-slots-grid"></div>
+                <button id="close-load-world-modal-btn" class="back-button" style="margin-top: 20px;" data-i18n="settingsMenu.backButton">Отмена</button>
+            </div>
+        </div>
+
+
+    <!-- Модальное окно выбора модели -->
+    <div id="model-selector-modal" class="custom-alert-overlay">
+        <div class="custom-alert-box" style="max-width: 800px; width: 95%; text-align: left; padding: 20px; display: flex; flex-direction: column; max-height: 85vh;">
+            <h3 style="color: #5dade2; border-bottom: 1px solid #5dade2; padding-bottom: 10px; margin-top: 0; display: flex; justify-content: space-between; align-items: center;">
+                <span><i class="fas fa-server"></i> Реестр Нейросетей</span>
+                <span id="model-count-badge" style="font-size: 0.6em; background: #2980b9; color: white; padding: 3px 8px; border-radius: 12px;">0 моделей</span>
+            </h3>
+            <input type="text" id="model-search-input" class="bus-input" placeholder="Поиск по названию или ID..." style="margin-bottom: 10px; font-size: 1.1em;">
+            
+            <!-- Фильтры -->
+            <div id="model-filters" style="display: flex; gap: 5px; margin-bottom: 10px; flex-wrap: wrap;">
+                <button class="bus-btn btn-blue active-filter" data-filter="all" style="padding: 5px 10px; font-size: 0.85em; margin: 0;">Все</button>
+                <button class="bus-btn btn-gray" data-filter="text" style="padding: 5px 10px; font-size: 0.85em; margin: 0;"><i class="fas fa-comment-alt"></i> Текст (LLM)</button>
+                <button class="bus-btn btn-gray" data-filter="vision" style="padding: 5px 10px; font-size: 0.85em; margin: 0;"><i class="fas fa-eye"></i> Зрение/Картинки</button>
+                <button class="bus-btn btn-gray" data-filter="audio" style="padding: 5px 10px; font-size: 0.85em; margin: 0;"><i class="fas fa-volume-up"></i> Аудио (TTS)</button>
+                <button class="bus-btn btn-gray" data-filter="free" style="padding: 5px 10px; font-size: 0.85em; margin: 0; border: 1px solid #2ecc71; color: #2ecc71;"><i class="fas fa-gift"></i> Бесплатные</button>
+            </div>
+
+            <div id="model-list-container" style="flex-grow: 1; overflow-y: auto; background: #181b20; border: 1px solid #323942; border-radius: 6px; padding: 10px; min-height: 300px; display: flex; flex-direction: column; gap: 8px;">
+                <!-- Список моделей -->
+            </div>
+            <button id="close-model-selector-btn" class="back-button" style="width: 100%; margin-top: 15px;">Закрыть реестр</button>
+        </div>
+    </div>
+
+
+    <!-- Модальные окна и оверлеи -->
+    <div id="custom-alert-modal" class="custom-alert-overlay">
+        <div class="custom-alert-box">
+            <h3 id="custom-alert-title">Уведомление</h3>
+            <p id="custom-alert-message"></p>
+            <button id="custom-alert-close">OK</button>
+        </div>
+    </div>
+
+
+
+    <!-- Окно ошибки ИИ (Восстановлено) -->
+    <div id="ai-error-modal" class="custom-alert-overlay">
+        <div class="custom-alert-box">
+            <h3 style="color: #e74c3c;"><i class="fas fa-exclamation-triangle"></i> <span data-i18n="extraLoc.error.aiErrorTitle">Ошибка Мастера Игры</span></h3>
+            <p id="ai-error-message"></p>
+            <button id="ai-error-details-toggle" style="background: none; border: none; color: #aeb6bf; text-decoration: underline; font-size: 0.85em; padding: 0; margin-bottom: 15px; box-shadow: none; min-width: auto;" data-i18n="extraLoc.error.showDetails">Показать детали ошибки</button>
+            <div id="ai-error-details-content" style="display: none; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; font-family: monospace; font-size: 0.8em; color: #e74c3c; text-align: left; max-height: 120px; overflow-y: auto; margin-bottom: 15px; word-break: break-word;"></div>
+            <div style="display: flex; justify-content: center; gap: 10px; width: 100%;">
+                <button id="ai-error-retry-btn" style="background-color: #27ae60; border-color: #2ecc71; flex: 1;" data-i18n="extraLoc.error.retry">Повторить запрос</button>
+                <button id="ai-error-cancel-btn" class="back-button" style="flex: 1;" data-i18n="extraLoc.error.cancel">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="menu-overlay"></div>
+    <div id="in-game-menu">
+        <h3>Меню</h3>
+        <button id="in-game-save-button" data-i18n="gameInterface.inGameMenu.saveButton">Сохранить</button>
+        <button id="in-game-settings-button" data-i18n="gameInterface.inGameMenu.settingsButton">Настройки</button>
+        <button id="in-game-exit-button" data-i18n="gameInterface.inGameMenu.exitButton">Выход</button>
+        <button id="close-in-game-menu-button" data-i18n="gameInterface.inGameMenu.closeButton">Закрыть</button>
+    </div>
+    <div id="reputation-modal" class="reputation-modal">
+        <h4>Репутация</h4>
+        <div id="reputation-modal-content"></div>
+    </div>
+
+    <div id="business-modal" class="custom-alert-overlay">
+        <div class="custom-alert-box" style="max-width: 600px; width: 90%; text-align: left; padding: 20px;">
+            <h3 id="business-modal-title" style="color: #f1c40f; border-bottom: 1px solid #f1c40f; padding-bottom: 10px; margin-top: 0;" data-i18n="extraLoc.business.manageTitle">Управление бизнесом</h3>
+            <div id="business-modal-content" style="max-height: 60vh; overflow-y: auto; padding-right: 10px; color: #ecf0f1;">
+                <!-- Dynamic content -->
+            </div>
+            <button id="close-business-modal-btn" class="back-button" style="width: 100%; margin-top: 15px;" data-i18n="extraLoc.business.close">Закрыть</button>
+        </div>
+    </div>
+    <!-- Админ Меню (F4) -->
+    <div id="admin-menu-overlay" class="custom-alert-overlay">
+        <div class="custom-alert-box" style="max-width: 750px; width: 95%; text-align: left; padding: 20px;">
+            <h3 style="color: #e74c3c; border-bottom: 1px solid #e74c3c; padding-bottom: 10px; margin-top: 0;"><i class="fas fa-tools"></i> <span data-i18n="extraLoc.admin.title">ADMIN MENU (DEBUG)</span></h3>
+            <div id="admin-menu-content" style="max-height: 65vh; overflow-y: auto; padding-right: 10px; color: #ecf0f1;">
+                <!-- Контент генерируется в JS -->
+            </div>
+            <button id="close-admin-menu-btn" class="back-button" style="width: 100%; margin-top: 15px;" data-i18n="extraLoc.admin.close">Закрыть</button>
+        </div>
+    </div>
+    <div id="loading-overlay" class="loading-overlay">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 20px;">
+            <div class="astrolabe" style="transform: scale(1.5); margin-bottom: 20px;">
+                <div class="astrolabe-ring"></div>
+                <div class="astrolabe-ring"></div>
+                <div class="astrolabe-ring"></div>
+                <div class="astrolabe-core"></div>
+            </div>
+            <div class="ether-text-container" style="align-items: center; text-align: center;">
+                <span class="ether-text-title" id="loading-title" style="font-size: 2em; text-shadow: 0 0 15px #5dade2;" data-i18n="extraLoc.loading.generating">Генерация мира...</span>
+                <span class="ether-text-subtitle" id="loading-text" style="font-size: 1.2em; margin-top: 15px; color: #f1c40f; max-width: 600px;" data-i18n="extraLoc.loading.connecting">Подключение к Эфиру...</span>
+            </div>
+        </div>
+    </div>
+    <div id="ooc-tooltip" class="ooc-tooltip">
+        <div id="ooc-tooltip-content"></div>
+    </div>
+    <div id="map-tooltip" class="map-tooltip"></div>
+
+    <!-- Модальное окно для выбора слота сохранения -->
+    <div id="save-slot-modal" class="custom-alert-overlay">
+        <div class="custom-alert-box save-modal-box">
+            <h3 data-i18n="gameInterface.saveModal.title">Выберите слот для сохранения</h3>
+            <div id="save-slots-container" class="save-slots-grid"></div>
+            <button id="close-save-modal-button" class="back-button" style="margin-top: 20px;">Отмена</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно подтверждения (Да/Нет) -->
+    <div id="custom-confirm-modal" class="custom-alert-overlay">
+        <div class="custom-alert-box">
+            <h3 data-i18n="modal.confirmTitle">Подтверждение</h3>
+            <p id="custom-confirm-message" data-i18n="extraLoc.modal.areYouSure">Вы уверены?</p>
+            <div style="display: flex; justify-content: center; gap: 15px; margin-top: 20px;">
+                <button id="confirm-yes-btn" style="min-width: 100px;" data-i18n="extraLoc.modal.yes">Да</button>
+                <button id="confirm-no-btn" class="back-button" style="min-width: 100px;" data-i18n="extraLoc.modal.no">Нет</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно Летописи (Предыстории) -->
+    <div id="biography-modal" class="custom-alert-overlay">
+        <div class="custom-alert-box" style="max-width: 800px; width: 95%; text-align: left; padding: 30px; background: linear-gradient(135deg, #1a1410 0%, #2c1e14 100%); border: 2px solid #d4af37; box-shadow: 0 15px 50px rgba(0,0,0,0.9);">
+            <h3 id="biography-modal-title" style="color: #d4af37; border-bottom: 1px solid rgba(212, 175, 55, 0.4); padding-bottom: 15px; margin-top: 0; font-family: 'MedievalSharp', cursive; font-size: 1.8em; text-align: center;">Летопись Героя</h3>
+            <div id="biography-modal-content" style="max-height: 65vh; overflow-y: auto; padding-right: 15px; color: #e8dcc4; font-size: 1.1em; line-height: 1.7; white-space: pre-wrap; font-family: 'Lora', serif;">
+            </div>
+            <button id="close-biography-modal-btn" class="back-button" style="width: 100%; margin-top: 25px; background: #8b0000; border-color: #ff4500; color: white; font-weight: bold; font-size: 1.1em;">Закрыть летопись</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно Изучения Предмета -->
+    <div id="item-examine-modal" class="custom-alert-overlay">
+        <div class="custom-alert-box" style="max-width: 500px; width: 95%; text-align: left; background: linear-gradient(135deg, #1a1410 0%, #2c1e14 100%); border: 2px solid #d4af37; box-shadow: 0 15px 50px rgba(0,0,0,0.9);">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid rgba(212, 175, 55, 0.4); padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 id="examine-title" style="margin: 0; color: #f1c40f; font-family: 'MedievalSharp', cursive; font-size: 1.4em;">Название</h3>
+                <span id="examine-rarity" style="font-weight: bold; font-size: 0.9em; padding: 3px 8px; border-radius: 4px; background: rgba(0,0,0,0.5);">Редкость</span>
+            </div>
+            <div id="examine-desc" style="font-style: italic; color: #e8dcc4; margin-bottom: 15px; line-height: 1.5; font-size: 0.95em;">Описание</div>
+            <div id="examine-stats" style="margin-bottom: 15px; color: #5dade2; font-size: 0.9em; font-family: monospace; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px;">Статы</div>
+            <div style="background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; border-left: 3px solid #e67e22;">
+                <strong style="color: #e67e22; font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px;"><i class="fas fa-scroll"></i> Летопись предмета:</strong>
+                <div id="examine-history-content" style="margin-top: 8px; font-size: 0.85em; color: #bdc3c7; max-height: 150px; overflow-y: auto; line-height: 1.4; padding-right: 5px;"></div>
+            </div>
+            <button class="back-button" style="width: 100%; margin-top: 20px; background: #8b0000; border-color: #ff4500; color: white; font-weight: bold;" onclick="document.getElementById('item-examine-modal').classList.remove('visible'); setTimeout(() => document.getElementById('item-examine-modal').style.display='none', 300);">Закрыть фолиант</button>
+        </div>
+    </div>
+
+    <!-- Плеер и скрипты -->
+    <audio id="menu-music-player" loop></audio>
+    <audio id="background-music-player"></audio>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    
+    <!-- Ядро (Константы, Настройки, DOM) -->
+    <script src="js/core/ai_config.js"></script>
+    <script src="js/core/constants.js"></script>
+    <script src="js/core/globals.js"></script>
+    <script src="js/core/dom_elements.js"></script>
+
+    <!-- Модули системы сохранений -->
+    <script src="js/saves/StorageProvider.js"></script>
+    <script src="js/saves/SaveManager.js"></script>
+    <script src="js/saves/SaveUI.js"></script>
+    <script src="js/cartographer/globalMap.js"></script>
+    
+    <!-- Система моддинга -->
+    <script src="js/mods/ModLoader.js"></script>
+    <script src="js/mods/ModLoaderIntegration.js"></script>
+    <script src="js/mods/ModManagerUI.js"></script>
+
+<script src="script.js"></script>
+</body>
+</html>

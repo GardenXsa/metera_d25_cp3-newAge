@@ -1,0 +1,119 @@
+[
+  {
+    "id": "earthquake",
+    "name": "Землетрясение",
+    "base_radius": 5,
+    "base_duration_days": 1,
+    "population_damage_percent": 10,
+    "facility_damage": 25,
+    "allowed_climates": ["any"],
+    "ruins_roads": true,
+    "stability_penalty": 10
+  },
+  {
+    "id": "flood",
+    "name": "Наводнение",
+    "base_radius": 4,
+    "base_duration_days": 5,
+    "population_damage_percent": 5,
+    "facility_damage": 15,
+    "allowed_climates": ["temperate", "tropical"],
+    "floods_tiles": true,
+    "affected_biomes": ["riverbank", "floodplain", "plains"]
+  },
+  {
+    "id": "wildfire",
+    "name": "Лесной пожар",
+    "base_radius": 4,
+    "base_duration_days": 3,
+    "population_damage_percent": 5,
+    "facility_damage": 20,
+    "allowed_climates": ["temperate", "tropical", "dry"],
+    "transform_biome_to": "ash",
+    "affected_biomes": ["forest"]
+  },
+  {
+    "id": "drought",
+    "name": "Засуха",
+    "base_radius": 6,
+    "base_duration_days": 10,
+    "population_damage_percent": 8,
+    "facility_damage": 5,
+    "allowed_climates": ["temperate", "dry"],
+    "transform_biome_to": "desert",
+    "affected_biomes": ["plains", "forest", "swamp", "floodplain", "riverbank"],
+    "fertility_mult": 0.5
+  },
+  {
+    "id": "plague",
+    "name": "Эпидемия",
+    "base_radius": 3,
+    "base_duration_days": 14,
+    "population_damage_percent": 20,
+    "facility_damage": 0,
+    "allowed_climates": ["any"],
+    "stability_penalty": 20
+  },
+  {
+    "id": "aether_storm",
+    "name": "Эфирный шторм",
+    "base_radius": 5,
+    "base_duration_days": 2,
+    "population_damage_percent": 5,
+    "facility_damage": 10,
+    "allowed_climates": ["any"],
+    "threat_set": 80
+  },
+  {
+    "id": "volcano",
+    "name": "Извержение вулкана",
+    "base_radius": 3,
+    "base_duration_days": 5,
+    "population_damage_percent": 15,
+    "facility_damage": 40,
+    "allowed_climates": ["mountain"],
+    "transform_biome_to": "volcano",
+    "affected_biomes": ["mountains", "hills", "plains", "forest"]
+  },
+  {
+    "id": "monster_invasion",
+    "name": "Орда чудовищ",
+    "base_radius": 4,
+    "base_duration_days": 7,
+    "population_damage_percent": 15,
+    "facility_damage": 30,
+    "allowed_climates": ["any"],
+    "threat_set": 100,
+    "ruins_roads": true
+  },
+  {
+    "id": "storm",
+    "name": "Шторм",
+    "base_radius": 5,
+    "base_duration_days": 2,
+    "population_damage_percent": 2,
+    "facility_damage": 10,
+    "allowed_climates": ["coast", "ocean"]
+  },
+  {
+    "id": "tsunami",
+    "name": "Цунами",
+    "base_radius": 3,
+    "base_duration_days": 1,
+    "population_damage_percent": 15,
+    "facility_damage": 50,
+    "allowed_climates": ["coast"],
+    "floods_tiles": true,
+    "affected_biomes": ["plains", "forest", "beach"]
+  },
+  {
+    "id": "sea_monster",
+    "name": "Морское чудовище",
+    "base_radius": 2,
+    "base_duration_days": 5,
+    "population_damage_percent": 1,
+    "facility_damage": 0,
+    "allowed_climates": ["ocean", "coast"],
+    "threat_set": 90
+  }
+]
