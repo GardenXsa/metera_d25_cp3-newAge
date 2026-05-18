@@ -8,7 +8,8 @@ let allowNSFW = false;
 
 
 // Gemini
-let geminiApiKeys = []; // Deduplication enforced via addGeminiKey / removeGeminiKey
+let geminiApiKeys = []; // Deduplication enforced: addGeminiKey checks before push
+let _geminiKeysSet = new Set(); // Internal set for O(1) dedup lookups
 let geminiApiKey = ''; // Единый активный ключ
 let currentGeminiKeyIndex = 0;
 let geminiModelId = 'gemini-3.1-flash-lite-preview';
@@ -61,7 +62,8 @@ let aiPlayerCurrentTurns = 0;
 function addGeminiKey(key) {
     if (!key || typeof key !== 'string') return false;
     const trimmed = key.trim();
-    if (!trimmed || geminiApiKeys.includes(trimmed)) return false;
+    if (!trimmed || _geminiKeysSet.has(trimmed)) return false;
+    _geminiKeysSet.add(trimmed);
     geminiApiKeys.push(trimmed);
     if (!geminiApiKey) geminiApiKey = trimmed;
     return true;
@@ -71,6 +73,7 @@ function removeGeminiKey(key) {
     const idx = geminiApiKeys.indexOf(key);
     if (idx === -1) return false;
     geminiApiKeys.splice(idx, 1);
+    _geminiKeysSet.delete(key);
     // If the active key was removed, switch to the first available
     if (geminiApiKey === key) {
         geminiApiKey = geminiApiKeys.length > 0 ? geminiApiKeys[currentGeminiKeyIndex % geminiApiKeys.length] : '';
@@ -82,6 +85,7 @@ function setGeminiKeys(keysArray) {
     if (!Array.isArray(keysArray)) return;
     // Deduplicate and filter empty strings
     const seen = new Set();
+    _geminiKeysSet = new Set();
     geminiApiKeys = keysArray.filter(k => {
         if (!k || typeof k !== 'string') return false;
         const trimmed = k.trim();
@@ -89,6 +93,7 @@ function setGeminiKeys(keysArray) {
         seen.add(trimmed);
         return true;
     });
+    _geminiKeysSet = new Set(geminiApiKeys);
     if (geminiApiKeys.length > 0 && !geminiApiKey) {
         geminiApiKey = geminiApiKeys[0];
     }

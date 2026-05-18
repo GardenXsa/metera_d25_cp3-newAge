@@ -69,5 +69,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const handler = (event, message) => callback(message);
         ipcRenderer.on('nexus-progress-update', handler);
         return () => ipcRenderer.removeListener('nexus-progress-update', handler);
-    }
+    },
+
+    // HTTP session token for authenticated fetch calls
+    getHttpToken: () => ipcRenderer.invoke('get-http-token')
 });

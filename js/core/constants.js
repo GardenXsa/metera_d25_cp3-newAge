@@ -78,7 +78,13 @@ function applyDatabaseStats(racesArray) {
     }
     Object.assign(BASE_CLASS_STATS, newClassStats);
 
-    console.log('[Constants] BASE_CLASS_STATS and RACE_MODIFIERS loaded from database.',
+    // Deep-freeze the stats objects after loading from database to prevent accidental mutation
+    for (const race of Object.values(RACE_MODIFIERS)) Object.freeze(race);
+    Object.freeze(RACE_MODIFIERS);
+    for (const cls of Object.values(BASE_CLASS_STATS)) Object.freeze(cls);
+    Object.freeze(BASE_CLASS_STATS);
+
+    console.log('[Constants] BASE_CLASS_STATS and RACE_MODIFIERS loaded from database (frozen).',
         Object.keys(RACE_MODIFIERS).length, 'races,', Object.keys(BASE_CLASS_STATS).length, 'classes');
 }
 
@@ -132,8 +138,19 @@ let predefinedStatusEffects = {
 };
 
 // Backward-compat accessor: if code still reads effectsJSON, parse from effects
+// Backward-compat accessor: if code still reads effectsJSON, return parsed effects
 Object.defineProperty(predefinedStatusEffects, 'effectsJSON', {
-    get() { return undefined; },
+    get() {
+        // Return a new object with each effect's array JSON-stringified for legacy consumers
+        const result = {};
+        for (const [key, val] of Object.entries(predefinedStatusEffects)) {
+            if (key === 'effectsJSON') continue;
+            if (val && val.effects) {
+                result[key] = { ...val, effectsJSON: JSON.stringify(val.effects) };
+            }
+        }
+        return result;
+    },
     configurable: true
 });
 

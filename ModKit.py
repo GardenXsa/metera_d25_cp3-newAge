@@ -211,7 +211,15 @@ class ModKitApp(ctk.CTk):
         dialog = ctk.CTkInputDialog(text="Введите путь и имя файла (например: data/items.json или scripts/combat.js):", title="Новый файл")
         rel_path = dialog.get_input()
         if not rel_path: return
-        
+
+        # Validate filename: no path traversal, no absolute paths, only safe characters
+        if not re.match(r'^[a-zA-Z0-9_./-]+$', rel_path):
+            messagebox.showerror("Ошибка", "Имя файла содержит недопустимые символы. Используйте только буквы, цифры, _, -, / и .")
+            return
+        if rel_path.startswith('/') or rel_path.startswith('..') or ':\\' in rel_path:
+            messagebox.showerror("Ошибка", "Абсолютные пути и выход за пределы мода запрещены.")
+            return
+
         mod_path = os.path.join(self.mods_dir, self.current_mod_id)
         full_path = os.path.realpath(os.path.join(mod_path, rel_path))
         if not full_path.startswith(os.path.realpath(mod_path)):

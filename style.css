@@ -260,7 +260,7 @@ body {
     box-sizing: border-box;
 }
 #game-interface.active-screen {
-    display: flex !important;
+    display: flex;
 }
 
 .game-header {
@@ -403,10 +403,10 @@ body {
 
 /* --- ЛОГ ИГРЫ --- */
 .game-log {
-    flex: 1 !important;
-    min-height: 0 !important;
-    height: auto !important;
-    max-height: none !important;
+    flex: 1;
+    min-height: 0;
+    height: auto;
+    max-height: none;
     overflow-y: auto;
     margin-bottom: 10px;
     border: 1px solid rgba(52, 152, 219, 0.3);
@@ -694,8 +694,8 @@ body {
  background: rgba(15, 23, 33, 0.7);
  backdrop-filter: blur(16px) saturate(180%);
  -webkit-backdrop-filter: blur(16px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
 }
 
 /* Красивые заголовки панелей */
@@ -711,7 +711,7 @@ body {
 /* Свечение для активных элементов */
 .chat-roll-badge {
     box-shadow: 0 0 15px rgba(93, 173, 226, 0.2);
-    border-radius: 4px !important;
+    border-radius: 4px;
 }
 
 /* Эффект при наведении на кнопки */
@@ -1135,7 +1135,7 @@ button:not(.arrow-button):hover::after {
     color: #aeb6bf;
 }
 #stat-points-available-display {
-    color: #2ecc71 !important;
+    color: #2ecc71;
     font-weight: bold;
     padding: 0 3px;
 }
@@ -1466,9 +1466,9 @@ button:not(.arrow-button):hover::after {
 /* --- АДАПТИВНОСТЬ --- */
 /* --- НОВЫЙ ИНТЕРФЕЙС БИЗНЕСА (CLEAN DASHBOARD) --- */
 #business-modal .custom-alert-box {
-    max-width: 1100px !important;
-    width: 95% !important;
-    padding: 0 !important; /* Убираем паддинг для шапки на всю ширину */
+    max-width: 1100px;
+    width: 95%;
+    padding: 0; /* Убираем паддинг для шапки на всю ширину */
     background: #1e2227;
     border: 1px solid #323942;
     box-shadow: 0 25px 50px rgba(0,0,0,0.6);
@@ -2111,30 +2111,30 @@ button:not(.arrow-button):hover::after {
     gap: 5px;
 }
 .settings-tab-btn {
-    background: none !important;
-    border: none !important;
-    border-bottom: 3px solid transparent !important;
-    color: #aeb6bf !important;
-    padding: 10px 15px !important;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: #aeb6bf;
+    padding: 10px 15px;
     cursor: pointer;
-    font-size: 1em !important;
+    font-size: 1em;
     font-weight: 500;
-    transition: all 0.2s ease !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    margin: 0 !important;
+    transition: all 0.2s ease;
+    border-radius: 0;
+    box-shadow: none;
+    margin: 0;
     flex: 1 1 auto;
     white-space: nowrap;
-    width: auto !important;
+    width: auto;
 }
 .settings-tab-btn:hover {
-    color: #ecf0f1 !important;
-    background-color: rgba(255, 255, 255, 0.05) !important;
-    transform: none !important;
+    color: #ecf0f1;
+    background-color: rgba(255, 255, 255, 0.05);
+    transform: none;
 }
 .settings-tab-btn.active {
-    color: #5dade2 !important;
-    border-bottom-color: #5dade2 !important;
+    color: #5dade2;
+    border-bottom-color: #5dade2;
 }
 .settings-tab-content {
     display: none;
@@ -2158,29 +2158,29 @@ button:not(.arrow-button):hover::after {
     gap: 4px;
 }
 .sub-tab-btn {
-    background: transparent !important;
-    border: none !important;
-    color: #aeb6bf !important;
-    padding: 8px 12px !important;
+    background: transparent;
+    border: none;
+    color: #aeb6bf;
+    padding: 8px 12px;
     cursor: pointer;
-    font-size: 0.9em !important;
+    font-size: 0.9em;
     font-weight: 500;
-    transition: all 0.2s ease !important;
-    border-radius: 6px !important;
-    box-shadow: none !important;
-    margin: 0 !important;
+    transition: all 0.2s ease;
+    border-radius: 6px;
+    box-shadow: none;
+    margin: 0;
     flex: 1 1 auto;
     white-space: nowrap;
-    width: auto !important;
+    width: auto;
 }
 .sub-tab-btn:hover {
-    color: #ecf0f1 !important;
-    background-color: rgba(255, 255, 255, 0.05) !important;
+    color: #ecf0f1;
+    background-color: rgba(255, 255, 255, 0.05);
 }
 .sub-tab-btn.active {
-    background: rgba(52, 152, 219, 0.2) !important;
-    color: #5dade2 !important;
-    box-shadow: inset 0 0 5px rgba(0,0,0,0.2) !important;
+    background: rgba(52, 152, 219, 0.2);
+    color: #5dade2;
+    box-shadow: inset 0 0 5px rgba(0,0,0,0.2);
 }
 .sub-tab-content {
     display: none;
@@ -2277,9 +2277,9 @@ input[type=range] {
     -webkit-appearance: none;
     width: 100%;
     background: transparent;
-    padding: 0 !important;
-    border: none !important;
-    box-shadow: none !important;
+    padding: 0;
+    border: none;
+    box-shadow: none;
 }
 input[type=range]:focus {
     outline: none;
@@ -2368,8 +2368,8 @@ input[type=range]::-webkit-slider-thumb:hover {
     padding: 8px 12px;
     border-radius: 4px;
     margin-top: 10px;
-    color: #e74c3c !important; /* Принудительный цвет */
-    font-size: 0.85em !important;
+    color: #e74c3c; /* Принудительный цвет */
+    font-size: 0.85em;
     line-height: 1.4;
     display: flex;
     align-items: center;
@@ -2968,7 +2968,7 @@ input, textarea, select, button {
 /* --- ИЗМЕНЕНИЯ ДЛЯ ПРЕДМЕТОВ В ИНВЕНТАРЕ --- */
 .inventory li.equipable:hover {
     cursor: pointer;
-    background-color: rgba(39, 174, 96, 0.2) !important; /* Зеленоватый фон при наведении */
+    background-color: rgba(39, 174, 96, 0.2); /* Зеленоватый фон при наведении */
     border-left: 3px solid #2ecc71;
     transform: translateX(5px);
 }
@@ -3471,14 +3471,14 @@ input[type=range]::-webkit-slider-thumb:hover {
 
 /* Зеленая подсветка для ВАЛИДНОГО слота */
 .equipment-slot-v2.drag-over-valid {
-    background-color: rgba(46, 204, 113, 0.2) !important;
-    border: 2px dashed #2ecc71 !important;
+    background-color: rgba(46, 204, 113, 0.2);
+    border: 2px dashed #2ecc71;
 }
 
 /* Красная подсветка для НЕВАЛИДНОГО слота */
 .equipment-slot-v2.drag-over-invalid {
-    background-color: rgba(231, 76, 60, 0.2) !important;
-    border: 2px dashed #e74c3c !important;
+    background-color: rgba(231, 76, 60, 0.2);
+    border: 2px dashed #e74c3c;
     cursor: no-drop;
 }
 
@@ -3755,7 +3755,7 @@ button:hover {
 
 /* --- 3. ИСПРАВЛЕНИЕ ВЕРСТКИ СОЗДАНИЯ ПЕРСОНАЖА (Две колонки) --- */
 .creation-layout {
-    display: flex !important;
+    display: flex;
     gap: 30px;
     text-align: left;
     width: 100%;
@@ -3772,10 +3772,10 @@ button:hover {
 #character-creation-screen input, 
 #character-creation-screen textarea, 
 #character-creation-screen select {
-    background: rgba(0, 0, 0, 0.5) !important;
-    color: #fff !important;
-    border: 1px solid rgba(52, 152, 219, 0.4) !important;
-    padding: 10px !important;
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    border: 1px solid rgba(52, 152, 219, 0.4);
+    padding: 10px;
     border-radius: 4px;
 }
 
@@ -4133,11 +4133,11 @@ button:hover {
 .low-spec-mode .fog-wrapper, 
 .low-spec-mode .universal-particles, 
 .low-spec-mode .film-grain {
-    display: none !important;
+    display: none;
 }
 .low-spec-mode #background-container {
-    transform: none !important;
-    transition: none !important;
+    transform: none;
+    transition: none;
 }
 
 /* --- ИНДУСТРИЯ И ГОРОДСКИЕ ЗДАНИЯ (CITYGEN C++ OVERHAUL) --- */
@@ -4651,7 +4651,7 @@ button:hover {
 #settings-menu {
     height: 85vh;
     max-width: 800px; /* Расширяем меню настроек для ПК */
-    overflow: hidden !important; /* Отключаем скролл всего окна */
+    overflow: hidden; /* Отключаем скролл всего окна */
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
@@ -4679,7 +4679,7 @@ button:hover {
 
 /* Для вкладки ИИ делаем внутренний скролл для суб-вкладок */
 #settings-ai.active {
-    display: flex !important;
+    display: flex;
     flex-direction: column;
     overflow-y: hidden; /* Сама вкладка ИИ не скроллится */
     overflow-x: hidden;

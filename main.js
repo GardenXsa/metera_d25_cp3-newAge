@@ -380,13 +380,52 @@ function isSafeFileName(filename) {
     return /^[a-zA-Z0-9_-]+\.json$/.test(filename);
 }
 
+// Session token for HTTP server authentication — prevents other localhost apps from accessing
+const HTTP_SESSION_TOKEN = require('crypto').randomBytes(32).toString('hex');
+
+// Rate limiter: max 60 requests per IP per 60 seconds
+const rateLimiter = new Map();
+function checkRateLimit(ip) {
+    const now = Date.now();
+    const window = 60000; // 60 seconds
+    const maxRequests = 60;
+    const entry = rateLimiter.get(ip);
+    if (!entry || now - entry.start > window) {
+        rateLimiter.set(ip, { start: now, count: 1 });
+        return true;
+    }
+    entry.count++;
+    if (entry.count > maxRequests) return false;
+    return true;
+}
+// Clean up rate limiter every 5 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of rateLimiter) {
+        if (now - entry.start > 120000) rateLimiter.delete(ip);
+    }
+}, 300000);
+
 const server = http.createServer((req, res) => {
-    // Auth check: only allow requests from same origin (127.0.0.1)
-    const origin = req.headers.origin || req.headers.referer || '';
-    if (origin && !origin.includes(`127.0.0.1:${PORT}`)) {
-        res.statusCode = 403;
-        res.end('Forbidden');
+    // Rate limit check
+    const clientIp = req.socket.remoteAddress || '127.0.0.1';
+    if (!checkRateLimit(clientIp)) {
+        res.statusCode = 429;
+        res.end('Too Many Requests');
         return;
+    }
+
+    // Auth check: validate session token in URL query param
+    const urlObj = new URL(req.url, `http://127.0.0.1:${PORT}`);
+    const token = urlObj.searchParams.get('token');
+    if (token !== HTTP_SESSION_TOKEN) {
+        // Also allow requests from our own Electron origin without token (for initial load)
+        const origin = req.headers.origin || req.headers.referer || '';
+        if (!origin.includes(`127.0.0.1:${PORT}`)) {
+            res.statusCode = 403;
+            res.end('Forbidden');
+            return;
+        }
     }
 
     let urlPath;
@@ -419,10 +458,23 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // Only allow GET and HEAD methods
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+        res.statusCode = 405;
+        res.end('Method Not Allowed');
+        return;
+    }
+
     fs.readFile(filePath, (err, data) => {
         if (err) {
             res.statusCode = 404;
             res.end('Not Found');
+            return;
+        }
+        // Limit file size to 50MB to prevent memory exhaustion
+        if (data.length > 50 * 1024 * 1024) {
+            res.statusCode = 413;
+            res.end('Payload Too Large');
             return;
         }
         const ext = path.extname(filePath).toLowerCase();
@@ -466,10 +518,14 @@ function createWindow () {
       return { action: 'allow' };
   });
 
-  win.loadURL(`http://127.0.0.1:${PORT}`);
+  // Pass HTTP session token to renderer for authenticated API requests
+  win.loadURL(`http://127.0.0.1:${PORT}?token=${HTTP_SESSION_TOKEN}`);
 }
 
 app.whenReady().then(createWindow);
+
+// Expose HTTP session token to renderer (needed for fetch calls from game)
+ipcMain.handle('get-http-token', () => HTTP_SESSION_TOKEN);
 
 ipcMain.handle('save-settings', async (event, data) => {
     try {

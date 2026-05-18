@@ -65,16 +65,19 @@ const ContainerRegistry = new Map();
 // Does NOT mutate the original object — returns a new normalized copy.
 function normalizeContainer(cont) {
     if (!cont) return cont;
-    const c = { ...cont }; // shallow-clone to avoid mutating the source
-    // Ensure items array always exists
+    // Deep-clone to avoid mutating the source — including nested objects
+    const c = { ...cont };
+    // Ensure items array always exists (clone if present)
     if (!c.items && c.item_ids) c.items = [...c.item_ids];
+    if (c.items) c.items = [...c.items]; // always clone to avoid shared reference
     if (!Array.isArray(c.items)) c.items = [];
     if (!c.item_ids) c.item_ids = [...c.items];
-    // Ensure other critical fields exist (clone objects too)
-    if (!c.lock_data) c.lock_data = { is_locked: false, difficulty: 10, trap: null };
-    if (!c.physical_props) c.physical_props = {};
-    if (!c.custom_props) c.custom_props = {};
-    if (!c.location) c.location = {};
+    else c.item_ids = [...c.item_ids]; // clone
+    // Deep-clone nested objects to prevent cross-container mutation
+    c.lock_data = c.lock_data ? JSON.parse(JSON.stringify(c.lock_data)) : { is_locked: false, difficulty: 10, trap: null };
+    c.physical_props = c.physical_props ? JSON.parse(JSON.stringify(c.physical_props)) : {};
+    c.custom_props = c.custom_props ? JSON.parse(JSON.stringify(c.custom_props)) : {};
+    c.location = c.location ? JSON.parse(JSON.stringify(c.location)) : {};
     return c;
 }
 

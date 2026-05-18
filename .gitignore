@@ -51,3 +51,8 @@ desktop.ini
 
 # Claude Code settings (development tool)
 .claude/
+
+# Sensitive files with API keys and user data
+settings.json
+conversation-*.txt
+project_scan.txt
