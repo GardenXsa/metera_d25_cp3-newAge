@@ -239,7 +239,7 @@ const OldCoreInventorySystem = {
             custom_props: { ...(extraData.custom_props || {}) },
             items: []
         };
-        ContainerRegistry.set(id, container);
+        setContainer(id, normalizeContainer(container));
         return id;
     },
     createItem: function(prototypeId, quantity, containerId, customProps = {}) {
@@ -300,7 +300,7 @@ const OldCoreInventorySystem = {
     _restoreMovementSnapshot: function(snapshot, createdItemIds = []) {
         if (!snapshot) return;
         snapshot.containers.forEach(([containerId, data]) => {
-            if (data) ContainerRegistry.set(containerId, structuredClone(data));
+            if (data) setContainer(containerId, structuredClone(data));
         });
         const snapshotItemIds = new Set(snapshot.items.map(([itemId]) => itemId));
         createdItemIds.forEach(itemId => {
@@ -513,7 +513,7 @@ async function sendInventoryCommand(action, args) {
     const res = await window.electronAPI.nexusInventoryCommand({ action, args });
     if (res.status === 'ok') {
         if (res.items) res.items.forEach(([k, v]) => ItemRegistry.set(k, v));
-        if (res.containers) res.containers.forEach(([k, v]) => ContainerRegistry.set(k, v));
+        if (res.containers) res.containers.forEach(([k, v]) => setContainer(k, v));
         if (res.deleted_items) res.deleted_items.forEach(id => ItemRegistry.delete(id));
         if (res.deleted_containers) res.deleted_containers.forEach(id => ContainerRegistry.delete(id));
     }
@@ -1761,7 +1761,7 @@ const OldTradeSystem = {
     _restoreTradeSnapshot: function(snapshot, createdItemIds = []) {
         if (!snapshot) return;
         snapshot.containers.forEach(([containerId, data]) => {
-            if (data) ContainerRegistry.set(containerId, structuredClone(data));
+            if (data) setContainer(containerId, structuredClone(data));
         });
         const snapshotItemIds = new Set(snapshot.items.map(([itemId]) => itemId));
         createdItemIds.forEach(itemId => {
@@ -2273,7 +2273,7 @@ const LivingRoads = {
                     if (res.world) World = res.world;
                     if (res.relevant_news) World.relevant_news = res.relevant_news;
                         if (res.items) res.items.forEach(([k, v]) => ItemRegistry.set(k, v));
-                        if (res.containers) res.containers.forEach(([k, v]) => ContainerRegistry.set(k, v));
+                        if (res.containers) res.containers.forEach(([k, v]) => setContainer(k, v));
                         if (res.deleted_items) res.deleted_items.forEach(id => ItemRegistry.delete(id));
                         if (res.deleted_containers) res.deleted_containers.forEach(id => ContainerRegistry.delete(id));
                     processMonsterQuests();
@@ -2595,7 +2595,7 @@ async function preSimulateWorldHistory(yearsToSimulate) {
             if (res.world) World = res.world;
             if (res.relevant_news) World.relevant_news = res.relevant_news;
             if (res.items) res.items.forEach(([k, v]) => ItemRegistry.set(k, v));
-            if (res.containers) res.containers.forEach(([k, v]) => ContainerRegistry.set(k, v));
+            if (res.containers) res.containers.forEach(([k, v]) => setContainer(k, v));
             if (res.deleted_items) res.deleted_items.forEach(id => ItemRegistry.delete(id));
             if (res.deleted_containers) res.deleted_containers.forEach(id => ContainerRegistry.delete(id));
                     processMonsterQuests();
@@ -2696,7 +2696,7 @@ function updateWorldSimulation(pulses) {
                     if (res.world) World = res.world;
                     if (res.relevant_news) World.relevant_news = res.relevant_news;
                     if (res.items) res.items.forEach(([k, v]) => ItemRegistry.set(k, v));
-                    if (res.containers) res.containers.forEach(([k, v]) => ContainerRegistry.set(k, v));
+                    if (res.containers) res.containers.forEach(([k, v]) => setContainer(k, v));
                     if (res.deleted_items) res.deleted_items.forEach(id => ItemRegistry.delete(id));
                     if (res.deleted_containers) res.deleted_containers.forEach(id => ContainerRegistry.delete(id));
                     processMonsterQuests();
@@ -7311,7 +7311,7 @@ async function finalizeWorldSetupAndStart() {
             if (res.status === 'ok') {
                 World = res.world;
                 if (res.items) { ItemRegistry.clear(); res.items.forEach(([k, v]) => ItemRegistry.set(k, v)); }
-                if (res.containers) { ContainerRegistry.clear(); res.containers.forEach(([k, v]) => ContainerRegistry.set(k, v)); }
+                if (res.containers) { ContainerRegistry.clear(); res.containers.forEach(([k, v]) => setContainer(k, v)); }
             }
         }
 
@@ -12793,7 +12793,7 @@ async function executeNonInventoryCommand(command, args) {
                                     if (fullState && fullState.status === 'ok') {
                                         World = fullState.world;
                                         if (fullState.items) fullState.items.forEach(([k, v]) => ItemRegistry.set(k, v));
-                                        if (fullState.containers) fullState.containers.forEach(([k, v]) => ContainerRegistry.set(k, v));
+                                        if (fullState.containers) fullState.containers.forEach(([k, v]) => setContainer(k, v));
                                         updateHoldingsDisplay();
                                         updateMapDisplay();
                                         addLogMessage(`[СИСТЕМА] Контракт подписан! Строительство предприятия '${args.name}' начато. Это займет 14 игровых дней.`, "command-feedback");
@@ -14121,7 +14121,7 @@ case 'setEntityBinding':
                         if (res.world) World = res.world;
                         if (res.relevant_news) World.relevant_news = res.relevant_news;
                         if (res.items) res.items.forEach(([k, v]) => ItemRegistry.set(k, v));
-                        if (res.containers) res.containers.forEach(([k, v]) => ContainerRegistry.set(k, v));
+                        if (res.containers) res.containers.forEach(([k, v]) => setContainer(k, v));
                         if (res.deleted_items) res.deleted_items.forEach(id => ItemRegistry.delete(id));
                         if (res.deleted_containers) res.deleted_containers.forEach(id => ContainerRegistry.delete(id));
                         processMonsterQuests();
@@ -16459,7 +16459,7 @@ window.addLogisticRule = async function(bId) {
             if (fullState && fullState.status === 'ok') {
                 World = fullState.world;
                 if (fullState.items) fullState.items.forEach(([k, v]) => ItemRegistry.set(k, v));
-                if (fullState.containers) fullState.containers.forEach(([k, v]) => ContainerRegistry.set(k, v));
+                if (fullState.containers) fullState.containers.forEach(([k, v]) => setContainer(k, v));
             }
             openBusinessModal(bId);
         }
@@ -16474,7 +16474,7 @@ window.removeLogisticRule = async function(bId, ruleId) {
             if (fullState && fullState.status === 'ok') {
                 World = fullState.world;
                 if (fullState.items) fullState.items.forEach(([k, v]) => ItemRegistry.set(k, v));
-                if (fullState.containers) fullState.containers.forEach(([k, v]) => ContainerRegistry.set(k, v));
+                if (fullState.containers) fullState.containers.forEach(([k, v]) => setContainer(k, v));
             }
             openBusinessModal(bId);
         }

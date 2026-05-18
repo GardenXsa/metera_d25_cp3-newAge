@@ -40,7 +40,7 @@ async function saveGame(slotType, slotId) {
                 }
                 if (fullState.containers) {
                     ContainerRegistry.clear();
-                    fullState.containers.forEach(([k, v]) => ContainerRegistry.set(k, v));
+                    fullState.containers.forEach(([k, v]) => setContainer(k, v));
                 }
             }
         }
@@ -159,7 +159,7 @@ async function loadGame(slotType, slotId) {
                             case 'player': rawPlayer = parsed.data; break;
                             case 'history': rawHistory = parsed.data; break;
                             case 'item_registry': ItemRegistry.clear(); parsed.data.forEach(([k, v]) => ItemRegistry.set(k, v)); break;
-                            case 'container_registry': ContainerRegistry.clear(); parsed.data.forEach(([k, v]) => ContainerRegistry.set(k, v)); break;
+                            case 'container_registry': ContainerRegistry.clear(); parsed.data.forEach(([k, v]) => setContainer(k, v)); break;
                             case 'world_base': Object.assign(rawWorld, parsed.data); break;
                             case 'world_regions': rawWorld.regions = parsed.data; break;
                             case 'world_factions': rawWorld.factions = parsed.data; break;
@@ -192,7 +192,7 @@ async function loadGame(slotType, slotId) {
                         case 'player': rawPlayer = parsed.data; break;
                         case 'history': rawHistory = parsed.data; break;
                         case 'item_registry': ItemRegistry.clear(); parsed.data.forEach(([k, v]) => ItemRegistry.set(k, v)); break;
-                        case 'container_registry': ContainerRegistry.clear(); parsed.data.forEach(([k, v]) => ContainerRegistry.set(k, v)); break;
+                        case 'container_registry': ContainerRegistry.clear(); parsed.data.forEach(([k, v]) => setContainer(k, v)); break;
                         case 'world_base': Object.assign(rawWorld, parsed.data); break;
                         case 'world_regions': rawWorld.regions = parsed.data; break;
                         case 'world_factions': rawWorld.factions = parsed.data; break;
@@ -233,7 +233,7 @@ async function loadGame(slotType, slotId) {
                         case 'player': rawPlayer = parsed.data; break;
                         case 'history': rawHistory = parsed.data; break;
                         case 'item_registry': ItemRegistry.clear(); parsed.data.forEach(([k, v]) => ItemRegistry.set(k, v)); break;
-                        case 'container_registry': ContainerRegistry.clear(); parsed.data.forEach(([k, v]) => ContainerRegistry.set(k, v)); break;
+                        case 'container_registry': ContainerRegistry.clear(); parsed.data.forEach(([k, v]) => setContainer(k, v)); break;
                         case 'world_base': Object.assign(rawWorld, parsed.data); break;
                         case 'world_regions': rawWorld.regions = parsed.data; break;
                         case 'world_factions': rawWorld.factions = parsed.data; break;

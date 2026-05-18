@@ -61,6 +61,20 @@ function updateLoadingText(text) {
 const ItemRegistry = new Map();
 const ContainerRegistry = new Map();
 
+// Normalize container data from engine (engine sends 'item_ids', JS expects 'items')
+function normalizeContainer(cont) {
+    if (!cont) return cont;
+    if (!cont.items && cont.item_ids) cont.items = cont.item_ids;
+    if (!cont.items) cont.items = [];
+    if (!cont.item_ids) cont.item_ids = cont.items;
+    return cont;
+}
+
+// Safe setter that normalizes container data
+function setContainer(key, cont) {
+    return ContainerRegistry.set(key, normalizeContainer(cont));
+}
+
 function generateUUID() {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
         return crypto.randomUUID();

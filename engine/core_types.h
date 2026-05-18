@@ -124,6 +124,7 @@ struct Storage {
         JsonValue arr = JsonValue::array();
         for(const auto& i : item_ids) arr.push(i);
         obj.set("item_ids", arr);
+        obj.set("items", arr); // Alias for JS compatibility
         return obj;
     }
 
@@ -141,6 +142,10 @@ struct Storage {
         if(j.has("item_ids") && j["item_ids"].type == JsonValue::ARRAY) {
             for(size_t i=0; i<j["item_ids"].size(); ++i) {
                 s.item_ids.push_back(j["item_ids"][i].asString());
+            }
+        } else if(j.has("items") && j["items"].type == JsonValue::ARRAY) {
+            for(size_t i=0; i<j["items"].size(); ++i) {
+                s.item_ids.push_back(j["items"][i].asString());
             }
         }
         return s;

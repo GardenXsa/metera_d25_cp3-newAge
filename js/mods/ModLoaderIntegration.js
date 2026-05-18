@@ -107,7 +107,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         let newWorld = buildResult.world;
         if (newWorld) {
             Object.values(newWorld.regions || {}).forEach(r => {
-                if (r.vault_id) ContainerRegistry.set(r.vault_id, { id: r.vault_id, type: 'faction_vault', items: [], owner_id: r.factionId, max_weight_kg: 999999, max_slots: 1000 });
+                if (r.vault_id) setContainer(r.vault_id, { id: r.vault_id, type: 'faction_vault', items: [], owner_id: r.factionId, max_weight_kg: 999999, max_slots: 1000 });
             });
         }
         return newWorld;
