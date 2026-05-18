@@ -61,8 +61,14 @@ struct JsonValue {
     }
 
     std::string asString() const { return s_val; }
-    int asInt() const { return (int)i_val; }
-    double asDouble() const { return d_val; }
+    int asInt() const {
+        if (type == DOUBLE) return (int)d_val;
+        return (int)i_val;
+    }
+    double asDouble() const {
+        if (type == INT) return (double)i_val;
+        return d_val;
+    }
     bool asBool() const { return b_val; }
 
     JsonValue operator[](const std::string& key) const {
