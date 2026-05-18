@@ -12347,7 +12347,8 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
         else if (!g_db.race_ids.empty()) npc.race = g_db.race_ids[rand() % g_db.race_ids.size()];
 
         // Data-driven: name from g_db.name_groups (via faction→race resolution)
-        npc.name = NpcGen::generateName(homeFaction, *(new std::mt19937(rand()))) + " " + profId;
+        std::mt19937 nameGen(rand());
+        npc.name = NpcGen::generateName(homeFaction, nameGen) + " " + profId;
         npc.type = "npc";
 
         npc.profession = profId;
@@ -12801,6 +12802,7 @@ int main() {
     while (std::getline(std::cin, line)) {
         if (line.empty()) continue;
         
+        try {
         JsonValue command = parseJson(line);
         JsonValue response = JsonValue::object();
         
@@ -14176,6 +14178,21 @@ else if (cmd == "ping") {
         
         std::cout << response.toString() << std::endl;
         std::cout.flush();
+
+        } // end try
+        catch (const std::exception& e) {
+            JsonValue errResp = JsonValue::object();
+            errResp.set("status", "error");
+            errResp.set("message", std::string("Engine exception: ") + e.what());
+            std::cout << errResp.toString() << std::endl;
+            std::cout.flush();
+        } catch (...) {
+            JsonValue errResp = JsonValue::object();
+            errResp.set("status", "error");
+            errResp.set("message", "Engine crashed with unknown exception");
+            std::cout << errResp.toString() << std::endl;
+            std::cout.flush();
+        }
     }
     
     return 0;

@@ -191,11 +191,16 @@ async function bootstrapWorld(days, startDay) {
 }
 
 async function simulateTicks(world, ticks, playerLocation = "") {
-    return await sendCommand('simulateTicks', { world, ticks, player_location: playerLocation });
+    // Don't send world back to engine — it already has it in memory after buildWorld.
+    // Sending a huge World JSON (1.5MB+) through stdin causes the engine to hang.
+    // Only sync world if the client explicitly needs to push changes (use syncState for that).
+    return await sendCommand('simulateTicks', { ticks, player_location: playerLocation || "" });
 }
 
 async function preSimulate(world, ticks) {
-    return await sendCommand('preSimulate', { world, ticks });
+    // Don't send world back to engine — it already has it in memory after buildWorld.
+    // Sending a huge World JSON (1.5MB+) through stdin causes the engine to hang/timeout.
+    return await sendCommand('preSimulate', { ticks });
 }
 
 async function syncState(world, items, containers) {

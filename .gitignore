@@ -30,4 +30,5 @@ engine/raw_test.exe
 
 # Electron build artifacts
 dist/
-*.exe
+*.exeengine/*.lib
+engine/*.pdb
