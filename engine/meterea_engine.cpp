@@ -3633,11 +3633,13 @@ void processConsumption() {
                             double target_x = caravan.path[caravan.path_index + 1].first;
                             double target_y = caravan.path[caravan.path_index + 1].second;
                             
-                            int nIdx = (int)target_y * g_world.map.width + (int)target_x;
+                            int tx = (int)target_x, ty = (int)target_y;
+                            if (tx < 0 || tx >= g_world.map.width || ty < 0 || ty >= g_world.map.height) break;
+                            int nIdx = ty * g_world.map.width + tx;
                             bool is_goal = false;
                             if (g_world.map.locations.count(caravan.destination)) {
                                 auto destLoc = g_world.map.locations.at(caravan.destination);
-                                is_goal = ((int)target_x == destLoc.x && (int)target_y == destLoc.y);
+                                is_goal = (tx == destLoc.x && ty == destLoc.y);
                             }
                             
                             if (path_status[nIdx] == 1) {
@@ -5977,11 +5979,13 @@ void processDailyMilitary() {
                     double target_x = a.path[a.path_index + 1].first;
                     double target_y = a.path[a.path_index + 1].second;
                     
-                    int nIdx = (int)target_y * g_world.map.width + (int)target_x;
+                    int tx = (int)target_x, ty = (int)target_y;
+                    if (tx < 0 || tx >= g_world.map.width || ty < 0 || ty >= g_world.map.height) break;
+                    int nIdx = ty * g_world.map.width + tx;
                     bool is_goal = false;
                     if (g_world.map.locations.count(a.destination)) {
                         auto destLoc = g_world.map.locations.at(a.destination);
-                        is_goal = ((int)target_x == destLoc.x && (int)target_y == destLoc.y);
+                        is_goal = (tx == destLoc.x && ty == destLoc.y);
                     }
                     
                     if (path_status[nIdx] == 1) speed /= 3.0;
