@@ -8301,6 +8301,56 @@ toggleStatIncreaseButtons();
 }
 
 /**
+ * RPG Health Bar — создает и обновляет анимированную полосу здоровья
+ */
+function _updateHpBar(hp, maxHp) {
+    const statLine = document.querySelector('.stat-line:has(#stat-hp)');
+    if (!statLine) return;
+    let barContainer = statLine.querySelector('.hp-bar-container');
+    if (!barContainer) {
+        barContainer = document.createElement('div');
+        barContainer.className = 'hp-bar-container';
+        const barFill = document.createElement('div');
+        barFill.className = 'hp-bar-fill';
+        barContainer.appendChild(barFill);
+        const valueGroup = statLine.querySelector('.stat-value-group');
+        if (valueGroup) valueGroup.insertBefore(barContainer, valueGroup.firstChild);
+    }
+    const barFill = barContainer.querySelector('.hp-bar-fill');
+    if (barFill) {
+        const pct = maxHp > 0 ? Math.min(100, (hp / maxHp) * 100) : 0;
+        barFill.style.width = pct + '%';
+        barFill.classList.remove('healthy', 'wounded', 'critical');
+        if (pct > 60) barFill.classList.add('healthy');
+        else if (pct > 25) barFill.classList.add('wounded');
+        else barFill.classList.add('critical');
+    }
+}
+
+/**
+ * RPG Mana Bar — создает и обновляет анимированную полосу маны
+ */
+function _updateManaBar(mana, maxMana) {
+    const statLine = document.getElementById('mana-stat-line');
+    if (!statLine) return;
+    let barContainer = statLine.querySelector('.hp-bar-container');
+    if (!barContainer) {
+        barContainer = document.createElement('div');
+        barContainer.className = 'hp-bar-container';
+        const barFill = document.createElement('div');
+        barFill.className = 'mana-bar-fill';
+        barContainer.appendChild(barFill);
+        const valueGroup = statLine.querySelector('.stat-value-group');
+        if (valueGroup) valueGroup.insertBefore(barContainer, valueGroup.firstChild);
+    }
+    const barFill = barContainer.querySelector('.mana-bar-fill');
+    if (barFill) {
+        const pct = maxMana > 0 ? Math.min(100, (mana / maxMana) * 100) : 0;
+        barFill.style.width = pct + '%';
+    }
+}
+
+/**
  * Полностью обновляет панель персонажа в игровом интерфейсе,
  * отображая актуальные данные из объекта player.
  * Включает логику для визуального выделения характеристик,
@@ -8494,10 +8544,14 @@ function updateCharacterSheet() {
     if (hpDisplay) hpDisplay.textContent = player.stats.hp;
     if (maxHpDisplay) maxHpDisplay.textContent = effectiveStats.maxHp;
 
+    // RPG Health Bar Update
+    _updateHpBar(player.stats.hp, effectiveStats.maxHp);
+
     if (player.class === 'mage') {
         document.getElementById('mana-stat-line').style.display = 'flex';
         if (manaDisplay) manaDisplay.textContent = player.stats.mana;
         if (maxManaDisplay) maxManaDisplay.textContent = effectiveStats.maxMana;
+        _updateManaBar(player.stats.mana, effectiveStats.maxMana);
     }
 
             // Обновление основных характеристик с КРАСИВЫМИ тултипами

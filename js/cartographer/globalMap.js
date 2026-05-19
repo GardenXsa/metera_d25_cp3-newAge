@@ -63,6 +63,11 @@ window.Cartographer = {
     _needsRender: false,
     _politicalCache: null,
     _politicalCacheKey: null,
+    _hoverThrottleTimer: null,
+    _hoverLastEvent: null,
+    _cachedAllPoints: null,
+    _cachedAllPointsKey: null,
+    _lastHoveredMapPoint: null,
     TILE_SIZE: 10,
 
         /**
@@ -95,7 +100,7 @@ window.Cartographer = {
                 if (typeof World !== 'undefined' && World && World.map) {
                     this.updateFilterCache(World.map);
                 }
-                this.render();
+                this.requestRender();
             });
         });
     },
@@ -126,7 +131,7 @@ window.Cartographer = {
                 const targetY = (this.hoveredMapPoint.y + 0.5) * this.TILE_SIZE * this.mapState.zoom;
                 this.mapState.offsetX = (this.mapCanvas.width / 2) - targetX;
                 this.mapState.offsetY = (this.mapCanvas.height / 2) - targetY;
-                this.render();
+                this.requestRender();
 
                 // Клик по порту теперь обрабатывается через боковую панель
             }
@@ -135,10 +140,11 @@ window.Cartographer = {
         const handleMouseLeave = () => {
             this.mapState.isDragging = false;
             this.hoveredMapPoint = null;
+            this._lastHoveredMapPoint = null;
             this.mapCanvas.style.cursor = 'default';
             this.mapTooltipElement.style.display = 'none';
             this.mapTooltipElement.style.opacity = '0';
-            this.render();
+            this.requestRender();
         };
 
         const handleMouseMove = (e) => {
@@ -157,7 +163,21 @@ window.Cartographer = {
                 this.mapState.lastMouseY = e.offsetY;
                 this.mapTooltipElement.style.display = 'none';
                 this.mapTooltipElement.style.opacity = '0';
-            } else {
+                this.requestRender();
+                return;
+            }
+
+            // Throttle hover detection to ~30fps
+            this._hoverLastEvent = e;
+            if (!this._hoverThrottleTimer) {
+                this._hoverThrottleTimer = setTimeout(() => {
+                    this._hoverThrottleTimer = null;
+                    if (this._hoverLastEvent) {
+                        this._processHover(this._hoverLastEvent);
+                    }
+                }, 33);
+            }
+        };
                 let closestDist = 15;
                 let monsterFound = null;
                 if (typeof World !== 'undefined' && World && World.monsters) {
@@ -191,20 +211,27 @@ window.Cartographer = {
                     if (newY + this.mapTooltipElement.offsetHeight > window.innerHeight) newY = e.clientY - this.mapTooltipElement.offsetHeight - 15;
                     this.mapTooltipElement.style.left = `${newX}px`;
                     this.mapTooltipElement.style.top = `${newY}px`;
-                    this.render();
+                    this.requestRender();
                     return;
                 }
 
                 let pointFound = null;
                 // Радиус срабатывания строго в экранных пикселях
                 
-                let allPoints = [];
-                if (typeof World !== 'undefined' && World && World.map && World.map.locations) {
-                    allPoints = [...Object.values(World.map.locations)];
+                // Кэшируем allPoints чтобы не пересоздавать массив на каждый mousemove
+                const locsKey = (typeof World !== 'undefined' && World && World.map && World.map.locations) ? Object.keys(World.map.locations).length + '_' + (typeof player !== 'undefined' && player && player.mapMarkers ? Object.keys(player.mapMarkers).length : 0) : '0';
+                if (!this._cachedAllPoints || this._cachedAllPointsKey !== locsKey) {
+                    let allPoints = [];
+                    if (typeof World !== 'undefined' && World && World.map && World.map.locations) {
+                        allPoints = [...Object.values(World.map.locations)];
+                    }
+                    if (typeof player !== 'undefined' && player && player.mapMarkers) {
+                        allPoints = [...allPoints, ...Object.values(player.mapMarkers)];
+                    }
+                    this._cachedAllPoints = allPoints;
+                    this._cachedAllPointsKey = locsKey;
                 }
-                if (typeof player !== 'undefined' && player && player.mapMarkers) {
-                    allPoints = [...allPoints, ...Object.values(player.mapMarkers)];
-                }
+                const allPoints = this._cachedAllPoints;
 
                 for (const point of allPoints) {
                     // Вычисляем реальные экранные координаты маркера (как при отрисовке)
@@ -220,7 +247,16 @@ window.Cartographer = {
                     }
                 }
 
+                // Оптимизация: если та же точка — не обновляем тултип
+                const samePoint = this._lastHoveredMapPoint && pointFound && this._lastHoveredMapPoint.id === pointFound.id && this._lastHoveredMapPoint.x === pointFound.x && this._lastHoveredMapPoint.y === pointFound.y;
+                this._lastHoveredMapPoint = pointFound;
                 this.hoveredMapPoint = pointFound;
+
+                if (samePoint) {
+                    // Тултип не изменился — просто двигать позицию не нужно, пропускаем обновление DOM
+                    this.requestRender();
+                    return;
+                }
 
                 if (pointFound) {
                     this.mapCanvas.style.cursor = 'pointer';
@@ -346,7 +382,7 @@ window.Cartographer = {
                     this.mapTooltipElement.style.opacity = '0';
                 }
             }
-            this.render();
+            this.requestRender();
         };
 
         const handleWheel = (e) => {
@@ -362,7 +398,7 @@ window.Cartographer = {
             this.mapState.offsetX = mouseX - worldX * newZoom;
             this.mapState.offsetY = mouseY - worldY * newZoom;
             this.mapState.zoom = newZoom;
-            this.render();
+            this.requestRender();
         };
 
         this.mapCanvas.addEventListener('mousedown', handleMouseDown);
@@ -375,7 +411,7 @@ window.Cartographer = {
         if (centerBtn) {
             centerBtn.addEventListener('click', () => {
                 this.mapState.isFollowingPlayer = true;
-                this.render();
+                this.requestRender();
             });
         }
 
@@ -896,12 +932,14 @@ window.Cartographer = {
     render: function() {
         this.animationFrameId = null; // Сбрасываем — RAF сработал
 
-        if (!this._needsRender && this.mapState.isFollowingPlayer) {
-            // isFollowingPlayer нуждается в анимации для плавного следования
-        } else if (!this._needsRender) {
-            // Ничего не изменилось — не рисуем, но продолжаем RAF только для пульсации игрока
-            // Пульсация требует перерисовки, поэтому запускаем следующий кадр
-            this.animationFrameId = requestAnimationFrame(() => this.render());
+        // Проверка видимости карты — не рендерим, если модалка скрыта
+        const mapModal = document.getElementById('global-map-modal');
+        if (mapModal && mapModal.style.display === 'none') {
+            return; // Карта скрыта — не тратим ресурсы
+        }
+
+        if (!this._needsRender && !this.mapState.isFollowingPlayer && !(typeof player !== 'undefined' && player.travel && player.travel.active)) {
+            // Ничего не изменилось и нет активных анимаций — останавливаемся
             return;
         }
         this._needsRender = false;
@@ -1009,8 +1047,17 @@ window.Cartographer = {
                 if (this.mapState.isFollowingPlayer) {
                     const targetOffsetX = (width / 2) - ((currX + 0.5) * this.TILE_SIZE * this.mapState.zoom);
                     const targetOffsetY = (height / 2) - ((currY + 0.5) * this.TILE_SIZE * this.mapState.zoom);
-                    this.mapState.offsetX += (targetOffsetX - this.mapState.offsetX) * 0.1;
-                    this.mapState.offsetY += (targetOffsetY - this.mapState.offsetY) * 0.1;
+                    const dx = targetOffsetX - this.mapState.offsetX;
+                    const dy = targetOffsetY - this.mapState.offsetY;
+                    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+                        // Достаточно близко — прекращаем следование
+                        this.mapState.offsetX = targetOffsetX;
+                        this.mapState.offsetY = targetOffsetY;
+                        this.mapState.isFollowingPlayer = false;
+                    } else {
+                        this.mapState.offsetX += dx * 0.1;
+                        this.mapState.offsetY += dy * 0.1;
+                    }
                 }
             }
 

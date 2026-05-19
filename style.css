@@ -3620,6 +3620,605 @@ button:hover {
     filter: brightness(1.2);
 }
 
+/* =============================================================
+   MAJOR RPG UI OVERHAUL — "Dark Fantasy Chronicles" Theme
+   ============================================================= */
+
+/* --- RPG ANIMATED HEALTH / MANA BARS --- */
+.stat-line[data-stat="hp"] .stat-value-group,
+.stat-line:has(#stat-hp) .stat-value-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    justify-content: flex-end;
+}
+#stat-hp, #stat-max-hp {
+    position: relative;
+    z-index: 2;
+    text-shadow: 0 0 6px rgba(241, 196, 15, 0.5);
+}
+.hp-bar-container {
+    width: 100%;
+    max-width: 120px;
+    height: 10px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.4) 100%);
+    border: 1px solid rgba(93, 173, 226, 0.3);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.8);
+}
+.hp-bar-fill {
+    height: 100%;
+    background: linear-gradient(180deg, #e74c3c 0%, #c0392b 50%, #922b21 100%);
+    border-radius: 1px;
+    transition: width 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    position: relative;
+    box-shadow: 0 0 6px rgba(231, 76, 60, 0.6);
+}
+.hp-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 40%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.25) 0%, transparent 100%);
+    border-radius: 1px 1px 0 0;
+}
+.hp-bar-fill.healthy {
+    background: linear-gradient(180deg, #2ecc71 0%, #27ae60 50%, #1e8449 100%);
+    box-shadow: 0 0 6px rgba(46, 204, 113, 0.6);
+}
+.hp-bar-fill.wounded {
+    background: linear-gradient(180deg, #f39c12 0%, #d35400 50%, #a04000 100%);
+    box-shadow: 0 0 6px rgba(243, 156, 18, 0.6);
+}
+.hp-bar-fill.critical {
+    background: linear-gradient(180deg, #e74c3c 0%, #c0392b 50%, #922b21 100%);
+    box-shadow: 0 0 8px rgba(231, 76, 60, 0.8);
+    animation: hpPulse 1.2s ease-in-out infinite;
+}
+@keyframes hpPulse {
+    0%, 100% { box-shadow: 0 0 6px rgba(231, 76, 60, 0.6); }
+    50% { box-shadow: 0 0 14px rgba(231, 76, 60, 1); }
+}
+
+.mana-bar-fill {
+    height: 100%;
+    background: linear-gradient(180deg, #5dade2 0%, #2e86c1 50%, #1a5276 100%);
+    border-radius: 1px;
+    transition: width 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    position: relative;
+    box-shadow: 0 0 6px rgba(93, 173, 226, 0.6);
+}
+.mana-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 40%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.25) 0%, transparent 100%);
+    border-radius: 1px 1px 0 0;
+}
+
+.xp-bar-container {
+    width: 100%;
+    height: 6px;
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(243, 156, 18, 0.3);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 4px;
+}
+.xp-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #d4af37, #f1c40f);
+    border-radius: 2px;
+    transition: width 0.6s ease;
+    box-shadow: 0 0 4px rgba(212, 175, 55, 0.5);
+}
+
+/* --- RPG ORNAMENTAL PANEL HEADERS --- */
+.panel h2, .panel h3 {
+    position: relative;
+}
+.panel h2::before {
+    content: '◆';
+    margin-right: 8px;
+    color: rgba(212, 175, 55, 0.6);
+    font-size: 0.6em;
+    vertical-align: middle;
+}
+.panel h2::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-gold), rgba(93, 173, 226, 0.5), var(--accent-gold), transparent);
+    opacity: 0.6;
+}
+
+/* --- ENHANCED SIDEBAR PANELS --- */
+.panel {
+    border-radius: 6px;
+    position: relative;
+    overflow: hidden;
+}
+.panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, var(--accent-gold) 20%, var(--accent-blue) 50%, var(--accent-gold) 80%, transparent 100%);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+.panel:hover::before {
+    opacity: 1;
+}
+.panel:hover {
+    border-color: rgba(212, 175, 55, 0.4);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 20px rgba(212, 175, 55, 0.08);
+}
+
+/* --- RPG CHARACTER SHEET ENHANCEMENTS --- */
+.character-sheet {
+    border-left: 3px solid var(--accent-gold);
+}
+.character-sheet .panel-content {
+    background: linear-gradient(180deg, rgba(212, 175, 55, 0.03) 0%, transparent 30%);
+}
+.stat-line {
+    padding: 5px 8px;
+    border-radius: 3px;
+    transition: background 0.2s ease;
+    margin: 2px 0;
+}
+.stat-line:hover {
+    background: rgba(93, 173, 226, 0.05);
+}
+.stat-line span[data-i18n] {
+    font-size: 0.9em;
+    letter-spacing: 0.3px;
+}
+
+/* --- RPG TIME DISPLAY ENHANCEMENT --- */
+#time-info {
+    font-family: 'MedievalSharp', cursive !important;
+    font-size: 1.05em !important;
+    background: linear-gradient(135deg, rgba(0,0,0,0.6), rgba(20, 20, 10, 0.8)) !important;
+    border: 1px solid rgba(241, 196, 15, 0.3) !important;
+    border-radius: 4px !important;
+    text-shadow: 0 0 10px rgba(241, 196, 15, 0.4);
+    position: relative;
+    overflow: hidden;
+}
+#time-info::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%; right: 0;
+    height: 100%;
+    width: 200%;
+    background: linear-gradient(90deg, transparent, rgba(241, 196, 15, 0.05), transparent);
+    animation: timeShimmer 8s ease-in-out infinite;
+}
+@keyframes timeShimmer {
+    0%, 100% { transform: translateX(-50%); }
+    50% { transform: translateX(50%); }
+}
+
+/* --- RPG INPUT AREA ENHANCEMENT --- */
+.input-area {
+    position: relative;
+    border-radius: 0 !important;
+    border-top: 1px solid rgba(212, 175, 55, 0.2) !important;
+    background: linear-gradient(180deg, rgba(15, 20, 25, 0.95), rgba(10, 12, 15, 0.98)) !important;
+}
+.input-area::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 20%; right: 20%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.4), transparent);
+}
+#user-input {
+    font-family: 'Lora', serif !important;
+    font-size: 1.05em !important;
+    background: rgba(0, 0, 0, 0.4) !important;
+    border: 1px solid rgba(93, 173, 226, 0.15) !important;
+    border-bottom: 2px solid rgba(212, 175, 55, 0.3) !important;
+    border-radius: 4px !important;
+    padding: 12px 16px !important;
+    transition: all 0.3s ease !important;
+    color: var(--text-main) !important;
+}
+#user-input:focus {
+    border-bottom-color: var(--accent-gold) !important;
+    border-color: rgba(212, 175, 55, 0.4) !important;
+    box-shadow: 0 0 15px rgba(212, 175, 55, 0.1), inset 0 0 20px rgba(0,0,0,0.3) !important;
+    background: rgba(0, 0, 0, 0.6) !important;
+}
+
+/* --- RPG SEND BUTTON --- */
+#send-button {
+    background: linear-gradient(180deg, rgba(212, 175, 55, 0.3), rgba(160, 120, 30, 0.4)) !important;
+    border: 1px solid rgba(212, 175, 55, 0.5) !important;
+    color: var(--accent-gold) !important;
+    font-family: 'MedievalSharp', cursive !important;
+    letter-spacing: 2px !important;
+    text-transform: uppercase !important;
+    font-size: 0.85em !important;
+    padding: 10px 20px !important;
+    border-radius: 4px !important;
+    text-shadow: 0 0 8px rgba(212, 175, 55, 0.3);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease !important;
+}
+#send-button:hover {
+    background: linear-gradient(180deg, rgba(212, 175, 55, 0.5), rgba(160, 120, 30, 0.6)) !important;
+    border-color: var(--accent-gold) !important;
+    color: #fff !important;
+    box-shadow: 0 0 20px rgba(212, 175, 55, 0.4) !important;
+    transform: translateY(-1px) !important;
+}
+#send-button:active {
+    transform: translateY(1px) !important;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.5) !important;
+}
+
+/* --- RPG SIDEBAR CONTAINERS --- */
+.sidebar {
+    background: linear-gradient(180deg, rgba(8, 12, 18, 0.95), rgba(12, 16, 22, 0.9)) !important;
+    border-right: 1px solid rgba(212, 175, 55, 0.1) !important;
+}
+.right-sidebar {
+    border-left: 1px solid rgba(212, 175, 55, 0.1) !important;
+    border-right: none !important;
+}
+
+/* --- RPG ENHANCED GAME LOG --- */
+.game-log {
+    mask-image: linear-gradient(to bottom, transparent 0%, black 3%, black 97%, transparent 100%) !important;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 3%, black 97%, transparent 100%) !important;
+}
+
+/* --- RPG CHAT BUBBLE ENHANCEMENTS --- */
+.bubble-gm {
+    border-image: linear-gradient(135deg, rgba(52, 152, 219, 0.6), rgba(93, 173, 226, 0.3)) 1 !important;
+    border: 1px solid rgba(52, 152, 219, 0.4);
+    position: relative;
+}
+.bubble-gm::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+    background: linear-gradient(180deg, #5dade2, #2e86c1);
+    border-radius: 2px 0 0 2px;
+}
+.bubble-user {
+    position: relative;
+}
+.bubble-user::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 3px; height: 100%;
+    background: linear-gradient(180deg, #2ecc71, #1e8449);
+    border-radius: 0 2px 2px 0;
+}
+
+/* --- RPG EQUIPMENT SLOTS ENHANCEMENT --- */
+.equipment-slot-v2 {
+    border: 2px solid rgba(100, 80, 50, 0.5);
+    border-radius: 4px;
+    background: linear-gradient(135deg, rgba(30, 25, 15, 0.9), rgba(15, 12, 8, 0.95)) !important;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.8), 0 1px 3px rgba(0,0,0,0.5);
+}
+.equipment-slot-v2:hover {
+    border-color: rgba(212, 175, 55, 0.5);
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.6), 0 0 8px rgba(212, 175, 55, 0.15);
+}
+.equipment-slot-v2.equipped {
+    border-color: rgba(212, 175, 55, 0.7) !important;
+    box-shadow: inset 0 0 15px rgba(212, 175, 55, 0.1), 0 0 8px rgba(212, 175, 55, 0.3) !important;
+    background: linear-gradient(135deg, rgba(40, 30, 10, 0.9), rgba(20, 15, 5, 0.95)) !important;
+}
+
+/* --- RPG INVENTORY ITEMS --- */
+.inventory li:not([data-i18n="gameInterface.inventoryPanel.empty"]):hover {
+    background: rgba(212, 175, 55, 0.08) !important;
+    border-left: 2px solid var(--accent-gold);
+    padding-left: 4px;
+}
+.inventory .item-name {
+    color: var(--accent-gold) !important;
+    text-shadow: 0 0 4px rgba(212, 175, 55, 0.2);
+}
+.inventory .item-name.обычный { color: #bdc3c7 !important; text-shadow: none; }
+.inventory .item-name.необычный { color: #2ecc71 !important; text-shadow: 0 0 4px rgba(46, 204, 113, 0.2); }
+.inventory .item-name.редкий { color: #5dade2 !important; text-shadow: 0 0 4px rgba(93, 173, 226, 0.2); }
+.inventory .item-name.эпический { color: #9b59b6 !important; text-shadow: 0 0 6px rgba(155, 89, 182, 0.3); }
+.inventory .item-name.легендарный { color: #f1c40f !important; text-shadow: 0 0 8px rgba(241, 196, 15, 0.4); }
+
+/* --- RPG QUEST ITEMS --- */
+.quest-title {
+    color: var(--accent-gold) !important;
+    text-shadow: 0 0 4px rgba(212, 175, 55, 0.2);
+}
+.quests li.quest-item {
+    border-left: 3px solid var(--accent-gold) !important;
+    background: linear-gradient(90deg, rgba(212, 175, 55, 0.05), transparent) !important;
+}
+
+/* --- RPG SKILL ITEMS --- */
+.skill-name {
+    color: #58d68d;
+    text-shadow: 0 0 4px rgba(88, 214, 141, 0.2);
+}
+
+/* --- RPG STATUS EFFECTS --- */
+.status-effects-panel li.status-effect-item {
+    border-left: 3px solid #f39c12;
+}
+
+/* --- RPG GOLD DISPLAY --- */
+#stat-gold {
+    text-shadow: 0 0 10px rgba(241, 196, 15, 0.5);
+}
+
+/* --- RPG LOCATION DISPLAY --- */
+#stat-location {
+    color: var(--accent-blue) !important;
+    text-shadow: 0 0 6px rgba(93, 173, 226, 0.3);
+}
+
+/* --- RPG MAP BUTTON --- */
+#open-map-modal-btn {
+    background: linear-gradient(135deg, rgba(52, 152, 219, 0.3), rgba(41, 128, 185, 0.4)) !important;
+    border: 1px solid rgba(93, 173, 226, 0.4) !important;
+    color: #5dade2 !important;
+    font-family: 'MedievalSharp', cursive !important;
+    letter-spacing: 1px !important;
+    position: relative;
+    overflow: hidden;
+}
+#open-map-modal-btn::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 200%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(93, 173, 226, 0.1), transparent);
+    animation: mapBtnShimmer 4s ease-in-out infinite;
+}
+@keyframes mapBtnShimmer {
+    0%, 100% { transform: translateX(-30%); }
+    50% { transform: translateX(30%); }
+}
+#open-map-modal-btn:hover {
+    background: linear-gradient(135deg, rgba(52, 152, 219, 0.5), rgba(41, 128, 185, 0.6)) !important;
+    border-color: #5dade2 !important;
+    box-shadow: 0 0 20px rgba(93, 173, 226, 0.3) !important;
+}
+
+/* --- RPG IN-GAME MENU BUTTON --- */
+#in-game-menu-button {
+    background: linear-gradient(135deg, rgba(10, 15, 20, 0.9), rgba(20, 25, 30, 0.9)) !important;
+    border: 1px solid rgba(212, 175, 55, 0.3) !important;
+    color: var(--accent-gold) !important;
+    font-family: 'MedievalSharp', cursive !important;
+    letter-spacing: 2px;
+}
+#in-game-menu-button::after {
+    content: ' МЕНЮ';
+    font-size: 0.8em;
+    letter-spacing: 2px;
+    color: var(--accent-gold);
+    margin-left: 8px;
+}
+#in-game-menu-button:hover {
+    background: linear-gradient(135deg, rgba(30, 25, 15, 0.9), rgba(40, 35, 20, 0.9)) !important;
+    border-color: var(--accent-gold) !important;
+    box-shadow: 0 0 15px rgba(212, 175, 55, 0.3) !important;
+}
+
+/* --- RPG TAB BUTTONS (INVENTORY) --- */
+.tab-button {
+    font-family: 'MedievalSharp', cursive !important;
+    font-size: 0.85em !important;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid transparent !important;
+    transition: all 0.3s ease !important;
+}
+.tab-button.active {
+    color: var(--accent-gold) !important;
+    border-bottom-color: var(--accent-gold) !important;
+    text-shadow: 0 0 6px rgba(212, 175, 55, 0.3);
+}
+.tab-button:hover {
+    color: var(--accent-gold) !important;
+}
+
+/* --- RPG COLLAPSIBLE PANEL TOGGLE --- */
+.collapsible-panel .panel-toggle .toggle-icon {
+    color: var(--accent-gold) !important;
+    transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), color 0.3s ease !important;
+}
+.collapsible-panel .panel-toggle:hover .toggle-icon {
+    color: #f1c40f !important;
+}
+
+/* --- RPG CHAT ROLL BADGES --- */
+.chat-roll-badge {
+    font-family: 'Courier New', monospace;
+    border-radius: 4px;
+}
+
+/* --- RPG ENVIRONMENT PANEL --- */
+.environment-panel li.entity-item:hover {
+    border-left: 2px solid rgba(93, 173, 226, 0.5);
+    padding-left: 4px;
+}
+
+/* --- RPG NEXUS PANEL --- */
+.nexus-panel {
+    border-left: 3px solid rgba(155, 89, 182, 0.5) !important;
+}
+
+/* --- RPG REPUTATION BAR ENHANCEMENT --- */
+.reputation-bar-container {
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.5), 0 0 4px rgba(0,0,0,0.3);
+}
+.reputation-marker {
+    box-shadow: 0 0 4px rgba(255,255,255,0.5);
+}
+
+/* --- RPG LOADING SPINNER ENHANCEMENT --- */
+.loading-spinner {
+    border: 6px solid rgba(212, 175, 55, 0.2) !important;
+    border-top: 6px solid var(--accent-gold) !important;
+    width: 50px !important;
+    height: 50px !important;
+}
+
+/* --- RPG SUGGESTED ACTIONS --- */
+.suggested-actions-bar button {
+    font-family: 'MedievalSharp', cursive !important;
+    letter-spacing: 0.5px;
+    border: 1px solid rgba(93, 173, 226, 0.3) !important;
+    background: rgba(93, 173, 226, 0.08) !important;
+    color: #5dade2 !important;
+    border-radius: 4px !important;
+    transition: all 0.2s ease !important;
+}
+.suggested-actions-bar button:hover {
+    background: rgba(93, 173, 226, 0.2) !important;
+    border-color: #5dade2 !important;
+    box-shadow: 0 0 10px rgba(93, 173, 226, 0.2) !important;
+}
+
+/* --- RPG QUICK TAGS --- */
+.quick-tags-bar button {
+    font-family: 'Lora', serif !important;
+    background: rgba(0,0,0,0.3) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    color: var(--text-muted) !important;
+    border-radius: 3px !important;
+    font-size: 0.85em !important;
+    transition: all 0.2s ease !important;
+}
+.quick-tags-bar button:hover {
+    border-color: var(--accent-gold) !important;
+    color: var(--accent-gold) !important;
+}
+
+/* --- RPG TRANSPORT INDICATOR --- */
+.transport-indicator {
+    font-family: 'MedievalSharp', cursive;
+    text-align: center;
+    padding: 6px !important;
+    background: linear-gradient(135deg, rgba(243, 156, 18, 0.1), rgba(211, 84, 0, 0.1)) !important;
+    border: 1px solid rgba(243, 156, 18, 0.3) !important;
+    border-radius: 4px;
+    color: #f39c12;
+    text-shadow: 0 0 6px rgba(243, 156, 18, 0.3);
+}
+
+/* --- SUBTLE PARCHMENT TEXTURE OVERLAY --- */
+.game-content::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.015;
+    pointer-events: none;
+    z-index: 0;
+    mix-blend-mode: overlay;
+}
+
+/* --- RPG WORLD CHRONICLES FILTER BUTTONS --- */
+.c-filter-btn {
+    font-family: 'MedievalSharp', cursive !important;
+    font-size: 0.8em !important;
+    letter-spacing: 0.5px;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    background: rgba(0,0,0,0.3) !important;
+    color: var(--text-muted) !important;
+    border-radius: 3px !important;
+    transition: all 0.2s ease !important;
+}
+.c-filter-btn.active {
+    border-color: var(--accent-gold) !important;
+    color: var(--accent-gold) !important;
+    background: rgba(212, 175, 55, 0.1) !important;
+}
+.c-filter-btn:hover {
+    border-color: var(--accent-gold) !important;
+    color: var(--accent-gold) !important;
+}
+
+/* --- RPG DICE LOG --- */
+.dice-log-panel {
+    border-left: 3px solid rgba(230, 126, 34, 0.5) !important;
+}
+
+/* --- RPG JOURNEY BUTTON ENHANCEMENT --- */
+.journey-btn-magical {
+    font-family: 'MedievalSharp', cursive !important;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+/* --- RPG TRADE JOURNAL --- */
+.trade-journal-panel {
+    border-left: 3px solid rgba(46, 204, 113, 0.5) !important;
+}
+
+/* --- RPG WORLD CHRONICLES --- */
+.world-chronicles-panel {
+    border-left: 3px solid rgba(155, 89, 182, 0.5) !important;
+}
+
+/* --- RPG ECHO MEMORY --- */
+.echo-memory-panel {
+    border-left: 3px solid rgba(93, 173, 226, 0.5) !important;
+}
+
+/* --- ANIMATED STAT INCREASE BUTTON --- */
+.stat-increase-button {
+    background: radial-gradient(circle, rgba(46, 204, 113, 0.6), rgba(39, 174, 96, 0.4)) !important;
+    border: 1px solid rgba(46, 204, 113, 0.5) !important;
+    box-shadow: 0 0 6px rgba(46, 204, 113, 0.3);
+}
+.stat-increase-button:hover {
+    box-shadow: 0 0 12px rgba(46, 204, 113, 0.6) !important;
+}
+
+/* --- RPG PORT PANEL --- */
+.port-panel {
+    border-left: 3px solid rgba(52, 152, 219, 0.5) !important;
+}
+
+/* --- RPG GLOWING LEVEL INFO --- */
+#level-info {
+    font-family: 'MedievalSharp', cursive !important;
+    background: linear-gradient(135deg, rgba(0,0,0,0.5), rgba(20, 15, 5, 0.6)) !important;
+    border: 1px solid rgba(212, 175, 55, 0.2) !important;
+}
+
+/* --- SCROLLBAR ENHANCEMENT --- */
+.sidebar::-webkit-scrollbar-thumb,
+.game-log::-webkit-scrollbar-thumb {
+    background: rgba(212, 175, 55, 0.3);
+    border-radius: 4px;
+}
+.sidebar::-webkit-scrollbar-thumb:hover,
+.game-log::-webkit-scrollbar-thumb:hover {
+    background: rgba(212, 175, 55, 0.6);
+}
+
 /* Устаревший дубликат блюра удален для чистоты UI */
 /* .panel и .menu-screen управляются собственными блоками с правильным saturate() */
 
