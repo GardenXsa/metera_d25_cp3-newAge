@@ -56,3 +56,9 @@ desktop.ini
 settings.json
 conversation-*.txt
 project_scan.txt
+
+# Never commit secrets or push scripts
+.ssh/
+push.sh
+deploy_key*
+*.pem
