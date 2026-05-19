@@ -74,18 +74,27 @@ bash test_runner.sh --game --verbose
   fallback на OldCoreInventorySystem когда IPC недоступен. ensurePlayerContainers()
   гарантирует создание рюкзака и экипировки перед операциями.
 
-- [ ] **Inventory async/sync mismatch** — ~10 потенциальных мест где
-  CoreInventorySystemAsync методы вызываются без `await` (тест 12 показывает WARN).
-  CoreInventorySystemAsync — все методы async, но OldCoreInventorySystem — sync.
-  Нужно найти все вызовы async методов без await и добавить await.
+- [x] **Inventory async/sync mismatch** — ПРОВЕРЕНО: все вызовы async методов
+  (createContainer, createItem, moveItem, removeItem, destroyContainer и т.д.)
+  используют await. Вызовы без await — это синхронные методы getContainerWeight
+  и findItemByPrototype (они не async, читают напрямую из ContainerRegistry/ItemRegistry).
+  Тест 12 WARN — ложноположительный (регекс не отличает sync от async методы).
 
 ### СРЕДНИЕ (ухудшают опыт)
 
 - [ ] **UI примитивный** — основное окно выглядит скучно, не как игра.
   Нужен визуальный оверхол: тёмная тема с градиентами, анимации, иконки.
 
-- [ ] **Карта лагала** — ИСПРАВЛЕНО: добавлен throttle (~30fps) через setTimeout в handleMouseMove,
+- [x] **Карта лагала** — ИСПРАВЛЕНО: добавлен throttle (~30fps) через setTimeout в handleMouseMove,
   hover-обработка вынесена в _processHover, render через requestAnimationFrame с флагом _needsRender.
+
+- [x] **CSP inline handler violations** — ИСПРАВЛЕНО: все 14 inline обработчиков
+  (onclick, onmouseover, onmouseout) в index.html заменены на CSP-совместимые:
+  data-атрибуты + addEventListener. Убраны ошибки "Refused to execute inline event handler".
+
+- [x] **loadWorldFile fallback** — ИСПРАВЛЕНО: если C++ движок не поддерживает loadWorldFile
+  (старый бинарник или движок не запущен), код пытается fallback через syncState (stdin),
+  и корректно логирует ошибку вместо падения.
 
 ### НИЗКИЕ (косметика)
 
@@ -95,6 +104,21 @@ bash test_runner.sh --game --verbose
 ---
 
 ## ИСТОРИЯ ИЗМЕНЕНИЙ (последние)
+
+### 2026-05-20: CSP + loadWorldFile фикс
+- **Проблема 1**: CSP ошибки "Refused to execute inline event handler" — 14 inline обработчиков
+  в index.html (onclick, onmouseover, onmouseout) блокировались Content Security Policy.
+- **Решение 1**: Заменены на CSP-совместимые:
+  - Help tab кнопки: `onclick` → `data-help-tab` атрибуты + `addEventListener`
+  - Help sub-tab кнопки: `onclick` → `data-help-subtab` атрибуты + `addEventListener`
+  - Close map modal: `onmouseover/onmouseout` → `mouseenter/mouseleave` через `addEventListener`
+  - Close examine modal: `onclick` → `id="close-examine-modal-btn"` + `addEventListener`
+- **Проблема 2**: `[Nexus] loadWorldFile не удался: Unknown command: loadWorldFile`
+  при синхронизации мира с C++ движком.
+- **Решение 2**: Добавлен graceful fallback — если loadWorldFile не работает,
+  код пытается syncState через stdin, и корректно логирует все этапы.
+- **Проверено**: Inventory async/sync mismatch — ложноположительный. Все async методы
+  используют await; без await вызываются только sync методы (getContainerWeight, findItemByPrototype).
 
 ### 2026-05-20: Фикс globalMap.js SyntaxError
 - **Проблема**: Строка 385 — `Uncaught SyntaxError: Unexpected token 'this'`
