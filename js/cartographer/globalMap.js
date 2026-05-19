@@ -581,8 +581,20 @@ window.Cartographer = {
             try {
                 const response = await window.electronAPI.nexusGetWorldMap();
                 if (response && response.status === 'ok' && response.map) {
+                    // Защита: не перезаписывать World.map пустыми/неполными данными движка.
+                    // Если синхронизация через stdin не удалась (pipe buffer limit 64KB),
+                    // движок вернёт пустую карту без grid — это затрёт загруженную из сохранения.
                     if (typeof World !== 'undefined' && World) {
-                        World.map = response.map;
+                        const hasGrid = response.map.grid && response.map.grid.length > 0;
+                        const hasTiles = response.map.tiles && response.map.tiles.length > 0;
+                        const existingMapHasData = World.map && (World.map.grid || World.map.tiles);
+                        if (hasGrid || hasTiles) {
+                            World.map = response.map;
+                        } else if (!existingMapHasData) {
+                            // Только если в JS тоже нет карты — берём что есть
+                            World.map = response.map;
+                        }
+                        // Иначе: движок вернул пустую карту, но JS имеет данные из сохранения — оставляем JS
                     }
                 }
             } catch (e) {

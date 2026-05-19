@@ -314,24 +314,54 @@ async function loadGame(slotType, slotId) {
         if (player.equipment) delete player.equipment;
 
         // Синхронизация состояния с C++ ядром
-        if (window.electronAPI && window.electronAPI.nexusSyncState) {
-            console.log("[SaveManager] Синхронизация загруженных предметов с ядром...");
-            await window.electronAPI.nexusSyncState(World, Array.from(ItemRegistry.entries()), Array.from(ContainerRegistry.entries()));
-            
+        // Используем файловую синхронизацию (nexusWriteSyncFile + loadWorldFile),
+        // а не stdin (nexusSyncState), потому что World JSON с картой (256x256 тайлов)
+        // может быть 2-5MB — stdin pipe buffer на Windows всего 64KB, что приводит
+        // к тихой потере данных карты при отправке через syncState.
+        if (window.electronAPI) {
+            const syncItems = Array.from(ItemRegistry.entries());
+            const syncContainers = Array.from(ContainerRegistry.entries());
+            const worldFileData = { world: World, items: syncItems, containers: syncContainers };
+            console.log("[SaveManager] Файловая синхронизация загруженного мира с ядром...");
+
+            if (window.electronAPI.nexusWriteSyncFile && window.electronAPI.nexusLoadWorldFile) {
+                try {
+                    const writeRes = await window.electronAPI.nexusWriteSyncFile(worldFileData);
+                    if (writeRes.status === 'ok' && writeRes.path) {
+                        const loadRes = await window.electronAPI.nexusLoadWorldFile(writeRes.path);
+                        if (loadRes.status === 'ok') {
+                            console.log("[SaveManager] Файловая синхронизация мира завершена:", loadRes.message);
+                        } else {
+                            console.warn("[SaveManager] loadWorldFile не удался:", loadRes.message || loadRes.error || 'unknown error');
+                        }
+                    } else {
+                        console.warn("[SaveManager] Не удалось записать временный файл:", writeRes.message);
+                    }
+                } catch (err) {
+                    console.warn("[SaveManager] Ошибка файловой синхронизации:", err.message || err);
+                }
+            } else if (window.electronAPI.nexusSyncState) {
+                // Fallback на stdin-синхронизацию если файловые IPC недоступны
+                console.log("[SaveManager] Файловые IPC недоступны, fallback на syncState через stdin...");
+                await window.electronAPI.nexusSyncState(World, syncItems, syncContainers);
+            }
+
             // Синхронизация старых сущностей для обратной совместимости
-            for (let entId in player.allKnownEntities) {
-                let ent = player.allKnownEntities[entId];
-                let minDmg = ent.min_damage || 1 + Math.floor((ent.stats.maxHp ?? 10) / 40);
-                let diceSides = ent.type === 'creature' ? 8 : (((ent.stats.str ?? 10) > 16 || (ent.stats.dex ?? 10) > 16) ? 10 : 6);
-                let maxDmg = ent.max_damage || (minDmg * diceSides);
-                let ac = ent.armor_class || 10 + Math.floor(((ent.stats.dex ?? 10) - 10) / 2);
-                await sendInventoryCommand('syncEntity', {
-                    id: ent.aiIdentifier, name: ent.name, type: ent.type,
-                    hp: ent.stats.hp ?? 10, maxHp: ent.stats.maxHp ?? 10,
-                    str: ent.stats.str ?? 10, dex: ent.stats.dex ?? 10, con: ent.stats.con ?? 10, int: ent.stats.int ?? 10,
-                    isHostile: ent.isHostile === true, xpReward: ent.xpReward || 20,
-                    min_damage: minDmg, max_damage: maxDmg, armor_class: ac
-                });
+            if (window.electronAPI.nexusSyncState || window.electronAPI.nexusLoadWorldFile) {
+                for (let entId in player.allKnownEntities) {
+                    let ent = player.allKnownEntities[entId];
+                    let minDmg = ent.min_damage || 1 + Math.floor((ent.stats.maxHp ?? 10) / 40);
+                    let diceSides = ent.type === 'creature' ? 8 : (((ent.stats.str ?? 10) > 16 || (ent.stats.dex ?? 10) > 16) ? 10 : 6);
+                    let maxDmg = ent.max_damage || (minDmg * diceSides);
+                    let ac = ent.armor_class || 10 + Math.floor(((ent.stats.dex ?? 10) - 10) / 2);
+                    await sendInventoryCommand('syncEntity', {
+                        id: ent.aiIdentifier, name: ent.name, type: ent.type,
+                        hp: ent.stats.hp ?? 10, maxHp: ent.stats.maxHp ?? 10,
+                        str: ent.stats.str ?? 10, dex: ent.stats.dex ?? 10, con: ent.stats.con ?? 10, int: ent.stats.int ?? 10,
+                        isHostile: ent.isHostile === true, xpReward: ent.xpReward || 20,
+                        min_damage: minDmg, max_damage: maxDmg, armor_class: ac
+                    });
+                }
             }
         }
 
