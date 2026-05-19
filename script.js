@@ -120,10 +120,10 @@ function resolveSpecialContainerId(containerId) {
  * Ensures the guard_confiscation_chest container exists, creating it if needed.
  * Call this explicitly before resolveSpecialContainerId('guard_confiscation_chest').
  */
-function ensureGuardConfiscationChest() {
+async function ensureGuardConfiscationChest() {
     const existing = Array.from(ContainerRegistry.values()).find(c => c.custom_props?.system_id === 'guard_confiscation_chest');
     if (existing) return existing.id;
-    return CoreInventorySystem.createContainer(
+    return await CoreInventorySystemAsync.createContainer(
         'static_chest',
         'city_guard',
         9999,
@@ -171,10 +171,10 @@ function countRealItems(containerId, prototypeId) {
     }, 0);
 }
 
-function addRealItems(containerId, prototypeId, quantity, customProps = {}) {
+async function addRealItems(containerId, prototypeId, quantity, customProps = {}) {
     const createdIds = [];
     for (let i = 0; i < quantity; i++) {
-        const id = CoreInventorySystem.createItem(prototypeId, 1, containerId, {
+        const id = await CoreInventorySystemAsync.createItem(prototypeId, 1, containerId, {
             ...customProps,
             name: getItemName(prototypeId, player?.era)
         });
@@ -2040,9 +2040,9 @@ const OldTradeSystem = {
 
         return { success: true };
     },
-    _executeItemTransfers: function(items, sourceContainerId, targetContainerId, createdItemIds) {
+    _executeItemTransfers: async function(items, sourceContainerId, targetContainerId, createdItemIds) {
         for (const entry of items) {
-            const res = CoreInventorySystem.moveItem(entry.id, sourceContainerId, targetContainerId, entry.quantity, {
+            const res = await CoreInventorySystemAsync.moveItem(entry.id, sourceContainerId, targetContainerId, entry.quantity, {
                 actorId: 'system',
                 ignoreAccess: true,
                 ignoreDistance: true,
@@ -2056,7 +2056,7 @@ const OldTradeSystem = {
         }
         return { success: true };
     },
-    _transferMerchantGold: function(trade, createdItemIds) {
+    _transferMerchantGold: async function(trade, createdItemIds) {
         let remaining = trade.final_price;
         const targetContainer = ContainerRegistry.get(trade.target_container);
         if (!targetContainer) return { success: false, error: "Merchant container not found" };
@@ -2069,7 +2069,7 @@ const OldTradeSystem = {
             if (remaining <= 0) break;
             const goldItem = ItemRegistry.get(goldItemId);
             const amountToMove = Math.min(goldItem.stack_size, remaining);
-            const res = CoreInventorySystem.moveItem(goldItemId, trade.target_container, trade.initiator_container, amountToMove, {
+            const res = await CoreInventorySystemAsync.moveItem(goldItemId, trade.target_container, trade.initiator_container, amountToMove, {
                 actorId: 'system',
                 ignoreAccess: true,
                 ignoreDistance: true,
@@ -2084,8 +2084,8 @@ const OldTradeSystem = {
             const merchant = World?.npcs?.[trade.target];
             if (!merchant?.inventory || merchant.inventory.gold < remaining) return { success: false, error: "Merchant account is short on gold" };
             const buyerContainer = ContainerRegistry.get(trade.initiator_container);
-            const existingGoldId = CoreInventorySystem.findItemByPrototype(trade.initiator_container, 'gold');
-            const currentWeight = CoreInventorySystem.getContainerWeight(trade.initiator_container);
+            const existingGoldId = CoreInventorySystemAsync.findItemByPrototype(trade.initiator_container, 'gold');
+            const currentWeight = CoreInventorySystemAsync.getContainerWeight(trade.initiator_container);
             const addedWeight = remaining * 0.01;
             if (!existingGoldId && getContainerItems(buyerContainer).length >= buyerContainer.max_slots) {
                 return { success: false, error: "Buyer container has no free slot for gold" };
@@ -2098,7 +2098,7 @@ const OldTradeSystem = {
             if (existingGoldId) {
                 ItemRegistry.get(existingGoldId).stack_size += remaining;
             } else {
-                const createdGoldId = CoreInventorySystem.createItem('gold', remaining, trade.initiator_container, { name: getItemName('gold', player?.era) });
+                const createdGoldId = await CoreInventorySystemAsync.createItem('gold', remaining, trade.initiator_container, { name: getItemName('gold', player?.era) });
                 createdItemIds.push(createdGoldId);
             }
             remaining = 0;
@@ -2107,7 +2107,7 @@ const OldTradeSystem = {
         syncPlayerGoldFromInventory();
         return { success: true };
     },
-    _postProcessTrade: function(trade) {
+    _postProcessTrade: async function(trade) {
         if (trade.target !== 'player' && typeof World !== 'undefined' && World && World.npcs?.[trade.target]) {
             const npc = World.npcs[trade.target];
             const regionId = npc.currentLocation || npc.homeLocation || resolveContainerLocation(trade.target_container)?.region_id;
@@ -2121,7 +2121,7 @@ const OldTradeSystem = {
                     region.moneySupply += tax;
                     // Добавляем физическое золото в склад региона
                     if (factionId && region.vault_id) {
-                        addRealItems(region.vault_id, 'gold', tax);
+                        await addRealItems(region.vault_id, 'gold', tax);
                     }
                 }
 
@@ -2150,7 +2150,7 @@ const OldTradeSystem = {
             });
         }
     },
-    confirmTrade: function(tradeId) {
+    confirmTrade: async function(tradeId) {
         if (!this.activeTrades.has(tradeId)) return { success: false, error: "Trade not found" };
         const trade = this.activeTrades.get(tradeId);
 
@@ -2160,7 +2160,7 @@ const OldTradeSystem = {
         const snapshot = this._snapshotTradeState(trade);
         const createdItemIds = [];
 
-        const offerResult = this._executeItemTransfers(trade.offer_items, trade.initiator_container, trade.target_container, createdItemIds);
+        const offerResult = await this._executeItemTransfers(trade.offer_items, trade.initiator_container, trade.target_container, createdItemIds);
         if (!offerResult.success) {
             this._restoreTradeSnapshot(snapshot, createdItemIds);
             return this._rollbackTrade(tradeId, offerResult.error || "Failed to move offer item");
@@ -2168,9 +2168,9 @@ const OldTradeSystem = {
 
         let requestResult = { success: true };
         if (trade.mode === 'manual') {
-            requestResult = this._executeItemTransfers(trade.request_items, trade.target_container, trade.initiator_container, createdItemIds);
+            requestResult = await this._executeItemTransfers(trade.request_items, trade.target_container, trade.initiator_container, createdItemIds);
         } else {
-            requestResult = this._transferMerchantGold(trade, createdItemIds);
+            requestResult = await this._transferMerchantGold(trade, createdItemIds);
         }
 
         if (!requestResult.success) {
@@ -2183,7 +2183,7 @@ const OldTradeSystem = {
         this._toggleConfirmButton(null);
         if (player?.active_trade_id === tradeId) player.active_trade_id = null;
         syncPlayerGoldFromInventory();
-        this._postProcessTrade(trade);
+        await this._postProcessTrade(trade);
         return { success: true, tradeId, price: trade.final_price || 0 };
     },
     _rollbackTrade: function(tradeId, reason) {
@@ -2703,6 +2703,7 @@ async function preSimulateWorldHistory(yearsToSimulate) {
 
         console.log(`[Nexus] Запуск пре-симуляции ${totalTicks} тиков в C++...`);
         const res = await window.electronAPI.nexusPreSimulate(World, totalTicks);
+        console.log(`[Nexus] Ответ пре-симуляции получен:`, res ? `status=${res.status}` : 'null');
         if (res.status === 'ok') {
             if (res.world) setWorld(res.world);
             if (res.relevant_news) World.relevant_news = res.relevant_news;
@@ -6974,10 +6975,10 @@ function setupEventListeners() {
     bodySlots.forEach(slot => {
         const slotElement = document.getElementById(`equipment-slot-${slot}`);
         if (slotElement) {
-            slotElement.addEventListener('click', (event) => {
+            slotElement.addEventListener('click', async (event) => {
                 if (event.currentTarget.classList.contains('equipped')) {
                     const slotName = event.currentTarget.dataset.slot;
-                    const feedback = unequipItem(slotName);
+                    const feedback = await unequipItem(slotName);
                     if (feedback) {
                         addLogMessage(feedback, 'command-feedback');
                     }
@@ -7527,8 +7528,8 @@ async function finalizeWorldSetupAndStart() {
     // Т3 ФИКС: Передаем ответственность за выбор стартовой локации Гейм-Мастеру
     player.location = "Не определена (ГМ ОБЯЗАН выбрать логичную стартовую локацию)";
 
-    player.container_backpack = await CoreInventorySystem.createContainer("player_backpack", "player", 100, 30);
-    player.container_equipment = await CoreInventorySystem.createContainer("player_equipment", "player", 50, 10);
+    player.container_backpack = await CoreInventorySystemAsync.createContainer("player_backpack", "player", 100, 30);
+    player.container_equipment = await CoreInventorySystemAsync.createContainer("player_equipment", "player", 50, 10);
     await syncPlayerContainerBindings();
 
     const narratorStyleGuide = `
@@ -10630,7 +10631,7 @@ async function handleUserInput() {
         let bp = ContainerRegistry.get(player.container_backpack);
         let hasStolen = bp && getContainerItems(bp).some(id => ItemRegistry.get(id)?.flags?.stolen);
         if (hasStolen) {
-            let count = CoreInventorySystem.confiscateStolen(player.container_backpack, "guard_confiscation_chest");
+            let count = await CoreInventorySystemAsync.confiscateStolen(player.container_backpack, "guard_confiscation_chest");
             finalMessageForGM += `\n\n[SYSTEM CRITICAL: Стража АВТОНОМНО обыскала игрока и нашла краденое! Изъято предметов: ${count}. ТЫ ОБЯЗАН описать сцену ареста, штрафа или нападения стражи!]`;
         }
     }
@@ -11028,20 +11029,20 @@ async function handlePlayerDeath() {
     isWaitingForAI = true;
     addLogMessage("Вы чувствуете, как холод охватывает ваше тело. Тьма застилает глаза. Вы мертвы...", "system-message");
 
-    const corpseId = await CoreInventorySystem.createContainer("static_chest", "system", 999999, 1000, player.location, {
+    const corpseId = await CoreInventorySystemAsync.createContainer("static_chest", "system", 999999, 1000, player.location, {
         custom_props: { name: `Останки (${player.name})` }
     });
     
     const backpack = ContainerRegistry.get(player.container_backpack);
     if (backpack && getContainerItems(backpack).length > 0) {
         const itemsToMove = getContainerItems(backpack).map(id => ({ id: id, quantity: ItemRegistry.get(id).stack_size }));
-        await CoreInventorySystem.moveItems(player.container_backpack, corpseId, itemsToMove, { actorId: 'system', ignoreAccess: true });
+        await CoreInventorySystemAsync.moveItems(player.container_backpack, corpseId, itemsToMove, { actorId: 'system', ignoreAccess: true });
     }
     
     const equipment = ContainerRegistry.get(player.container_equipment);
     if (equipment && getContainerItems(equipment).length > 0) {
         const itemsToMove = getContainerItems(equipment).map(id => ({ id: id, quantity: ItemRegistry.get(id).stack_size }));
-        await CoreInventorySystem.moveItems(player.container_equipment, corpseId, itemsToMove, { actorId: 'system', ignoreAccess: true });
+        await CoreInventorySystemAsync.moveItems(player.container_equipment, corpseId, itemsToMove, { actorId: 'system', ignoreAccess: true });
     }
 
     player.location = "Тень (Изнанка Мира)";
@@ -12552,7 +12553,7 @@ async function executeNonInventoryCommand(command, args) {
                                 value: args.value ?? 0,
                                 quality: args.quality || 1
                             };
-                            CoreInventorySystem.createItem(aiId, quantity, targetContId, customProps);
+                            await CoreInventorySystemAsync.createItem(aiId, quantity, targetContId, customProps);
                             feedback = t('gameInterface.commandFeedback.itemAdded', { itemName: name, quantity: quantity });
                         }
                     }
@@ -12574,7 +12575,7 @@ async function executeNonInventoryCommand(command, args) {
                     const quantity = (args.quantity !== undefined && !isNaN(parseInt(args.quantity))) ? parseInt(args.quantity, 10) : targetItem.stack_size;
                     if (targetItem.stack_size >= quantity) {
                         const removedName = targetItem.custom_props?.name || targetItem.prototype_id;
-                        CoreInventorySystem.removeItem(args.itemId, quantity);
+                        await CoreInventorySystemAsync.removeItem(args.itemId, quantity);
                         feedback = t('gameInterface.commandFeedback.itemRemoved', { itemName: removedName, quantityToRemove: quantity });
                         updateInventoryDisplay();
                         updateEquipmentDisplay();
@@ -12594,7 +12595,7 @@ async function executeNonInventoryCommand(command, args) {
                         const item = ItemRegistry.get(itemKey);
                         if (item.stack_size >= quantity) {
                             const removedName = item.custom_props.name || item.prototype_id;
-                            CoreInventorySystem.removeItem(itemKey, quantity);
+                            await CoreInventorySystemAsync.removeItem(itemKey, quantity);
                             feedback = t('gameInterface.commandFeedback.itemRemoved', { itemName: removedName, quantityToRemove: quantity });
                             updateInventoryDisplay();
                             updateEquipmentDisplay();
@@ -13794,7 +13795,7 @@ if (player.nexusData && player.nexusData[args.id]) {
                                         return it ? { id: id, quantity: it.stack_size } : null;
                                     }).filter(Boolean);
                                     if (itemsToMove.length > 0) {
-                                        CoreInventorySystem.moveItems(chestId, player.container_backpack, itemsToMove, { actorId: 'player', ignoreAccess: true, ignoreDistance: true });
+                                        await CoreInventorySystemAsync.moveItems(chestId, player.container_backpack, itemsToMove, { actorId: 'player', ignoreAccess: true, ignoreDistance: true });
                                         feedback += ` [АВТО-ЛУТ] Товары каравана перемещены в ваш рюкзак.`;
                                     }
                                 }
@@ -13962,7 +13963,7 @@ case 'setEntityBinding':
                         return it && (it.prototype_id === args.aiIdentifier || it.custom_props?.aiIdentifier === args.aiIdentifier);
                     });
                     if (itemKey) {
-                        feedback = equipItem(itemKey, args.slot);
+                        feedback = await equipItem(itemKey, args.slot);
                     } else {
                         args._retries = args._retries || 0;
                         if (args._retries < 5) {
@@ -13981,14 +13982,14 @@ case 'setEntityBinding':
             case 'unequipItem':
                 if (args.slot) {
                     const slot = args.slot.toLowerCase();
-                    feedback = unequipItem(slot);
+                    feedback = await unequipItem(slot);
                 } else {
                     feedback = `[ERROR] 'unequipItem' требует 'slot'.`;
                 }
                 break;
             case 'createContainer':
                 if (args.type && args.ownerId) {
-                    const contId = CoreInventorySystem.createContainer(
+                    const contId = await CoreInventorySystemAsync.createContainer(
                         args.type,
                         args.ownerId,
                         args.maxWeight || 100,
@@ -14001,12 +14002,12 @@ case 'setEntityBinding':
                         }
                     );
                     if (Array.isArray(args.items)) {
-                        args.items.forEach(itemDef => {
+                        for (const itemDef of args.items) {
                             const protoId = itemDef.prototypeId || itemDef.prototype_id || itemDef.aiIdentifier || itemDef.id;
                             if (protoId) {
-                                CoreInventorySystem.createItem(protoId, itemDef.quantity || 1, contId, itemDef.customProps || itemDef.custom_props || itemDef);
+                                await CoreInventorySystemAsync.createItem(protoId, itemDef.quantity || 1, contId, itemDef.customProps || itemDef.custom_props || itemDef);
                             }
-                        });
+                        }
                     }
                     feedback = `[СИСТЕМА] Создан контейнер ${contId} типа ${args.type} для ${args.ownerId}.`;
                 } else {
@@ -14016,7 +14017,7 @@ case 'setEntityBinding':
 
             case 'moveItem':
                 if (args.itemId && args.sourceContainerId) {
-                    const res = CoreInventorySystem.moveItem(args.itemId, args.sourceContainerId, args.targetContainerId || null, args.quantity || null);
+                    const res = await CoreInventorySystemAsync.moveItem(args.itemId, args.sourceContainerId, args.targetContainerId || null, args.quantity || null);
                     feedback = res.success ? `[СИСТЕМА] Предмет перемещен.` : `[ERROR] Ошибка перемещения: ${res.error}`;
                     updateInventoryDisplay();
                     updateEquipmentDisplay();
@@ -14029,7 +14030,7 @@ case 'setEntityBinding':
             case 'moveItems':
             case 'move_items':
                 if (args.sourceContainerId && Array.isArray(args.items) && args.items.length > 0) {
-                    const res = CoreInventorySystem.moveItems(args.sourceContainerId, args.targetContainerId || args.target || null, args.items, { actorId: 'player' });
+                    const res = await CoreInventorySystemAsync.moveItems(args.sourceContainerId, args.targetContainerId || args.target || null, args.items, { actorId: 'player' });
                     feedback = res.success
                         ? `[СИСТЕМА] Перемещено предметов: ${res.movedCount}.`
                         : `[ERROR] Ошибка пакетного перемещения: ${res.error}`;
@@ -14107,7 +14108,7 @@ case 'setEntityBinding':
 
             case 'destroyContainer':
                 if (args.containerId) {
-                    const res = CoreInventorySystem.destroyContainer(args.containerId);
+                    const res = await CoreInventorySystemAsync.destroyContainer(args.containerId);
                     feedback = res ? `[СИСТЕМА] Контейнер ${args.containerId} разрушен, содержимое высыпалось на землю.` : `[ERROR] Контейнер не найден.`;
                     updateInventoryDisplay();
                     updateEquipmentDisplay();
@@ -14119,7 +14120,7 @@ case 'setEntityBinding':
 
             case 'unlockContainer':
                 if (args.containerId) {
-                    const res = CoreInventorySystem.unlockContainer(args.containerId, 'player');
+                    const res = await CoreInventorySystemAsync.unlockContainer(args.containerId, 'player');
                     feedback = res.success ? `[ВЗЛОМ] Успешно: ${res.message}` : `[ВЗЛОМ] Провал: ${res.error}`;
                     updateInventoryDisplay();
                     updateCharacterSheet();
@@ -14131,7 +14132,7 @@ case 'setEntityBinding':
             case 'confiscateStolen':
                 if (args.targetId) {
                     const targetCont = args.targetId === 'player' ? player.container_backpack : args.targetId;
-                    const count = CoreInventorySystem.confiscateStolen(targetCont, "guard_confiscation_chest");
+                    const count = await CoreInventorySystemAsync.confiscateStolen(targetCont, "guard_confiscation_chest");
                     feedback = `[СТРАЖА] Изъято краденых предметов: ${count}.`;
                     updateInventoryDisplay();
                     updateEquipmentDisplay();
@@ -14143,7 +14144,7 @@ case 'setEntityBinding':
 
             case 'buildContainer':
                 if (args.type) {
-                    const contId = CoreInventorySystem.buildContainer('player', args.type, player.location);
+                    const contId = await CoreInventorySystemAsync.buildContainer('player', args.type, player.location);
                     feedback = contId ? `[КРАФТ] Создан контейнер ${contId}. Потрачено 5 дерева.` : `[ERROR] Недостаточно дерева (нужно 5 wood).`;
                     updateInventoryDisplay();
                     updateCharacterSheet();
@@ -14155,7 +14156,7 @@ case 'setEntityBinding':
             case 'applyAoEDamage':
                 if (args.location && args.damage) {
                     let destroyed = 0;
-                    ContainerRegistry.forEach(cont => {
+                    for (const [contId, cont] of ContainerRegistry) {
                         if (resolveContainerLocation(cont.id)?.region_id === args.location && cont.physical_props) {
                             cont.physical_props.health -= args.damage;
                             getContainerItems(cont).forEach(itemId => {
@@ -14163,11 +14164,11 @@ case 'setEntityBinding':
                                 if (item) item.durability -= Math.floor(args.damage / 2);
                             });
                             if (cont.physical_props.health <= 0) {
-                                CoreInventorySystem.destroyContainer(cont.id);
+                                await CoreInventorySystemAsync.destroyContainer(cont.id);
                                 destroyed++;
                             }
                         }
-                    });
+                    }
                     feedback = `[СИСТЕМА] AoE урон (${args.damage}) нанесен по локации ${args.location}. Разрушено контейнеров: ${destroyed}. Предметы внутри повреждены.`;
                     updateInventoryDisplay();
                     updateEquipmentDisplay();
@@ -14186,7 +14187,7 @@ case 'setEntityBinding':
                     existingPocket.location = normalizeContainerLocation({ world_coords: null, parent_entity: 'player', parent_container: null, region_id: 'astral' });
                     feedback = `[МАГИЯ] Магический карман уже активен.`;
                 } else {
-                    const contId = CoreInventorySystem.createContainer('magical_pocket', 'player', 500, 100, { world_coords: null, parent_entity: 'player', parent_container: null, region_id: 'astral' });
+                    const contId = await CoreInventorySystemAsync.createContainer('magical_pocket', 'player', 500, 100, { world_coords: null, parent_entity: 'player', parent_container: null, region_id: 'astral' });
                     feedback = `[МАГИЯ] Создан магический карман (ID: ${contId}).`;
                 }
                 break;
@@ -14196,7 +14197,7 @@ case 'setEntityBinding':
                 const pocketId = args.containerId || Array.from(ContainerRegistry.values()).find(cont => cont.owner_id === 'player' && cont.type === 'magical_pocket')?.id;
                 if (pocketId && ContainerRegistry.has(pocketId)) {
                     ContainerRegistry.get(pocketId).location = resolveActorLocation('player');
-                    CoreInventorySystem.destroyContainer(pocketId);
+                    await CoreInventorySystemAsync.destroyContainer(pocketId);
                     delete player.statusEffects['spell_magical_pocket'];
                     feedback = `[МАГИЯ] Магический карман развеян, вещи высыпались в реальный мир.`;
                     updateInventoryDisplay();
@@ -14503,7 +14504,7 @@ function applyReputationConsequence(key = 'sexual_reputation', change = -20) {
  * @param {string} itemInternalId - Внутренний ID предмета в инвентаре.
  * @returns {string|null} Сообщение для лога или null.
  */
-function equipItem(itemId, targetSlot = null) {
+async function equipItem(itemId, targetSlot = null) {
     if (!player || !player.container_backpack || !player.container_equipment) return null;
     const itemToEquip = ItemRegistry.get(itemId);
     if (!itemToEquip || itemToEquip.container_id !== player.container_backpack) return null;
@@ -14522,11 +14523,11 @@ function equipItem(itemId, targetSlot = null) {
     const existingItemInSlot = getContainerItems(eqCont).find(id => ItemRegistry.get(id).slot_index === targetSlot);
     
     if (existingItemInSlot) {
-        const unequipFeedback = unequipItem(targetSlot);
+        const unequipFeedback = await unequipItem(targetSlot);
         if (unequipFeedback && unequipFeedback.includes('Инвентарь полон')) return unequipFeedback;
     }
 
-    CoreInventorySystem.moveItem(itemId, player.container_backpack, player.container_equipment);
+    await CoreInventorySystemAsync.moveItem(itemId, player.container_backpack, player.container_equipment);
     itemToEquip.slot_index = targetSlot;
     itemToEquip.state = "equipped";
 
@@ -14540,7 +14541,7 @@ function equipItem(itemId, targetSlot = null) {
     return t('gameInterface.commandFeedback.itemEquipped', { itemName: itemToEquip.custom_props.name, slot: targetSlot });
 }
 
-function handleDrop(event) {
+async function handleDrop(event) {
     event.preventDefault();
     const targetSlotElement = event.currentTarget;
     const slotName = targetSlotElement.dataset.slot;
@@ -14562,7 +14563,7 @@ function handleDrop(event) {
     }
 
     // Вызываем нашу универсальную функцию equipItem
-    const feedback = equipItem(itemId, slotName);
+    const feedback = await equipItem(itemId, slotName);
 
     if (feedback) {
         addLogMessage(feedback, 'command-feedback');
@@ -14574,7 +14575,7 @@ function handleDrop(event) {
  * @param {string} slot - Название слота (например, 'head', 'right_hand').
  * @returns {string|null} Сообщение для лога или null.
  */
-function unequipItem(slot) {
+async function unequipItem(slot) {
     if (!player || !player.container_equipment || !player.container_backpack) return null;
     const eqCont = ContainerRegistry.get(player.container_equipment);
     const itemId = getContainerItems(eqCont).find(id => ItemRegistry.get(id).slot_index === slot);
@@ -14587,7 +14588,7 @@ function unequipItem(slot) {
         return t('gameInterface.commandFeedback.inventoryFullOnUnequip', { itemName: itemToUnequip.custom_props.name });
     }
 
-    CoreInventorySystem.moveItem(itemId, player.container_equipment, player.container_backpack);
+    await CoreInventorySystemAsync.moveItem(itemId, player.container_equipment, player.container_backpack);
     itemToUnequip.slot_index = null;
     itemToUnequip.state = "idle";
 
@@ -14690,7 +14691,7 @@ function getEffectiveStats() {
         }
     }
 
-    const totalWeight = CoreInventorySystem.getContainerWeight(player.container_backpack) + CoreInventorySystem.getContainerWeight(player.container_equipment);
+    const totalWeight = CoreInventorySystemAsync.getContainerWeight(player.container_backpack) + CoreInventorySystemAsync.getContainerWeight(player.container_equipment);
     const carryLimit = effectiveStats.str * 5;
     if (totalWeight > carryLimit) {
         const penalty = Math.floor((totalWeight - carryLimit) / 10) + 1;

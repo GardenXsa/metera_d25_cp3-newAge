@@ -283,19 +283,19 @@ async function loadGame(slotType, slotId) {
 
         // T3 Migration (Выполняется ПОСЛЕ initWorldSimulator, чтобы не затереть предметы)
         if (!player.container_backpack) {
-            player.container_backpack = await CoreInventorySystem.createContainer("player_backpack", "player", 100, 30);
+            player.container_backpack = await CoreInventorySystemAsync.createContainer("player_backpack", "player", 100, 30);
             for (let key in player.inventory) {
                 let oldItem = player.inventory[key];
-                await CoreInventorySystem.createItem(oldItem.aiIdentifier || oldItem.id, oldItem.quantity || 1, player.container_backpack, oldItem);
+                await CoreInventorySystemAsync.createItem(oldItem.aiIdentifier || oldItem.id, oldItem.quantity || 1, player.container_backpack, oldItem);
             }
         }
         if (!player.container_equipment) {
-            player.container_equipment = await CoreInventorySystem.createContainer("player_equipment", "player", 50, 10);
+            player.container_equipment = await CoreInventorySystemAsync.createContainer("player_equipment", "player", 50, 10);
             for (let slot in player.equipment) {
                 let oldItem = player.equipment[slot];
                 if (oldItem) {
                     oldItem.slot_index = slot;
-                    await CoreInventorySystem.createItem(oldItem.aiIdentifier || oldItem.id, oldItem.quantity || 1, player.container_equipment, oldItem);
+                    await CoreInventorySystemAsync.createItem(oldItem.aiIdentifier || oldItem.id, oldItem.quantity || 1, player.container_equipment, oldItem);
                 }
             }
         }

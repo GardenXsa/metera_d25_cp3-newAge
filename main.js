@@ -155,7 +155,7 @@ function startEngine() {
     });
 }
 
-function sendCommand(command, params = {}) {
+function sendCommand(command, params = {}, timeoutMs = 30000) {
     return new Promise((resolve, reject) => {
         if (!engineProcess || !engineReady) {
             resolve({ status: 'error', message: 'Engine not ready' });
@@ -164,7 +164,7 @@ function sendCommand(command, params = {}) {
 
         const message = JSON.stringify({ command, params }) + '\n';
 
-        // 30-second timeout to prevent hanging promises
+        // Configurable timeout — long-running commands like preSimulate need more time
         const timeoutId = setTimeout(() => {
             // If this command is currently pending, clear it so queue can proceed
             if (currentResolve === wrappedResolve) {
@@ -174,8 +174,8 @@ function sendCommand(command, params = {}) {
             // Remove from queue if not yet processed
             const idx = commandQueue.findIndex(t => t.resolve === wrappedResolve);
             if (idx !== -1) commandQueue.splice(idx, 1);
-            resolve({ status: 'error', message: 'Command timed out (30s)' });
-        }, 30000);
+            resolve({ status: 'error', message: `Command timed out (${timeoutMs / 1000}s)` });
+        }, timeoutMs);
 
         const wrappedResolve = (result) => {
             clearTimeout(timeoutId);
@@ -228,7 +228,8 @@ async function buildWorld(playerId, era, initialAgents, globalLocations, startDa
 }
 
 async function bootstrapWorld(days, startDay) {
-    return await sendCommand('bootstrapWorld', { days: days, start_day: startDay });
+    // Bootstrap can take a while for many days — use 5-minute timeout
+    return await sendCommand('bootstrapWorld', { days: days, start_day: startDay }, 300000);
 }
 
 async function simulateTicks(world, ticks, playerLocation = "") {
@@ -241,7 +242,9 @@ async function simulateTicks(world, ticks, playerLocation = "") {
 async function preSimulate(world, ticks) {
     // Don't send world back to engine — it already has it in memory after buildWorld.
     // Sending a huge World JSON (1.5MB+) through stdin causes the engine to hang/timeout.
-    return await sendCommand('preSimulate', { ticks });
+    // Pre-simulation can take minutes for large tick counts — use 10-minute timeout.
+    const timeoutMs = Math.max(600000, ticks * 10); // At least 10 min, or 10ms per tick
+    return await sendCommand('preSimulate', { ticks }, timeoutMs);
 }
 
 async function syncState(world, items, containers) {
@@ -489,6 +492,18 @@ const server = http.createServer((req, res) => {
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('X-Frame-Options', 'DENY');
         res.setHeader('X-XSS-Protection', '1; mode=block');
+        // Content Security Policy — suppress Electron CSP warning, allow necessary directives
+        if (ext === '.html') {
+            res.setHeader('Content-Security-Policy',
+                "default-src 'self' http://127.0.0.1:" + PORT + "; " +
+                "script-src 'self' 'unsafe-eval' http://127.0.0.1:" + PORT + " https://cdnjs.cloudflare.com; " +
+                "style-src 'self' 'unsafe-inline' http://127.0.0.1:" + PORT + " https://fonts.googleapis.com; " +
+                "font-src 'self' http://127.0.0.1:" + PORT + " https://fonts.gstatic.com; " +
+                "img-src 'self' data: http://127.0.0.1:" + PORT + " https:; " +
+                "media-src 'self' http://127.0.0.1:" + PORT + " https:; " +
+                "connect-src 'self' http://127.0.0.1:" + PORT + ";"
+            );
+        }
         res.end(data);
     });
 });
