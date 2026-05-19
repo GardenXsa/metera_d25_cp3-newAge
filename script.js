@@ -2967,69 +2967,102 @@ function processMonsterQuests() {
     }
 }
 
+// Флаг реалтайм-режима движка
+let _realtimeActive = false;
+
 function updateWorldSimulation(pulses) {
     if (!World) return;
     
-    if (window.electronAPI && window.electronAPI.nexusSimulate) {
+    if (window.electronAPI && window.electronAPI.nexusStartRealtime) {
         World.time = World.time || { accumulatedMinutes: 0 };
         World.time.accumulatedMinutes += pulses * 5;
         
         let ticks = Math.floor(World.time.accumulatedMinutes / 60);
         if (ticks > 0) {
             World.time.accumulatedMinutes -= ticks * 60;
-            window.electronAPI.nexusSimulate(World, ticks, player?.location || "").then(res => {
-                if (res.status === 'ok') {
-                    if (res.world) setWorld(res.world);
-                    if (res.relevant_news) { const w = getWorld(); if (w) w.relevant_news = res.relevant_news; }
-                    if (res.items) res.items.forEach(([k, v]) => ItemRegistry.set(k, v));
-                    if (res.containers) res.containers.forEach(([k, v]) => setContainer(k, v));
-                    if (res.deleted_items) res.deleted_items.forEach(id => ItemRegistry.delete(id));
-                    if (res.deleted_containers) res.deleted_containers.forEach(id => ContainerRegistry.delete(id));
-                    processMonsterQuests();
-                    
-                    if (res.world && res.world.player_trek) {
-                        if (!player.travel) player.travel = {};
-                        player.travel.active = res.world.player_trek.active;
-                        player.travel.paused = res.world.player_trek.paused;
-                        player.travel.elapsedHours = res.world.player_trek.elapsed_hours;
-                        player.travel.totalHours = res.world.player_trek.total_hours;
-                        player.travel.currentX = res.world.player_trek.current_x;
-                        player.travel.currentY = res.world.player_trek.current_y;
+
+            // Реалтайм-режим: движок симулирует и стримит обновления мира
+            // каждые 500мс (по умолчанию). JS получает мир мгновенно через onNexusRealtimeUpdate.
+            // Запускаем реалтайм если ещё не запущен, и отправляем тики.
+            const startRealtimeIfNeeded = async () => {
+                if (!_realtimeActive) {
+                    try {
+                        await window.electronAPI.nexusStartRealtime(500);
+                        _realtimeActive = true;
+                    } catch (e) {
+                        console.warn("[Nexus] Не удалось запустить реалтайм-режим, fallback на блокирующий:", e);
                     }
-                    if (res.trek_events && res.trek_events.length > 0) {
-                        LivingRoads.handleEvents(res.trek_events);
+                }
+                // Отправляем тики для симуляции
+                window.electronAPI.nexusSimulate(World, ticks, player?.location || "").then(res => {
+                    if (res.status === 'ok') {
+                        // Реалтайм-обновления приходят через onNexusRealtimeUpdate,
+                        // но финальный ответ тоже обрабатываем для trek_events и UI
+                        if (res.world) setWorld(res.world);
+                        if (res.relevant_news) { const w = getWorld(); if (w) w.relevant_news = res.relevant_news; }
+                        if (res.items) res.items.forEach(([k, v]) => ItemRegistry.set(k, v));
+                        if (res.containers) res.containers.forEach(([k, v]) => setContainer(k, v));
+                        if (res.deleted_items) res.deleted_items.forEach(id => ItemRegistry.delete(id));
+                        if (res.deleted_containers) res.deleted_containers.forEach(id => ContainerRegistry.delete(id));
+                        processMonsterQuests();
+
+                        if (res.world && res.world.player_trek) {
+                            if (!player.travel) player.travel = {};
+                            player.travel.active = res.world.player_trek.active;
+                            player.travel.paused = res.world.player_trek.paused;
+                            player.travel.elapsedHours = res.world.player_trek.elapsed_hours;
+                            player.travel.totalHours = res.world.player_trek.total_hours;
+                            player.travel.currentX = res.world.player_trek.current_x;
+                            player.travel.currentY = res.world.player_trek.current_y;
+                        }
+                        if (res.trek_events && res.trek_events.length > 0) {
+                            LivingRoads.handleEvents(res.trek_events);
+                        }
+
+                        if (typeof updateEnvironmentPanel === 'function') updateEnvironmentPanel();
+                        if (typeof updateHoldingsDisplay === 'function') updateHoldingsDisplay();
+                        if (window.isSimulatingTime) {
+                            hideLoadingScreen();
+                            window.isSimulatingTime = false;
+                        }
+                        if (World.needsGlobalEvent) {
+                            World.needsGlobalEvent = false;
+                            runWorldSimulationTick();
+                        } else if (!isWaitingForAI && !window.isSimulatingTime) {
+                            if (userInput) userInput.disabled = false;
+                            if (sendButton) sendButton.disabled = false;
+                        }
+                    } else {
+                        console.error("[Nexus] Ошибка симуляции:", res);
                     }
-                    
-                    if (typeof updateEnvironmentPanel === 'function') updateEnvironmentPanel();
-                    if (typeof updateHoldingsDisplay === 'function') updateHoldingsDisplay();
+                }).catch(err => {
+                    console.error("[Nexus] Ошибка вызова nexusSimulate:", err);
                     if (window.isSimulatingTime) {
                         hideLoadingScreen();
                         window.isSimulatingTime = false;
                     }
-                    if (World.needsGlobalEvent) {
-                        World.needsGlobalEvent = false;
-                        runWorldSimulationTick();
-                    } else if (!isWaitingForAI && !window.isSimulatingTime) {
+                    if (!isWaitingForAI) {
                         if (userInput) userInput.disabled = false;
                         if (sendButton) sendButton.disabled = false;
                     }
-                } else {
-                    console.error("[Nexus] Ошибка симуляции:", res);
-                }
-            }).catch(err => {
-                console.error("[Nexus] Ошибка вызова nexusSimulate:", err);
-                if (window.isSimulatingTime) {
-                    hideLoadingScreen();
-                    window.isSimulatingTime = false;
-                }
-                if (!isWaitingForAI) {
-                    if (userInput) userInput.disabled = false;
-                    if (sendButton) sendButton.disabled = false;
-                }
-            });
+                });
+            };
+            startRealtimeIfNeeded();
         }
     } else {
         console.error("[Nexus] Нативный движок недоступен для симуляции времени!");
+    }
+}
+
+// Остановка реалтайм-режима при завершении/паузе
+async function stopRealtimeSimulation() {
+    if (_realtimeActive && window.electronAPI && window.electronAPI.nexusStopRealtime) {
+        try {
+            await window.electronAPI.nexusStopRealtime();
+            _realtimeActive = false;
+        } catch (e) {
+            console.warn("[Nexus] Ошибка остановки реалтайм:", e);
+        }
     }
 }
 
@@ -5565,6 +5598,28 @@ async function initializeApp() {
                 loadingText.textContent = parsedMessage;
             }
             console.log("[Nexus Progress]", message);
+        });
+    }
+
+    // Слушатель реалтайм-обновлений от движка — мир обновляется мгновенно
+    if (window.electronAPI && window.electronAPI.onNexusRealtimeUpdate) {
+        window.electronAPI.onNexusRealtimeUpdate((data) => {
+            if (!World) return;
+            if (data.world) setWorld(data.world);
+            if (data.relevant_news) { const w = getWorld(); if (w) w.relevant_news = data.relevant_news; }
+            if (data.items) data.items.forEach(([k, v]) => ItemRegistry.set(k, v));
+            if (data.containers) data.containers.forEach(([k, v]) => setContainer(k, v));
+            if (data.deleted_items) data.deleted_items.forEach(id => ItemRegistry.delete(id));
+            if (data.deleted_containers) data.deleted_containers.forEach(id => ContainerRegistry.delete(id));
+            processMonsterQuests();
+
+            if (data.trek_events && data.trek_events.length > 0) {
+                LivingRoads.handleEvents(data.trek_events);
+            }
+
+            if (typeof updateEnvironmentPanel === 'function') updateEnvironmentPanel();
+            if (typeof updateHoldingsDisplay === 'function') updateHoldingsDisplay();
+            updateTimeDisplay();
         });
     }
     console.log("Инициализация приложения...");

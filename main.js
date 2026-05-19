@@ -95,6 +95,15 @@ function startEngine() {
                         continue; // Не резолвим основной промис, ждем hook_response
                     }
 
+                    // Realtime update from engine — stream world state to renderer immediately
+                    if (response.status === 'realtime_update') {
+                        const wins = BrowserWindow.getAllWindows();
+                        if (wins.length > 0) {
+                            wins[0].webContents.send('nexus-realtime-update', response);
+                        }
+                        continue; // Не резолвим промис — это стрим, не ответ на команду
+                    }
+
                     if (currentResolve) {
                         const resolve = currentResolve;
                         currentResolve = null;
@@ -419,6 +428,14 @@ ipcMain.handle('nexus-transport-command', async (event, params) => {
 
 ipcMain.handle('nexus-manage-business', async (event, params) => {
     return await sendCommand('playerManageBusiness', params);
+});
+
+ipcMain.handle('nexus-start-realtime', async (event, intervalMs = 500) => {
+    return await sendCommand('startRealtime', { interval: intervalMs });
+});
+
+ipcMain.handle('nexus-stop-realtime', async () => {
+    return await sendCommand('stopRealtime', {});
 });
 
 // Whitelist of allowed commands for nexus-send-raw-command (security: prevents arbitrary command execution)

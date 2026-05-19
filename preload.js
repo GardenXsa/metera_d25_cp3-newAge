@@ -75,6 +75,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return () => ipcRenderer.removeListener('nexus-progress-update', handler);
     },
 
+    // Realtime simulation — engine streams world updates without blocking
+    nexusStartRealtime: (intervalMs) => ipcRenderer.invoke('nexus-start-realtime', intervalMs),
+    nexusStopRealtime: () => ipcRenderer.invoke('nexus-stop-realtime'),
+    onNexusRealtimeUpdate: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('nexus-realtime-update', handler);
+        return () => ipcRenderer.removeListener('nexus-realtime-update', handler);
+    },
+
     // HTTP session token for authenticated fetch calls
     getHttpToken: () => ipcRenderer.invoke('get-http-token')
 });
