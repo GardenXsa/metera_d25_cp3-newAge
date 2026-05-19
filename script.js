@@ -2364,8 +2364,8 @@ const LivingRoads = {
                             window.electronAPI.nexusSimulate(null, 1, player?.location || "").then(res => {
                 this.isGeneratingHour = false;
                 if (res.status === 'ok') {
-                    if (res.world) World = res.world;
-                    if (res.relevant_news) World.relevant_news = res.relevant_news;
+                    if (res.world) setWorld(res.world);
+                    if (res.relevant_news) { const w = getWorld(); if (w) w.relevant_news = res.relevant_news; }
                         if (res.items) res.items.forEach(([k, v]) => ItemRegistry.set(k, v));
                         if (res.containers) res.containers.forEach(([k, v]) => setContainer(k, v));
                         if (res.deleted_items) res.deleted_items.forEach(id => ItemRegistry.delete(id));
@@ -2703,7 +2703,7 @@ async function preSimulateWorldHistory(yearsToSimulate) {
         console.log(`[Nexus] Запуск пре-симуляции ${totalTicks} тиков в C++...`);
         const res = await window.electronAPI.nexusPreSimulate(World, totalTicks);
         if (res.status === 'ok') {
-            if (res.world) World = res.world;
+            if (res.world) setWorld(res.world);
             if (res.relevant_news) World.relevant_news = res.relevant_news;
             if (res.items) res.items.forEach(([k, v]) => ItemRegistry.set(k, v));
             if (res.containers) res.containers.forEach(([k, v]) => setContainer(k, v));
@@ -2804,8 +2804,8 @@ function updateWorldSimulation(pulses) {
             World.time.accumulatedMinutes -= ticks * 60;
             window.electronAPI.nexusSimulate(World, ticks, player?.location || "").then(res => {
                 if (res.status === 'ok') {
-                    if (res.world) World = res.world;
-                    if (res.relevant_news) World.relevant_news = res.relevant_news;
+                    if (res.world) setWorld(res.world);
+                    if (res.relevant_news) { const w = getWorld(); if (w) w.relevant_news = res.relevant_news; }
                     if (res.items) res.items.forEach(([k, v]) => ItemRegistry.set(k, v));
                     if (res.containers) res.containers.forEach(([k, v]) => setContainer(k, v));
                     if (res.deleted_items) res.deleted_items.forEach(id => ItemRegistry.delete(id));
@@ -3112,6 +3112,25 @@ const isElectron = () => {
 };
 console.log("Environment:", isElectron() ? "Electron (Desktop)" : "Web Browser");
 
+// --- XSS PROTECTION: Escape HTML special characters ---
+function escapeHTML(str) {
+    if (typeof str !== 'string') return String(str);
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+// Sanitize HTML content — strip dangerous tags while preserving safe formatting
+function sanitizeHTML(html) {
+    if (typeof html !== 'string') return '';
+    return html
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+        .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
+        .replace(/<embed\b[^>]*>/gi, '')
+        .replace(/on\w+\s*=\s*"[^"]*"/gi, '')
+        .replace(/on\w+\s*=\s*'[^']*'/gi, '')
+        .replace(/javascript:/gi, '');
+}
+
 // --- УНИВЕРСАЛЬНЫЙ КРАСИВЫЙ ТУЛТИП ---
 function showGenericTooltip(event, header, body) {
     if (!itemTooltipElement) {
@@ -3120,8 +3139,8 @@ function showGenericTooltip(event, header, body) {
         document.body.appendChild(itemTooltipElement);
     }
     itemTooltipElement.innerHTML = `
-        <div class="item-card-header">${header}</div>
-        <div class="item-card-body">${body}</div>
+        <div class="item-card-header">${escapeHTML(header)}</div>
+        <div class="item-card-body">${escapeHTML(body)}</div>
     `;
     itemTooltipElement.style.display = 'block';
     moveGenericTooltip(event);
@@ -3395,7 +3414,7 @@ function updateGmNotesDisplay() {
         for (const [key, summary] of Object.entries(player.archiveSummaries || {})) {
             displayHtml += `<span style="color:#f39c12">[${key}]</span>: ${summary}\n`;
         }
-        gmNotesContent.innerHTML = displayHtml || t('gameInterface.gmNotesPanel.empty', 'Заметок пока нет.');
+        gmNotesContent.innerHTML = sanitizeHTML(displayHtml) || t('gameInterface.gmNotesPanel.empty', 'Заметок пока нет.');
     } else {
         gmNotesPanel.style.display = 'none';
     }
@@ -3464,7 +3483,7 @@ function updateEraDescription() {
 
     setTimeout(() => {
         if (descriptionText) {
-            eraDescriptionBox.innerHTML = descriptionText;
+            eraDescriptionBox.innerHTML = sanitizeHTML(descriptionText);
             eraDescriptionBox.classList.add('visible');
         } else {
             eraDescriptionBox.innerHTML = '';
@@ -3937,7 +3956,7 @@ function updateReputationModal() {
         `;
     }
 
-    contentDiv.innerHTML = htmlContent;
+    contentDiv.innerHTML = sanitizeHTML(htmlContent);
     reputationModal.classList.add('visible');
 }
 
@@ -5125,9 +5144,9 @@ function applyTranslations() {
 
         if (translation !== key) { // Если перевод найден и он не равен самому ключу
             if (attribute === 'textContent') {
-                el.innerHTML = translation; // Используем innerHTML для поддержки тегов в переводе
+                el.textContent = translation; // Safe: textContent doesn't parse HTML
             } else if (attribute === 'innerHTML') {
-                el.innerHTML = translation;
+                el.innerHTML = sanitizeHTML(translation);
             } else if (el.hasAttribute(attribute)) {
                 el.setAttribute(attribute, translation);
             } else {
@@ -7085,7 +7104,7 @@ function updateEraDescription() {
 
     setTimeout(() => {
         if (descriptionText) {
-            eraDescriptionBox.innerHTML = descriptionText;
+            eraDescriptionBox.innerHTML = sanitizeHTML(descriptionText);
             eraDescriptionBox.classList.add('visible');
         } else {
             eraDescriptionBox.innerHTML = '';
@@ -7423,13 +7442,13 @@ async function finalizeWorldSetupAndStart() {
 
     if (preloadedWorldData) {
         console.log("Используется предзагруженный мир.");
-        World = preloadedWorldData;
+        setWorld(preloadedWorldData);
         if (window.electronAPI && window.electronAPI.nexusInit) {
             await window.electronAPI.nexusInit(true);
             await window.electronAPI.nexusSyncState(World, [], []);
         }
     } else {
-        World = await initWorldSimulator(initialAgents, absoluteStartDay);
+        setWorld(await initWorldSimulator(initialAgents, absoluteStartDay));
         if (!World) {
             hideLoadingScreen();
             return; // Прерываем запуск, так как ядро упало или не инициализировалось
@@ -7446,7 +7465,7 @@ async function finalizeWorldSetupAndStart() {
             
             const res = await window.electronAPI.nexusBootstrap(bootstrapDays, absoluteStartDay);
             if (res.status === 'ok') {
-                World = res.world;
+                setWorld(res.world);
                 if (res.items) { ItemRegistry.clear(); res.items.forEach(([k, v]) => ItemRegistry.set(k, v)); }
                 if (res.containers) { ContainerRegistry.clear(); res.containers.forEach(([k, v]) => setContainer(k, v)); }
             }
@@ -9271,7 +9290,8 @@ function createEntityTooltipElement() {
 function showEntityTooltip(event) {
     createEntityTooltipElement();
     const li = event.currentTarget;
-    const data = JSON.parse(li.dataset.tooltipData);
+    let data;
+    try { data = JSON.parse(li.dataset.tooltipData); } catch(e) { console.warn('Invalid tooltip data:', e); return; }
 
     let statsHtml = '';
     if (data.str !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.str', '⚔️ Сила')}:</span> <span class="stat-value">${data.str}</span></p>`;
@@ -11480,7 +11500,8 @@ function parseAIResponse(rawResponse) {
                 }
             }
 
-            const parsed = JSON.parse(sanitizedJson);
+            let parsed;
+            try { parsed = JSON.parse(sanitizedJson); } catch(e) { console.warn('Invalid sanitized JSON:', e); return; }
 
             actions = parsed.actions || [];
             if (Array.isArray(actions)) {
@@ -12928,7 +12949,7 @@ async function executeNonInventoryCommand(command, args) {
                                 if (response.status === 'ok') {
                                     const fullState = await window.electronAPI.nexusGetFullState();
                                     if (fullState && fullState.status === 'ok') {
-                                        World = fullState.world;
+                                        setWorld(fullState.world);
                                         if (fullState.items) fullState.items.forEach(([k, v]) => ItemRegistry.set(k, v));
                                         if (fullState.containers) fullState.containers.forEach(([k, v]) => setContainer(k, v));
                                         updateHoldingsDisplay();
@@ -14255,7 +14276,7 @@ case 'setEntityBinding':
                             addCalculationMessage(errMsg);
                             break;
                         }
-                        if (res.world) World = res.world;
+                        if (res.world) setWorld(res.world);
                         if (res.relevant_news) World.relevant_news = res.relevant_news;
                         if (res.items) res.items.forEach(([k, v]) => ItemRegistry.set(k, v));
                         if (res.containers) res.containers.forEach(([k, v]) => setContainer(k, v));
@@ -14925,6 +14946,9 @@ function startBackgroundChanger() {
         changeBackground(); // Показать первый фон сразу
         if (backgroundFiles.length > 1 && BACKGROUND_CHANGE_INTERVAL > 0) {
             backgroundChangeTimer = setInterval(changeBackground, BACKGROUND_CHANGE_INTERVAL);
+            // Track for cleanup
+            if (!window._activeTimers) window._activeTimers = [];
+            window._activeTimers.push(backgroundChangeTimer);
             console.log(`Смена фона запущена с ${backgroundFiles.length} файлами.`);
         }
     } else {
@@ -15462,7 +15486,8 @@ window.runUnitTests = function () {
 
     // Мокаем функцию стандартизации аргументов для проверки
     function mockMiddleware(command, args) {
-        let testArgs = JSON.parse(JSON.stringify(args));
+        let testArgs;
+        try { testArgs = JSON.parse(JSON.stringify(args)); } catch(e) { console.warn('Test args clone failed:', e); return; }
         if (testArgs && typeof testArgs === 'object') {
             if (testArgs.id !== undefined) {
                 if (testArgs.aiIdentifier === undefined) testArgs.aiIdentifier = testArgs.id;
@@ -16594,7 +16619,7 @@ window.addLogisticRule = async function(bId) {
         if (response.status === 'ok') {
             const fullState = await window.electronAPI.nexusGetFullState();
             if (fullState && fullState.status === 'ok') {
-                World = fullState.world;
+                setWorld(fullState.world);
                 if (fullState.items) fullState.items.forEach(([k, v]) => ItemRegistry.set(k, v));
                 if (fullState.containers) fullState.containers.forEach(([k, v]) => setContainer(k, v));
             }
@@ -16609,7 +16634,7 @@ window.removeLogisticRule = async function(bId, ruleId) {
         if (response.status === 'ok') {
             const fullState = await window.electronAPI.nexusGetFullState();
             if (fullState && fullState.status === 'ok') {
-                World = fullState.world;
+                setWorld(fullState.world);
                 if (fullState.items) fullState.items.forEach(([k, v]) => ItemRegistry.set(k, v));
                 if (fullState.containers) fullState.containers.forEach(([k, v]) => setContainer(k, v));
             }

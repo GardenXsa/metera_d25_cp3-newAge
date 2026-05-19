@@ -3,6 +3,11 @@
 async function requestDirectoryPermission() {
     if (!fsaApiAvailable) return null;
     try {
+        // Feature detection: File System Access API only available in Chromium browsers
+        if (!window.showDirectoryPicker) {
+            console.warn('[StorageProvider] File System Access API not available in this browser.');
+            return null;
+        }
         const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
         await saveDirectoryHandleToDB(handle); // Сохраняем полученный хэндл в IndexedDB
         directoryHandle = handle;

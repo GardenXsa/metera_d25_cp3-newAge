@@ -464,6 +464,15 @@ const SANDBOX_BLOCKED_GLOBALS = new Set([
     'alert', 'confirm', 'prompt',
     'open', 'close', 'stop', 'print',
     'postMessage', 'onmessage',
+    // Constructor chain escape prevention:
+    // Without these, a mod can do: ({}).constructor.constructor('return fetch')()
+    'constructor', '__proto__', 'prototype',
+    // Global constructors that can be abused to escape sandbox:
+    'Object', 'Array', 'String', 'Number', 'Boolean', 'RegExp', 'Date',
+    'Map', 'Set', 'WeakMap', 'WeakSet', 'Promise', 'Error',
+    'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError',
+    'Int8Array', 'Uint8Array', 'Float32Array', 'Float64Array',
+    'ArrayBuffer', 'DataView',
 ]);
 
 /**

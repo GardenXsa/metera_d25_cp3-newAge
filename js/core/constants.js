@@ -25,8 +25,8 @@ const SOUND_FOLDER_PATH = "assets/sound/";
 const musicFiles = [
     'menu_theme.mp3'
 ];
-let musicVolume = localStorage.getItem('musicVolume') !== null ? parseFloat(localStorage.getItem('musicVolume')) : 0.2;
-let sfxVolume = localStorage.getItem('sfxVolume') !== null ? parseFloat(localStorage.getItem('sfxVolume')) : 0.5;
+let musicVolume = (() => { const v = parseFloat(localStorage.getItem('musicVolume')); return (isNaN(v) || v < 0 || v > 1) ? 0.2 : v; })();
+let sfxVolume = (() => { const v = parseFloat(localStorage.getItem('sfxVolume')); return (isNaN(v) || v < 0 || v > 1) ? 0.5 : v; })();
 
 const backgroundFiles = [
     'Backgrounds_pixel.jpg', '13.jpg', '12.jpg', '14.jpg', '15.jpg', 'background-209.webp', 'background-210.webp', 'background-big-slime.webp'
