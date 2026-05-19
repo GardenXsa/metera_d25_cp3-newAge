@@ -387,12 +387,18 @@ function isSafeFileName(filename) {
 // Session token for HTTP server authentication — prevents other localhost apps from accessing
 const HTTP_SESSION_TOKEN = require('crypto').randomBytes(32).toString('hex');
 
-// Rate limiter: max 60 requests per IP per 60 seconds
+// Rate limiter: generous limits for localhost (desktop app, single user).
+// External connections remain restricted (defense-in-depth for exposed ports).
+// NOTE: CTRL+SHIFT+R triggers ~10-15 requests at once (all JS/CSS/HTML files),
+// plus ongoing simulation/API calls. Need high limit for localhost.
 const rateLimiter = new Map();
 function checkRateLimit(ip) {
     const now = Date.now();
-    const window = 60000; // 60 seconds
-    const maxRequests = 60;
+    // Localhost (this app itself) — very generous: 500 requests per 10 seconds
+    // Non-local (shouldn't happen but just in case) — strict: 60 per 60 seconds
+    const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+    const window = isLocal ? 10000 : 60000;
+    const maxRequests = isLocal ? 500 : 60;
     const entry = rateLimiter.get(ip);
     if (!entry || now - entry.start > window) {
         rateLimiter.set(ip, { start: now, count: 1 });
@@ -536,6 +542,14 @@ function createWindow () {
 
   // Pass HTTP session token to renderer for authenticated API requests
   win.loadURL(`http://127.0.0.1:${PORT}?token=${HTTP_SESSION_TOKEN}`);
+
+  // Reset rate limiter on page reload (CTRL+SHIFT+R triggers many concurrent requests)
+  win.webContents.on('did-navigate', () => {
+      rateLimiter.clear();
+  });
+  win.webContents.on('did-navigate-in-page', () => {
+      rateLimiter.clear();
+  });
 }
 
 app.whenReady().then(createWindow);
