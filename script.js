@@ -128,6 +128,34 @@ async function syncPlayerContainerBindings() {
     }
 }
 
+/**
+ * Гарантирует, что у игрока есть рюкзак и контейнер экипировки.
+ * Если они отсутствуют (null/undefined или не в реестре) — создаёт их.
+ * Вызывать перед любой операцией с инвентарём, если есть сомнения.
+ * @returns {Promise<void>}
+ */
+async function ensurePlayerContainers() {
+    if (!player) return;
+    
+    // Проверяем рюкзак
+    const needsBackpack = !player.container_backpack || !ContainerRegistry.has(player.container_backpack);
+    if (needsBackpack) {
+        console.warn("[Inventory] Рюкзак игрока отсутствует или не в реестре. Пересоздаём...");
+        player.container_backpack = await CoreInventorySystemAsync.createContainer("player_backpack", "player", 100, 30);
+    }
+    
+    // Проверяем контейнер экипировки
+    const needsEquipment = !player.container_equipment || !ContainerRegistry.has(player.container_equipment);
+    if (needsEquipment) {
+        console.warn("[Inventory] Контейнер экипировки отсутствует или не в реестре. Пересоздаём...");
+        player.container_equipment = await CoreInventorySystemAsync.createContainer("player_equipment", "player", 50, 10);
+    }
+    
+    if (needsBackpack || needsEquipment) {
+        await syncPlayerContainerBindings();
+    }
+}
+
 function resolveSpecialContainerId(containerId) {
     if (!containerId) return containerId;
     if (containerId === 'player' || containerId === 'player_inventory' || containerId === 'player_backpack') return player?.container_backpack || null;
@@ -593,15 +621,83 @@ async function fetchGraphContext(queryIds) {
 
 
 async function sendInventoryCommand(action, args) {
-    if (!window.electronAPI || !window.electronAPI.nexusInventoryCommand) return { success: false, error: "No IPC" };
-    const res = await window.electronAPI.nexusInventoryCommand({ action, args });
-    if (res.status === 'ok') {
-        if (res.items) res.items.forEach(([k, v]) => ItemRegistry.set(k, v));
-        if (res.containers) res.containers.forEach(([k, v]) => setContainer(k, v));
-        if (res.deleted_items) res.deleted_items.forEach(id => ItemRegistry.delete(id));
-        if (res.deleted_containers) res.deleted_containers.forEach(id => ContainerRegistry.delete(id));
+    if (!window.electronAPI || !window.electronAPI.nexusInventoryCommand) {
+        // FALLBACK: IPC недоступен — используем локальную реализацию (OldCoreInventorySystem)
+        return executeLocalInventoryCommand(action, args);
     }
-    return res;
+    try {
+        const res = await window.electronAPI.nexusInventoryCommand({ action, args });
+        if (res.status === 'ok') {
+            if (res.items) res.items.forEach(([k, v]) => ItemRegistry.set(k, v));
+            if (res.containers) res.containers.forEach(([k, v]) => setContainer(k, v));
+            if (res.deleted_items) res.deleted_items.forEach(id => ItemRegistry.delete(id));
+            if (res.deleted_containers) res.deleted_containers.forEach(id => ContainerRegistry.delete(id));
+            return res;
+        }
+        // IPC вернул ошибку — fallback на локальную реализацию
+        console.warn(`[Inventory] IPC error for '${action}': ${res.error || res.status}. Falling back to local.`);
+        return executeLocalInventoryCommand(action, args);
+    } catch (e) {
+        console.warn(`[Inventory] IPC exception for '${action}': ${e.message}. Falling back to local.`);
+        return executeLocalInventoryCommand(action, args);
+    }
+}
+
+/**
+ * Локальная реализация инвентаря — fallback когда C++ движок / IPC недоступны.
+ * Делегирует к OldCoreInventorySystem (работает напрямую с ContainerRegistry / ItemRegistry).
+ */
+function executeLocalInventoryCommand(action, args) {
+    switch (action) {
+        case 'createContainer': {
+            const id = OldCoreInventorySystem.createContainer(
+                args.type, args.ownerId, args.maxWeight, args.maxSlots, args.location, {
+                    lock_data: args.lock_data, physical_props: args.physical_props, custom_props: args.custom_props
+                }
+            );
+            return { status: 'ok', containerId: id };
+        }
+        case 'createItem': {
+            const id = OldCoreInventorySystem.createItem(
+                args.prototypeId, args.quantity, args.containerId, args.customProps
+            );
+            return { status: 'ok', itemId: id };
+        }
+        case 'moveItem': {
+            const res = OldCoreInventorySystem.moveItem(
+                args.itemId, null, args.targetContainerId,
+                args.quantity >= 0 ? args.quantity : null,
+                { actorId: 'player', ignoreAccess: false, ignoreDistance: true }
+            );
+            return { status: res.success ? 'ok' : 'error', ...res, feedback: res.error };
+        }
+        case 'moveItems': {
+            const res = OldCoreInventorySystem.moveItems(
+                args.sourceContainerId, args.targetContainerId, args.items,
+                { actorId: 'player', ignoreAccess: false, ignoreDistance: true }
+            );
+            return { status: res.success ? 'ok' : 'error', ...res, feedback: res.error };
+        }
+        case 'removeItem': {
+            const ok = OldCoreInventorySystem.removeItem(args.itemId, args.quantity);
+            return { status: ok ? 'ok' : 'error', success: ok };
+        }
+        case 'destroyContainer': {
+            const ok = OldCoreInventorySystem.destroyContainer(args.containerId);
+            return { status: ok ? 'ok' : 'error', success: ok };
+        }
+        case 'updateContainerLocation': {
+            const cont = ContainerRegistry.get(args.containerId);
+            if (cont) {
+                cont.location = normalizeContainerLocation(args.location);
+                return { status: 'ok', success: true };
+            }
+            return { status: 'error', success: false, error: 'Container not found' };
+        }
+        default:
+            console.warn(`[Inventory] Unknown local command: ${action}`);
+            return { status: 'error', success: false, error: `Unknown command: ${action}` };
+    }
 }
 
 async function getOrCreateGroundPileAsync(locationData) {
@@ -1213,6 +1309,12 @@ async function executeCommand(command, args) {
 
     console.log("Выполнение команды (ASYNC):", command, args);
     let feedback = null;
+
+    // Гарантируем, что рюкзак и экипировка существуют перед выполнением команд
+    const inventoryCommands = ['addItem', 'removeItem', 'equipItem', 'unequipItem', 'moveItem', 'updateStat', 'createContainer', 'destroyContainer', 'useItem', 'openContainer', 'trade', 'sell'];
+    if (inventoryCommands.includes(command)) {
+        await ensurePlayerContainers();
+    }
 
     try {
         // --- ИНТЕГРАЦИЯ МОДОВ: Кастомные команды ---
