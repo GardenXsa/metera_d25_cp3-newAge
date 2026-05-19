@@ -1,19 +1,37 @@
 #!/bin/bash
 # ============================================================
 # METERA PRE-COMMIT TEST SUITE
-# Запускается перед каждым пушем для проверки целостности кода
+# Флаги:
+#   --quick    = только синтаксис/структура (по умолчанию)
+#   --full     = синтаксис + интеграционные тесты (stub provider)
+#   --game     = полный запуск игры через stub provider
+#   --verbose  = подробный вывод
 # ============================================================
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 PASS=0
 FAIL=0
 WARN=0
+VERBOSE=false
+
+# Parse flags
+MODE="quick"
+for arg in "$@"; do
+    case "$arg" in
+        --quick)   MODE="quick" ;;
+        --full)    MODE="full" ;;
+        --game)    MODE="game" ;;
+        --verbose) VERBOSE=true ;;
+    esac
+done
 
 echo "============================================"
-echo "  METERA D25 — PRE-COMMIT TEST SUITE"
+echo -e "  METERA D25 — PRE-COMMIT TEST SUITE"
+echo -e "  Mode: ${CYAN}${MODE}${NC}"
 echo "============================================"
 echo ""
 
@@ -52,11 +70,11 @@ done
 
 if $JS_OK; then
     echo -e "${GREEN}PASS${NC}"
-    ((PASS++))
+    PASS=$((PASS+1))
 else
     echo -e "${RED}FAIL${NC}"
     echo -e "$JS_ERRORS"
-    ((FAIL++))
+    FAIL=$((FAIL+1))
 fi
 
 # ----------------------------------------------------------
@@ -75,11 +93,11 @@ done
 
 if $PY_OK; then
     echo -e "${GREEN}PASS${NC}"
-    ((PASS++))
+    PASS=$((PASS+1))
 else
     echo -e "${RED}FAIL${NC}"
     echo -e "$PY_ERRORS"
-    ((FAIL++))
+    FAIL=$((FAIL+1))
 fi
 
 # ----------------------------------------------------------
@@ -87,17 +105,16 @@ fi
 # ----------------------------------------------------------
 echo -n "[3] HTML Structure Check ... "
 if [ -f "index.html" ]; then
-    # Check for basic structure: doctype, html, head, body
     if grep -q "<!DOCTYPE" index.html && grep -q "</html>" index.html && grep -q "</head>" index.html && grep -q "</body>" index.html; then
         echo -e "${GREEN}PASS${NC}"
-        ((PASS++))
+        PASS=$((PASS+1))
     else
         echo -e "${RED}FAIL (missing basic HTML structure)${NC}"
-        ((FAIL++))
+        FAIL=$((FAIL+1))
     fi
 else
     echo -e "${YELLOW}SKIP (index.html not found)${NC}"
-    ((WARN++))
+    WARN=$((WARN+1))
 fi
 
 # ----------------------------------------------------------
@@ -116,11 +133,11 @@ done
 
 if $JSON_OK; then
     echo -e "${GREEN}PASS${NC}"
-    ((PASS++))
+    PASS=$((PASS+1))
 else
     echo -e "${RED}FAIL${NC}"
     echo -e "$JSON_ERRORS"
-    ((FAIL++))
+    FAIL=$((FAIL+1))
 fi
 
 # ----------------------------------------------------------
@@ -131,7 +148,6 @@ CSS_OK=true
 CSS_ERRORS=""
 CSS_FILES=$(find . -name "*.css" -not -path "./.git/*" -not -path "./node_modules/*" 2>/dev/null)
 for f in $CSS_FILES; do
-    # Check for balanced braces
     OPEN=$(grep -o "{" "$f" | wc -l)
     CLOSE=$(grep -o "}" "$f" | wc -l)
     if [ "$OPEN" -ne "$CLOSE" ]; then
@@ -142,11 +158,11 @@ done
 
 if $CSS_OK; then
     echo -e "${GREEN}PASS${NC}"
-    ((PASS++))
+    PASS=$((PASS+1))
 else
     echo -e "${RED}FAIL${NC}"
     echo -e "$CSS_ERRORS"
-    ((FAIL++))
+    FAIL=$((FAIL+1))
 fi
 
 # ----------------------------------------------------------
@@ -164,14 +180,14 @@ if [ -f "package.json" ] && command -v node &>/dev/null; then
     " 2>/dev/null)
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}PASS${NC}"
-        ((PASS++))
+        PASS=$((PASS+1))
     else
         echo -e "${YELLOW}WARN (missing: $MISSING)${NC}"
-        ((WARN++))
+        WARN=$((WARN+1))
     fi
 else
     echo -e "${YELLOW}SKIP${NC}"
-    ((WARN++))
+    WARN=$((WARN+1))
 fi
 
 # ----------------------------------------------------------
@@ -179,17 +195,16 @@ fi
 # ----------------------------------------------------------
 echo -n "[7] Electron Main Process ... "
 if [ -f "main.js" ]; then
-    # Check that main.js creates a BrowserWindow
     if grep -q "BrowserWindow" main.js && grep -q "loadFile\|loadURL" main.js; then
         echo -e "${GREEN}PASS${NC}"
-        ((PASS++))
+        PASS=$((PASS+1))
     else
         echo -e "${RED}FAIL (missing BrowserWindow or loadFile/loadURL)${NC}"
-        ((FAIL++))
+        FAIL=$((FAIL+1))
     fi
 else
     echo -e "${YELLOW}SKIP${NC}"
-    ((WARN++))
+    WARN=$((WARN+1))
 fi
 
 # ----------------------------------------------------------
@@ -199,14 +214,11 @@ echo -n "[8] Script References in HTML ... "
 if [ -f "index.html" ]; then
     REF_OK=true
     REF_ERRORS=""
-    # Extract script src attributes
     SCRIPTS=$(grep -oP 'src="([^"]+\.js)"' index.html | grep -oP '"[^"]+"' | tr -d '"')
     for s in $SCRIPTS; do
-        # Skip CDN URLs (http/https)
         if [[ "$s" == http://* ]] || [[ "$s" == https://* ]]; then
             continue
         fi
-        # Remove leading slash for local check
         local_path="${s#/}"
         if [ ! -f "$local_path" ]; then
             REF_OK=false
@@ -215,15 +227,15 @@ if [ -f "index.html" ]; then
     done
     if $REF_OK; then
         echo -e "${GREEN}PASS${NC}"
-        ((PASS++))
+        PASS=$((PASS+1))
     else
         echo -e "${RED}FAIL${NC}"
         echo -e "$REF_ERRORS"
-        ((FAIL++))
+        FAIL=$((FAIL+1))
     fi
 else
     echo -e "${YELLOW}SKIP${NC}"
-    ((WARN++))
+    WARN=$((WARN+1))
 fi
 
 # ----------------------------------------------------------
@@ -233,14 +245,14 @@ echo -n "[9] CSP Headers Check ... "
 if [ -f "main.js" ]; then
     if grep -q "Content-Security-Policy" main.js; then
         echo -e "${GREEN}PASS${NC}"
-        ((PASS++))
+        PASS=$((PASS+1))
     else
         echo -e "${YELLOW}WARN (no CSP headers found)${NC}"
-        ((WARN++))
+        WARN=$((WARN+1))
     fi
 else
     echo -e "${YELLOW}SKIP${NC}"
-    ((WARN++))
+    WARN=$((WARN+1))
 fi
 
 # ----------------------------------------------------------
@@ -250,14 +262,179 @@ echo -n "[10] C++ Engine Binary ... "
 if [ -f "engine/meterea_engine" ]; then
     if [ -x "engine/meterea_engine" ]; then
         echo -e "${GREEN}PASS${NC}"
-        ((PASS++))
+        PASS=$((PASS+1))
     else
         echo -e "${YELLOW}WARN (exists but not executable — chmod +x?)${NC}"
-        ((WARN++))
+        WARN=$((WARN+1))
     fi
 else
     echo -e "${YELLOW}SKIP (engine not compiled)${NC}"
-    ((WARN++))
+    WARN=$((WARN+1))
+fi
+
+# ============================================================
+# INTEGRATION TESTS (--full and --game modes)
+# ============================================================
+
+if [ "$MODE" = "full" ] || [ "$MODE" = "game" ]; then
+    echo ""
+    echo "──────────────────────────────────────────────"
+    echo -e "  ${CYAN}INTEGRATION TESTS (Stub Provider)${NC}"
+    echo "──────────────────────────────────────────────"
+
+    # ----------------------------------------------------------
+    # TEST 11: Stub Provider Game Logic Test
+    # ----------------------------------------------------------
+    echo -n "[11] Stub Provider Game Logic ... "
+    if [ -f "tests/test_stub_game.js" ]; then
+        VERBOSE_FLAG=""
+        $VERBOSE && VERBOSE_FLAG="--verbose"
+        GAME_OUTPUT=$(node tests/test_stub_game.js $VERBOSE_FLAG 2>&1)
+        GAME_EXIT=$?
+
+        if $VERBOSE; then
+            echo ""
+            echo "$GAME_OUTPUT" | tail -30
+        fi
+
+        if [ $GAME_EXIT -eq 0 ]; then
+            # Count passed tests from output
+            GAME_PASS=$(echo "$GAME_OUTPUT" | grep -oP 'PASSED:\s+\K\d+' || echo "?")
+            echo -e "${GREEN}PASS${NC} (${GAME_PASS} assertions)"
+            PASS=$((PASS+1))
+        else
+            echo -e "${RED}FAIL${NC}"
+            echo "$GAME_OUTPUT" | grep -E "FAIL:|FATAL" | head -10
+            FAIL=$((FAIL+1))
+        fi
+    else
+        echo -e "${YELLOW}SKIP (tests/test_stub_game.js not found)${NC}"
+        WARN=$((WARN+1))
+    fi
+
+    # ----------------------------------------------------------
+    # TEST 12: Inventory Async/Sync Mismatch Detection
+    # ----------------------------------------------------------
+    echo -n "[12] Async/Sync Mismatch Check ... "
+    if [ -f "script.js" ]; then
+        # Find calls to CoreInventorySystemAsync methods without await
+        MISMATCH_COUNT=$(grep -cP '(?<!await\s)CoreInventorySystemAsync\.\w+\(' script.js 2>/dev/null || echo "0")
+        # Also check for missing await on sendInventoryCommand
+        MISMATCH_COUNT2=$(grep -cP '(?<!await\s)sendInventoryCommand\(' script.js 2>/dev/null || echo "0")
+        TOTAL_MISMATCH=$((MISMATCH_COUNT + MISMATCH_COUNT2))
+        if [ "$TOTAL_MISMATCH" -le 5 ]; then
+            echo -e "${GREEN}PASS${NC} (potential mismatches: $TOTAL_MISMATCH — review if >5)"
+            PASS=$((PASS+1))
+        else
+            echo -e "${YELLOW}WARN${NC} (potential async/sync mismatches: $TOTAL_MISMATCH)"
+            WARN=$((WARN+1))
+        fi
+    else
+        echo -e "${YELLOW}SKIP${NC}"
+        WARN=$((WARN+1))
+    fi
+
+    # ----------------------------------------------------------
+    # TEST 13: Container Registry Integrity
+    # ----------------------------------------------------------
+    echo -n "[13] Container/Item System Integrity ... "
+    if [ -f "script.js" ]; then
+        # Check that OldCoreInventorySystem has all required methods
+        REQUIRED_METHODS="createContainer createItem moveItem removeItem destroyContainer getContainerWeight findItemByPrototype"
+        MISSING_METHODS=""
+        for m in $REQUIRED_METHODS; do
+            if ! grep -q "${m}:" script.js 2>/dev/null && ! grep -q "${m}:" script.js 2>/dev/null; then
+                MISSING_METHODS="$MISSING_METHODS $m"
+            fi
+        done
+        if [ -z "$MISSING_METHODS" ]; then
+            echo -e "${GREEN}PASS${NC} (all inventory methods present)"
+            PASS=$((PASS+1))
+        else
+            echo -e "${RED}FAIL${NC} (missing methods:$MISSING_METHODS)"
+            FAIL=$((FAIL+1))
+        fi
+    else
+        echo -e "${YELLOW}SKIP${NC}"
+        WARN=$((WARN+1))
+    fi
+fi
+
+# ============================================================
+# FULL GAME SIMULATION (--game mode only)
+# ============================================================
+
+if [ "$MODE" = "game" ]; then
+    echo ""
+    echo "──────────────────────────────────────────────"
+    echo -e "  ${CYAN}FULL GAME SIMULATION (via Stub Provider)${NC}"
+    echo "──────────────────────────────────────────────"
+
+    # ----------------------------------------------------------
+    # TEST 14: Full Game Init Simulation
+    # ----------------------------------------------------------
+    echo -n "[14] Full Game Init Simulation ... "
+    if [ -f "tests/test_stub_game.js" ]; then
+        # Run the test with verbose output and capture full results
+        SIM_OUTPUT=$(node tests/test_stub_game.js --verbose 2>&1)
+        SIM_EXIT=$?
+
+        # Check for specific test sections
+        HAS_CONTAINER=$(echo "$SIM_OUTPUT" | grep -c "Container Creation" || echo "0")
+        HAS_ITEM=$(echo "$SIM_OUTPUT" | grep -c "Item Creation" || echo "0")
+        HAS_GOLD=$(echo "$SIM_OUTPUT" | grep -c "Gold System" || echo "0")
+        HAS_FLOW=$(echo "$SIM_OUTPUT" | grep -c "Full Game Flow" || echo "0")
+        HAS_ENSURE=$(echo "$SIM_OUTPUT" | grep -c "ensurePlayerContainers" || echo "0")
+
+        if [ $SIM_EXIT -eq 0 ] && [ "$HAS_FLOW" -ge 1 ]; then
+            TOTAL_ASSERTIONS=$(echo "$SIM_OUTPUT" | grep -oP 'PASSED:\s+\K\d+' || echo "?")
+            echo -e "${GREEN}PASS${NC} (full game flow completed, ${TOTAL_ASSERTIONS} assertions)"
+            PASS=$((PASS+1))
+        else
+            echo -e "${RED}FAIL${NC}"
+            echo "$SIM_OUTPUT" | grep -E "FAIL:|ERROR" | head -10
+            FAIL=$((FAIL+1))
+        fi
+    else
+        echo -e "${YELLOW}SKIP${NC}"
+        WARN=$((WARN+1))
+    fi
+
+    # ----------------------------------------------------------
+    # TEST 15: Game Provider Routing Check
+    # ----------------------------------------------------------
+    echo -n "[15] Provider Routing (IPC → Stub fallback) ... "
+    if [ -f "script.js" ]; then
+        # Verify sendInventoryCommand has fallback to local
+        if grep -q "Falling back to local" script.js && grep -q "executeLocalInventoryCommand" script.js; then
+            echo -e "${GREEN}PASS${NC} (IPC→Stub fallback exists)"
+            PASS=$((PASS+1))
+        else
+            echo -e "${RED}FAIL${NC} (no IPC→Stub fallback found in sendInventoryCommand)"
+            FAIL=$((FAIL+1))
+        fi
+    else
+        echo -e "${YELLOW}SKIP${NC}"
+        WARN=$((WARN+1))
+    fi
+
+    # ----------------------------------------------------------
+    # TEST 16: Gold Sync Verification
+    # ----------------------------------------------------------
+    echo -n "[16] Gold Sync (stats ↔ inventory) ... "
+    if [ -f "script.js" ]; then
+        # Check syncPlayerGoldFromInventory updates player.stats.gold
+        if grep -q "player.stats.gold = totalGold" script.js && grep -q "syncPlayerGoldFromInventory" script.js; then
+            echo -e "${GREEN}PASS${NC} (gold sync function exists and updates stats)"
+            PASS=$((PASS+1))
+        else
+            echo -e "${RED}FAIL${NC} (gold sync broken or missing)"
+            FAIL=$((FAIL+1))
+        fi
+    else
+        echo -e "${YELLOW}SKIP${NC}"
+        WARN=$((WARN+1))
+    fi
 fi
 
 # ============================================================
@@ -265,9 +442,10 @@ fi
 # ============================================================
 echo ""
 echo "============================================"
-echo -e "  PASSED:  ${GREEN}$PASS${NC}"
-echo -e "  FAILED:  ${RED}$FAIL${NC}"
-echo -e "  WARNINGS: ${YELLOW}$WARN${NC}"
+echo -e "  PASSED:    ${GREEN}$PASS${NC}"
+echo -e "  FAILED:    ${RED}$FAIL${NC}"
+echo -e "  WARNINGS:  ${YELLOW}$WARN${NC}"
+echo -e "  Mode:      ${CYAN}$MODE${NC}"
 echo "============================================"
 
 if [ $FAIL -gt 0 ]; then

@@ -23,11 +23,41 @@
 
 ```bash
 cd /home/z/my-project/metera_d25_cp3-newAge
+
+# Быстрая проверка (только синтаксис/структура) — по умолчанию
 bash test_runner.sh
+bash test_runner.sh --quick
+
+# Полная проверка (синтаксис + интеграция через stub provider)
+bash test_runner.sh --full
+
+# Полная симуляция игры через stub provider
+bash test_runner.sh --game
+
+# Подробный вывод
+bash test_runner.sh --game --verbose
 ```
 
-Тесты: JS синтаксис, Python синтаксис, HTML структура, JSON валидность,
-CSS баланс скобок, зависимости, Electron структура, ссылки в HTML, CSP заголовки, C++ движок.
+### Режимы:
+| Флаг | Описание | Тесты |
+|------|----------|-------|
+| `--quick` | Синтаксис + структура (по умолчанию) | 1-10 |
+| `--full` | + Интеграция через stub provider | 1-13 |
+| `--game` | + Полная симуляция игры | 1-16 |
+| `--verbose` | Подробный вывод | — |
+
+### Интеграционные тесты (stub provider):
+- `tests/test_stub_game.js` — 80 ассертов, проверяет:
+  - Создание контейнеров (рюкзак, экипировка, сундуки)
+  - Создание предметов (оружие, зелья, золото)
+  - Система золота (добавление, удаление, синхронизация)
+  - Перемещение предметов (включая разделение стаков)
+  - Вес контейнеров
+  - `ensurePlayerContainers()` (создание, пересоздание при потере)
+  - Полный цикл игры (создание → контейнеры → предметы → золото → экипировка → перемещение)
+  - Флаг кражи (stolen items)
+  - Ограничения вместимости
+  - Обновление локации контейнеров
 
 ---
 
@@ -44,9 +74,10 @@ CSS баланс скобок, зависимости, Electron структур
   fallback на OldCoreInventorySystem когда IPC недоступен. ensurePlayerContainers()
   гарантирует создание рюкзака и экипировки перед операциями.
 
-- [ ] **Inventory async/sync mismatch** — `getContainerWeight()` и `createContainer()`
-  вызываются без `await` в некоторых местах. CoreInventorySystemAsync — все методы async,
-  но OldCoreInventorySystem — sync. Нужно найти все вызовы async методов без await.
+- [ ] **Inventory async/sync mismatch** — ~10 потенциальных мест где
+  CoreInventorySystemAsync методы вызываются без `await` (тест 12 показывает WARN).
+  CoreInventorySystemAsync — все методы async, но OldCoreInventorySystem — sync.
+  Нужно найти все вызовы async методов без await и добавить await.
 
 ### СРЕДНИЕ (ухудшают опыт)
 
