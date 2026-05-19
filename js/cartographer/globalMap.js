@@ -178,212 +178,6 @@ window.Cartographer = {
                 }, 33);
             }
         };
-                let closestDist = 15;
-                let monsterFound = null;
-                if (typeof World !== 'undefined' && World && World.monsters) {
-                    for (const m of World.monsters) {
-                        if (m.health <= 0 || !m.is_visible_on_map) continue;
-                        const markerScreenX = (m.lair_x + 0.5) * this.TILE_SIZE * this.mapState.zoom + this.mapState.offsetX;
-                        const markerScreenY = (m.lair_y + 0.5) * this.TILE_SIZE * this.mapState.zoom + this.mapState.offsetY;
-                        const dist = Math.hypot(markerScreenX - e.offsetX, markerScreenY - e.offsetY);
-                        if (dist < closestDist) {
-                            monsterFound = m;
-                            closestDist = dist;
-                        }
-                    }
-                }
-
-                if (monsterFound) {
-                    this.hoveredMapPoint = { id: monsterFound.id, isMonster: true, x: monsterFound.lair_x, y: monsterFound.lair_y };
-                    this.mapCanvas.style.cursor = 'pointer';
-                    let mHtml = `<h4 style="color:#e74c3c; border-bottom: 1px solid #e74c3c; margin:0 0 5px 0; padding-bottom:5px;"><i class="fas fa-skull"></i> ${_escapeHTML(monsterFound.name)}</h4>`;
-                    mHtml += `<p style="color:#f1c40f; font-weight:bold; margin:0 0 5px 0; font-size:0.9em;">Угроза: Экстремальная (Ур. ${_escapeHTML(monsterFound.level)})</p>`;
-                    mHtml += `<p style="margin:0 0 5px 0; color:#bdc3c7; font-size:0.9em;">Тип: ${_escapeHTML(monsterFound.type)}</p>`;
-                    mHtml += `<div style="width:100%; height:8px; background:rgba(0,0,0,0.5); border-radius:4px; margin-bottom:5px; border:1px solid #e74c3c;"><div style="height:100%; background:#e74c3c; border-radius:3px; width:${(monsterFound.health/monsterFound.maxHealth)*100}%;"></div></div>`;
-                    mHtml += `<p style="margin:0; font-size:0.85em; color:#ecf0f1;">Атака: <span style="color:#e74c3c">${_escapeHTML(monsterFound.attack)}</span> | Защита: <span style="color:#3498db">${_escapeHTML(monsterFound.defense)}</span></p>`;
-                    this.mapTooltipElement.innerHTML = mHtml;
-                    this.mapTooltipElement.style.display = 'block';
-                    this.mapTooltipElement.style.opacity = '1';
-                    
-                    let newX = e.clientX + 15;
-                    let newY = e.clientY + 15;
-                    if (newX + this.mapTooltipElement.offsetWidth > window.innerWidth) newX = e.clientX - this.mapTooltipElement.offsetWidth - 15;
-                    if (newY + this.mapTooltipElement.offsetHeight > window.innerHeight) newY = e.clientY - this.mapTooltipElement.offsetHeight - 15;
-                    this.mapTooltipElement.style.left = `${newX}px`;
-                    this.mapTooltipElement.style.top = `${newY}px`;
-                    this.requestRender();
-                    return;
-                }
-
-                let pointFound = null;
-                // Радиус срабатывания строго в экранных пикселях
-                
-                // Кэшируем allPoints чтобы не пересоздавать массив на каждый mousemove
-                const locsKey = (typeof World !== 'undefined' && World && World.map && World.map.locations) ? Object.keys(World.map.locations).length + '_' + (typeof player !== 'undefined' && player && player.mapMarkers ? Object.keys(player.mapMarkers).length : 0) : '0';
-                if (!this._cachedAllPoints || this._cachedAllPointsKey !== locsKey) {
-                    let allPoints = [];
-                    if (typeof World !== 'undefined' && World && World.map && World.map.locations) {
-                        allPoints = [...Object.values(World.map.locations)];
-                    }
-                    if (typeof player !== 'undefined' && player && player.mapMarkers) {
-                        allPoints = [...allPoints, ...Object.values(player.mapMarkers)];
-                    }
-                    this._cachedAllPoints = allPoints;
-                    this._cachedAllPointsKey = locsKey;
-                }
-                const allPoints = this._cachedAllPoints;
-
-                for (const point of allPoints) {
-                    // Вычисляем реальные экранные координаты маркера (как при отрисовке)
-                    const markerScreenX = (point.x + 0.5) * this.TILE_SIZE * this.mapState.zoom + this.mapState.offsetX;
-                    const markerScreenY = (point.y + 0.5) * this.TILE_SIZE * this.mapState.zoom + this.mapState.offsetY;
-
-                    // Считаем расстояние от курсора до маркера в пикселях экрана
-                    const dist = Math.hypot(markerScreenX - e.offsetX, markerScreenY - e.offsetY);
-                    
-                    if (dist < closestDist) {
-                        pointFound = point;
-                        closestDist = dist;
-                    }
-                }
-
-                // Оптимизация: если та же точка — не обновляем тултип
-                const samePoint = this._lastHoveredMapPoint && pointFound && this._lastHoveredMapPoint.id === pointFound.id && this._lastHoveredMapPoint.x === pointFound.x && this._lastHoveredMapPoint.y === pointFound.y;
-                this._lastHoveredMapPoint = pointFound;
-                this.hoveredMapPoint = pointFound;
-
-                if (samePoint) {
-                    // Тултип не изменился — просто двигать позицию не нужно, пропускаем обновление DOM
-                    this.requestRender();
-                    return;
-                }
-
-                if (pointFound) {
-                    this.mapCanvas.style.cursor = 'pointer';
-                    
-                    let subLocsHtml = '';
-                    if (pointFound.id) {
-                        const treeHtml = this.buildSubLocationsTreeHTML(pointFound.id);
-                        if (treeHtml) {
-                            subLocsHtml = '<div style="margin-top: 8px; border-top: 1px solid rgba(243, 229, 171, 0.2); padding-top: 5px;">';
-                            subLocsHtml += '<strong style="color: #aeb6bf; font-size: 0.85em;">Открытые места:</strong>';
-                            subLocsHtml += treeHtml;
-                            subLocsHtml += '</div>';
-                        }
-                    }
-
-                    let residentsHtml = '';
-                    if (typeof player !== 'undefined' && player && (player.visitedLocations.includes(pointFound.name) || player.visitedLocations.some(l => pointFound.name.includes(l)))) {
-                        const residents = Object.values(player.allKnownEntities).filter(e => e.boundTo === pointFound.name && e.stats.hp > 0);
-                        if (residents.length > 0) {
-                            const MAX_RES = 8;
-                            const displayedRes = residents.slice(0, MAX_RES);
-                            const hiddenRes = residents.length - MAX_RES;
-                            
-                            residentsHtml = '<div style="margin-top: 8px; border-top: 1px dashed rgba(243, 229, 171, 0.4); padding-top: 5px;">';
-                            residentsHtml += '<strong style="color: #f1c40f; font-size: 0.85em;">Известные жители:</strong><ul style="margin: 3px 0 0 0; padding-left: 15px; font-size: 0.85em; color: #ecf0f1;">';
-                            displayedRes.forEach(res => {
-                                residentsHtml += `<li>${_escapeHTML(res.name)}</li>`;
-                            });
-                            if (hiddenRes > 0) {
-                                residentsHtml += `<li style="color: #7f8c8d; font-style: italic; list-style-type: none;">...и ещё ${hiddenRes}</li>`;
-                            }
-                            residentsHtml += '</ul></div>';
-                        }
-                    }
-
-                                        let resourcesHtml = '';
-                    let statsHtml = '';
-                    if (typeof World !== 'undefined' && World && World.regions && World.regions[pointFound.id]) {
-                        const reg = World.regions[pointFound.id];
-                        
-                        let actualFactionId = reg.factionId;
-                        let factionName = "Ничья земля";
-                        let repText = '';
-                        let isPlayerFaction = false;
-
-                        if (actualFactionId && World.factions && World.factions[actualFactionId]) {
-                            factionName = _escapeHTML(World.factions[actualFactionId].name);
-                            if (World.factions[actualFactionId].rulerId === 'player') {
-                                factionName = "👑 [ВАША] " + factionName;
-                                isPlayerFaction = true;
-                            }
-                            if (typeof player !== 'undefined' && player && player.stats && player.stats.reputation) {
-                                const rep = player.stats.reputation[actualFactionId] || 0;
-                                repText = ` | Реп: <span style="color: ${rep >= 0 ? '#2ecc71' : '#e74c3c'}">${rep}</span>`;
-                            }
-                        }
-                        
-                        let popText = reg.population > 0 ? reg.population : "<span style='color:#e74c3c; font-style:italic;'>Заброшено</span>";
-                        let occText = reg.isOccupied ? `<div style="color:#e74c3c; font-weight:bold; margin-top:2px;">⚠️ Оккупировано (${_escapeHTML(reg.occupierFactionId)})</div>` : '';
-                        
-                        let armyText = '';
-                        let armiesHere = [];
-                        for (let fid in World.factions) {
-                            World.factions[fid].armies.forEach(a => {
-                                if (a.location === pointFound.id || a.destination === pointFound.id) {
-                                    let aName = _escapeHTML(World.factions[fid].name);
-                                    if (World.factions[fid].rulerId === 'player') aName = "👑 Ваша армия";
-                                    armiesHere.push(`${aName} (${a.size} чел.)`);
-                                }
-                            });
-                        }
-                        if (armiesHere.length > 0) {
-                            armyText = `<div style="color:#e67e22; margin-top:4px; padding-top:4px; border-top: 1px dashed rgba(230, 126, 34, 0.3);"><b>⚔️ Армии:</b> ${armiesHere.join(', ')}</div>`;
-                        }
-
-                        statsHtml = `<div style="margin-top: 8px; font-size: 0.85em; color: #ecf0f1;">
-                                        <div><strong style="color: #3498db;">Фракция:</strong> <span style="color:${isPlayerFaction ? '#2ecc71' : '#ecf0f1'}">${factionName}</span>${repText}</div>
-                                        ${occText}
-                                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 6px; background: rgba(0,0,0,0.3); padding: 6px; border-radius: 4px;">
-                                            <div><strong style="color: #f1c40f;">Население:</strong> ${popText}</div>
-                                            <div><strong style="color: #e74c3c;">Угроза:</strong> ${reg.threat_level}%</div>
-                                            <div><strong style="color: #9b59b6;">Стаб-ть:</strong> ${reg.stability}%</div>
-                                            <div><strong style="color: #e67e22;">Волнения:</strong> ${reg.unrest}%</div>
-                                            <div><strong style="color: #2ecc71;">Казна:</strong> ${Math.floor(reg.moneySupply)} з.</div>
-                                            <div><strong style="color: #aeb6bf;">Зарплата:</strong> ${reg.average_wage} з.</div>
-                                        </div>
-                                        ${armyText}
-                                     </div>`;
-
-                        if (World.port_facilities && World.port_facilities[pointFound.id]) {
-                            const port = World.port_facilities[pointFound.id];
-                            let blockade = port.is_blockaded ? ' <span style="color:#e74c3c">[БЛОКАДА]</span>' : '';
-                            statsHtml += `<div style="margin-top: 4px; font-size: 0.85em; color: #ecf0f1;"><strong style="color: #3498db;">⚓ Порт:</strong> Ур. ${port.level} (${port.type})${blockade}</div>`;
-                        }
-
-                        if (reg.available_raw_resources && reg.available_raw_resources.length > 0) {
-                            const icons = reg.available_raw_resources.map(r => typeof getResourceIcon === 'function' ? getResourceIcon(r) : "📦").join(' ');
-                            resourcesHtml = `<div style="margin-top: 8px; border-top: 1px dashed rgba(243, 229, 171, 0.4); padding-top: 5px;">
-                                <strong style="color: #2ecc71; font-size: 0.85em;">Сырье:</strong> <span style="font-size: 1.1em; letter-spacing: 2px;">${icons}</span>
-                            </div>`;
-                        }
-                    }
-
-                    this.mapTooltipElement.innerHTML = `<h4>${_escapeHTML(pointFound.name)}</h4><p>${_escapeHTML(pointFound.description || '')}</p>${statsHtml}${resourcesHtml}${subLocsHtml}${residentsHtml}`;
-                    this.mapTooltipElement.style.display = 'block';
-                    this.mapTooltipElement.style.opacity = '1';
-
-                    let newX = e.clientX + 15;
-                    let newY = e.clientY + 15;
-
-                    if (newX + this.mapTooltipElement.offsetWidth > window.innerWidth) newX = e.clientX - this.mapTooltipElement.offsetWidth - 15;
-                    if (newY + this.mapTooltipElement.offsetHeight > window.innerHeight) newY = e.clientY - this.mapTooltipElement.offsetHeight - 15;
-
-                    // Жесткий лимит, чтобы тултип не улетал за верхний и левый края экрана
-                    if (newX < 10) newX = 10;
-                    if (newY < 10) newY = 10;
-
-                    this.mapTooltipElement.style.left = `${newX}px`;
-                    this.mapTooltipElement.style.top = `${newY}px`;
-                } else {
-                    this.mapCanvas.style.cursor = 'grab';
-                    this.mapTooltipElement.style.display = 'none';
-                    this.mapTooltipElement.style.opacity = '0';
-                }
-            }
-            this.requestRender();
-        };
 
         const handleWheel = (e) => {
             e.preventDefault();
@@ -418,7 +212,212 @@ window.Cartographer = {
         this.mapControlsInitialized = true;
     },
 
-        /**
+    /**
+     * Обрабатывает hover-событие на карте (определение ближайшего маркера, тултип).
+     * Вызывается через throttle (~30fps) из handleMouseMove.
+     * @param {MouseEvent} e - Событие мыши
+     */
+    _processHover: function(e) {
+        let closestDist = 15;
+        let monsterFound = null;
+        if (typeof World !== 'undefined' && World && World.monsters) {
+            for (const m of World.monsters) {
+                if (m.health <= 0 || !m.is_visible_on_map) continue;
+                const markerScreenX = (m.lair_x + 0.5) * this.TILE_SIZE * this.mapState.zoom + this.mapState.offsetX;
+                const markerScreenY = (m.lair_y + 0.5) * this.TILE_SIZE * this.mapState.zoom + this.mapState.offsetY;
+                const dist = Math.hypot(markerScreenX - e.offsetX, markerScreenY - e.offsetY);
+                if (dist < closestDist) {
+                    monsterFound = m;
+                    closestDist = dist;
+                }
+            }
+        }
+
+        if (monsterFound) {
+            this.hoveredMapPoint = { id: monsterFound.id, isMonster: true, x: monsterFound.lair_x, y: monsterFound.lair_y };
+            this.mapCanvas.style.cursor = 'pointer';
+            let mHtml = '<h4 style="color:#e74c3c; border-bottom: 1px solid #e74c3c; margin:0 0 5px 0; padding-bottom:5px;"><i class="fas fa-skull"></i> ' + _escapeHTML(monsterFound.name) + '</h4>';
+            mHtml += '<p style="color:#f1c40f; font-weight:bold; margin:0 0 5px 0; font-size:0.9em;">Угроза: Экстремальная (Ур. ' + _escapeHTML(monsterFound.level) + ')</p>';
+            mHtml += '<p style="margin:0 0 5px 0; color:#bdc3c7; font-size:0.9em;">Тип: ' + _escapeHTML(monsterFound.type) + '</p>';
+            mHtml += '<div style="width:100%; height:8px; background:rgba(0,0,0,0.5); border-radius:4px; margin-bottom:5px; border:1px solid #e74c3c;"><div style="height:100%; background:#e74c3c; border-radius:3px; width:' + (monsterFound.health/monsterFound.maxHealth)*100 + '%;"></div></div>';
+            mHtml += '<p style="margin:0; font-size:0.85em; color:#ecf0f1;">Атака: <span style="color:#e74c3c">' + _escapeHTML(monsterFound.attack) + '</span> | Защита: <span style="color:#3498db">' + _escapeHTML(monsterFound.defense) + '</span></p>';
+            this.mapTooltipElement.innerHTML = mHtml;
+            this.mapTooltipElement.style.display = 'block';
+            this.mapTooltipElement.style.opacity = '1';
+
+            let newX = e.clientX + 15;
+            let newY = e.clientY + 15;
+            if (newX + this.mapTooltipElement.offsetWidth > window.innerWidth) newX = e.clientX - this.mapTooltipElement.offsetWidth - 15;
+            if (newY + this.mapTooltipElement.offsetHeight > window.innerHeight) newY = e.clientY - this.mapTooltipElement.offsetHeight - 15;
+            this.mapTooltipElement.style.left = newX + 'px';
+            this.mapTooltipElement.style.top = newY + 'px';
+            this.requestRender();
+            return;
+        }
+
+        let pointFound = null;
+
+        // Кэшируем allPoints чтобы не пересоздавать массив на каждый mousemove
+        const locsKey = (typeof World !== 'undefined' && World && World.map && World.map.locations) ? Object.keys(World.map.locations).length + '_' + (typeof player !== 'undefined' && player && player.mapMarkers ? Object.keys(player.mapMarkers).length : 0) : '0';
+        if (!this._cachedAllPoints || this._cachedAllPointsKey !== locsKey) {
+            let allPoints = [];
+            if (typeof World !== 'undefined' && World && World.map && World.map.locations) {
+                allPoints = [...Object.values(World.map.locations)];
+            }
+            if (typeof player !== 'undefined' && player && player.mapMarkers) {
+                allPoints = [...allPoints, ...Object.values(player.mapMarkers)];
+            }
+            this._cachedAllPoints = allPoints;
+            this._cachedAllPointsKey = locsKey;
+        }
+        const allPoints = this._cachedAllPoints;
+
+        for (const point of allPoints) {
+            const markerScreenX = (point.x + 0.5) * this.TILE_SIZE * this.mapState.zoom + this.mapState.offsetX;
+            const markerScreenY = (point.y + 0.5) * this.TILE_SIZE * this.mapState.zoom + this.mapState.offsetY;
+            const dist = Math.hypot(markerScreenX - e.offsetX, markerScreenY - e.offsetY);
+            if (dist < closestDist) {
+                pointFound = point;
+                closestDist = dist;
+            }
+        }
+
+        // Оптимизация: если та же точка — не обновляем тултип
+        const samePoint = this._lastHoveredMapPoint && pointFound && this._lastHoveredMapPoint.id === pointFound.id && this._lastHoveredMapPoint.x === pointFound.x && this._lastHoveredMapPoint.y === pointFound.y;
+        this._lastHoveredMapPoint = pointFound;
+        this.hoveredMapPoint = pointFound;
+
+        if (samePoint) {
+            this.requestRender();
+            return;
+        }
+
+        if (pointFound) {
+            this.mapCanvas.style.cursor = 'pointer';
+
+            let subLocsHtml = '';
+            if (pointFound.id) {
+                const treeHtml = this.buildSubLocationsTreeHTML(pointFound.id);
+                if (treeHtml) {
+                    subLocsHtml = '<div style="margin-top: 8px; border-top: 1px solid rgba(243, 229, 171, 0.2); padding-top: 5px;">';
+                    subLocsHtml += '<strong style="color: #aeb6bf; font-size: 0.85em;">Открытые места:</strong>';
+                    subLocsHtml += treeHtml;
+                    subLocsHtml += '</div>';
+                }
+            }
+
+            let residentsHtml = '';
+            if (typeof player !== 'undefined' && player && (player.visitedLocations.includes(pointFound.name) || player.visitedLocations.some(l => pointFound.name.includes(l)))) {
+                const residents = Object.values(player.allKnownEntities).filter(e => e.boundTo === pointFound.name && e.stats.hp > 0);
+                if (residents.length > 0) {
+                    const MAX_RES = 8;
+                    const displayedRes = residents.slice(0, MAX_RES);
+                    const hiddenRes = residents.length - MAX_RES;
+
+                    residentsHtml = '<div style="margin-top: 8px; border-top: 1px dashed rgba(243, 229, 171, 0.4); padding-top: 5px;">';
+                    residentsHtml += '<strong style="color: #f1c40f; font-size: 0.85em;">Известные жители:</strong><ul style="margin: 3px 0 0 0; padding-left: 15px; font-size: 0.85em; color: #ecf0f1;">';
+                    displayedRes.forEach(res => {
+                        residentsHtml += '<li>' + _escapeHTML(res.name) + '</li>';
+                    });
+                    if (hiddenRes > 0) {
+                        residentsHtml += '<li style="color: #7f8c8d; font-style: italic; list-style-type: none;">...и ещё ' + hiddenRes + '</li>';
+                    }
+                    residentsHtml += '</ul></div>';
+                }
+            }
+
+            let resourcesHtml = '';
+            let statsHtml = '';
+            if (typeof World !== 'undefined' && World && World.regions && World.regions[pointFound.id]) {
+                const reg = World.regions[pointFound.id];
+
+                let actualFactionId = reg.factionId;
+                let factionName = 'Ничья земля';
+                let repText = '';
+                let isPlayerFaction = false;
+
+                if (actualFactionId && World.factions && World.factions[actualFactionId]) {
+                    factionName = _escapeHTML(World.factions[actualFactionId].name);
+                    if (World.factions[actualFactionId].rulerId === 'player') {
+                        factionName = '👑 [ВАША] ' + factionName;
+                        isPlayerFaction = true;
+                    }
+                    if (typeof player !== 'undefined' && player && player.stats && player.stats.reputation) {
+                        const rep = player.stats.reputation[actualFactionId] || 0;
+                        repText = ' | Реп: <span style="color: ' + (rep >= 0 ? '#2ecc71' : '#e74c3c') + '">' + rep + '</span>';
+                    }
+                }
+
+                let popText = reg.population > 0 ? reg.population : '<span style="color:#e74c3c; font-style:italic;">Заброшено</span>';
+                let occText = reg.isOccupied ? '<div style="color:#e74c3c; font-weight:bold; margin-top:2px;">⚠️ Оккупировано (' + _escapeHTML(reg.occupierFactionId) + ')</div>' : '';
+
+                let armyText = '';
+                let armiesHere = [];
+                for (let fid in World.factions) {
+                    World.factions[fid].armies.forEach(a => {
+                        if (a.location === pointFound.id || a.destination === pointFound.id) {
+                            let aName = _escapeHTML(World.factions[fid].name);
+                            if (World.factions[fid].rulerId === 'player') aName = '👑 Ваша армия';
+                            armiesHere.push(aName + ' (' + a.size + ' чел.)');
+                        }
+                    });
+                }
+                if (armiesHere.length > 0) {
+                    armyText = '<div style="color:#e67e22; margin-top:4px; padding-top:4px; border-top: 1px dashed rgba(230, 126, 34, 0.3);"><b>⚔️ Армии:</b> ' + armiesHere.join(', ') + '</div>';
+                }
+
+                statsHtml = '<div style="margin-top: 8px; font-size: 0.85em; color: #ecf0f1;">' +
+                    '<div><strong style="color: #3498db;">Фракция:</strong> <span style="color:' + (isPlayerFaction ? '#2ecc71' : '#ecf0f1') + '">' + factionName + '</span>' + repText + '</div>' +
+                    occText +
+                    '<div style="display:grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 6px; background: rgba(0,0,0,0.3); padding: 6px; border-radius: 4px;">' +
+                    '<div><strong style="color: #f1c40f;">Население:</strong> ' + popText + '</div>' +
+                    '<div><strong style="color: #e74c3c;">Угроза:</strong> ' + reg.threat_level + '%</div>' +
+                    '<div><strong style="color: #9b59b6;">Стаб-ть:</strong> ' + reg.stability + '%</div>' +
+                    '<div><strong style="color: #e67e22;">Волнения:</strong> ' + reg.unrest + '%</div>' +
+                    '<div><strong style="color: #2ecc71;">Казна:</strong> ' + Math.floor(reg.moneySupply) + ' з.</div>' +
+                    '<div><strong style="color: #aeb6bf;">Зарплата:</strong> ' + reg.average_wage + ' з.</div>' +
+                    '</div>' +
+                    armyText +
+                    '</div>';
+
+                if (World.port_facilities && World.port_facilities[pointFound.id]) {
+                    const port = World.port_facilities[pointFound.id];
+                    let blockade = port.is_blockaded ? ' <span style="color:#e74c3c">[БЛОКАДА]</span>' : '';
+                    statsHtml += '<div style="margin-top: 4px; font-size: 0.85em; color: #ecf0f1;"><strong style="color: #3498db;">⚓ Порт:</strong> Ур. ' + port.level + ' (' + port.type + ')' + blockade + '</div>';
+                }
+
+                if (reg.available_raw_resources && reg.available_raw_resources.length > 0) {
+                    const icons = reg.available_raw_resources.map(r => typeof getResourceIcon === 'function' ? getResourceIcon(r) : '📦').join(' ');
+                    resourcesHtml = '<div style="margin-top: 8px; border-top: 1px dashed rgba(243, 229, 171, 0.4); padding-top: 5px;">' +
+                        '<strong style="color: #2ecc71; font-size: 0.85em;">Сырье:</strong> <span style="font-size: 1.1em; letter-spacing: 2px;">' + icons + '</span>' +
+                        '</div>';
+                }
+            }
+
+            this.mapTooltipElement.innerHTML = '<h4>' + _escapeHTML(pointFound.name) + '</h4><p>' + _escapeHTML(pointFound.description || '') + '</p>' + statsHtml + resourcesHtml + subLocsHtml + residentsHtml;
+            this.mapTooltipElement.style.display = 'block';
+            this.mapTooltipElement.style.opacity = '1';
+
+            let newX = e.clientX + 15;
+            let newY = e.clientY + 15;
+
+            if (newX + this.mapTooltipElement.offsetWidth > window.innerWidth) newX = e.clientX - this.mapTooltipElement.offsetWidth - 15;
+            if (newY + this.mapTooltipElement.offsetHeight > window.innerHeight) newY = e.clientY - this.mapTooltipElement.offsetHeight - 15;
+
+            if (newX < 10) newX = 10;
+            if (newY < 10) newY = 10;
+
+            this.mapTooltipElement.style.left = newX + 'px';
+            this.mapTooltipElement.style.top = newY + 'px';
+        } else {
+            this.mapCanvas.style.cursor = 'grab';
+            this.mapTooltipElement.style.display = 'none';
+            this.mapTooltipElement.style.opacity = '0';
+        }
+        this.requestRender();
+    },
+
+    /**
      * Преобразует экранные координаты в мировые координаты тайлов.
      * @param {number} screenX - X координата на экране
      * @param {number} screenY - Y координата на экране
