@@ -92,9 +92,10 @@ bash test_runner.sh --game --verbose
   (onclick, onmouseover, onmouseout) в index.html заменены на CSP-совместимые:
   data-атрибуты + addEventListener. Убраны ошибки "Refused to execute inline event handler".
 
-- [x] **loadWorldFile fallback** — ИСПРАВЛЕНО: если C++ движок не поддерживает loadWorldFile
-  (старый бинарник или движок не запущен), код пытается fallback через syncState (stdin),
-  и корректно логирует ошибку вместо падения.
+- [x] **loadWorldFile** — ИСПРАВЛЕНО (корневая причина): meterea_engine.exe был устаревшим
+  бинарником, скомпилированным до добавления обработчика loadWorldFile в C++ исходник (строка 13647).
+  Оба бинарника (Linux + Windows) перекомпилированы из актуального исходного кода.
+  Команда loadWorldFile теперь работает. Костыльный fallback через syncState удалён.
 
 ### НИЗКИЕ (косметика)
 
@@ -115,8 +116,10 @@ bash test_runner.sh --game --verbose
   - Close examine modal: `onclick` → `id="close-examine-modal-btn"` + `addEventListener`
 - **Проблема 2**: `[Nexus] loadWorldFile не удался: Unknown command: loadWorldFile`
   при синхронизации мира с C++ движком.
-- **Решение 2**: Добавлен graceful fallback — если loadWorldFile не работает,
-  код пытается syncState через stdin, и корректно логирует все этапы.
+- **Решение 2**: КОРНЕВАЯ ПРИЧИНА — meterea_engine.exe был устаревшим бинарником,
+  скомпилированным до добавления обработчика loadWorldFile в meterea_engine.cpp.
+  Оба бинарника (Linux + Windows .exe) перекомпилированы из актуального исходного кода.
+  Костыльный fallback через syncState удалён — он не нужен, движок теперь поддерживает команду.
 - **Проверено**: Inventory async/sync mismatch — ложноположительный. Все async методы
   используют await; без await вызываются только sync методы (getContainerWeight, findItemByPrototype).
 
