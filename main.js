@@ -163,7 +163,7 @@ function sendCommand(command, params = {}, timeoutMs = 30000) {
             return;
         }
 
-        const message = JSON.stringify({ command, params }) + '\n';
+        const message = JSON.stringify({ command, ...params }) + '\n';
 
         // Configurable timeout — long-running commands like preSimulate need more time
         const timeoutId = setTimeout(() => {
