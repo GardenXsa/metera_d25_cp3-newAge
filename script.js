@@ -142,6 +142,11 @@ async function ensurePlayerContainers() {
     if (needsBackpack) {
         console.warn("[Inventory] Рюкзак игрока отсутствует или не в реестре. Пересоздаём...");
         player.container_backpack = await CoreInventorySystemAsync.createContainer("player_backpack", "player", 100, 30);
+        // Экстренный fallback, если IPC+fallback оба не сработали
+        if (!player.container_backpack || !ContainerRegistry.has(player.container_backpack)) {
+            player.container_backpack = OldCoreInventorySystem.createContainer("player_backpack", "player", 100, 30);
+            console.error("[Inventory] Экстренное локальное пересоздание рюкзака:", player.container_backpack);
+        }
     }
     
     // Проверяем контейнер экипировки
@@ -149,6 +154,11 @@ async function ensurePlayerContainers() {
     if (needsEquipment) {
         console.warn("[Inventory] Контейнер экипировки отсутствует или не в реестре. Пересоздаём...");
         player.container_equipment = await CoreInventorySystemAsync.createContainer("player_equipment", "player", 50, 10);
+        // Экстренный fallback
+        if (!player.container_equipment || !ContainerRegistry.has(player.container_equipment)) {
+            player.container_equipment = OldCoreInventorySystem.createContainer("player_equipment", "player", 50, 10);
+            console.error("[Inventory] Экстренное локальное пересоздание экипировки:", player.container_equipment);
+        }
     }
     
     if (needsBackpack || needsEquipment) {
@@ -620,7 +630,10 @@ async function fetchGraphContext(queryIds) {
 }
 
 
-async function sendInventoryCommand(action, args) {
+async function sendInventoryCommand(action, args, _retryCount = 0) {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 500;
+
     if (!window.electronAPI || !window.electronAPI.nexusInventoryCommand) {
         // FALLBACK: IPC недоступен — используем локальную реализацию (OldCoreInventorySystem)
         return executeLocalInventoryCommand(action, args);
@@ -634,10 +647,35 @@ async function sendInventoryCommand(action, args) {
             if (res.deleted_containers) res.deleted_containers.forEach(id => ContainerRegistry.delete(id));
             return res;
         }
-        // IPC вернул ошибку — fallback на локальную реализацию
-        console.warn(`[Inventory] IPC error for '${action}': ${res.error || res.status}. Falling back to local.`);
+
+        // Если движок не готов — повторяем попытку с задержкой (race condition при загрузке мира)
+        const isEngineNotReady = res.status === 'error' && (
+            (res.message && (
+                res.message.includes('Engine not ready') ||
+                res.message.includes('Engine restarted') ||
+                res.message.includes('timed out') ||
+                res.message.includes('crashed')
+            )) ||
+            // Если движок вернул ошибку без деталей — тоже пробуем ещё раз
+            (!res.message && _retryCount === 0)
+        );
+        if (isEngineNotReady && _retryCount < MAX_RETRIES) {
+            const delay = RETRY_DELAY_MS * (_retryCount + 1);
+            console.warn(`[Inventory] Engine not ready for '${action}' (attempt ${_retryCount + 1}/${MAX_RETRIES}). Retrying in ${delay}ms...`);
+            await new Promise(r => setTimeout(r, delay));
+            return await sendInventoryCommand(action, args, _retryCount + 1);
+        }
+
+        // IPC вернул ошибку после всех попыток — fallback на локальную реализацию
+        console.warn(`[Inventory] IPC error for '${action}': ${res.error || res.message || res.status}. Falling back to local.${_retryCount > 0 ? ` (after ${_retryCount} retries)` : ''}`);
         return executeLocalInventoryCommand(action, args);
     } catch (e) {
+        if (_retryCount < MAX_RETRIES && (e.message || '').includes('not ready')) {
+            const delay = RETRY_DELAY_MS * (_retryCount + 1);
+            console.warn(`[Inventory] IPC exception for '${action}' (attempt ${_retryCount + 1}/${MAX_RETRIES}). Retrying in ${delay}ms...`);
+            await new Promise(r => setTimeout(r, delay));
+            return await sendInventoryCommand(action, args, _retryCount + 1);
+        }
         console.warn(`[Inventory] IPC exception for '${action}': ${e.message}. Falling back to local.`);
         return executeLocalInventoryCommand(action, args);
     }
@@ -694,6 +732,12 @@ function executeLocalInventoryCommand(action, args) {
             }
             return { status: 'error', success: false, error: 'Container not found' };
         }
+        case 'syncEntity':
+        case 'updateEntityStat':
+        case 'updateItemStat':
+            // Команды синхронизации NPC/Entity — работают только через C++ движок.
+            // Локально нет реестра NPC, поэтому просто возвращаем OK (fire-and-forget).
+            return { status: 'ok', success: true };
         default:
             console.warn(`[Inventory] Unknown local command: ${action}`);
             return { status: 'error', success: false, error: `Unknown command: ${action}` };
@@ -7612,8 +7656,18 @@ async function finalizeWorldSetupAndStart() {
         console.log("Используется предзагруженный мир.");
         setWorld(preloadedWorldData);
         if (window.electronAPI && window.electronAPI.nexusInit) {
-            await window.electronAPI.nexusInit(true);
-            await window.electronAPI.nexusSyncState(World, [], []);
+            const initRes = await window.electronAPI.nexusInit(true);
+            if (initRes.status === 'ok') {
+                // Синхронизируем мир с движком, передаём текущие реестры предметов/контейнеров
+                const syncItems = Array.from(ItemRegistry.entries());
+                const syncContainers = Array.from(ContainerRegistry.entries());
+                const syncRes = await window.electronAPI.nexusSyncState(World, syncItems, syncContainers);
+                if (syncRes.status !== 'ok') {
+                    console.warn('[Nexus] syncState failed for preloaded world:', syncRes.message);
+                }
+            } else {
+                console.warn('[Nexus] Init failed for preloaded world:', initRes.message);
+            }
         }
     } else {
         setWorld(await initWorldSimulator(initialAgents, absoluteStartDay));
@@ -7659,6 +7713,20 @@ async function finalizeWorldSetupAndStart() {
 
     player.container_backpack = await CoreInventorySystemAsync.createContainer("player_backpack", "player", 100, 30);
     player.container_equipment = await CoreInventorySystemAsync.createContainer("player_equipment", "player", 50, 10);
+
+    // Диагностика: убедимся, что контейнеры реально созданы и зарегистрированы
+    if (!player.container_backpack || !ContainerRegistry.has(player.container_backpack)) {
+        console.error('[Inventory] КРИТИЧЕСКАЯ ОШИБКА: рюкзак не создан! container_backpack =', player.container_backpack);
+        // Экстренное пересоздание через локальную реализацию
+        player.container_backpack = OldCoreInventorySystem.createContainer("player_backpack", "player", 100, 30);
+        console.warn('[Inventory] Экстренное пересоздание рюкзака:', player.container_backpack);
+    }
+    if (!player.container_equipment || !ContainerRegistry.has(player.container_equipment)) {
+        console.error('[Inventory] КРИТИЧЕСКАЯ ОШИБКА: экипировка не создана! container_equipment =', player.container_equipment);
+        player.container_equipment = OldCoreInventorySystem.createContainer("player_equipment", "player", 50, 10);
+        console.warn('[Inventory] Экстренное пересоздание экипировки:', player.container_equipment);
+    }
+
     await syncPlayerContainerBindings();
 
     const narratorStyleGuide = `
@@ -13754,7 +13822,7 @@ if (player.nexusData && player.nexusData[args.id]) {
                             min_damage: minDmg,
                             max_damage: maxDmg,
                             armor_class: ac
-                        });
+                        }).catch(err => console.warn('[Inventory] syncEntity failed:', err.message || err));
 
                         updateEnvironmentVisibility();
                         feedback = t('gameInterface.commandFeedback.entityAddedToEnv', { name: args.name }) + ` (Привязка: ${binding === 'player' ? 'Игрок' : binding})`;
@@ -13850,7 +13918,8 @@ if (player.nexusData && player.nexusData[args.id]) {
                             if (player.allKnownEntities[entId]) player.allKnownEntities[entId].stats[systemStatName] = validatedValue;
                             if (player.visibleEntities[entId]) player.visibleEntities[entId].stats[systemStatName] = validatedValue;
                             
-                            sendInventoryCommand('updateEntityStat', { id: entId, stat: systemStatName, value: validatedValue });
+                            sendInventoryCommand('updateEntityStat', { id: entId, stat: systemStatName, value: validatedValue })
+                                .catch(err => console.warn('[Inventory] updateEntityStat failed:', err.message || err));
                             
                             // Для фидбека используем уже валидированное значение
                             args.value = validatedValue;
