@@ -35,9 +35,14 @@ CSS баланс скобок, зависимости, Electron структур
 
 ### КРИТИЧЕСКИЕ (блокируют игру)
 
-- [ ] **Движок/симуляция не работает** — JS→Python→C++ pipeline не отдаёт данные.
+- [ ] **Движок/симуляция** — JS→Python→C++ pipeline. Сейчас работает FALLBACK
+  на локальную реализацию (OldCoreInventorySystem), если IPC недоступен.
   Нужно трассировать: script.js → electronAPI → main.js IPC → engine_client.py → meterea_engine
   Проверить: запускается ли C++ процесс, приходит ли ответ, парсится ли JSON.
+
+- [x] **Инвентарь не работает без движка** — ИСПРАВЛЕНО: sendInventoryCommand() теперь
+  fallback на OldCoreInventorySystem когда IPC недоступен. ensurePlayerContainers()
+  гарантирует создание рюкзака и экипировки перед операциями.
 
 - [ ] **Inventory async/sync mismatch** — `getContainerWeight()` и `createContainer()`
   вызываются без `await` в некоторых местах. CoreInventorySystemAsync — все методы async,
