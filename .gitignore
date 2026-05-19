@@ -62,3 +62,7 @@ project_scan.txt
 push.sh
 deploy_key*
 *.pem
+*_ssh_wrapper.py
+pssh.py
+pssh_sh.sh
+ssh-paramiko.sh
