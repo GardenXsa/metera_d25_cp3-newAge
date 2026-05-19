@@ -7775,33 +7775,11 @@ async function finalizeWorldSetupAndStart() {
             const writeRes = await window.electronAPI.nexusWriteSyncFile(worldFileData);
             if (writeRes.status === 'ok' && writeRes.path) {
                 // Шаг 2: Отправляем команду движку прочитать файл напрямую
-                let loadRes;
-                try {
-                    loadRes = await window.electronAPI.nexusLoadWorldFile(writeRes.path);
-                } catch (ipcErr) {
-                    loadRes = { status: 'error', message: ipcErr.message || 'IPC call failed' };
-                }
+                const loadRes = await window.electronAPI.nexusLoadWorldFile(writeRes.path);
                 if (loadRes.status === 'ok') {
                     console.log('[Nexus] Файловая синхронизация мира завершена:', loadRes.message);
                 } else {
                     console.warn('[Nexus] loadWorldFile не удался:', loadRes.message || loadRes.error || 'unknown error');
-                    // Fallback: если loadWorldFile не поддерживается движком (старый бинарник),
-                    // пробуем syncState через stdin — это медленнее, но совместимо.
-                    if (window.electronAPI && window.electronAPI.nexusSyncState) {
-                        console.log('[Nexus] Попытка fallback через syncState (stdin)...');
-                        try {
-                            const syncRes = await window.electronAPI.nexusSyncState(World, syncItems, syncContainers);
-                            if (syncRes.status === 'ok') {
-                                console.log('[Nexus] Fallback syncState завершён успешно.');
-                            } else {
-                                console.warn('[Nexus] Fallback syncState тоже не удался:', syncRes.message || syncRes.error);
-                            }
-                        } catch (syncErr) {
-                            console.warn('[Nexus] Fallback syncState исключение:', syncErr.message || syncErr);
-                        }
-                    } else {
-                        console.warn('[Nexus] syncState IPC недоступен. Мир не синхронизирован с движком — симуляция будет работать в fallback-режиме.');
-                    }
                 }
             } else {
                 console.warn('[Nexus] Не удалось записать временный файл:', writeRes.message);
