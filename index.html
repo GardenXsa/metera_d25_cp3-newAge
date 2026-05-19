@@ -44,60 +44,59 @@
     <div class="content-wrapper">
 
         <!-- Главное Меню -->
-        <div id="main-menu" class="menu-screen active-screen">
-            <h1 data-i18n="mainMenu.title">Хроники Метерии: AI Приключение</h1>
-            <div class="menu-buttons">
-                <button id="new-game-button" data-i18n="mainMenu.newGame">Новая Игра</button>
-                <button id="load-game-button" data-i18n="mainMenu.loadGame">Загрузить Игру</button>
-                <button id="main-settings-button" data-i18n="mainMenu.settings">Настройки</button>
-                <button id="mods-button" data-i18n="mainMenu.mods">Моды</button>
-                <button id="help-button" data-i18n="mainMenu.help">Помощь</button>
-                <button id="community-button" data-i18n="mainMenu.community">Сообщество</button>
-                <p class="api-key-status" id="api-key-status" data-i18n="mainMenu.apiKeyStatusChecking">Статус API ключа: Проверка...</p>
+        <div id="main-menu" class="main-menu-screen active-screen">
+            <div class="mm-left-block">
+                <h1 class="mm-title" data-i18n="mainMenu.title">Хроники Метерии: AI Приключение</h1>
+                <div class="mm-nav">
+                    <button id="new-game-button" class="mm-nav-btn"><span data-i18n="mainMenu.newGame">Новая Игра</span></button>
+                    <button id="load-game-button" class="mm-nav-btn"><span data-i18n="mainMenu.loadGame">Загрузить Игру</span></button>
+                    <button id="main-settings-button" class="mm-nav-btn"><span data-i18n="mainMenu.settings">Настройки</span></button>
+                    <button id="mods-button" class="mm-nav-btn"><span data-i18n="mainMenu.mods">Моды</span></button>
+                </div>
+            </div>
+            
+            <div class="mm-sys-status">
+                <i class="fas fa-network-wired"></i> <span class="api-key-status" id="api-key-status" data-i18n="mainMenu.apiKeyStatusChecking">Статус API ключа: Проверка...</span>
+            </div>
+
+            <div class="mm-corner-br">
+                <button id="help-button" class="mm-corner-btn"><i class="fas fa-question-circle"></i> <span data-i18n="mainMenu.help">Помощь</span></button>
+                <button id="community-button" class="mm-corner-btn"><i class="fab fa-discord"></i> <span data-i18n="mainMenu.community">Сообщество</span></button>
             </div>
         </div>
 
                 <!-- Меню Модов (Обновленный Лаунчер) -->
-                <div id="mods-menu" class="menu-screen" style="display: none; max-width: 900px; width: 95%;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; border-bottom: 1px solid rgba(52, 152, 219, 0.5); padding-bottom: 12px; margin-bottom: 15px;">
-                                <h1 style="margin: 0; border: none; padding: 0;" data-i18n="modsMenu.title">Менеджер Модификаций</h1>
-                                <button id="open-mods-folder-button" class="bus-btn btn-blue" style="margin: 0;" title="Открыть папку с модами"><i class="fas fa-folder-open"></i> Папка модов</button>
+                <div id="mods-menu" class="menu-screen mm-screen" style="display: none;">
+                    <div class="mm-header">
+                        <h1 data-i18n="modsMenu.title">Менеджер Модификаций</h1>
+                        <button id="open-mods-folder-button" class="mm-btn" title="Открыть папку с модами"><i class="fas fa-folder-open"></i> Папка модов</button>
+                    </div>
+                    <div class="mm-layout">
+                        <div class="mm-lists-panel">
+                            <div class="mm-list-section">
+                                <div class="mm-section-title"><i class="fas fa-check-circle"></i> Активные моды (Порядок загрузки)</div>
+                                <div id="active-mods-list" class="mm-list"></div>
+                            </div>
+                            <div class="mm-list-section">
+                                <div class="mm-section-title"><i class="fas fa-box-open"></i> Доступные моды</div>
+                                <div id="available-mods-list" class="mm-list"></div>
+                            </div>
                         </div>
-                        
-                        <div class="mod-manager-dashboard" style="display: flex; width: 100%; gap: 12px; height: 60vh; min-height: 450px;">
-                                <!-- Колонка 1: Доступные моды -->
-                                <div class="mod-column">
-                                        <div class="mod-column-header">
-                                                Доступные моды
-                                        </div>
-                                        <div id="available-mods-list" class="rw-mod-list" style="flex-grow: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 5px;"></div>
+                        <div class="mm-details-panel">
+                            <div class="mm-details-inner">
+                                <div id="mod-details-content" class="mm-details-content">
+                                    <div class="mm-empty-state"><i class="fas fa-puzzle-piece"></i><br>Выберите мод для просмотра деталей</div>
                                 </div>
-
-                                <!-- Колонка 2: Активные моды (Порядок загрузки) -->
-                                <div class="mod-column mod-column-active">
-                                        <div class="mod-column-header">
-                                                Активные моды
-                                        </div>
-                                        <div id="active-mods-list" class="rw-mod-list" style="flex-grow: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 5px;"></div>
-                                </div>
-
-                                <!-- Колонка 3: Детали -->
-                                <div class="mod-column-details">
-                                        <div style="flex: 1; background: rgba(0,0,0,0.3); border: 1px solid rgba(93, 173, 226, 0.3); border-radius: 8px; padding: 12px; overflow-y: auto;">
-                                                <h3 style="color: #f1c40f; margin-top: 0; border-bottom: 1px dashed rgba(241, 196, 15, 0.3); padding-bottom: 8px;"><i class="fas fa-info-circle"></i> Детали</h3>
-                                                <div id="mod-details-content" style="color: #bdc3c7; font-size: 0.9em; line-height: 1.4;">
-                                                        <p style="text-align: center; font-style: italic; color: #7f8c8d; margin-top: 50px;">Выберите мод</p>
-                                                </div>
-                                        </div>
-                                        <div id="mod-errors-container" style="display: none; padding: 10px; background: rgba(231, 76, 60, 0.1); border: 1px solid #e74c3c; border-radius: 8px;">
-                                                <strong style="color: #e74c3c; display: block; margin-bottom: 5px;"><i class="fas fa-exclamation-triangle"></i> Ошибки:</strong>
-                                                <div id="mod-errors-list" style="color: #ffcccc; font-size: 0.85em; line-height: 1.3;"></div>
-                                        </div>
-                                </div>
+                            </div>
+                            <div id="mod-errors-container" class="mm-error-box" style="display: none;">
+                                <strong><i class="fas fa-exclamation-triangle"></i> Обнаружены ошибки:</strong>
+                                <div id="mod-errors-list"></div>
+                            </div>
                         </div>
-                        <div style="width: 100%; display: flex; justify-content: center; margin-top: 15px;">
-                                <button class="back-button" id="mods-back-button" data-i18n="settingsMenu.backButton">Назад</button>
-                        </div>
+                    </div>
+                    <div class="mm-footer">
+                        <button class="back-button" id="mods-back-button" data-i18n="settingsMenu.backButton">Назад</button>
+                    </div>
                 </div>
 
                 <!-- Меню Настроек -->
@@ -121,7 +120,7 @@
                                                 
                                                 <div class="form-group">
                                                         <label class="bus-label" for="language-select" data-i18n="settingsMenu.languageLabel">Язык:</label>
-                                                        <select id="language-select" class="bus-input" required></select>
+                                                        <select id="language-select" class="bus-input" required title="It's dangerous to go alone! Take this translation."></select>
                                                 </div>
                                                 
                                                 <div class="form-group" id="tts-voice-selector-group" style="display: none; margin-bottom: 0;">
@@ -241,7 +240,7 @@
 
                                                 <!-- БЛОК 3: Продвинутые параметры -->
                                                 <div class="settings-card" style="border-left: 3px solid #f39c12;">
-                                                        <h4 style="margin: 0 0 10px 0; color: #f39c12; font-size: 1em;"><i class="fas fa-cogs"></i> Продвинутые параметры</h4>
+                                                        <h4 style="margin: 0 0 10px 0; color: #f39c12; font-size: 1em;" title="War. War never changes. But the prompt might."><i class="fas fa-cogs"></i> Продвинутые параметры</h4>
                                                         
                                                         <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
                                                                 <input type="checkbox" id="prompt-caching-checkbox" style="width: auto; margin: 0; accent-color: #5dade2;">
@@ -374,7 +373,7 @@
                                                         </select>
 
                                                         <label>ID Модели:</label>
-                                                        <input type="text" id="ai-player-model-input" class="bus-input" placeholder="google/gemma-2-9b-it:free" style="margin-bottom: 10px;">
+                                                        <input type="text" id="ai-player-model-input" class="bus-input" placeholder="Wake the f*** up, samurai..." style="margin-bottom: 10px;">
 
                                                         <label>API Key (или Local URL):</label>
                                                         <input type="password" id="ai-player-key-input" class="bus-input" placeholder="Ключ или URL...">
@@ -402,7 +401,7 @@
                                 <!-- Вкладка: Звук -->
                                 <div id="settings-audio" class="settings-tab-content">
                                         <div class="bus-card-modern" style="margin-bottom: 12px; border-left: 3px solid #e67e22;">
-                                                <h4 class="bus-card-title-modern"><i class="fas fa-volume-up"></i> Звуковое сопровождение</h4>
+                                                <h4 class="bus-card-title-modern" title="Praise the Sun! And this soundtrack."><i class="fas fa-volume-up"></i> Звуковое сопровождение</h4>
                                                 <p style="font-size: 0.85em; color: #9ba4b5; margin-bottom: 10px;">Отрегулируйте громкость фоновой музыки и звуковых эффектов интерфейса.</p>
                                                 
                                                 <div class="form-group">
@@ -435,7 +434,7 @@
                                                 <div class="form-group" style="display: flex; align-items: flex-start; gap: 10px; margin-bottom: 0; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; border-left: 3px solid #8e44ad;">
                                                         <input type="checkbox" id="low-spec-checkbox" style="width: auto; margin: 3px 0 0 0; accent-color: #9b59b6;">
                                                         <div>
-                                                                <label for="low-spec-checkbox" style="display:block; margin: 0; color: #ecf0f1; font-weight: bold;" data-i18n="extraLoc.settings.lowSpecMode">Режим низкого качества (Отключить эффекты)</label>
+                                                                <label for="low-spec-checkbox" style="display:block; margin: 0; color: #ecf0f1; font-weight: bold;" data-i18n="extraLoc.settings.lowSpecMode" title="The cake is a lie, but the performance boost is real.">Режим низкого качества (Отключить эффекты)</label>
                                                                 <p style="font-size: 0.85em; color: #7f8c8d; margin-top: 5px; margin-bottom: 0;" data-i18n="extraLoc.settings.lowSpecDesc">Отключает туман, частицы и параллакс фона. Значительно снижает нагрузку на процессор и видеокарту.</p>
                                                         </div>
                                                 </div>
@@ -445,7 +444,7 @@
                                 <!-- Вкладка: Данные -->
                                 <div id="settings-data" class="settings-tab-content">
                                         <div class="bus-card-modern" style="margin-bottom: 12px; border-left: 3px solid #2ecc71;">
-                                                <h4 class="bus-card-title-modern"><i class="fas fa-save"></i> Сохранения и Автосейв</h4>
+                                                <h4 class="bus-card-title-modern" title="Hey, you. You're finally awake. Good thing we autosaved."><i class="fas fa-save"></i> Сохранения и Автосейв</h4>
                                                 <p style="font-size: 0.85em; color: #9ba4b5; margin-bottom: 10px;">Управление интервалом автосохранения и выбором папки на диске (для десктопной версии).</p>
                                                 
                                                 <div class="form-group" style="margin-bottom: 12px;">
@@ -459,7 +458,7 @@
                                                         </select>
                                                 </div>
                                                 <div class="form-group" style="margin-bottom: 0;">
-                                                        <label class="bus-label" data-i18n="settingsMenu.fsaLabel">Хранилище сохранений:</label>
+                                                        <label class="bus-label" data-i18n="settingsMenu.fsaLabel" title="The right man in the wrong place can make all the difference in the world.">Хранилище сохранений:</label>
                                                         <button id="fsa-select-directory-button" class="bus-btn btn-blue" style="display:none; width: 100%;" data-i18n="settingsMenu.fsaSelectDirectory"><i class="fas fa-folder-open"></i> Выбрать папку для сохранений</button>
                                                         <p id="fsa-status" style="font-size: 0.9em; margin-top: 8px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px; text-align: center;" data-i18n="fsa.checking">Проверка...</p>
                                                 </div>
@@ -467,9 +466,9 @@
                                 </div>
 
                                 <div class="form-group" style="margin-top: 12px;">
-                                         <button id="save-settings-button" class="bus-btn btn-green" data-i18n="settingsMenu.saveButton"><i class="fas fa-check-circle"></i> Сохранить настройки</button>
-                     <button id="use-user-key-button" style="display:none;">Использовать свой ключ</button>
-                     <button id="use-builtin-key-button" style="display:none;">Использовать встроенный ключ</button>
+                                         <button id="save-settings-button" class="bus-btn btn-green" data-i18n="settingsMenu.saveButton" title="Would you kindly save the settings?"><i class="fas fa-check-circle"></i> Сохранить настройки</button>
+                     <button id="use-user-key-button" style="display:none; width: 100%; margin-top: 10px;">Использовать свой ключ</button>
+                     <button id="use-builtin-key-button" style="display:none; width: 100%; margin-top: 10px;">Использовать встроенный ключ</button>
                                 </div>
                         </div>
                         <button class="back-button" id="settings-back-button" data-i18n="settingsMenu.backButton">Назад</button>
@@ -1008,14 +1007,7 @@
                      <div class="panel map-panel collapsible-panel">
                          <h2 class="panel-toggle"><span data-i18n="gameInterface.mapPanel.title">Карта</span> <span class="toggle-icon">▶</span></h2>
                          <div class="panel-content">
-                                                        <div class="map-controls-bar">
-                                <button class="map-filter-btn active" data-filter="none" title="Обычный вид"><i class="fas fa-globe"></i></button>
-                                <button class="map-filter-btn" data-filter="political" title="Политическая карта"><i class="fas fa-flag"></i></button>
-                                <button class="map-filter-btn" data-filter="economic" title="Экономика"><i class="fas fa-coins"></i></button>
-                                <button class="map-filter-btn" data-filter="threat" title="Уровень угрозы"><i class="fas fa-skull"></i></button>
-                                <button class="map-filter-btn" id="center-map-btn" title="Центрировать на герое"><i class="fas fa-crosshairs"></i></button>
-                            </div>
-                            <canvas id="visual-map" width="320" height="250"></canvas>
+                                                         <button id="open-map-modal-btn" class="bus-btn btn-blue" style="width: 100%; margin-bottom: 15px; padding: 12px; justify-content: center; font-size: 1.05em; border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.4);"><i class="fas fa-map-marked-alt"></i> Развернуть Карту Мира</button>
                              <h3 data-i18n="gameInterface.mapPanel.globalTitle">Известные регионы:</h3>
                              <ul id="global-locations-list"></ul>
                              <h3 data-i18n="gameInterface.mapPanel.customTitle">Открытые места:</h3>
@@ -1115,6 +1107,26 @@
             </div>
         </div>
 
+
+    <!-- Модальное окно Глобальной Карты -->
+    <div id="global-map-modal" class="custom-alert-overlay">
+        <div class="custom-alert-box" style="max-width: 95vw; width: 1400px; height: 90vh; display: flex; flex-direction: column; padding: 0; background: #1e2227; border: 1px solid #5dade2; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.8);">
+            <div style="background: #23282e; padding: 15px 25px; border-bottom: 1px solid #323942; display: flex; justify-content: space-between; align-items: center; z-index: 10;">
+                <h3 style="margin: 0; color: #5dade2; font-size: 1.5em; font-family: 'MedievalSharp', cursive;"><i class="fas fa-globe"></i> Глобальная Карта Метеры</h3>
+                <button id="close-map-modal-btn" style="background: transparent; border: none; color: #7f8c8d; font-size: 2em; cursor: pointer; padding: 0; line-height: 1; transition: color 0.2s;" onmouseover="this.style.color='#e74c3c'" onmouseout="this.style.color='#7f8c8d'">&times;</button>
+            </div>
+            <div class="map-controls-bar" style="padding: 10px; background: rgba(0,0,0,0.3); border-bottom: 1px solid #323942; margin: 0; display: flex; justify-content: center; gap: 10px; z-index: 10;">
+                <button class="map-filter-btn active" data-filter="none" title="Обычный вид" style="padding: 8px 15px; font-size: 1em;"><i class="fas fa-mountain"></i> Ландшафт</button>
+                <button class="map-filter-btn" data-filter="political" title="Политическая карта" style="padding: 8px 15px; font-size: 1em;"><i class="fas fa-flag"></i> Политика</button>
+                <button class="map-filter-btn" data-filter="economic" title="Экономика" style="padding: 8px 15px; font-size: 1em;"><i class="fas fa-coins"></i> Экономика</button>
+                <button class="map-filter-btn" data-filter="threat" title="Уровень угрозы" style="padding: 8px 15px; font-size: 1em;"><i class="fas fa-skull"></i> Угрозы</button>
+                <button class="map-filter-btn" id="center-map-btn" title="Центрировать на герое" style="margin-left: 20px; padding: 8px 15px; font-size: 1em; color: #2ecc71; border-color: #27ae60;"><i class="fas fa-crosshairs"></i> Где я?</button>
+            </div>
+            <div id="map-canvas-container" style="flex-grow: 1; position: relative; overflow: hidden; background: #0a0a0a;">
+                <canvas id="visual-map" width="1400" height="800" style="display: block; width: 100%; height: 100%; cursor: grab;"></canvas>
+            </div>
+        </div>
+    </div>
 
     <!-- Модальное окно выбора модели -->
     <div id="model-selector-modal" class="custom-alert-overlay">

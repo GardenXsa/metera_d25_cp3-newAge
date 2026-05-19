@@ -1269,6 +1269,7 @@ async function executeCommand(command, args) {
             case 'recordEroticScene':
             case 'giveItem':
             case 'setPlayerDescription':
+            case 'renderLocation':
                 return executeNonInventoryCommand(command, args);
 
             case 'addItem':
@@ -4245,7 +4246,6 @@ function applyEffectAction(entity, effect, action) {
 
 // --- Функции Управления Экранами ---
 function setActiveScreen(screenId) {
-    // 1. Принудительно закрываем все модальные окна и оверлеи
     const overlays = [
         document.getElementById('custom-alert-modal'),
         document.getElementById('save-slot-modal'),
@@ -4254,59 +4254,50 @@ function setActiveScreen(screenId) {
         document.getElementById('loading-overlay'),
         document.getElementById('ai-error-modal')
     ];
-    overlays.forEach(el => {
-        if (el) {
-            el.classList.remove('visible');
-            el.style.display = 'none';
-        }
-    });
+    overlays.forEach(el => { if (el) { el.classList.remove('visible'); el.style.display = 'none'; } });
 
-    // --- [ИСПРАВЛЕНИЕ ЗДЕСЬ!] ---
-    // Создаем полный список ВСЕХ переключаемых экранов, включая игровой.
-    const allScreens = [
-        mainMenu,
-        settingsMenu,
-        characterCreationScreen,
-        loadGameScreen,
-        helpScreen,
-        narratorSelectionScreen,
-        worldSetupScreen,
-        gameInterface // <-- Вот тот, кого мы забыли!
-    ];
-    // -----------------------------
+    const allScreens = [mainMenu, settingsMenu, characterCreationScreen, loadGameScreen, helpScreen, narratorSelectionScreen, worldSetupScreen, gameInterface, document.getElementById('mods-menu')];
+    const currentActive = document.querySelector('.menu-screen.active-screen, .main-menu-screen.active-screen, .game-container.active-screen');
+    const targetScreen = document.getElementById(screenId);
 
-    // 2. Скрываем все экраны, кроме нужного
-    allScreens.forEach(screen => {
-        if (screen) { // Проверяем, что элемент существует
-            screen.classList.remove('active-screen');
-            if (screen.id !== screenId) {
-                screen.style.display = 'none';
-            }
-        }
-    });
-
-    // 3. Активируем нужный экран
-    const activeScreen = document.getElementById(screenId);
-    if (activeScreen) {
-                    // Для меню используем flex, для игры тоже flex (сохраняем flex-контекст)
-            activeScreen.style.display = 'flex';
-
-        requestAnimationFrame(() => {
-            activeScreen.classList.add('active-screen');
-
-            if (screenId === 'character-creation-screen') {
-                const nameInput = document.getElementById('char-name-input');
-                if (nameInput) {
-                    nameInput.focus();
-                }
+    const executeSwap = () => {
+        allScreens.forEach(screen => {
+            if (screen) {
+                screen.classList.remove('active-screen');
+                if (screen.id !== screenId) screen.style.display = 'none';
             }
         });
+        if (targetScreen) {
+            targetScreen.style.display = 'flex';
+            requestAnimationFrame(() => {
+                targetScreen.classList.add('active-screen');
+                if (screenId === 'character-creation-screen') {
+                    const nameInput = document.getElementById('char-name-input');
+                    if (nameInput) nameInput.focus();
+                }
+            });
+        }
+    };
 
-        console.log(`Активирован экран: ${screenId}`);
-    } else {
-        console.error(`Экран с id ${screenId} не найден!`);
+    // Анимация ухода из главного меню
+    if (currentActive && currentActive.id === 'main-menu' && screenId !== 'main-menu') {
+        const leftBlock = currentActive.querySelector('.mm-left-block');
+        if (leftBlock) leftBlock.style.animation = 'slideOutLeft 0.3s forwards cubic-bezier(0.7, 0, 0.3, 1)';
+        setTimeout(executeSwap, 250);
+    } 
+    // Анимация возврата в главное меню
+    else if (screenId === 'main-menu') {
+        if (currentActive) currentActive.classList.remove('active-screen'); // Начинаем фейд-аут текущего
+        setTimeout(() => {
+            executeSwap();
+            const leftBlock = targetScreen.querySelector('.mm-left-block');
+            if (leftBlock) leftBlock.style.animation = 'slideInLeft 0.4s forwards cubic-bezier(0.2, 0.8, 0.2, 1)';
+        }, 200);
+    } 
+    // Обычный переход
+    else {
+        executeSwap();
     }
-
 }
 
 // --- Функции для вкладок Помощи ---
@@ -6737,6 +6728,53 @@ function setupEventListeners() {
             });
         }
     });
+
+    // --- Глобальная Карта (Модальное окно) ---
+    const openMapBtn = document.getElementById('open-map-modal-btn');
+    const closeMapBtn = document.getElementById('close-map-modal-btn');
+    const mapModal = document.getElementById('global-map-modal');
+    if (openMapBtn && mapModal && closeMapBtn) {
+        openMapBtn.addEventListener('click', () => {
+            mapModal.style.display = 'flex';
+            setTimeout(() => mapModal.classList.add('visible'), 10);
+            
+            const container = document.getElementById('map-canvas-container');
+            const canvas = document.getElementById('visual-map');
+            if (container && canvas) {
+                canvas.width = container.clientWidth;
+                canvas.height = container.clientHeight;
+            }
+            
+            if (window.Cartographer) {
+                Cartographer.mapState.isFollowingPlayer = true;
+                Cartographer.requestRender();
+            }
+        });
+        
+        closeMapBtn.addEventListener('click', () => {
+            mapModal.classList.remove('visible');
+            setTimeout(() => mapModal.style.display = 'none', 300);
+        });
+        
+        mapModal.addEventListener('click', (e) => {
+            if (e.target === mapModal) {
+                mapModal.classList.remove('visible');
+                setTimeout(() => mapModal.style.display = 'none', 300);
+            }
+        });
+        
+        window.addEventListener('resize', () => {
+            if (mapModal.classList.contains('visible')) {
+                const container = document.getElementById('map-canvas-container');
+                const canvas = document.getElementById('visual-map');
+                if (container && canvas) {
+                    canvas.width = container.clientWidth;
+                    canvas.height = container.clientHeight;
+                    if (window.Cartographer) Cartographer.requestRender();
+                }
+            }
+        });
+    }
 
     // --- Внутриигровое меню ---
     if (inGameMenuButton) inGameMenuButton.addEventListener('click', openInGameMenu);
@@ -13474,6 +13512,9 @@ if (player.nexusData && player.nexusData[args.id]) {
 
             // --- ОКРУЖЕНИЕ ---
 
+            case 'renderLocation':
+                feedback = null; // Заглушка, чтобы не выдавало ошибку
+                break;
             case 'addEnvironment':
                 if (args.aiIdentifier && args.name && args.type) {
                     const binding = args.boundTo || player.location;

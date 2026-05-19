@@ -119,65 +119,75 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function createModElement(mod, isActive, index, errorMsg) {
         const el = document.createElement('div');
-        let classes = 'rw-mod-item';
+        let classes = 'mm-card';
         if (mod.id === selectedModId) classes += ' selected';
         if (mod.id === 'base_game') classes += ' core-mod';
         if (errorMsg || mod.error) classes += ' has-error';
         el.className = classes;
 
-        // Build info section using safe DOM API (no innerHTML with user data)
         const infoDiv = document.createElement('div');
-        infoDiv.className = 'rw-mod-info';
+        infoDiv.className = 'mm-card-info';
 
-        const titleSpan = document.createElement('span');
-        titleSpan.className = 'rw-mod-title';
-        titleSpan.textContent = mod.name || mod.id; // textContent = auto-escaped
+        const titleSpan = document.createElement('div');
+        titleSpan.className = 'mm-card-title';
+        titleSpan.textContent = mod.name || mod.id;
 
-        const authorSpan = document.createElement('span');
-        authorSpan.className = 'rw-mod-author';
-        authorSpan.textContent = mod.author || 'Неизвестно'; // textContent = auto-escaped
+        const versionSpan = document.createElement('span');
+        versionSpan.className = 'mm-card-version';
+        versionSpan.textContent = `v${mod.version || '1.0'}`;
+        titleSpan.appendChild(versionSpan);
+
+        const authorSpan = document.createElement('div');
+        authorSpan.className = 'mm-card-author';
+        authorSpan.textContent = `от ${mod.author || 'Неизвестно'}`;
 
         infoDiv.appendChild(titleSpan);
         infoDiv.appendChild(authorSpan);
         el.appendChild(infoDiv);
 
-        // Controls (only onclick handlers with escaped mod.id)
-        const safeModId = escapeHTML(mod.id);
         if (mod.id !== 'base_game') {
             const controlsDiv = document.createElement('div');
-            controlsDiv.className = 'rw-mod-controls';
+            controlsDiv.className = 'mm-card-controls';
+            
             if (isActive) {
-                const upBtn = document.createElement('div');
-                upBtn.className = 'rw-btn';
-                upBtn.title = 'Вверх';
+                const upBtn = document.createElement('button');
+                upBtn.className = 'mm-ctrl-btn';
+                upBtn.title = 'Поднять приоритет';
                 upBtn.innerHTML = '<i class="fas fa-chevron-up"></i>';
-                upBtn.addEventListener('click', (e) => { e.stopPropagation(); moveModUp(index); });
+                upBtn.disabled = index <= 1; // Cannot move above base_game
+                upBtn.addEventListener('click', (e) => { e.stopPropagation(); if(index > 1) moveModUp(index); });
 
-                const downBtn = document.createElement('div');
-                downBtn.className = 'rw-btn';
-                downBtn.title = 'Вниз';
+                const downBtn = document.createElement('button');
+                downBtn.className = 'mm-ctrl-btn';
+                downBtn.title = 'Опустить приоритет';
                 downBtn.innerHTML = '<i class="fas fa-chevron-down"></i>';
+                downBtn.disabled = index === 0 || index >= activeModIds.length - 1;
                 downBtn.addEventListener('click', (e) => { e.stopPropagation(); moveModDown(index); });
 
-                const removeBtn = document.createElement('div');
-                removeBtn.className = 'rw-btn rw-btn-remove';
-                removeBtn.title = 'Отключить';
-                removeBtn.innerHTML = '<i class="fas fa-times"></i>';
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'mm-ctrl-btn danger';
+                removeBtn.title = 'Отключить мод';
+                removeBtn.innerHTML = '<i class="fas fa-minus"></i>';
                 removeBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMod(mod.id, false); });
 
                 controlsDiv.appendChild(upBtn);
                 controlsDiv.appendChild(downBtn);
                 controlsDiv.appendChild(removeBtn);
             } else {
-                const addBtn = document.createElement('div');
-                addBtn.className = 'rw-btn rw-btn-add';
-                addBtn.title = 'Включить';
+                const addBtn = document.createElement('button');
+                addBtn.className = 'mm-ctrl-btn success';
+                addBtn.title = 'Включить мод';
                 addBtn.innerHTML = '<i class="fas fa-plus"></i>';
                 addBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMod(mod.id, true); });
 
                 controlsDiv.appendChild(addBtn);
             }
             el.appendChild(controlsDiv);
+        } else {
+            const coreBadge = document.createElement('div');
+            coreBadge.className = 'mm-core-badge';
+            coreBadge.textContent = 'ЯДРО';
+            el.appendChild(coreBadge);
         }
 
         el.addEventListener('click', () => {
@@ -217,82 +227,62 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderModDetails(mod) {
-        // Use safe DOM API — textContent auto-escapes, prevents XSS from mod metadata
         modDetailsContent.innerHTML = '';
 
         if (mod.error) {
-            const h3 = document.createElement('h3');
-            h3.textContent = mod.name || mod.id;
-
-            const errP = document.createElement('p');
-            errP.className = 'error-text';
-            const strong = document.createElement('strong');
-            strong.textContent = 'Ошибка загрузки: ';
-            errP.appendChild(strong);
-            errP.appendChild(document.createTextNode(mod.error));
-
-            const hintP = document.createElement('p');
-            hintP.textContent = 'Этот мод не может быть загружен. Проверьте файл mod.json.';
-
-            modDetailsContent.appendChild(h3);
-            modDetailsContent.appendChild(errP);
-            modDetailsContent.appendChild(hintP);
+            const errBox = document.createElement('div');
+            errBox.className = 'mm-details-error';
+            errBox.innerHTML = `<h3><i class="fas fa-times-circle"></i> Ошибка загрузки</h3><p><strong>${escapeHTML(mod.name || mod.id)}:</strong> ${escapeHTML(mod.error)}</p><p class="mm-hint">Проверьте файл mod.json на синтаксические ошибки.</p>`;
+            modDetailsContent.appendChild(errBox);
             return;
         }
 
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'mm-details-header';
+        
         const h2 = document.createElement('h2');
-        h2.style.cssText = 'color: #5dade2; margin-top: 0; margin-bottom: 5px;';
         h2.textContent = mod.name;
+        
+        const badgesDiv = document.createElement('div');
+        badgesDiv.className = 'mm-details-badges';
+        badgesDiv.innerHTML = `<span class="mm-badge version">v${escapeHTML(mod.version || '1.0')}</span><span class="mm-badge author"><i class="fas fa-user"></i> ${escapeHTML(mod.author || 'Неизвестный')}</span>`;
+        
+        headerDiv.appendChild(h2);
+        headerDiv.appendChild(badgesDiv);
 
         const idP = document.createElement('p');
-        idP.style.cssText = 'color: #7f8c8d; font-family: monospace; margin-top: 0;';
-        idP.textContent = `ID: ${mod.id} | Версия: ${mod.version || '1.0'}`;
-
-        const authorP = document.createElement('p');
-        authorP.style.cssText = 'color: #f39c12; font-size: 0.9em;';
-        const authorIcon = document.createElement('i');
-        authorIcon.className = 'fas fa-user';
-        authorP.appendChild(authorIcon);
-        authorP.appendChild(document.createTextNode(` Автор: ${mod.author || 'Неизвестный автор'}`));
+        idP.className = 'mm-details-id';
+        idP.innerHTML = `<code>ID: ${escapeHTML(mod.id)}</code>`;
 
         const descDiv = document.createElement('div');
-        descDiv.style.cssText = 'background: rgba(0,0,0,0.4); padding: 10px; border-radius: 6px; border-left: 3px solid #3498db; margin: 15px 0;';
-        const descP = document.createElement('p');
-        descP.style.cssText = 'margin: 0; color: #ecf0f1;';
-        descP.textContent = mod.description || 'Описание отсутствует.';
-        descDiv.appendChild(descP);
+        descDiv.className = 'mm-details-desc';
+        descDiv.textContent = mod.description || 'Описание отсутствует.';
 
         const depsDiv = document.createElement('div');
-        depsDiv.className = 'mod-dependencies';
-        depsDiv.style.cssText = 'margin-top: 15px;';
-        const depsH4 = document.createElement('h4');
-        depsH4.style.cssText = 'color: #aeb6bf; margin-bottom: 5px;';
-        const depsIcon = document.createElement('i');
-        depsIcon.className = 'fas fa-link';
-        depsH4.appendChild(depsIcon);
-        depsH4.appendChild(document.createTextNode(' Зависимости:'));
-        depsDiv.appendChild(depsH4);
+        depsDiv.className = 'mm-dependencies';
+        const depsTitle = document.createElement('h4');
+        depsTitle.innerHTML = '<i class="fas fa-link"></i> Зависимости:';
+        depsDiv.appendChild(depsTitle);
 
-        const depsUl = document.createElement('ul');
-        depsUl.style.cssText = 'margin: 0; padding-left: 20px; color: #95a5a6;';
+        const depsList = document.createElement('div');
+        depsList.className = 'mm-deps-list';
         if (mod.dependencies && mod.dependencies.length > 0) {
-            for (const dep of mod.dependencies) {
-                const li = document.createElement('li');
-                li.textContent = dep; // auto-escaped
-                depsUl.appendChild(li);
-            }
+            mod.dependencies.forEach(dep => {
+                const badge = document.createElement('span');
+                badge.className = 'mm-dep-badge';
+                badge.textContent = dep;
+                depsList.appendChild(badge);
+            });
         } else {
-            const li = document.createElement('li');
-            const em = document.createElement('i');
-            em.textContent = 'Нет зависимостей (только base_game)';
-            li.appendChild(em);
-            depsUl.appendChild(li);
+            const badge = document.createElement('span');
+            badge.className = 'mm-dep-badge empty';
+            badge.textContent = 'Нет зависимостей';
+            depsList.appendChild(badge);
         }
-        depsDiv.appendChild(depsUl);
+        depsDiv.appendChild(depsList);
 
-        modDetailsContent.appendChild(h2);
+        modDetailsContent.appendChild(headerDiv);
         modDetailsContent.appendChild(idP);
-        modDetailsContent.appendChild(authorP);
         modDetailsContent.appendChild(descDiv);
         modDetailsContent.appendChild(depsDiv);
     }
