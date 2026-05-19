@@ -254,7 +254,9 @@ async function initEngine(forceRestart = false, activeMods = []) {
 }
 
 async function buildWorld(playerId, era, initialAgents, globalLocations, startDay) {
-    return await sendCommand('buildWorld', { player_id: playerId, era: era, initial_agents: initialAgents, global_locations: globalLocations, start_day: startDay });
+    // buildWorld generates 256x256 terrain (Perlin noise), A* roads, NPCs — heavy computation.
+    // 30s default timeout is too short; use 5 minutes like bootstrapWorld.
+    return await sendCommand('buildWorld', { player_id: playerId, era: era, initial_agents: initialAgents, global_locations: globalLocations, start_day: startDay }, 300000);
 }
 
 async function bootstrapWorld(days, startDay) {
