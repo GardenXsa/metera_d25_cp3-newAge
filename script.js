@@ -4506,6 +4506,44 @@ window.openHelpSubTab = function(evt, tabName) {
     if (evt && evt.currentTarget) evt.currentTarget.classList.add('active');
 };
 
+// --- CSP-compliant event delegation (replaces inline onclick/onmouseover/onmouseout handlers) ---
+document.addEventListener('DOMContentLoaded', function() {
+    // Help tab buttons (data-help-tab attribute)
+    document.querySelectorAll('.help-tab-btn[data-help-tab]').forEach(btn => {
+        btn.addEventListener('click', function(evt) {
+            const tabName = this.getAttribute('data-help-tab');
+            if (tabName) window.openHelpTab(evt, tabName);
+        });
+    });
+
+    // Help sub-tab buttons (data-help-subtab attribute)
+    document.querySelectorAll('.sub-tab-btn[data-help-subtab]').forEach(btn => {
+        btn.addEventListener('click', function(evt) {
+            const tabName = this.getAttribute('data-help-subtab');
+            if (tabName) window.openHelpSubTab(evt, tabName);
+        });
+    });
+
+    // Close map modal button (replaces onmouseover/onmouseout inline handlers)
+    const closeMapBtn = document.getElementById('close-map-modal-btn');
+    if (closeMapBtn) {
+        closeMapBtn.addEventListener('mouseenter', function() { this.style.color = '#e74c3c'; });
+        closeMapBtn.addEventListener('mouseleave', function() { this.style.color = '#7f8c8d'; });
+    }
+
+    // Close examine modal button (replaces inline onclick handler)
+    const closeExamineBtn = document.getElementById('close-examine-modal-btn');
+    if (closeExamineBtn) {
+        closeExamineBtn.addEventListener('click', function() {
+            const modal = document.getElementById('item-examine-modal');
+            if (modal) {
+                modal.classList.remove('visible');
+                setTimeout(() => { modal.style.display = 'none'; }, 300);
+            }
+        });
+    }
+});
+
 // --- Custom Alert Modal ---
 function showCustomAlert(message) {
     const modal = document.getElementById('custom-alert-modal');
@@ -7737,11 +7775,33 @@ async function finalizeWorldSetupAndStart() {
             const writeRes = await window.electronAPI.nexusWriteSyncFile(worldFileData);
             if (writeRes.status === 'ok' && writeRes.path) {
                 // Шаг 2: Отправляем команду движку прочитать файл напрямую
-                const loadRes = await window.electronAPI.nexusLoadWorldFile(writeRes.path);
+                let loadRes;
+                try {
+                    loadRes = await window.electronAPI.nexusLoadWorldFile(writeRes.path);
+                } catch (ipcErr) {
+                    loadRes = { status: 'error', message: ipcErr.message || 'IPC call failed' };
+                }
                 if (loadRes.status === 'ok') {
                     console.log('[Nexus] Файловая синхронизация мира завершена:', loadRes.message);
                 } else {
-                    console.warn('[Nexus] loadWorldFile не удался:', loadRes.message);
+                    console.warn('[Nexus] loadWorldFile не удался:', loadRes.message || loadRes.error || 'unknown error');
+                    // Fallback: если loadWorldFile не поддерживается движком (старый бинарник),
+                    // пробуем syncState через stdin — это медленнее, но совместимо.
+                    if (window.electronAPI && window.electronAPI.nexusSyncState) {
+                        console.log('[Nexus] Попытка fallback через syncState (stdin)...');
+                        try {
+                            const syncRes = await window.electronAPI.nexusSyncState(World, syncItems, syncContainers);
+                            if (syncRes.status === 'ok') {
+                                console.log('[Nexus] Fallback syncState завершён успешно.');
+                            } else {
+                                console.warn('[Nexus] Fallback syncState тоже не удался:', syncRes.message || syncRes.error);
+                            }
+                        } catch (syncErr) {
+                            console.warn('[Nexus] Fallback syncState исключение:', syncErr.message || syncErr);
+                        }
+                    } else {
+                        console.warn('[Nexus] syncState IPC недоступен. Мир не синхронизирован с движком — симуляция будет работать в fallback-режиме.');
+                    }
                 }
             } else {
                 console.warn('[Nexus] Не удалось записать временный файл:', writeRes.message);

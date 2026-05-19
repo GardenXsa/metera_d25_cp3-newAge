@@ -656,12 +656,12 @@
             
             <div class="help-content">
                 <div class="help-tabs">
-                    <button class="help-tab-btn active" onclick="openHelpTab(event, 'general-help')" data-i18n="helpScreen.tabs.general">Основы</button>
-                    <button class="help-tab-btn" onclick="openHelpTab(event, 'combat-help')" data-i18n="helpScreen.tabs.combat">Кровь и Сталь</button>
-                    <button class="help-tab-btn" onclick="openHelpTab(event, 'nsfw-help')" data-i18n="helpScreen.tabs.nsfw">Пороки (18+)</button>
-                    <button class="help-tab-btn" onclick="openHelpTab(event, 'economy-help')" data-i18n="helpScreen.tabs.economy">Золото</button>
-                    <button class="help-tab-btn" onclick="openHelpTab(event, 'world-help')" data-i18n="helpScreen.tabs.world">Мир</button>
-                    <button class="help-tab-btn" onclick="openHelpTab(event, 'api-help')" data-i18n="helpScreen.tabs.api">Эфир (API)</button>
+                    <button class="help-tab-btn active" data-help-tab="general-help" data-i18n="helpScreen.tabs.general">Основы</button>
+                    <button class="help-tab-btn" data-help-tab="combat-help" data-i18n="helpScreen.tabs.combat">Кровь и Сталь</button>
+                    <button class="help-tab-btn" data-help-tab="nsfw-help" data-i18n="helpScreen.tabs.nsfw">Пороки (18+)</button>
+                    <button class="help-tab-btn" data-help-tab="economy-help" data-i18n="helpScreen.tabs.economy">Золото</button>
+                    <button class="help-tab-btn" data-help-tab="world-help" data-i18n="helpScreen.tabs.world">Мир</button>
+                    <button class="help-tab-btn" data-help-tab="api-help" data-i18n="helpScreen.tabs.api">Эфир (API)</button>
                 </div>
 
                 <div id="general-help" class="help-tab-content active">
@@ -774,10 +774,10 @@
                     <div class="wiki-header-quote" data-i18n="helpScreen.api.quote">«Чтобы вдохнуть жизнь в голема, нужна искра Эфира.»</div>
 
                     <div class="sub-tabs" style="margin-bottom: 20px;">
-                        <button class="sub-tab-btn active" onclick="openHelpSubTab(event, 'api-help-basics')" data-i18n="helpScreen.api.tabs.basics">Базовые понятия</button>
-                        <button class="sub-tab-btn" onclick="openHelpSubTab(event, 'api-help-reqs')" data-i18n="helpScreen.api.tabs.reqs">⚠️ Требования (ВАЖНО)</button>
-                        <button class="sub-tab-btn" onclick="openHelpSubTab(event, 'api-help-providers')" data-i18n="helpScreen.api.tabs.providers">Провайдеры</button>
-                        <button class="sub-tab-btn" onclick="openHelpSubTab(event, 'api-help-trouble')" data-i18n="helpScreen.api.tabs.trouble">Решение проблем</button>
+                        <button class="sub-tab-btn active" data-help-subtab="api-help-basics" data-i18n="helpScreen.api.tabs.basics">Базовые понятия</button>
+                        <button class="sub-tab-btn" data-help-subtab="api-help-reqs" data-i18n="helpScreen.api.tabs.reqs">⚠️ Требования (ВАЖНО)</button>
+                        <button class="sub-tab-btn" data-help-subtab="api-help-providers" data-i18n="helpScreen.api.tabs.providers">Провайдеры</button>
+                        <button class="sub-tab-btn" data-help-subtab="api-help-trouble" data-i18n="helpScreen.api.tabs.trouble">Решение проблем</button>
                     </div>
 
                     <div id="api-help-basics" class="sub-tab-content active">
@@ -1113,7 +1113,7 @@
         <div class="custom-alert-box" style="max-width: 95vw; width: 1400px; height: 90vh; display: flex; flex-direction: column; padding: 0; background: #1e2227; border: 1px solid #5dade2; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.8);">
             <div style="background: #23282e; padding: 15px 25px; border-bottom: 1px solid #323942; display: flex; justify-content: space-between; align-items: center; z-index: 10;">
                 <h3 style="margin: 0; color: #5dade2; font-size: 1.5em; font-family: 'MedievalSharp', cursive;"><i class="fas fa-globe"></i> Глобальная Карта Метеры</h3>
-                <button id="close-map-modal-btn" style="background: transparent; border: none; color: #7f8c8d; font-size: 2em; cursor: pointer; padding: 0; line-height: 1; transition: color 0.2s;" onmouseover="this.style.color='#e74c3c'" onmouseout="this.style.color='#7f8c8d'">&times;</button>
+                <button id="close-map-modal-btn" class="close-btn-hover" style="background: transparent; border: none; color: #7f8c8d; font-size: 2em; cursor: pointer; padding: 0; line-height: 1; transition: color 0.2s;">&times;</button>
             </div>
             <div class="map-controls-bar" style="padding: 10px; background: rgba(0,0,0,0.3); border-bottom: 1px solid #323942; margin: 0; display: flex; justify-content: center; gap: 10px; z-index: 10;">
                 <button class="map-filter-btn active" data-filter="none" title="Обычный вид" style="padding: 8px 15px; font-size: 1em;"><i class="fas fa-mountain"></i> Ландшафт</button>
@@ -1274,7 +1274,7 @@
                 <strong style="color: #e67e22; font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px;"><i class="fas fa-scroll"></i> Летопись предмета:</strong>
                 <div id="examine-history-content" style="margin-top: 8px; font-size: 0.85em; color: #bdc3c7; max-height: 150px; overflow-y: auto; line-height: 1.4; padding-right: 5px;"></div>
             </div>
-            <button class="back-button" style="width: 100%; margin-top: 20px; background: #8b0000; border-color: #ff4500; color: white; font-weight: bold;" onclick="document.getElementById('item-examine-modal').classList.remove('visible'); setTimeout(() => document.getElementById('item-examine-modal').style.display='none', 300);">Закрыть фолиант</button>
+            <button id="close-examine-modal-btn" class="back-button" style="width: 100%; margin-top: 20px; background: #8b0000; border-color: #ff4500; color: white; font-weight: bold;">Закрыть фолиант</button>
         </div>
     </div>
 
