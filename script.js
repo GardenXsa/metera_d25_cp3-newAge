@@ -1,4 +1,31 @@
 // ======================================================================
+// --- MARKED.JS FALLBACK (in case CDN is blocked by CSP/offline) ---
+// ======================================================================
+if (typeof marked === 'undefined') {
+    console.warn('[marked] CDN not loaded. Using simple Markdown fallback renderer.');
+    window.marked = {
+        parse: function(text) {
+            if (typeof text !== 'string') return '';
+            return text
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                .replace(/__(.+?)__/g, '<u>$1</u>')
+                .replace(/_(.+?)_/g, '<em>$1</em>')
+                .replace(/~~(.+?)~~/g, '<del>$1</del>')
+                .replace(/`(.+?)`/g, '<code>$1</code>')
+                .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+                .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+                .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+                .replace(/^- (.+)$/gm, '<li>$1</li>')
+                .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+                .replace(/\n{2,}/g, '</p><p>')
+                .replace(/\n/g, '<br>');
+        }
+    };
+}
+
+// ======================================================================
 // --- SEEDED PRNG (deterministic rolls for game mechanics) ---
 // ======================================================================
 const GameRNG = {

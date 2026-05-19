@@ -50,6 +50,7 @@ function startEngine() {
 
         engineProcess = spawn(enginePath, [], {
             stdio: ['pipe', 'pipe', 'pipe'],
+            cwd: path.join(__dirname),
             windowsHide: true
         });
 
@@ -496,12 +497,12 @@ const server = http.createServer((req, res) => {
         if (ext === '.html') {
             res.setHeader('Content-Security-Policy',
                 "default-src 'self' http://127.0.0.1:" + PORT + "; " +
-                "script-src 'self' 'unsafe-eval' http://127.0.0.1:" + PORT + " https://cdnjs.cloudflare.com; " +
-                "style-src 'self' 'unsafe-inline' http://127.0.0.1:" + PORT + " https://fonts.googleapis.com; " +
-                "font-src 'self' http://127.0.0.1:" + PORT + " https://fonts.gstatic.com; " +
+                "script-src 'self' 'unsafe-eval' http://127.0.0.1:" + PORT + " https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
+                "style-src 'self' 'unsafe-inline' http://127.0.0.1:" + PORT + " https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
+                "font-src 'self' http://127.0.0.1:" + PORT + " https://fonts.gstatic.com https://cdnjs.cloudflare.com; " +
                 "img-src 'self' data: http://127.0.0.1:" + PORT + " https:; " +
                 "media-src 'self' http://127.0.0.1:" + PORT + " https:; " +
-                "connect-src 'self' http://127.0.0.1:" + PORT + ";"
+                "connect-src 'self' http://127.0.0.1:" + PORT + " https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;"
             );
         }
         res.end(data);
