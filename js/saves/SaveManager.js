@@ -282,15 +282,24 @@ async function loadGame(slotType, slotId) {
         }
 
         // T3 Migration (Выполняется ПОСЛЕ initWorldSimulator, чтобы не затереть предметы)
-        if (!player.container_backpack) {
-            player.container_backpack = await CoreInventorySystemAsync.createContainer("player_backpack", "player", 100, 30);
+        // Используем ensurePlayerContainers() — проверяет не только ID, но и наличие в ContainerRegistry.
+        // Если контейнер есть в player.X, но отсутствует в ContainerRegistry — пересоздаёт.
+        const needsBackpackMigration = !player.container_backpack;
+        const needsEquipmentMigration = !player.container_equipment;
+
+        await ensurePlayerContainers();
+
+        // Миграция старых предметов из player.inventory (T2 → T3 формат)
+        if (needsBackpackMigration && player.inventory) {
             for (let key in player.inventory) {
                 let oldItem = player.inventory[key];
-                await CoreInventorySystemAsync.createItem(oldItem.aiIdentifier || oldItem.id, oldItem.quantity || 1, player.container_backpack, oldItem);
+                if (oldItem) {
+                    await CoreInventorySystemAsync.createItem(oldItem.aiIdentifier || oldItem.id, oldItem.quantity || 1, player.container_backpack, oldItem);
+                }
             }
         }
-        if (!player.container_equipment) {
-            player.container_equipment = await CoreInventorySystemAsync.createContainer("player_equipment", "player", 50, 10);
+        // Миграция старой экипировки из player.equipment (T2 → T3 формат)
+        if (needsEquipmentMigration && player.equipment) {
             for (let slot in player.equipment) {
                 let oldItem = player.equipment[slot];
                 if (oldItem) {
@@ -358,7 +367,7 @@ async function loadGame(slotType, slotId) {
         player.archiveSummaries = player.archiveSummaries || {};
         player.factionData = player.factionData || { global: t('factions.global', null, 'Общая') };
         player.nexusData = player.nexusData || {};
-        syncPlayerContainerBindings();
+        await syncPlayerContainerBindings();
         syncPlayerGoldFromInventory();
 
         if (typeof player.stats.reputation === 'number' || player.stats.reputation === undefined) {
