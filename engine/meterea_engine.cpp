@@ -13644,6 +13644,57 @@ response.set("world", g_world.toJson());
             g_deleted_containers.clear();
             response.set("status", "ok");
         }
+        else if (cmd == "loadWorldFile") {
+            // Load world state from a file instead of stdin pipe.
+            // This avoids the 64KB pipe buffer limit for large world JSON (1.5MB+).
+            std::string filePath = command.has("path") ? command["path"].asString() : "";
+            if (filePath.empty()) {
+                response.set("status", "error");
+                response.set("message", "Missing 'path' parameter");
+            } else {
+                try {
+                    std::ifstream f(filePath);
+                    if (!f.is_open()) {
+                        response.set("status", "error");
+                        response.set("message", "Cannot open file: " + filePath);
+                    } else {
+                        nlohmann::json worldJson;
+                        f >> worldJson;
+                        g_world = World::fromJson(JsonValue(worldJson));
+
+                        // Optionally load items and containers from separate keys
+                        if (worldJson.contains("items") && worldJson["items"].is_array()) {
+                            g_items.clear();
+                            for (size_t i = 0; i < worldJson["items"].size(); i++) {
+                                PhysicalItem item = PhysicalItem::fromJson(JsonValue(worldJson["items"][i][1]));
+                                item.is_dirty = false;
+                                g_items[worldJson["items"][i][0].get<std::string>()] = item;
+                            }
+                        }
+                        if (worldJson.contains("containers") && worldJson["containers"].is_array()) {
+                            g_containers.clear();
+                            for (size_t i = 0; i < worldJson["containers"].size(); i++) {
+                                Storage cont = Storage::fromJson(JsonValue(worldJson["containers"][i][1]));
+                                cont.is_dirty = false;
+                                g_containers[worldJson["containers"][i][0].get<std::string>()] = cont;
+                            }
+                        }
+                        rebuildContainerIndices();
+                        g_deleted_items.clear();
+                        g_deleted_containers.clear();
+
+                        response.set("status", "ok");
+                        response.set("message", "World loaded from file: " + filePath);
+                    }
+                } catch (const std::exception& e) {
+                    response.set("status", "error");
+                    response.set("message", std::string("Failed to parse world file: ") + e.what());
+                } catch (...) {
+                    response.set("status", "error");
+                    response.set("message", "Unknown error parsing world file");
+                }
+            }
+        }
         else if (cmd == "getFullState") {
             response.set("status", "ok");
                         JsonValue eventsArr = JsonValue::array();

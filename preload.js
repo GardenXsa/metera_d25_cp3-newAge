@@ -56,6 +56,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 ,
     nexusInventoryCommand: (params) => ipcRenderer.invoke('nexus-inventory-command', params)
 ,
+    nexusLoadWorldFile: (filePath) => ipcRenderer.invoke('nexus-load-world-file', filePath)
+,
+    nexusWriteSyncFile: (worldData) => ipcRenderer.invoke('nexus-write-sync-file', worldData)
+,
     nexusStartTrek: (startId, destId) => ipcRenderer.invoke('nexus-start-trek', startId, destId),
     nexusPauseTrek: () => ipcRenderer.invoke('nexus-pause-trek'),
     nexusResumeTrek: () => ipcRenderer.invoke('nexus-resume-trek'),

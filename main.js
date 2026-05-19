@@ -217,7 +217,14 @@ function processQueue() {
     currentResolve = cmd.resolve;
     
     try {
-        engineProcess.stdin.write(cmd.message);
+        const canWrite = engineProcess.stdin.write(cmd.message);
+        // Handle backpressure: if write() returns false, wait for 'drain' before processing next command
+        if (!canWrite) {
+            engineProcess.stdin.once('drain', () => {
+                // Don't process queue here — the current command's response will trigger processQueue
+                console.log('[Nexus] stdin drain event — pipe buffer flushed.');
+            });
+        }
     } catch (e) {
         currentResolve = null;
         cmd.reject(e);
@@ -276,6 +283,13 @@ async function syncState(world, items, containers) {
     return await sendCommand('syncState', { world, items, containers }, 300000);
 }
 
+async function loadWorldFile(filePath) {
+    // Load world state from a file — bypasses the 64KB stdin pipe buffer limit.
+    // The C++ engine reads the file directly, avoiding pipe buffer overflow for large worlds.
+    // The file should contain: { "world": {...}, "items": [...], "containers": [...] }
+    return await sendCommand('loadWorldFile', { path: filePath }, 300000);
+}
+
 async function getGraphContext(queryIds) {
     return await sendCommand('getGraphContext', { query_ids: queryIds });
 }
@@ -304,10 +318,13 @@ async function interactTrekObject(objType, simId) {
 // ============================================================================
 
 ipcMain.handle('nexus-hook-response', async (event, world) => {
-    if (engineProcess) {
-        const msg = JSON.stringify({ command: 'hook_response', world: world }) + '\n';
-        engineProcess.stdin.write(msg);
+    // Route through the command queue to avoid stdin write race conditions.
+    // Previously this bypassed the queue, which could interleave with queued commands
+    // and corrupt the newline-delimited protocol.
+    if (engineProcess && engineReady) {
+        return await sendCommand('hook_response', { world: world }, 60000);
     }
+    return { status: 'error', message: 'Engine not ready for hook response' };
 });
 
 ipcMain.handle('nexus-register-hooks', async (event, hooks) => {
@@ -347,6 +364,23 @@ ipcMain.handle('nexus-presimulate', async (event, world, ticks) => {
 
 ipcMain.handle('nexus-sync-state', async (event, world, items, containers) => {
     return await syncState(world, items, containers);
+});
+
+ipcMain.handle('nexus-load-world-file', async (event, filePath) => {
+    return await loadWorldFile(filePath);
+});
+
+ipcMain.handle('nexus-write-sync-file', async (event, worldData) => {
+    // Write world data to a temp file for the engine to read via loadWorldFile.
+    // Returns the full file path on success.
+    try {
+        const tempFileName = '__nexus_sync_temp__.json';
+        const tempFilePath = path.join(SAVES_DIR, tempFileName);
+        fs.writeFileSync(tempFilePath, JSON.stringify(worldData));
+        return { status: 'ok', path: tempFilePath };
+    } catch (error) {
+        return { status: 'error', message: error.message };
+    }
 });
 
 ipcMain.handle('nexus-get-full-state', async (event, playerLocation) => {

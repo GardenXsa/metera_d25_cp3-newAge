@@ -7724,24 +7724,31 @@ async function finalizeWorldSetupAndStart() {
 
     await syncPlayerContainerBindings();
 
-    // Для предзагруженного мира: фоновая синхронизация мира с движком.
-    // Выполняется после создания контейнеров, чтобы не блокировать UI.
-    // Таймаут syncState увеличен до 5 минут в main.js.
-    if (preloadedWorldData && window.electronAPI && window.electronAPI.nexusSyncState) {
+    // Для предзагруженного мира: синхронизация через ФАЙЛ, а не через stdin.
+    // syncState через stdin блокирует движок (1.5MB+ JSON → 64KB pipe buffer → timeout).
+    // Новый подход: записываем мир в файл, движок читает его напрямую через loadWorldFile.
+    if (preloadedWorldData && window.electronAPI && window.electronAPI.nexusWriteSyncFile) {
         const syncItems = Array.from(ItemRegistry.entries());
         const syncContainers = Array.from(ContainerRegistry.entries());
-        console.log('[Nexus] Запуск фоновой синхронизации предзагруженного мира с движком...');
-        window.electronAPI.nexusSyncState(World, syncItems, syncContainers).then(syncRes => {
-            if (syncRes.status === 'ok') {
-                console.log('[Nexus] Фоновая синхронизация мира завершена успешно.');
-                if (syncRes.items) syncRes.items.forEach(([k, v]) => ItemRegistry.set(k, v));
-                if (syncRes.containers) syncRes.containers.forEach(([k, v]) => setContainer(k, v));
+        const worldFileData = { world: World, items: syncItems, containers: syncContainers };
+        console.log('[Nexus] Запуск файловой синхронизации предзагруженного мира...');
+        try {
+            // Шаг 1: Записываем данные мира во временный файл через IPC
+            const writeRes = await window.electronAPI.nexusWriteSyncFile(worldFileData);
+            if (writeRes.status === 'ok' && writeRes.path) {
+                // Шаг 2: Отправляем команду движку прочитать файл напрямую
+                const loadRes = await window.electronAPI.nexusLoadWorldFile(writeRes.path);
+                if (loadRes.status === 'ok') {
+                    console.log('[Nexus] Файловая синхронизация мира завершена:', loadRes.message);
+                } else {
+                    console.warn('[Nexus] loadWorldFile не удался:', loadRes.message);
+                }
             } else {
-                console.warn('[Nexus] Фоновая синхронизация мира не удалась:', syncRes.message);
+                console.warn('[Nexus] Не удалось записать временный файл:', writeRes.message);
             }
-        }).catch(err => {
-            console.warn('[Nexus] Ошибка фоновой синхронизации:', err.message || err);
-        });
+        } catch (err) {
+            console.warn('[Nexus] Ошибка файловой синхронизации:', err.message || err);
+        }
     }
 
     const narratorStyleGuide = `
