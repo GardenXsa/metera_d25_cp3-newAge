@@ -7655,17 +7655,12 @@ async function finalizeWorldSetupAndStart() {
     if (preloadedWorldData) {
         console.log("Используется предзагруженный мир.");
         setWorld(preloadedWorldData);
+        // Инициализируем движок, но НЕ синхронизируем мир сейчас —
+        // World JSON слишком большой (1.5МБ+), syncState таймаутится.
+        // Синхронизация будет выполнена позже, после создания контейнеров.
         if (window.electronAPI && window.electronAPI.nexusInit) {
             const initRes = await window.electronAPI.nexusInit(true);
-            if (initRes.status === 'ok') {
-                // Синхронизируем мир с движком, передаём текущие реестры предметов/контейнеров
-                const syncItems = Array.from(ItemRegistry.entries());
-                const syncContainers = Array.from(ContainerRegistry.entries());
-                const syncRes = await window.electronAPI.nexusSyncState(World, syncItems, syncContainers);
-                if (syncRes.status !== 'ok') {
-                    console.warn('[Nexus] syncState failed for preloaded world:', syncRes.message);
-                }
-            } else {
+            if (initRes.status !== 'ok') {
                 console.warn('[Nexus] Init failed for preloaded world:', initRes.message);
             }
         }
@@ -7728,6 +7723,26 @@ async function finalizeWorldSetupAndStart() {
     }
 
     await syncPlayerContainerBindings();
+
+    // Для предзагруженного мира: фоновая синхронизация мира с движком.
+    // Выполняется после создания контейнеров, чтобы не блокировать UI.
+    // Таймаут syncState увеличен до 5 минут в main.js.
+    if (preloadedWorldData && window.electronAPI && window.electronAPI.nexusSyncState) {
+        const syncItems = Array.from(ItemRegistry.entries());
+        const syncContainers = Array.from(ContainerRegistry.entries());
+        console.log('[Nexus] Запуск фоновой синхронизации предзагруженного мира с движком...');
+        window.electronAPI.nexusSyncState(World, syncItems, syncContainers).then(syncRes => {
+            if (syncRes.status === 'ok') {
+                console.log('[Nexus] Фоновая синхронизация мира завершена успешно.');
+                if (syncRes.items) syncRes.items.forEach(([k, v]) => ItemRegistry.set(k, v));
+                if (syncRes.containers) syncRes.containers.forEach(([k, v]) => setContainer(k, v));
+            } else {
+                console.warn('[Nexus] Фоновая синхронизация мира не удалась:', syncRes.message);
+            }
+        }).catch(err => {
+            console.warn('[Nexus] Ошибка фоновой синхронизации:', err.message || err);
+        });
+    }
 
     const narratorStyleGuide = `
     ### ТВОЙ СТИЛЬ: THE PRISM MASTER

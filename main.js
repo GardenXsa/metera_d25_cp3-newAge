@@ -167,14 +167,36 @@ function sendCommand(command, params = {}, timeoutMs = 30000) {
 
         // Configurable timeout — long-running commands like preSimulate need more time
         const timeoutId = setTimeout(() => {
-            // If this command is currently pending, clear it so queue can proceed
+            // CRITICAL: When a command times out, the engine is still processing it.
+            // If we just clear currentResolve, the engine's response will be consumed
+            // by the NEXT command's resolve (response mismatch). Instead, we mark the
+            // engine as "not ready" and flush the queue, forcing a fresh start.
+            console.warn(`[Nexus] Command '${command}' timed out (${timeoutMs / 1000}s). Flushing command queue.`);
+
+            // Reject all queued commands — they can't be processed correctly
+            while (commandQueue.length > 0) {
+                const queued = commandQueue.shift();
+                queued.resolve({ status: 'error', message: `Queue flushed: previous command '${command}' timed out` });
+            }
+
+            // If this was the currently processing command, mark it as timed out
+            // but DON'T clear currentResolve — let the engine's eventual response
+            // be silently consumed (it will resolve this promise which is already resolved)
             if (currentResolve === wrappedResolve) {
                 currentResolve = null;
-                processQueue();
+                // Mark engine as potentially out-of-sync.
+                // The next successful engine response will re-enable it.
+                engineReady = false;
+                // Re-enable after a short delay — the engine might still be working
+                // and will become responsive after it finishes the timed-out command.
+                setTimeout(() => {
+                    if (!engineReady && engineProcess) {
+                        engineReady = true;
+                        console.log('[Nexus] Engine re-enabled after timeout recovery.');
+                    }
+                }, 5000);
             }
-            // Remove from queue if not yet processed
-            const idx = commandQueue.findIndex(t => t.resolve === wrappedResolve);
-            if (idx !== -1) commandQueue.splice(idx, 1);
+
             resolve({ status: 'error', message: `Command timed out (${timeoutMs / 1000}s)` });
         }, timeoutMs);
 
@@ -249,7 +271,9 @@ async function preSimulate(world, ticks) {
 }
 
 async function syncState(world, items, containers) {
-    return await sendCommand('syncState', { world, items, containers });
+    // syncState can involve huge World JSON (1.5MB+) that takes time to parse.
+    // Use 5-minute timeout like bootstrapWorld.
+    return await sendCommand('syncState', { world, items, containers }, 300000);
 }
 
 async function getGraphContext(queryIds) {
