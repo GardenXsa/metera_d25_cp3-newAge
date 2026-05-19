@@ -7,6 +7,11 @@
 #include <algorithm>
 #include <future>
 #include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <queue>
+#include <functional>
+#include <atomic>
 #include "json_wrapper.h"
 
 struct OrderData {
@@ -221,13 +226,57 @@ struct ObjectPool {
 
 class ThreadPool {
 public:
+    explicit ThreadPool(size_t num_threads = 0) : stop(false) {
+        if (num_threads == 0) num_threads = std::thread::hardware_concurrency();
+        if (num_threads == 0) num_threads = 4;
+        for (size_t i = 0; i < num_threads; ++i) {
+            workers.emplace_back([this] { workerLoop(); });
+        }
+    }
+
+    ~ThreadPool() {
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex);
+            stop = true;
+        }
+        condition.notify_all();
+        for (auto& w : workers) {
+            if (w.joinable()) w.join();
+        }
+    }
+
     template<class F>
     auto enqueue(F&& f) -> std::future<decltype(f())> {
         auto task = std::make_shared<std::packaged_task<decltype(f())()>>(std::forward<F>(f));
         std::future<decltype(f())> res = task->get_future();
-        std::thread([task]() { (*task)(); }).detach();
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex);
+            tasks.push([task]() { (*task)(); });
+        }
+        condition.notify_one();
         return res;
     }
+
+private:
+    void workerLoop() {
+        while (true) {
+            std::function<void()> task;
+            {
+                std::unique_lock<std::mutex> lock(queue_mutex);
+                condition.wait(lock, [this] { return stop || !tasks.empty(); });
+                if (stop && tasks.empty()) return;
+                task = std::move(tasks.front());
+                tasks.pop();
+            }
+            task();
+        }
+    }
+
+    std::vector<std::thread> workers;
+    std::queue<std::function<void()>> tasks;
+    std::mutex queue_mutex;
+    std::condition_variable condition;
+    bool stop;
 };
 
 inline ThreadPool* getThreadPool() {
