@@ -689,20 +689,67 @@ app.whenReady().then(() => {
                 return new Response('Not Found', { status: 404 });
             }
 
+            // Read file data first (needed for MIME sniffing fallback)
+            const data = fs.readFileSync(fullPath);
+
             // Determine MIME type from extension
             const ext = path.extname(fullPath).toLowerCase();
+
+            // Comprehensive MIME type detection
             const mimeTypes = {
+                // Images
                 '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
                 '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
+                '.ico': 'image/x-icon', '.bmp': 'image/bmp', '.tiff': 'image/tiff', '.tif': 'image/tiff',
+                '.avif': 'image/avif',
+                // Audio
                 '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
-                '.mp4': 'video/mp4', '.webm': 'video/webm',
+                '.flac': 'audio/flac', '.aac': 'audio/aac', '.m4a': 'audio/mp4',
+                '.mid': 'audio/midi', '.midi': 'audio/midi',
+                // Video
+                '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogv': 'video/ogg',
+                '.avi': 'video/x-msvideo', '.mov': 'video/quicktime',
+                // Fonts
+                '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf',
+                '.otf': 'font/otf', '.eot': 'application/vnd.ms-fontobject',
+                // 3D models
+                '.gltf': 'model/gltf+json', '.glb': 'model/gltf-binary',
+                '.obj': 'text/plain', '.fbx': 'application/octet-stream',
+                // Documents
                 '.json': 'application/json', '.md': 'text/markdown',
                 '.txt': 'text/plain', '.html': 'text/html', '.css': 'text/css',
-                '.js': 'text/javascript'
+                '.js': 'text/javascript', '.xml': 'text/xml', '.csv': 'text/csv',
+                // Data
+                '.yaml': 'text/yaml', '.yml': 'text/yaml', '.toml': 'text/plain',
+                '.bin': 'application/octet-stream', '.dat': 'application/octet-stream',
+                // Archives (mods might bundle assets)
+                '.zip': 'application/zip',
             };
-            const mimeType = mimeTypes[ext] || 'application/octet-stream';
+            // Fallback: if extension not in our map, use a heuristic
+            let mimeType = mimeTypes[ext];
+            if (!mimeType) {
+                // Try to sniff from file content for common binary formats
+                if (data && data.length >= 4) {
+                    const header = data.readUInt32BE(0);
+                    // PNG: 89504E47
+                    if (header === 0x89504E47) mimeType = 'image/png';
+                    // JPEG: FFD8FF
+                    else if ((header & 0xFFFFFF00) === 0xFFD8FF00) mimeType = 'image/jpeg';
+                    // GIF: 47494638
+                    else if ((header & 0xFFFFFF00) === 0x47494638) mimeType = 'image/gif';
+                    // WebP: 52494646...57454250
+                    else if (header === 0x52494646 && data.length >= 12 &&
+                             data.readUInt32BE(8) === 0x57454250) mimeType = 'image/webp';
+                    // OGG: 4F676753
+                    else if (header === 0x4F676753) mimeType = 'audio/ogg';
+                    // MP3: ID3 or FFFB
+                    else if ((header & 0xFFFFFF00) === 0x49443300 || (header & 0xFFFE0000) === 0xFFFB0000) mimeType = 'audio/mpeg';
+                    // WOFF2: 774F4632
+                    else if (header === 0x774F4632) mimeType = 'font/woff2';
+                }
+                if (!mimeType) mimeType = 'application/octet-stream';
+            }
 
-            const data = fs.readFileSync(fullPath);
             return new Response(data, {
                 headers: { 'Content-Type': mimeType, 'Access-Control-Allow-Origin': '*' }
             });

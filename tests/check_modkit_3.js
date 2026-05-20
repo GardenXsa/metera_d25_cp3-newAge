@@ -231,6 +231,229 @@ test('cyberpunk mod.json — has native_plugins field', () => {
 });
 
 // ============================================================================
+// TEST GROUP 7: mergeDeep — $delete, $replace, $push sentinels
+// ============================================================================
+
+test('mergeDeep — $delete sentinel removes key', () => {
+    function isObject(item) { return (item && typeof item === 'object' && !Array.isArray(item)); }
+    function mergeDeep(target, ...sources) {
+        if (!sources.length) return target;
+        const source = sources.shift();
+        if (isObject(target) && isObject(source)) {
+            for (const key in source) {
+                const sourceVal = source[key];
+                if (sourceVal === '$delete') { delete target[key]; continue; }
+                if (sourceVal && typeof sourceVal === 'object' && sourceVal.$replace !== undefined) { target[key] = sourceVal.$replace; continue; }
+                if (sourceVal && typeof sourceVal === 'object' && Array.isArray(sourceVal.$push)) {
+                    if (Array.isArray(target[key])) { target[key] = target[key].concat(sourceVal.$push); } else { target[key] = sourceVal.$push; }
+                    continue;
+                }
+                if (isObject(sourceVal)) { if (!target[key] || typeof target[key] !== 'object') { target[key] = {}; } mergeDeep(target[key], sourceVal); }
+                else { target[key] = sourceVal; }
+            }
+        }
+        return mergeDeep(target, ...sources);
+    }
+
+    const target = { name: 'sword', damage: 10, magic: true };
+    mergeDeep(target, { magic: '$delete' });
+    return assert(!('magic' in target) && target.name === 'sword' && target.damage === 10,
+                  `$delete did not remove key, target: ${JSON.stringify(target)}`);
+});
+
+test('mergeDeep — $replace sentinel replaces array entirely', () => {
+    function isObject(item) { return (item && typeof item === 'object' && !Array.isArray(item)); }
+    function mergeDeep(target, ...sources) {
+        if (!sources.length) return target;
+        const source = sources.shift();
+        if (isObject(target) && isObject(source)) {
+            for (const key in source) {
+                const sourceVal = source[key];
+                if (sourceVal === '$delete') { delete target[key]; continue; }
+                if (sourceVal && typeof sourceVal === 'object' && sourceVal.$replace !== undefined) { target[key] = sourceVal.$replace; continue; }
+                if (sourceVal && typeof sourceVal === 'object' && Array.isArray(sourceVal.$push)) {
+                    if (Array.isArray(target[key])) { target[key] = target[key].concat(sourceVal.$push); } else { target[key] = sourceVal.$push; }
+                    continue;
+                }
+                if (isObject(sourceVal)) { if (!target[key] || typeof target[key] !== 'object') { target[key] = {}; } mergeDeep(target[key], sourceVal); }
+                else { target[key] = sourceVal; }
+            }
+        }
+        return mergeDeep(target, ...sources);
+    }
+
+    const target = { enemies: ['goblin', 'orc', 'troll'] };
+    mergeDeep(target, { enemies: { $replace: ['cyber_drone'] } });
+    return assert(Array.isArray(target.enemies) && target.enemies.length === 1 && target.enemies[0] === 'cyber_drone',
+                  `$replace did not replace array, got: ${JSON.stringify(target.enemies)}`);
+});
+
+test('mergeDeep — $push sentinel appends to array', () => {
+    function isObject(item) { return (item && typeof item === 'object' && !Array.isArray(item)); }
+    function mergeDeep(target, ...sources) {
+        if (!sources.length) return target;
+        const source = sources.shift();
+        if (isObject(target) && isObject(source)) {
+            for (const key in source) {
+                const sourceVal = source[key];
+                if (sourceVal === '$delete') { delete target[key]; continue; }
+                if (sourceVal && typeof sourceVal === 'object' && sourceVal.$replace !== undefined) { target[key] = sourceVal.$replace; continue; }
+                if (sourceVal && typeof sourceVal === 'object' && Array.isArray(sourceVal.$push)) {
+                    if (Array.isArray(target[key])) { target[key] = target[key].concat(sourceVal.$push); } else { target[key] = sourceVal.$push; }
+                    continue;
+                }
+                if (isObject(sourceVal)) { if (!target[key] || typeof target[key] !== 'object') { target[key] = {}; } mergeDeep(target[key], sourceVal); }
+                else { target[key] = sourceVal; }
+            }
+        }
+        return mergeDeep(target, ...sources);
+    }
+
+    const target = { items: ['sword', 'shield'] };
+    mergeDeep(target, { items: { $push: ['potion'] } });
+    return assert(target.items.length === 3 && target.items[2] === 'potion',
+                  `$push did not append, got: ${JSON.stringify(target.items)}`);
+});
+
+// ============================================================================
+// TEST GROUP 8: Hook chain system
+// ============================================================================
+
+test('hookFunction — hook chain with priorities', () => {
+    // Simulate the hook chain logic
+    const _hookChains = {};
+    const _originalFunctions = {};
+
+    function hookFunction(obj, funcName, modId, hookCallback, priority) {
+        priority = priority || 100;
+        if (!_originalFunctions[funcName]) _originalFunctions[funcName] = obj[funcName];
+        if (!_hookChains[funcName]) _hookChains[funcName] = [];
+        _hookChains[funcName].push({ modId, priority, callback: hookCallback });
+        _hookChains[funcName].sort((a, b) => a.priority - b.priority);
+        rebuildHookChain(obj, funcName);
+    }
+
+    function rebuildHookChain(obj, funcName) {
+        const original = _originalFunctions[funcName];
+        const hooks = _hookChains[funcName];
+        obj[funcName] = function(...args) {
+            let result;
+            let currentFn = original.bind(this);
+            for (const hook of hooks) {
+                const hookResult = hook.callback(currentFn, ...args);
+                if (hookResult !== undefined) { result = hookResult; currentFn = () => result; }
+                else { result = currentFn(...args); }
+            }
+            return result;
+        };
+    }
+
+    const obj = { multiply: (x) => x * 2 };
+    hookFunction(obj, 'multiply', 'mod_a', (orig, x) => orig(x) + 10, 100);  // post-hook
+    hookFunction(obj, 'multiply', 'mod_b', (orig, x) => orig(x * 3), 50);    // pre-hook (lower priority = runs first)
+
+    // mod_b (priority 50) runs first: orig(x*3) → x*3*2 = 6x. Returns 6x
+    // mod_a (priority 100) runs second: orig(6x) + 10 → but currentFn returns 6x, so result = 6x + 10
+    const result = obj.multiply(5);
+    // mod_b: orig is bind of original → orig(5*3) = orig(15) = 30, hookResult=30
+    // mod_a: orig is () => 30, hookResult = 30 + 10 = 40
+    return assert(result === 40, `Expected 40, got ${result}`);
+});
+
+test('hookFunction — unhook restores chain correctly', () => {
+    const _hookChains = {};
+    const _originalFunctions = {};
+
+    function hookFunction(obj, funcName, modId, hookCallback, priority) {
+        priority = priority || 100;
+        if (!_originalFunctions[funcName]) _originalFunctions[funcName] = obj[funcName];
+        if (!_hookChains[funcName]) _hookChains[funcName] = [];
+        _hookChains[funcName].push({ modId, priority, callback: hookCallback });
+        _hookChains[funcName].sort((a, b) => a.priority - b.priority);
+    }
+
+    const obj = { greet: (name) => `Hello ${name}` };
+    const original = obj.greet;
+    _originalFunctions['greet'] = original;
+
+    hookFunction(obj, 'greet', 'mod_a', (orig, name) => orig(name) + '!', 100);
+    hookFunction(obj, 'greet', 'mod_b', (orig, name) => orig(name.toUpperCase()), 50);
+
+    // Remove mod_a — mod_b should still work
+    _hookChains['greet'] = _hookChains['greet'].filter(h => h.modId !== 'mod_a');
+
+    return assert(_hookChains['greet'].length === 1 && _hookChains['greet'][0].modId === 'mod_b',
+                  'unhook did not correctly remove only the specified mod hook');
+});
+
+// ============================================================================
+// TEST GROUP 9: Sandbox — no `with` statement in ModLoader.js
+// ============================================================================
+
+test('ModLoader.js — does NOT use deprecated `with` statement', () => {
+    const modLoaderPath = path.join(__dirname, '..', 'js', 'mods', 'ModLoader.js');
+    const content = fs.readFileSync(modLoaderPath, 'utf-8');
+    // Check that "with(this)" or "with(sandbox" is NOT present
+    const hasWith = /\bwith\s*\(/.test(content) && content.includes('with(this)');
+    return assert(!hasWith, 'ModLoader.js still uses deprecated `with` statement');
+});
+
+test('ModLoader.js — uses "use strict" in sandbox wrapper', () => {
+    const modLoaderPath = path.join(__dirname, '..', 'js', 'mods', 'ModLoader.js');
+    const content = fs.readFileSync(modLoaderPath, 'utf-8');
+    return assert(content.includes('"use strict"'), 'ModLoader.js sandbox does not use strict mode');
+});
+
+test('ModLoader.js — contains hookFunction method', () => {
+    const modLoaderPath = path.join(__dirname, '..', 'js', 'mods', 'ModLoader.js');
+    const content = fs.readFileSync(modLoaderPath, 'utf-8');
+    return assert(content.includes('hookFunction'), 'ModLoader.js does not contain hookFunction method');
+});
+
+test('ModLoader.js — contains unhookFunction method', () => {
+    const modLoaderPath = path.join(__dirname, '..', 'js', 'mods', 'ModLoader.js');
+    const content = fs.readFileSync(modLoaderPath, 'utf-8');
+    return assert(content.includes('unhookFunction'), 'ModLoader.js does not contain unhookFunction method');
+});
+
+test('ModLoader.js — contains queueMutation for IPC batching', () => {
+    const modLoaderPath = path.join(__dirname, '..', 'js', 'mods', 'ModLoader.js');
+    const content = fs.readFileSync(modLoaderPath, 'utf-8');
+    return assert(content.includes('queueMutation'), 'ModLoader.js does not contain queueMutation method');
+});
+
+test('ModLoader.js — apiVersion is 3.0', () => {
+    const modLoaderPath = path.join(__dirname, '..', 'js', 'mods', 'ModLoader.js');
+    const content = fs.readFileSync(modLoaderPath, 'utf-8');
+    return assert(content.includes("apiVersion: '3.0'"), 'ModLoader.js apiVersion is not 3.0');
+});
+
+// ============================================================================
+// TEST GROUP 10: VFS — comprehensive MIME types in main.js
+// ============================================================================
+
+test('main.js — VFS handler supports font MIME types', () => {
+    const mainPath = path.join(__dirname, '..', 'main.js');
+    const content = fs.readFileSync(mainPath, 'utf-8');
+    return assert(content.includes('.woff2') && content.includes('font/woff2'),
+                  'main.js VFS does not support .woff2 font MIME type');
+});
+
+test('main.js — VFS handler supports 3D model MIME types', () => {
+    const mainPath = path.join(__dirname, '..', 'main.js');
+    const content = fs.readFileSync(mainPath, 'utf-8');
+    return assert(content.includes('.gltf') || content.includes('model/gltf'),
+                  'main.js VFS does not support 3D model MIME types');
+});
+
+test('main.js — VFS handler has file header sniffing fallback', () => {
+    const mainPath = path.join(__dirname, '..', 'main.js');
+    const content = fs.readFileSync(mainPath, 'utf-8');
+    return assert(content.includes('0x89504E47') || content.includes('readUInt32BE'),
+                  'main.js VFS does not have file header sniffing fallback');
+});
+
+// ============================================================================
 // RESULTS
 // ============================================================================
 

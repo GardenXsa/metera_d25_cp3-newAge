@@ -15,11 +15,25 @@ async function initModKit() {
     const activeIds = (settings && settings.mods) ? settings.mods.active : ['base_game'];
     const activeMods = modsResponse.mods.filter(m => activeIds.includes(m.id) && !m.error);
     
-    // Настройка моста между C++ хуками и JS модами
+    // Batch mutations to reduce IPC round trips
+    window.ModAPI._pendingMutations = [];
+    window.ModAPI._mutationFlushTimer = null;
+
+    window.ModAPI._flushMutations = async function() {
+        if (window.ModAPI._pendingMutations.length === 0) return;
+        const batch = window.ModAPI._pendingMutations.splice(0);
+        clearTimeout(window.ModAPI._mutationFlushTimer);
+        window.ModAPI._mutationFlushTimer = null;
+        await window.ModAPI.applyModChanges(batch);
+    };
+
+    // Настройка моста между C++ хуками и JS модами (with IPC batching)
     if (window.electronAPI && window.electronAPI.onNexusHookRequest) {
         window.electronAPI.onNexusHookRequest(async (hook, world) => {
             // Передаем состояние мира модам для модификации
             await window.ModAPI.emit(hook, world);
+            // Flush any pending mutations after all hooks processed
+            await window.ModAPI._flushMutations();
             // Возвращаем измененный мир обратно в C++ ядро, чтобы оно продолжило симуляцию
             await window.electronAPI.sendNexusHookResponse(world);
         });
