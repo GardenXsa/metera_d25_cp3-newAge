@@ -3241,102 +3241,434 @@ static std::set<std::string> g_active_hooks;
 
 
 // ============================================================================
-// C++ PLUGIN SYSTEM (NATIVE MODDING)
+// MODKIT 3.0 — OPAQUE C-API PLUGIN SYSTEM + ASYNC IPC
 // ============================================================================
-extern "C" {
-    typedef void (*MetereaPluginInitFunc)(World*, Database*, ItemRegistry*, FacilityRegistry*);
-    typedef void (*MetereaDailyTickFunc)();
+#include "meterea_mod_sdk.h"
+
+// --- Deferred mutation queue: mutations are buffered and applied on next tick ---
+struct DeferredMutation {
+    enum Type { SET_STABILITY, MODIFY_POPULATION, MULTIPLY_ALL_PRICES, MULTIPLY_ITEM_PRICE, SET_GLOBAL_STRING };
+    Type type;
+    std::string target_id;  // region_id or item_id or key
+    int32_t int_value = 0;
+    double double_value = 0.0;
+    std::string string_value;
+};
+
+static std::vector<DeferredMutation> g_deferred_mutations;
+static std::mutex g_deferred_mutex;
+
+// --- Global string store for inter-mod data exchange ---
+static std::unordered_map<std::string, std::string> g_global_strings;
+static std::mutex g_globals_mutex;
+
+// --- Engine API implementation (functions provided TO plugins) ---
+
+static int32_t apiGetRegionPopulation(const char* region_id) {
+    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
+    auto it = g_world.regions.find(region_id);
+    return it != g_world.regions.end() ? (int32_t)it->second.population : -1;
 }
+
+static int32_t apiGetRegionStability(const char* region_id) {
+    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
+    auto it = g_world.regions.find(region_id);
+    return it != g_world.regions.end() ? (int32_t)it->second.stability : -1;
+}
+
+static const char* apiGetRegionFaction(const char* region_id) {
+    static thread_local std::string result;
+    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
+    auto it = g_world.regions.find(region_id);
+    result = (it != g_world.regions.end()) ? it->second.factionId : "";
+    return result.c_str();
+}
+
+static const char* apiGetRegionBiome(const char* region_id) {
+    static thread_local std::string result;
+    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
+    auto it = g_world.regions.find(region_id);
+    result = (it != g_world.regions.end()) ? it->second.climate : "";
+    return result.c_str();
+}
+
+static int64_t apiGetWorldPopulation() {
+    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
+    int64_t total = 0;
+    for (auto& [id, r] : g_world.regions) total += r.population;
+    return total;
+}
+
+static int32_t apiGetCurrentDay() {
+    return g_world.current_day;
+}
+
+static int32_t apiGetCurrentHour() {
+    return g_world.time.internalHour;
+}
+
+static int32_t apiGetRegionNpcCount(const char* region_id) {
+    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
+    int32_t count = 0;
+    for (auto& [id, npc] : g_world.npcs) {
+        if (npc.currentLocation == region_id) count++;
+    }
+    return count;
+}
+
+static double apiGetItemPrice(const char* item_id) {
+    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
+    auto it = g_db.items.find(item_id);
+    return it != g_db.items.end() ? it->second.basePrice : -1.0;
+}
+
+static const char* apiGetGlobalString(const char* key) {
+    std::lock_guard<std::mutex> lock(g_globals_mutex);
+    auto it = g_global_strings.find(key);
+    if (it != g_global_strings.end()) {
+        static thread_local std::string result;
+        result = it->second;
+        return result.c_str();
+    }
+    return nullptr;
+}
+
+static MeteraResult apiSetRegionStability(const char* region_id, int32_t value) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m;
+    m.type = DeferredMutation::SET_STABILITY;
+    m.target_id = region_id;
+    m.int_value = value;
+    g_deferred_mutations.push_back(m);
+    return METERA_OK;
+}
+
+static MeteraResult apiModifyRegionPopulation(const char* region_id, int32_t delta) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m;
+    m.type = DeferredMutation::MODIFY_POPULATION;
+    m.target_id = region_id;
+    m.int_value = delta;
+    g_deferred_mutations.push_back(m);
+    return METERA_OK;
+}
+
+static MeteraResult apiMultiplyAllPrices(double factor) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m;
+    m.type = DeferredMutation::MULTIPLY_ALL_PRICES;
+    m.double_value = factor;
+    g_deferred_mutations.push_back(m);
+    return METERA_OK;
+}
+
+static MeteraResult apiMultiplyItemPrice(const char* item_id, double factor) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m;
+    m.type = DeferredMutation::MULTIPLY_ITEM_PRICE;
+    m.target_id = item_id;
+    m.double_value = factor;
+    g_deferred_mutations.push_back(m);
+    return METERA_OK;
+}
+
+static MeteraResult apiSetGlobalString(const char* key, const char* value) {
+    std::lock_guard<std::mutex> lock(g_globals_mutex);
+    g_global_strings[key] = value;
+    return METERA_OK;
+}
+
+static void apiLog(const char* message) {
+    {
+        std::lock_guard<std::mutex> outLock(g_output_mutex);
+        std::cerr << "[ModPlugin] " << message << std::endl;
+    }
+}
+
+// --- Build the API table ---
+static MeteraAPI g_metera_api = {
+    METERA_API_VERSION_MAJOR, METERA_API_VERSION_MINOR, METERA_API_VERSION_PATCH,
+    apiGetRegionPopulation, apiGetRegionStability, apiGetRegionFaction, apiGetRegionBiome,
+    apiGetWorldPopulation, apiGetCurrentDay, apiGetCurrentHour, apiGetRegionNpcCount,
+    apiGetItemPrice, apiGetGlobalString,
+    apiSetRegionStability, apiModifyRegionPopulation, apiMultiplyAllPrices,
+    apiMultiplyItemPrice, apiSetGlobalString,
+    apiLog
+};
+
+// --- Apply deferred mutations (called at start of each tick) ---
+static void applyDeferredMutations() {
+    std::vector<DeferredMutation> mutations;
+    {
+        std::lock_guard<std::mutex> lock(g_deferred_mutex);
+        mutations.swap(g_deferred_mutations);
+    }
+
+    for (auto& m : mutations) {
+        switch (m.type) {
+            case DeferredMutation::SET_STABILITY: {
+                auto it = g_world.regions.find(m.target_id);
+                if (it != g_world.regions.end()) {
+                    it->second.stability = std::max(0, std::min(100, m.int_value));
+                }
+                break;
+            }
+            case DeferredMutation::MODIFY_POPULATION: {
+                auto it = g_world.regions.find(m.target_id);
+                if (it != g_world.regions.end()) {
+                    it->second.population = std::max(0, it->second.population + m.int_value);
+                }
+                break;
+            }
+            case DeferredMutation::MULTIPLY_ALL_PRICES: {
+                for (auto& [id, item] : g_db.items) {
+                    item.basePrice *= m.double_value;
+                }
+                break;
+            }
+            case DeferredMutation::MULTIPLY_ITEM_PRICE: {
+                auto it = g_db.items.find(m.target_id);
+                if (it != g_db.items.end()) {
+                    it->second.basePrice *= m.double_value;
+                }
+                break;
+            }
+            case DeferredMutation::SET_GLOBAL_STRING: {
+                std::lock_guard<std::mutex> lock(g_globals_mutex);
+                g_global_strings[m.target_id] = m.string_value;
+                break;
+            }
+        }
+    }
+}
+
+// --- New PluginManager: Opaque C-API based ---
+
+struct LoadedPlugin {
+    void* library_handle;
+    std::string name;
+    std::string version;
+    int32_t plugin_id;
+    // Callbacks
+    MeteraOnDailyTickFunc onDailyTick = nullptr;
+    MeteraOnHourlyTickFunc onHourlyTick = nullptr;
+    MeteraOnRegionChangedFunc onRegionChanged = nullptr;
+    MeteraOnNpcDeathFunc onNpcDeath = nullptr;
+    MeteraOnBattleFunc onBattle = nullptr;
+    MeteraOnTradeFunc onTrade = nullptr;
+    MeteraOnDisasterFunc onDisaster = nullptr;
+    MeteraOnBuildingBuiltFunc onBuildingBuilt = nullptr;
+};
 
 class PluginManager {
 private:
-    std::vector<void*> loaded_libraries;
-    std::vector<MetereaDailyTickFunc> daily_hooks;
+    std::vector<LoadedPlugin> plugins;
+    int32_t next_plugin_id = 1;
+
+    // Typedefs for plugin exported functions
+    typedef const char* (*GetNameFunc)(void);
+    typedef const char* (*GetVersionFunc)(void);
+    typedef void (*GetAPIFunc)(const MeteraAPI*);
+    typedef MeteraResult (*InitFunc)(int32_t);
+    typedef void (*OnLoadFunc)(void);
+    typedef void (*ShutdownFunc)(void);
+
+    void* resolveSymbol(void* handle, const char* name) {
+        #ifdef _WIN32
+        return (void*)GetProcAddress((HMODULE)handle, name);
+        #else
+        return dlsym(handle, name);
+        #endif
+    }
+
 public:
-    void loadPlugins(const std::string& base_dir, const std::vector<std::string>& active_mods, World* w, Database* db, ItemRegistry* ir, FacilityRegistry* fr) {
+    void loadPlugins(const std::string& base_dir, const std::vector<std::string>& active_mods) {
         for (const auto& mod_id : active_mods) {
             if (mod_id == "base_game") continue;
             std::string mod_dir = base_dir + "/" + mod_id;
             if (!std::filesystem::exists(mod_dir)) continue;
+
             try {
                 for (const auto& entry : std::filesystem::recursive_directory_iterator(mod_dir)) {
-                    if (entry.is_regular_file()) {
-                        std::string ext = entry.path().extension().string();
-                        if (ext == ".dll" || ext == ".so") {
-                            void* handle = nullptr;
-                            #ifdef _WIN32
-                            handle = (void*)LoadLibraryA(entry.path().string().c_str());
-                            #else
-                            handle = dlopen(entry.path().string().c_str(), RTLD_LAZY);
-                            #endif
-                            
-                            if (handle) {
-                                loaded_libraries.push_back(handle);
-                                MetereaPluginInitFunc initFunc = nullptr;
-                                MetereaDailyTickFunc tickFunc = nullptr;
-                                
-                                #ifdef _WIN32
-                                initFunc = (MetereaPluginInitFunc)GetProcAddress((HMODULE)handle, "MetereaPluginInit");
-                                tickFunc = (MetereaDailyTickFunc)GetProcAddress((HMODULE)handle, "MetereaDailyTick");
-                                #else
-                                initFunc = (MetereaPluginInitFunc)dlsym(handle, "MetereaPluginInit");
-                                tickFunc = (MetereaDailyTickFunc)dlsym(handle, "MetereaDailyTick");
-                                #endif
-                                
-                                if (initFunc) initFunc(w, db, ir, fr);
-                                if (tickFunc) daily_hooks.push_back(tickFunc);
-                            }
-                        }
+                    if (!entry.is_regular_file()) continue;
+                    std::string ext = entry.path().extension().string();
+                    if (ext != ".dll" && ext != ".so") continue;
+
+                    void* handle = nullptr;
+                    #ifdef _WIN32
+                    handle = (void*)LoadLibraryA(entry.path().string().c_str());
+                    #else
+                    handle = dlopen(entry.path().string().c_str(), RTLD_LAZY);
+                    #endif
+
+                    if (!handle) {
+                        std::cerr << "[PluginManager] Failed to load: " << entry.path().string() << std::endl;
+                        continue;
                     }
+
+                    // Load required functions
+                    auto getName = (GetNameFunc)resolveSymbol(handle, "MeteraPlugin_GetName");
+                    auto getVersion = (GetVersionFunc)resolveSymbol(handle, "MeteraPlugin_GetVersion");
+                    auto getAPI = (GetAPIFunc)resolveSymbol(handle, "MeteraPlugin_GetAPI");
+                    auto init = (InitFunc)resolveSymbol(handle, "MeteraPlugin_Init");
+                    auto onLoad = (OnLoadFunc)resolveSymbol(handle, "MeteraPlugin_OnLoad");
+
+                    if (!getName || !getVersion || !getAPI || !init) {
+                        std::cerr << "[PluginManager] Missing required exports in: " << entry.path().string() << std::endl;
+                        #ifdef _WIN32
+                        FreeLibrary((HMODULE)handle);
+                        #else
+                        dlclose(handle);
+                        #endif
+                        continue;
+                    }
+
+                    LoadedPlugin plugin;
+                    plugin.library_handle = handle;
+                    plugin.name = getName();
+                    plugin.version = getVersion();
+                    plugin.plugin_id = next_plugin_id++;
+
+                    // Provide API table to plugin
+                    getAPI(&g_metera_api);
+
+                    // Initialize plugin
+                    MeteraResult result = init(plugin.plugin_id);
+                    if (result != METERA_OK) {
+                        std::cerr << "[PluginManager] Init failed for " << plugin.name << " (code " << result << ")" << std::endl;
+                        #ifdef _WIN32
+                        FreeLibrary((HMODULE)handle);
+                        #else
+                        dlclose(handle);
+                        #endif
+                        continue;
+                    }
+
+                    // Load optional callbacks
+                    plugin.onDailyTick = (MeteraOnDailyTickFunc)resolveSymbol(handle, "MeteraPlugin_OnDailyTick");
+                    plugin.onHourlyTick = (MeteraOnHourlyTickFunc)resolveSymbol(handle, "MeteraPlugin_OnHourlyTick");
+                    plugin.onRegionChanged = (MeteraOnRegionChangedFunc)resolveSymbol(handle, "MeteraPlugin_OnRegionChanged");
+                    plugin.onNpcDeath = (MeteraOnNpcDeathFunc)resolveSymbol(handle, "MeteraPlugin_OnNpcDeath");
+                    plugin.onBattle = (MeteraOnBattleFunc)resolveSymbol(handle, "MeteraPlugin_OnBattle");
+                    plugin.onTrade = (MeteraOnTradeFunc)resolveSymbol(handle, "MeteraPlugin_OnTrade");
+                    plugin.onDisaster = (MeteraOnDisasterFunc)resolveSymbol(handle, "MeteraPlugin_OnDisaster");
+                    plugin.onBuildingBuilt = (MeteraOnBuildingBuiltFunc)resolveSymbol(handle, "MeteraPlugin_OnBuildingBuilt");
+
+                    // Call OnLoad if available
+                    if (onLoad) onLoad();
+
+                    plugins.push_back(plugin);
+                    std::cerr << "[PluginManager] Loaded: " << plugin.name << " v" << plugin.version << " (id=" << plugin.plugin_id << ")" << std::endl;
                 }
-            } catch (...) {}
+            } catch (const std::exception& e) {
+                std::cerr << "[PluginManager] Error scanning " << mod_dir << ": " << e.what() << std::endl;
+            }
         }
     }
-    
-    void runDailyHooks() {
-        for (auto hook : daily_hooks) {
-            if (hook) hook();
+
+    void shutdown() {
+        for (auto& p : plugins) {
+            auto shutdownFunc = (void(*)(void))resolveSymbol(p.library_handle, "MeteraPlugin_Shutdown");
+            if (shutdownFunc) shutdownFunc();
+            #ifdef _WIN32
+            FreeLibrary((HMODULE)p.library_handle);
+            #else
+            dlclose(p.library_handle);
+            #endif
+        }
+        plugins.clear();
+    }
+
+    void fireDailyTick(int32_t day) {
+        for (auto& p : plugins) {
+            if (p.onDailyTick) p.onDailyTick(day);
         }
     }
+
+    void fireHourlyTick(int32_t day, int32_t hour) {
+        for (auto& p : plugins) {
+            if (p.onHourlyTick) p.onHourlyTick(day, hour);
+        }
+    }
+
+    void fireRegionChanged(const std::string& region_id, const std::string& change_type) {
+        for (auto& p : plugins) {
+            if (p.onRegionChanged) p.onRegionChanged(region_id.c_str(), change_type.c_str());
+        }
+    }
+
+    void fireNpcDeath(const std::string& npc_id, const std::string& cause) {
+        for (auto& p : plugins) {
+            if (p.onNpcDeath) p.onNpcDeath(npc_id.c_str(), cause.c_str());
+        }
+    }
+
+    void fireBattle(const std::string& region_id, int32_t attackers, int32_t defenders) {
+        for (auto& p : plugins) {
+            if (p.onBattle) p.onBattle(region_id.c_str(), attackers, defenders);
+        }
+    }
+
+    size_t pluginCount() const { return plugins.size(); }
 };
 
 PluginManager g_pluginManager;
 
-void triggerJsHook(const std::string& hookName) {
-    if (g_active_hooks.count(hookName) == 0) return;
-    
-    JsonValue req = JsonValue::object();
-    req.set("status", "hook_request");
-    req.set("hook", hookName);
-    req.set("world", g_world.toJson());
-    
+// ============================================================================
+// ASYNC JS HOOK SYSTEM (Event-Driven, Non-Blocking)
+// ============================================================================
+// Instead of blocking the engine while waiting for JS responses,
+// hook events are queued and dispatched to JS as fire-and-forget messages.
+// JS can send deferred modifications back via the "applyModChanges" command.
+
+struct PendingHookEvent {
+    std::string hook_name;
+    JsonValue data;  // Minimal context data (not the entire world!)
+};
+
+static std::vector<PendingHookEvent> g_pending_hook_events;
+static std::mutex g_hook_events_mutex;
+
+// Fire-and-forget: emit hook event to JS without waiting for response
+void emitJsEvent(const std::string& eventName, const JsonValue& context) {
+    if (g_active_hooks.count(eventName) == 0) return;
+
+    JsonValue evt = JsonValue::object();
+    evt.set("status", "mod_event");
+    evt.set("event", eventName);
+    evt.set("context", context);
+
     {
         std::lock_guard<std::mutex> outLock(g_output_mutex);
-        std::cout << req.toString() << std::endl;
+        std::cout << evt.toString() << std::endl;
         std::cout.flush();
     }
+}
 
-    // Read response with 10-second timeout to prevent indefinite hang
-    std::string line;
-    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-    while (std::chrono::steady_clock::now() < deadline) {
-        // Non-blocking check: use short timeout approach
-        if (std::cin.rdbuf()->in_avail() > 0 || std::cin.peek() != std::char_traits<char>::eof()) {
-            if (std::getline(std::cin, line)) {
-                if (line.empty()) continue;
-                JsonValue resp = parseJson(line);
-                if (resp.has("command") && resp["command"].asString() == "hook_response") {
-                    if (resp.has("world")) {
-                        g_world = World::fromJson(resp["world"]);
-                    }
-                    break;
-                }
-            }
-        } else {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+// DEPRECATED: triggerJsHook is now non-blocking — fires event and continues
+void triggerJsHook(const std::string& hookName) {
+    if (g_active_hooks.count(hookName) == 0) return;
+
+    // Build minimal context (not the entire world!)
+    JsonValue ctx = JsonValue::object();
+    ctx.set("day", g_world.current_day);
+    ctx.set("hour", g_world.time.internalHour);
+
+    // For daily/hourly hooks, include region summary (not full data)
+    if (hookName.find("Daily") != std::string::npos || hookName.find("Hourly") != std::string::npos) {
+        JsonValue regions = JsonValue::object();
+        int count = 0;
+        for (auto& [id, r] : g_world.regions) {
+            if (count++ > 50) break;  // Limit context size
+            JsonValue summary = JsonValue::object();
+            summary.set("population", (int)r.population);
+            summary.set("stability", (int)r.stability);
+            regions.set(id, summary);
         }
+        ctx.set("regions", regions);
     }
-    // If timeout, continue without hook response — don't block engine
+
+    emitJsEvent(hookName, ctx);
 }
 
 bool moveItem(const std::string& itemId, const std::string& targetContainerId) {
@@ -7892,7 +8224,9 @@ void globalHomeostasis() {
 
 
 void hourlyTick() {
+    applyDeferredMutations();
     triggerJsHook("onBeforeHourlyTick");
+    g_pluginManager.fireHourlyTick(g_world.current_day, g_world.time.internalHour);
     processConsumption();
     processCaravans();
 
@@ -7927,6 +8261,7 @@ void hourlyTick() {
         }
     }
     triggerJsHook("onAfterHourlyTick");
+    g_pluginManager.fireHourlyTick(g_world.current_day, g_world.time.internalHour);
 }
 
 // Simulate one day
@@ -10545,7 +10880,7 @@ void dailyTick() {
     triggerJsHook("onBeforeDailyTick");
     g_world.current_day++;
 
-    g_pluginManager.runDailyHooks();
+    g_pluginManager.fireDailyTick(g_world.current_day);
     
     // Очистка фантомных регионов (багфикс)
     for (auto it = g_world.regions.begin(); it != g_world.regions.end(); ) {
@@ -13298,7 +13633,7 @@ int main() {
                     active_mods.push_back(command["active_mods"][i].asString());
                 }
             }
-            g_pluginManager.loadPlugins(mods_dir, active_mods, &g_world, &g_db, &g_itemRegistry, &g_facilityRegistry);
+            g_pluginManager.loadPlugins(mods_dir, active_mods);
             response.set("status", "ok");
             response.set("message", "Nexus Engine initialized");
             response.set("version", "1.0.0");
@@ -13313,6 +13648,44 @@ int main() {
             }
             response.set("status", "ok");
             response.set("message", "Hooks registered");
+        }
+        else if (cmd == "applyModChanges") {
+            // JS mods can send deferred mutations through this command
+            if (command.has("mutations") && command["mutations"].type == JsonValue::ARRAY) {
+                std::lock_guard<std::mutex> lock(g_deferred_mutex);
+                for (size_t i = 0; i < command["mutations"].size(); i++) {
+                    JsonValue m = command["mutations"][i];
+                    DeferredMutation dm;
+                    std::string mtype = m.has("type") ? m["type"].asString() : "";
+                    if (mtype == "setStability") {
+                        dm.type = DeferredMutation::SET_STABILITY;
+                        dm.target_id = m.has("region_id") ? m["region_id"].asString() : "";
+                        dm.int_value = m.has("value") ? m["value"].asInt() : 0;
+                        g_deferred_mutations.push_back(dm);
+                    } else if (mtype == "modifyPopulation") {
+                        dm.type = DeferredMutation::MODIFY_POPULATION;
+                        dm.target_id = m.has("region_id") ? m["region_id"].asString() : "";
+                        dm.int_value = m.has("delta") ? m["delta"].asInt() : 0;
+                        g_deferred_mutations.push_back(dm);
+                    } else if (mtype == "multiplyAllPrices") {
+                        dm.type = DeferredMutation::MULTIPLY_ALL_PRICES;
+                        dm.double_value = m.has("factor") ? m["factor"].asDouble() : 1.0;
+                        g_deferred_mutations.push_back(dm);
+                    } else if (mtype == "multiplyItemPrice") {
+                        dm.type = DeferredMutation::MULTIPLY_ITEM_PRICE;
+                        dm.target_id = m.has("item_id") ? m["item_id"].asString() : "";
+                        dm.double_value = m.has("factor") ? m["factor"].asDouble() : 1.0;
+                        g_deferred_mutations.push_back(dm);
+                    } else if (mtype == "setGlobalString") {
+                        dm.type = DeferredMutation::SET_GLOBAL_STRING;
+                        dm.target_id = m.has("key") ? m["key"].asString() : "";
+                        dm.string_value = m.has("value") ? m["value"].asString() : "";
+                        g_deferred_mutations.push_back(dm);
+                    }
+                }
+            }
+            response.set("status", "ok");
+            response.set("message", "Mod changes queued for next tick");
         }
 
         else if (cmd == "loadDatabase") {

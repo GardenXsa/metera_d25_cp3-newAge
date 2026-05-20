@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, protocol, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -93,6 +93,15 @@ function startEngine() {
                             wins[0].webContents.send('nexus-hook-request', response.hook, response.world);
                         }
                         continue; // Не резолвим основной промис, ждем hook_response
+                    }
+
+                    // ModKit 3.0: Async mod event from engine (fire-and-forget, non-blocking)
+                    if (response.status === 'mod_event') {
+                        const wins = BrowserWindow.getAllWindows();
+                        if (wins.length > 0) {
+                            wins[0].webContents.send('nexus-mod-event', response);
+                        }
+                        continue;
                     }
 
                     // Realtime update from engine — stream world state to renderer immediately
@@ -447,7 +456,8 @@ ipcMain.handle('nexus-stop-realtime', async () => {
 const ALLOWED_RAW_COMMANDS = new Set([
     'getWorldMap',
     'getGraphContext',
-    'getFullState'
+    'getFullState',
+    'applyModChanges'
 ]);
 
 ipcMain.handle('nexus-send-raw-command', async (event, command, params) => {
@@ -634,7 +644,76 @@ function createWindow () {
   });
 }
 
-app.whenReady().then(createWindow);
+// ============================================================================
+// MODKIT 3.0: VIRTUAL FILE SYSTEM — metera-mod:// protocol
+// ============================================================================
+// Register custom protocol before app.whenReady()
+// metera-mod://cyberpunk_total_conversion/assets/icons/blade.png
+// → maps to MODS_DIR/cyberpunk_total_conversion/assets/icons/blade.png
+
+protocol.registerSchemesAsPrivileged([
+    {
+        scheme: 'metera-mod',
+        privileges: {
+            bypassCSP: true,
+            stream: true,
+            supportFetchAPI: true,
+            standard: false,
+            secure: true
+        }
+    }
+]);
+
+app.whenReady().then(() => {
+    // Register the metera-mod:// protocol handler
+    protocol.handle('metera-mod', (request) => {
+        try {
+            // Parse: metera-mod://mod_id/path/to/file.ext
+            const url = new URL(request.url);
+            const modId = url.hostname;  // First path segment is the mod ID
+            const assetPath = url.pathname;  // Everything after the mod ID
+
+            // Security: Sanitize modId and assetPath to prevent path traversal
+            const safeModId = modId.replace(/[^a-zA-Z0-9_-]/g, '');
+            const safeAssetPath = path.normalize(assetPath).replace(/^(\.\.(\/|\\|$))+/, '');
+
+            const fullPath = path.resolve(path.join(MODS_DIR, safeModId, safeAssetPath));
+
+            // Verify the resolved path stays within MODS_DIR
+            if (!fullPath.startsWith(path.resolve(MODS_DIR))) {
+                return new Response('Forbidden', { status: 403 });
+            }
+
+            // Check file exists
+            if (!fs.existsSync(fullPath)) {
+                return new Response('Not Found', { status: 404 });
+            }
+
+            // Determine MIME type from extension
+            const ext = path.extname(fullPath).toLowerCase();
+            const mimeTypes = {
+                '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+                '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
+                '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
+                '.mp4': 'video/mp4', '.webm': 'video/webm',
+                '.json': 'application/json', '.md': 'text/markdown',
+                '.txt': 'text/plain', '.html': 'text/html', '.css': 'text/css',
+                '.js': 'text/javascript'
+            };
+            const mimeType = mimeTypes[ext] || 'application/octet-stream';
+
+            const data = fs.readFileSync(fullPath);
+            return new Response(data, {
+                headers: { 'Content-Type': mimeType, 'Access-Control-Allow-Origin': '*' }
+            });
+        } catch (e) {
+            console.error('[metera-mod://] Error:', e.message);
+            return new Response('Internal Server Error', { status: 500 });
+        }
+    });
+
+    createWindow();
+});
 
 // Expose HTTP session token to renderer (needed for fetch calls from game)
 ipcMain.handle('get-http-token', () => HTTP_SESSION_TOKEN);

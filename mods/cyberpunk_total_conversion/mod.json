@@ -1,11 +1,12 @@
 {
     "id": "cyberpunk_total_conversion",
     "name": "Cyberpunk Total Conversion",
-    "version": "0.1.0",
-    "author": "Gemini",
-    "description": "Total conversion mod that replaces the fantasy world with a dark cyberpunk setting. Adds new lore, stats, items, and mechanics.",
+    "version": "3.0.0",
+    "author": "GardenXsa",
+    "description": "Total conversion mod that replaces the fantasy world with a dark cyberpunk setting. Adds new lore, stats, items, and mechanics. Now uses ModKit 3.0 C-API and metera-mod:// VFS.",
     "total_conversion": true,
     "dependencies": ["base_game"],
+    "apiVersion": "3.0",
     "scripts": ["data/main.js"],
     "data": {
         "items": ["data/items.json"],
@@ -13,5 +14,6 @@
         "lore": ["data/lore.md"],
         "economy_items": ["data/economy_items.json"],
         "economy_recipes": ["data/economy_recipes.json"]
-    }
+    },
+    "native_plugins": ["native/cyberpunk_economy.so"]
 }

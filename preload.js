@@ -85,5 +85,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // HTTP session token for authenticated fetch calls
-    getHttpToken: () => ipcRenderer.invoke('get-http-token')
+    getHttpToken: () => ipcRenderer.invoke('get-http-token'),
+
+    // ModKit 3.0: Async mod events from engine (non-blocking, fire-and-forget)
+    onNexusModEvent: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('nexus-mod-event', handler);
+        return () => ipcRenderer.removeListener('nexus-mod-event', handler);
+    }
 });

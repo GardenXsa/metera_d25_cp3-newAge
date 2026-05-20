@@ -25,6 +25,16 @@ async function initModKit() {
         });
     }
 
+    // ModKit 3.0: Listen for async mod events from engine (fire-and-forget)
+    if (window.electronAPI && window.electronAPI.onNexusModEvent) {
+        window.electronAPI.onNexusModEvent(async (data) => {
+            if (data && data.event) {
+                // Emit to ModAPI hooks with the context data
+                await window.ModAPI.emit(data.event, data.context || {});
+            }
+        });
+    }
+
     await modLoader.initMods(activeMods);
     window.ModAPI.initialized = true;
 }

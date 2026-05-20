@@ -340,6 +340,57 @@ window.ModAPI = {
         console.log(`[ModAPI] Удалена кастомная ГМ команда: ${commandName}`);
     },
 
+    // ============================================================================
+    // MODKIT 3.0: Virtual File System + Deferred Mutations
+    // ============================================================================
+
+    /**
+     * Resolve a mod asset path to a valid URL for <img>, background-image, <audio>, etc.
+     * Uses the metera-mod:// custom Electron protocol.
+     *
+     * @param {string} modId - The mod's ID (e.g., 'cyberpunk_total_conversion')
+     * @param {string} assetPath - Relative path within the mod folder (e.g., 'assets/icons/blade.png')
+     * @returns {string} A valid URL like 'metera-mod://cyberpunk_total_conversion/assets/icons/blade.png'
+     *
+     * Example:
+     *   const url = ModAPI.resolveAsset('cyberpunk_total_conversion', 'assets/bg/neon_city.png');
+     *   document.getElementById('game-bg').style.backgroundImage = `url('${url}')`;
+     */
+    resolveAsset: function(modId, assetPath) {
+        if (!modId || typeof modId !== 'string') {
+            console.error('[ModAPI] resolveAsset: modId must be a non-empty string');
+            return '';
+        }
+        if (!assetPath || typeof assetPath !== 'string') {
+            console.error('[ModAPI] resolveAsset: assetPath must be a non-empty string');
+            return '';
+        }
+        // Sanitize: remove leading slashes from assetPath
+        const cleanPath = assetPath.replace(/^\/+/, '');
+        return `metera-mod://${modId}/${cleanPath}`;
+    },
+
+    /**
+     * Send deferred mutations to the C++ engine. Changes will be applied on the next tick.
+     * This is the JS-side equivalent of the C-API deferred mutation system.
+     *
+     * @param {Array} mutations - Array of mutation objects
+     *   Each mutation has: { type: string, ...specific fields }
+     *   Types:
+     *     { type: 'setStability', region_id: string, value: number }
+     *     { type: 'modifyPopulation', region_id: string, delta: number }
+     *     { type: 'multiplyAllPrices', factor: number }
+     *     { type: 'multiplyItemPrice', item_id: string, factor: number }
+     *     { type: 'setGlobalString', key: string, value: string }
+     */
+    applyModChanges: async function(mutations) {
+        if (!Array.isArray(mutations) || mutations.length === 0) return;
+        if (window.electronAPI && window.electronAPI.nexusSendRawCommand) {
+            return await window.electronAPI.nexusSendRawCommand('applyModChanges', { mutations });
+        }
+        return null;
+    },
+
     // Issue #2: unloadMod - full cleanup for a specific mod
     unloadMod: function(modId) {
         const mod = this.mods[modId];
