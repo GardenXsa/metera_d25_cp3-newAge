@@ -1102,6 +1102,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     await TransportSystem.init();
 });
 
+// Delegated event listener for data-action buttons (CSP-compliant replacement for inline onclick)
+document.addEventListener('click', (e) => {
+    const action = e.target.closest('[data-action]');
+    if (!action) return;
+    const act = action.getAttribute('data-action');
+    if (act === 'cancel-api' && typeof window.cancelCurrentApiRequest === 'function') {
+        window.cancelCurrentApiRequest();
+    } else if (act === 'dismount-transport') {
+        dismountTransport();
+    } else if (act === 'admin-add-gold') {
+        adminAddGold();
+    } else if (act === 'admin-heal') {
+        adminHeal();
+    } else if (act === 'admin-force-summary') {
+        adminForceSummary();
+    } else if (act === 'toggle-autotester') {
+        toggleAutoTester();
+    } else if (act === 'toggle-localization') {
+        window.DISABLE_LOCALIZATION = !window.DISABLE_LOCALIZATION;
+        populateAdminMenu();
+    }
+});
+
 // ======================================================================
 // --- TRANSPORT SYSTEM (LEGACY FUNCTIONS) ---
 // ======================================================================
@@ -1186,8 +1209,10 @@ async function updateTransportUI() {
             <i class="fas fa-horse"></i>
             ${t('transport.active', 'Transport')}: ${transportName}
             <br>Speed: ×${info.speed_multiplier.toFixed(1)}
-            <button onclick="dismountTransport()" class="btn-small">${t('transport.dismount', 'Dismount')}</button>
+            <button id="dismount-transport-btn" class="btn-small">${t('transport.dismount', 'Dismount')}</button>
         `;
+        const dismountBtn = indicator.querySelector('#dismount-transport-btn');
+        if (dismountBtn) dismountBtn.addEventListener('click', dismountTransport);
     } else {
         indicator.style.display = 'none';
     }
@@ -3085,7 +3110,7 @@ async function runWorldSimulationTick() {
                 <span class="ether-text-title" style="color: #e74c3c; text-shadow: 0 0 10px #e74c3c;">ПЕРЕСТРОЙКА РЕАЛЬНОСТИ...</span>
                 <span class="ether-text-subtitle">Движок Мира анализирует события</span>
             </div>
-            <button class="ether-cancel-btn" onclick="window.cancelCurrentApiRequest()">
+            <button class="ether-cancel-btn" data-action="cancel-api">
                 <i class="fas fa-times"></i> Прервать связь
             </button>
     `;
@@ -3329,6 +3354,11 @@ function escapeHTML(str) {
 // Sanitize HTML content — strip dangerous tags while preserving safe formatting
 function sanitizeHTML(html) {
     if (typeof html !== 'string') return '';
+    // Use DOMPurify if available (loaded in index.html), otherwise fallback to basic sanitization
+    if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
+        return DOMPurify.sanitize(html, { ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'span', 'br', 'p', 'div', 'ul', 'ol', 'li', 'a'], ALLOWED_ATTR: ['class', 'href', 'style', 'title'] });
+    }
+    // Fallback: basic regex sanitization (less secure than DOMPurify)
     return html
         .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
         .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
@@ -3336,7 +3366,10 @@ function sanitizeHTML(html) {
         .replace(/<embed\b[^>]*>/gi, '')
         .replace(/on\w+\s*=\s*"[^"]*"/gi, '')
         .replace(/on\w+\s*=\s*'[^']*'/gi, '')
-        .replace(/javascript:/gi, '');
+        .replace(/on\w+\s*=\s*[^\s>]+/gi, '')
+        .replace(/javascript:/gi, '')
+        .replace(/<svg\b[^>]*>/gi, '')
+        .replace(/<img\b[^>]*onerror\b[^>]*>/gi, '');
 }
 
 // --- УНИВЕРСАЛЬНЫЙ КРАСИВЫЙ ТУЛТИП ---
@@ -15611,11 +15644,11 @@ function populateAdminMenu() {
             <h4 style="margin: 0 0 10px 0; color: #f1c40f;">💰 Быстрые действия</h4>
             <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                 <input type="number" id="admin-gold-input" value="1000" style="width: 100px; padding: 5px; color: #fff; background: rgba(0,0,0,0.5); border: 1px solid #f1c40f;">
-                <button onclick="adminAddGold()" style="background: #27ae60; margin: 0; padding: 5px 15px; min-width: auto;">+ Золото</button>
-                <button onclick="adminHeal()" style="background: #e74c3c; margin: 0; padding: 5px 15px; min-width: auto;">Full HP/MP</button>
-                <button onclick="adminForceSummary()" style="background: #8e44ad; margin: 0; padding: 5px 15px; min-width: auto;">Сжать память (Summarize)</button>
-                <button onclick="toggleAutoTester()" id="admin-autotester-btn" style="background: #e67e22; margin: 0; padding: 5px 15px; min-width: auto;">🤖 Авто-Тестер: ВЫКЛ</button>
-                <button onclick="window.DISABLE_LOCALIZATION = !window.DISABLE_LOCALIZATION; populateAdminMenu();" style="background: #34495e; margin: 0; padding: 5px 15px; min-width: auto;">🌐 Локализация: ${window.DISABLE_LOCALIZATION ? 'ВЫКЛ' : 'ВКЛ'}</button>
+                <button data-action="admin-add-gold" style="background: #27ae60; margin: 0; padding: 5px 15px; min-width: auto;">+ Золото</button>
+                <button data-action="admin-heal" style="background: #e74c3c; margin: 0; padding: 5px 15px; min-width: auto;">Full HP/MP</button>
+                <button data-action="admin-force-summary" style="background: #8e44ad; margin: 0; padding: 5px 15px; min-width: auto;">Сжать память (Summarize)</button>
+                <button data-action="toggle-autotester" id="admin-autotester-btn" style="background: #e67e22; margin: 0; padding: 5px 15px; min-width: auto;">🤖 Авто-Тестер: ВЫКЛ</button>
+                <button data-action="toggle-localization" style="background: #34495e; margin: 0; padding: 5px 15px; min-width: auto;">🌐 Локализация: ${window.DISABLE_LOCALIZATION ? 'ВЫКЛ' : 'ВКЛ'}</button>
             </div>
         </div>
 
@@ -15996,7 +16029,7 @@ async function runDeepSetupPipeline(narratorStyleGuide) {
                 <span class="ether-text-title" id="deep-setup-title">Глубокая генерация...</span>
                 <span class="ether-text-subtitle" id="deep-setup-sub">Инициализация</span>
             </div>
-            <button class="ether-cancel-btn" onclick="window.cancelCurrentApiRequest()">
+            <button class="ether-cancel-btn" data-action="cancel-api">
                 <i class="fas fa-times"></i> Прервать связь
             </button>
     `;

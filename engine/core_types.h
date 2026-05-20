@@ -27,13 +27,19 @@ struct OrderData {
 };
 
 struct PhysicalItemHistory {
-    int day;
+    int day = 0;
     std::string event;
     JsonValue toJson() const {
         JsonValue obj = JsonValue::object();
         obj.set("day", day);
         obj.set("event", event);
         return obj;
+    }
+    static PhysicalItemHistory fromJson_static(const JsonValue& j) {
+        PhysicalItemHistory h;
+        if(j.has("day")) h.day = j["day"].asInt();
+        if(j.has("event")) h.event = j["event"].asString();
+        return h;
     }
 };
 
@@ -71,6 +77,7 @@ struct PhysicalItem {
         JsonValue obj = JsonValue::object();
         obj.set("id", id);
         obj.set("prototype_id", prototype_id);
+        obj.set("raw_prototype_id", raw_prototype_id);
         obj.set("stack_size", stack_size);
         obj.set("container_id", container_id);
         obj.set("slot_index", slot_index);
@@ -80,6 +87,40 @@ struct PhysicalItem {
         obj.set("created_at", created_at);
         obj.set("last_moved_at", last_moved_at);
         obj.set("batch_day", batch_day);
+        obj.set("is_dirty", is_dirty);
+        // Flags
+        JsonValue flagsObj = JsonValue::object();
+        flagsObj.set("quest_item", flags.quest_item);
+        flagsObj.set("bound", flags.bound);
+        flagsObj.set("stolen", flags.stolen);
+        flagsObj.set("magical", flags.magical);
+        flagsObj.set("bound_to_owner", flags.bound_to_owner);
+        obj.set("flags", flagsObj);
+        // Legacy direct fields for compatibility
+        obj.set("quest_item", quest_item);
+        obj.set("bound", bound);
+        obj.set("stolen", stolen);
+        obj.set("magical", magical);
+        // Order data
+        if (order_data.has_value()) {
+            JsonValue od = JsonValue::object();
+            od.set("issuer_id", order_data->issuer_id);
+            od.set("issuer_name", order_data->issuer_name);
+            od.set("item_prototype", order_data->item_prototype);
+            od.set("quantity", order_data->quantity);
+            od.set("max_price_per_unit", order_data->max_price_per_unit);
+            od.set("deadline_days", order_data->deadline_days);
+            od.set("status", order_data->status);
+            od.set("created_date", order_data->created_date);
+            od.set("target_container_id", order_data->target_container_id);
+            obj.set("order_data", od);
+        }
+        // History
+        if (!history.empty()) {
+            JsonValue histArr = JsonValue::array();
+            for (const auto& h : history) histArr.push(h.toJson());
+            obj.set("history", histArr);
+        }
         return obj;
     }
 
@@ -87,6 +128,7 @@ struct PhysicalItem {
         PhysicalItem item;
         if(j.has("id")) item.id = j["id"].asString();
         if(j.has("prototype_id")) item.prototype_id = j["prototype_id"].asString();
+        if(j.has("raw_prototype_id")) item.raw_prototype_id = j["raw_prototype_id"].asString();
         if(j.has("stack_size")) item.stack_size = j["stack_size"].asInt();
         if(j.has("container_id")) item.container_id = j["container_id"].asString();
         if(j.has("slot_index")) item.slot_index = j["slot_index"].asString();
@@ -96,6 +138,45 @@ struct PhysicalItem {
         if(j.has("created_at")) item.created_at = j["created_at"].asInt();
         if(j.has("last_moved_at")) item.last_moved_at = j["last_moved_at"].asInt();
         if(j.has("batch_day")) item.batch_day = j["batch_day"].asInt();
+        if(j.has("is_dirty")) item.is_dirty = j["is_dirty"].asBool();
+        // Flags
+        if(j.has("flags")) {
+            item.flags.quest_item = j["flags"]["quest_item"].asBool();
+            item.flags.bound = j["flags"]["bound"].asBool();
+            item.flags.stolen = j["flags"]["stolen"].asBool();
+            item.flags.magical = j["flags"]["magical"].asBool();
+            if(j["flags"].has("bound_to_owner")) item.flags.bound_to_owner = j["flags"]["bound_to_owner"].asString();
+        }
+        // Legacy direct fields (override flags if present)
+        if(j.has("quest_item")) item.quest_item = j["quest_item"].asBool();
+        if(j.has("bound")) item.bound = j["bound"].asBool();
+        if(j.has("stolen")) item.stolen = j["stolen"].asBool();
+        if(j.has("magical")) item.magical = j["magical"].asBool();
+        // Sync flags with direct fields
+        item.flags.quest_item = item.flags.quest_item || item.quest_item;
+        item.flags.bound = item.flags.bound || item.bound;
+        item.flags.stolen = item.flags.stolen || item.stolen;
+        item.flags.magical = item.flags.magical || item.magical;
+        // Order data
+        if(j.has("order_data")) {
+            OrderData od;
+            od.issuer_id = j["order_data"]["issuer_id"].asString();
+            od.issuer_name = j["order_data"]["issuer_name"].asString();
+            od.item_prototype = j["order_data"]["item_prototype"].asString();
+            od.quantity = j["order_data"]["quantity"].asInt();
+            od.max_price_per_unit = j["order_data"]["max_price_per_unit"].asInt();
+            od.deadline_days = j["order_data"]["deadline_days"].asInt();
+            od.status = j["order_data"]["status"].asString();
+            od.created_date = j["order_data"]["created_date"].asInt();
+            od.target_container_id = j["order_data"]["target_container_id"].asString();
+            item.order_data = od;
+        }
+        // History
+        if(j.has("history")) {
+            for(size_t i = 0; i < j["history"].size(); i++) {
+                item.history.push_back(PhysicalItemHistory::fromJson_static(j["history"][i]));
+            }
+        }
         return item;
     }
 };
@@ -126,6 +207,7 @@ struct Storage {
         obj.set("lock_data", lock_data);
         obj.set("physical_props", physical_props);
         obj.set("custom_props", custom_props);
+        obj.set("is_dirty", is_dirty);
         JsonValue arr = JsonValue::array();
         for(const auto& i : item_ids) arr.push(i);
         obj.set("item_ids", arr);
@@ -144,6 +226,7 @@ struct Storage {
         if(j.has("lock_data")) s.lock_data = j["lock_data"];
         if(j.has("physical_props")) s.physical_props = j["physical_props"];
         if(j.has("custom_props")) s.custom_props = j["custom_props"];
+        if(j.has("is_dirty")) s.is_dirty = j["is_dirty"].asBool();
         if(j.has("item_ids") && j["item_ids"].type == JsonValue::ARRAY) {
             for(size_t i=0; i<j["item_ids"].size(); ++i) {
                 s.item_ids.push_back(j["item_ids"][i].asString());
@@ -194,8 +277,13 @@ struct ObjectPool {
     std::vector<bool> active;
     std::unordered_map<std::string, size_t> id_to_index;
 
-    bool count(const std::string& id) const {
+    bool contains(const std::string& id) const {
         return id_to_index.count(id) > 0 && active[id_to_index.at(id)];
+    }
+
+    // Legacy alias
+    bool count(const std::string& id) const {
+        return contains(id);
     }
 
     T& operator[](const std::string& id) {
@@ -276,7 +364,7 @@ private:
     std::queue<std::function<void()>> tasks;
     std::mutex queue_mutex;
     std::condition_variable condition;
-    bool stop;
+    std::atomic<bool> stop;
 };
 
 inline ThreadPool* getThreadPool() {
@@ -299,16 +387,26 @@ inline std::string locStr(const std::string& key, const std::unordered_map<std::
         bool first = true;
         for (const auto& [k, v] : replacements) {
             if (!first) json += ",";
-            // Escape quotes and backslashes in values for JSON safety
+            // Escape quotes, backslashes, and control characters in values for JSON safety
             std::string escaped;
             for (char c : v) {
-                if (c == '"' || c == '\\') escaped += '\\';
-                escaped += c;
+                if (c == '"') { escaped += "\\\""; }
+                else if (c == '\\') { escaped += "\\\\"; }
+                else if (c == '\n') { escaped += "\\n"; }
+                else if (c == '\r') { escaped += "\\r"; }
+                else if (c == '\t') { escaped += "\\t"; }
+                else if (static_cast<unsigned char>(c) < 0x20) { escaped += "\\u00"; escaped += "0123456789abcdef"[c >> 4]; escaped += "0123456789abcdef"[c & 0xf]; }
+                else { escaped += c; }
             }
             std::string escapedKey;
             for (char c : k) {
-                if (c == '"' || c == '\\') escapedKey += '\\';
-                escapedKey += c;
+                if (c == '"') { escapedKey += "\\\""; }
+                else if (c == '\\') { escapedKey += "\\\\"; }
+                else if (c == '\n') { escapedKey += "\\n"; }
+                else if (c == '\r') { escapedKey += "\\r"; }
+                else if (c == '\t') { escapedKey += "\\t"; }
+                else if (static_cast<unsigned char>(c) < 0x20) { escapedKey += "\\u00"; escapedKey += "0123456789abcdef"[c >> 4]; escapedKey += "0123456789abcdef"[c & 0xf]; }
+                else { escapedKey += c; }
             }
             json += "\"" + escapedKey + "\":\"" + escaped + "\"";
             first = false;

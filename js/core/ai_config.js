@@ -76,7 +76,13 @@ function removeGeminiKey(key) {
     _geminiKeysSet.delete(key);
     // If the active key was removed, switch to the first available
     if (geminiApiKey === key) {
-        geminiApiKey = geminiApiKeys.length > 0 ? geminiApiKeys[currentGeminiKeyIndex % geminiApiKeys.length] : '';
+        if (geminiApiKeys.length > 0) {
+            currentGeminiKeyIndex = currentGeminiKeyIndex % geminiApiKeys.length;
+            geminiApiKey = geminiApiKeys[currentGeminiKeyIndex];
+        } else {
+            currentGeminiKeyIndex = 0;
+            geminiApiKey = '';
+        }
     }
     return true;
 }

@@ -12,30 +12,36 @@ void ItemRegistry::loadItemsFromJSON(const std::string& filePath) {
         return;
     }
 
-    json data = json::parse(f);
+    try {
+        json data = json::parse(f);
 
-    for (auto& [id, item_data] : data.items()) {
-        ItemTemplate t;
-        t.id = id;
-        t.name = item_data.value("name", "");
-        t.basePrice = item_data.value("basePrice", 1.0);
-        
-        if (item_data.contains("tags")) {
-            item_data.at("tags").get_to(t.tags);
-        }
-        
-        if (item_data.contains("properties")) {
-            for(auto& [prop_key, prop_val] : item_data["properties"].items()) {
-                if (prop_val.is_number_integer()) {
-                    t.properties[prop_key] = prop_val.get<int>();
-                } else if (prop_val.is_number()) {
-                    t.properties[prop_key] = prop_val.get<double>();
-                } else if (prop_val.is_string()) {
-                    t.properties[prop_key] = prop_val.get<std::string>();
+        for (auto& [id, item_data] : data.items()) {
+            ItemTemplate t;
+            t.id = id;
+            t.name = item_data.value("name", "");
+            t.basePrice = item_data.value("basePrice", 1.0);
+            
+            if (item_data.contains("tags")) {
+                item_data.at("tags").get_to(t.tags);
+            }
+            
+            if (item_data.contains("properties")) {
+                for(auto& [prop_key, prop_val] : item_data["properties"].items()) {
+                    if (prop_val.is_number_integer()) {
+                        t.properties[prop_key] = prop_val.get<int>();
+                    } else if (prop_val.is_number()) {
+                        t.properties[prop_key] = prop_val.get<double>();
+                    } else if (prop_val.is_string()) {
+                        t.properties[prop_key] = prop_val.get<std::string>();
+                    }
                 }
             }
+            templates[id] = t;
         }
-        templates[id] = t;
+    } catch (const json::parse_error& e) {
+        std::cerr << "JSON parse error in " << filePath << ": " << e.what() << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading " << filePath << ": " << e.what() << std::endl;
     }
 }
 

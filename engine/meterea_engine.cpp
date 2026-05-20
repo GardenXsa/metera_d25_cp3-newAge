@@ -60,8 +60,8 @@ FacilityRegistry g_facilityRegistry;
 // NEW TAG-BASED ITEM ARCHITECTURE
 // ============================================================================
 
-// A flexible property value
-using PropertyValue = std::variant<int, double, std::string>;
+// A flexible property value (defined in item_system.h, do not redefine)
+// using PropertyValue = std::variant<int, double, std::string>;
 
 struct ItemDef { std::string id; int basePrice; std::string category; int shelfLife; JsonValue properties = JsonValue::object(); };
 struct RecipeDef { std::string facility; std::unordered_map<std::string, int> inputs; std::unordered_map<std::string, int> outputs; };
@@ -238,9 +238,10 @@ static std::recursive_mutex g_registry_mutex;
 static std::mutex g_news_mutex;
 static std::mutex g_sublocations_mutex;
 static std::mutex g_npc_state_mutex;
+static std::mutex g_output_mutex; // Protects std::cout from concurrent writes
     static std::mutex g_faction_state_mutex;
     static std::map<std::pair<std::string, std::string>, std::vector<std::pair<int,int>>> g_path_cache;
-    static bool g_path_cache_dirty = true;
+    static std::atomic<bool> g_path_cache_dirty{true};
 
         void rebuildContainerIndices() {
         std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
@@ -411,11 +412,14 @@ bool removeItem(const std::string& itemId, int quantity) {
     if (!g_items.count(itemId)) return false;
     
     PhysicalItem& item = g_items[itemId];
-    std::string oldOwner = "";
     if (item.stack_size <= quantity) {
         if (!item.container_id.empty() && g_containers.count(item.container_id)) {
             Storage& cont = g_containers[item.container_id];
-            cont.cached_stocks[item.prototype_id] -= item.stack_size;
+            auto csIt = cont.cached_stocks.find(item.prototype_id);
+            if (csIt != cont.cached_stocks.end()) {
+                csIt->second -= item.stack_size;
+                if (csIt->second < 0) csIt->second = 0; // Prevent underflow
+            }
             auto& vec = cont.item_ids;
             auto it = std::find(vec.begin(), vec.end(), itemId);
             if (it != vec.end()) {
@@ -436,7 +440,12 @@ bool removeItem(const std::string& itemId, int quantity) {
         item.stack_size -= quantity;
         item.is_dirty = true;
         if (!item.container_id.empty() && g_containers.count(item.container_id)) {
-            g_containers[item.container_id].cached_stocks[item.prototype_id] -= quantity;
+            auto& cs = g_containers[item.container_id].cached_stocks;
+            auto csIt = cs.find(item.prototype_id);
+            if (csIt != cs.end()) {
+                csIt->second -= quantity;
+                if (csIt->second < 0) csIt->second = 0; // Prevent underflow
+            }
         }
     }
     return true;
@@ -449,7 +458,8 @@ bool moveItem(const std::string& itemId, const std::string& targetContainerId);
         std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
         if (!g_containers.count(containerId)) return 0;
         if (prototypeId.empty()) return 0;
-        return g_containers[containerId].cached_stocks[prototypeId];
+        auto it = g_containers[containerId].cached_stocks.find(prototypeId);
+        return (it != g_containers[containerId].cached_stocks.end()) ? it->second : 0;
     }
 
 double calculateContainerWeight(const std::string& containerId) {
@@ -459,7 +469,6 @@ double calculateContainerWeight(const std::string& containerId) {
     for (const auto& itemId : g_containers[containerId].item_ids) {
         if (g_items.count(itemId)) {
             const PhysicalItem& item = g_items[itemId];
-    std::string oldOwner = "";
             double w = item.custom_props.has("weight_per_unit") ? item.custom_props["weight_per_unit"].asDouble() : 1.0;
             totalWeight += w * item.stack_size;
         }
@@ -493,7 +502,6 @@ int consumeItemsFromContainer(const std::string& containerId, const std::string&
         if (!g_items.count(itemId)) continue;
         
         PhysicalItem& item = g_items[itemId];
-        std::string oldOwner = "";
         int take = std::min(item.stack_size, remaining);
         if (take > 0) {
             removeItem(itemId, take);
@@ -659,8 +667,8 @@ struct Caravan {
 
 struct Wound {
     std::string type; // e.g., "deep_wound", "broken_arm", "scar"
-    int severity;     // 1-10
-    int day_received;
+    int severity = 0;     // 1-10
+    int day_received = 0;
 
     
 
@@ -960,7 +968,7 @@ struct NPC {
         npc.homeLocation = j["homeLocation"].asString();
         npc.currentLocation = j["currentLocation"].asString();
         npc.currentActivity = j["currentActivity"].asString();
-        npc.isAlive = j["isAlive"].asBool();
+        npc.isAlive = j.has("isAlive") ? j["isAlive"].asBool() : true;
         npc.hp = j["hp"].asInt();
         if (j.has("maxHp")) npc.maxHp = j["maxHp"].asInt(); else npc.maxHp = npc.hp;
         if (j.has("race")) npc.race = j["race"].asString();
@@ -3288,20 +3296,33 @@ void triggerJsHook(const std::string& hookName) {
     req.set("hook", hookName);
     req.set("world", g_world.toJson());
     
-    std::cout << req.toString() << std::endl;
-    std::cout.flush();
+    {
+        std::lock_guard<std::mutex> outLock(g_output_mutex);
+        std::cout << req.toString() << std::endl;
+        std::cout.flush();
+    }
 
+    // Read response with 10-second timeout to prevent indefinite hang
     std::string line;
-    while (std::getline(std::cin, line)) {
-        if (line.empty()) continue;
-        JsonValue resp = parseJson(line);
-        if (resp.has("command") && resp["command"].asString() == "hook_response") {
-            if (resp.has("world")) {
-                g_world = World::fromJson(resp["world"]);
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (std::chrono::steady_clock::now() < deadline) {
+        // Non-blocking check: use short timeout approach
+        if (std::cin.rdbuf()->in_avail() > 0 || std::cin.peek() != std::char_traits<char>::eof()) {
+            if (std::getline(std::cin, line)) {
+                if (line.empty()) continue;
+                JsonValue resp = parseJson(line);
+                if (resp.has("command") && resp["command"].asString() == "hook_response") {
+                    if (resp.has("world")) {
+                        g_world = World::fromJson(resp["world"]);
+                    }
+                    break;
+                }
             }
-            break;
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
+    // If timeout, continue without hook response — don't block engine
 }
 
 bool moveItem(const std::string& itemId, const std::string& targetContainerId) {
@@ -3314,7 +3335,11 @@ bool moveItem(const std::string& itemId, const std::string& targetContainerId) {
     
     if (!item.container_id.empty() && g_containers.count(item.container_id)) {
         Storage& oldCont = g_containers[item.container_id];
-        oldCont.cached_stocks[item.prototype_id] -= item.stack_size;
+        auto csIt = oldCont.cached_stocks.find(item.prototype_id);
+        if (csIt != oldCont.cached_stocks.end()) {
+            csIt->second -= item.stack_size;
+            if (csIt->second < 0) csIt->second = 0; // Prevent underflow
+        }
         oldOwner = oldCont.owner_id;
         auto& vec = oldCont.item_ids;
         auto it = std::find(vec.begin(), vec.end(), itemId);
@@ -3381,6 +3406,7 @@ std::string getGoodName(const std::string& good) {
 
 // Process spoilage for all items in all containers
 void processSpoilage() {
+    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
     for (size_t i=0; i<g_containers.data.size(); ++i) {
         if (!g_containers.active[i]) continue;
         Storage& container = g_containers.data[i];
@@ -3398,8 +3424,7 @@ void processSpoilage() {
             if (!g_items.count(itemId)) continue;
             
             PhysicalItem& item = g_items[itemId];
-    std::string oldOwner = "";
-            
+
             int maxLife = getShelfLifeDays(item.prototype_id);
             if (maxLife == 999999) continue;
             
@@ -3885,9 +3910,6 @@ void processConsumption() {
     }
 }
 
-// Process caravans movement and delivery
-void processCaravans();
-
 // === КАСКАДНАЯ МОДЕЛЬ ВРЕМЕНИ: ПОДСИСТЕМЫ ===
 
 void updateWeather() {
@@ -3921,9 +3943,9 @@ void updateWeather() {
                 else if (season == "spring" || season == "autumn") { weathers.push_back("rain"); weathers.push_back("fog"); }
                 else { weathers.push_back("rain"); weathers.push_back("heatwave"); }
             }
-            if (rand() % 100 < 1) weathers.push_back("aether_storm");
-            region.weather = weathers[rand() % weathers.size()];
-            region.weatherDaysLeft = 3 + (rand() % 4);
+            if (thread_safe_rand() % 100 < 1) weathers.push_back("aether_storm");
+            region.weather = weathers[thread_safe_rand() % weathers.size()];
+            region.weatherDaysLeft = 3 + (thread_safe_rand() % 4);
         }
     }
 }
@@ -3933,7 +3955,7 @@ void updateWeather() {
 
 void checkGlobalEvents() {
     // Еженедельные глобальные события
-    if ((rand() % 100) < 2) {
+    if ((thread_safe_rand() % 100) < 2) {
         addNews(locStr("engine.news.magic_currents_changed"), "global", 3, "misc");
     }
 }
@@ -6451,33 +6473,35 @@ void processMonthlyDemographics() {
             for (int i = 0; i < npc_births; i++) {
                 NPC child;
                 child.id = "npc_" + generateUUID();
-                child.name = "Ребенок_" + std::to_string(rand() % 1000);
+                child.name = "Ребенок_" + std::to_string(thread_safe_rand() % 1000);
                 child.type = "npc";
                 child.profession = "none";
                 child.homeLocation = rid;
                 child.currentLocation = rid;
                 child.currentActivity = "Играет";
                 child.age_days = 0;
-                child.is_male = (rand() % 2 == 0);
-                // Наследование расы от матери (или отца, если матери нет)
-                if (!child.mother_id.empty() && g_world.npcs.count(child.mother_id)) {
-                    child.race = g_world.npcs[child.mother_id].race;
-                } else if (!child.father_id.empty() && g_world.npcs.count(child.father_id)) {
-                    child.race = g_world.npcs[child.father_id].race;
-                }
-                child.immunity = 40 + rand() % 60;
+                child.is_male = (thread_safe_rand() % 2 == 0);
+                child.immunity = 40 + thread_safe_rand() % 60;
                 child.hp = 10;
                 child.maxHp = 10;
                 
+                // Assign parents first, then inherit race
                 if (potential_parents.size() >= 2) {
-                    std::string p1 = potential_parents[rand() % potential_parents.size()];
-                    std::string p2 = potential_parents[rand() % potential_parents.size()];
+                    std::string p1 = potential_parents[thread_safe_rand() % potential_parents.size()];
+                    std::string p2 = potential_parents[thread_safe_rand() % potential_parents.size()];
                     if (p1 != p2) {
                         child.mother_id = p1;
                         child.father_id = p2;
                         g_world.npcs[p1].children_ids.push_back(child.id);
                         g_world.npcs[p2].children_ids.push_back(child.id);
                     }
+                }
+
+                // Наследование расы от матери (или отца, если матери нет)
+                if (!child.mother_id.empty() && g_world.npcs.count(child.mother_id)) {
+                    child.race = g_world.npcs[child.mother_id].race;
+                } else if (!child.father_id.empty() && g_world.npcs.count(child.father_id)) {
+                    child.race = g_world.npcs[child.father_id].race;
                 }
                 g_world.npcs[child.id] = child;
             }
@@ -7509,7 +7533,6 @@ void processMerchantOrders() {
         for (const auto& itemId : inv.item_ids) {
             if (g_items.count(itemId)) {
                 PhysicalItem& item = g_items[itemId];
-    std::string oldOwner = "";
                 if (item.prototype_id == "document_order" && item.order_data.has_value()) {
                     OrderData& od = item.order_data.value();
                     if (od.status == "in_progress") {
@@ -11730,6 +11753,9 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
     int w = map.width;
     int h = map.height;
     
+    // Bounds check: ensure map grid is properly sized
+    if (w <= 0 || h <= 0 || static_cast<size_t>(w * h) > map.grid.size()) return {};
+    
     startX = std::clamp(startX, 0, w - 1);
     startY = std::clamp(startY, 0, h - 1);
     goalX = std::clamp(goalX, 0, w - 1);
@@ -13154,8 +13180,11 @@ void realtimeLoop() {
             response.set("world", g_world.toJson());
             serializeRegistriesGlobal(response, false);
             
-            std::cout << response.toString() << std::endl;
-            std::cout.flush();
+            {
+                std::lock_guard<std::mutex> outLock(g_output_mutex);
+                std::cout << response.toString() << std::endl;
+                std::cout.flush();
+            }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(g_realtime_interval.load()));
     }
@@ -13185,13 +13214,13 @@ int main() {
                 g_realtime_thread = new std::thread(realtimeLoop);
             }
             response.set("status", "ok");
-            std::cout << response.toString() << std::endl;
+            { std::lock_guard<std::mutex> outLock(g_output_mutex); std::cout << response.toString() << std::endl; std::cout.flush(); }
             continue;
         }
         else if (cmd == "stopRealtime") {
             g_realtime_active = false;
             response.set("status", "ok");
-            std::cout << response.toString() << std::endl;
+            { std::lock_guard<std::mutex> outLock(g_output_mutex); std::cout << response.toString() << std::endl; std::cout.flush(); }
             continue;
         }
 
@@ -14260,42 +14289,12 @@ else if (cmd == "playerManageBusiness") {
                     response.set("status", "ok");
                 } else response.set("status", "error");
             }
-
-            else if (action == "set_wages") {
-                std::string bId = args["businessId"].asString();
-                if (g_world.businesses.count(bId)) {
-                    g_world.businesses[bId].wage_level = args["value"].asInt();
-                    response.set("status", "ok");
-                } else response.set("status", "error");
-            }
-            else if (action == "set_maintenance") {
-                std::string bId = args["businessId"].asString();
-                if (g_world.businesses.count(bId)) {
-                    g_world.businesses[bId].maintenance_budget = args["value"].asInt();
-                    response.set("status", "ok");
-                } else response.set("status", "error");
-            }
             else if (action == "remove_rule") {
                 std::string bId = args["businessId"].asString();
                 std::string ruleId = args["ruleId"].asString();
                 if (g_world.businesses.count(bId)) {
                     auto& logs = g_world.businesses[bId].logistics;
                     logs.erase(std::remove_if(logs.begin(), logs.end(), [&](const LogisticRule& r){ return r.id == ruleId; }), logs.end());
-                    response.set("status", "ok");
-                } else response.set("status", "error");
-            }
-
-            else if (action == "set_wages") {
-                std::string bId = args["businessId"].asString();
-                if (g_world.businesses.count(bId)) {
-                    g_world.businesses[bId].wage_level = args["value"].asInt();
-                    response.set("status", "ok");
-                } else response.set("status", "error");
-            }
-            else if (action == "set_maintenance") {
-                std::string bId = args["businessId"].asString();
-                if (g_world.businesses.count(bId)) {
-                    g_world.businesses[bId].maintenance_budget = args["value"].asInt();
                     response.set("status", "ok");
                 } else response.set("status", "error");
             }
@@ -14306,21 +14305,6 @@ else if (cmd == "playerManageBusiness") {
                     response.set("status", "ok");
                 } else response.set("status", "error");
             }
-
-            else if (action == "set_wages") {
-                std::string bId = args["businessId"].asString();
-                if (g_world.businesses.count(bId)) {
-                    g_world.businesses[bId].wage_level = args["value"].asInt();
-                    response.set("status", "ok");
-                } else response.set("status", "error");
-            }
-            else if (action == "set_maintenance") {
-                std::string bId = args["businessId"].asString();
-                if (g_world.businesses.count(bId)) {
-                    g_world.businesses[bId].maintenance_budget = args["value"].asInt();
-                    response.set("status", "ok");
-                } else response.set("status", "error");
-            }
             else if (action == "toggle_auto_sell") {
                 std::string bId = args["businessId"].asString();
                 if (g_world.businesses.count(bId)) {
@@ -14328,22 +14312,6 @@ else if (cmd == "playerManageBusiness") {
                     response.set("status", "ok");
                 } else response.set("status", "error");
             }
-
-            else if (action == "set_wages") {
-                std::string bId = args["businessId"].asString();
-                if (g_world.businesses.count(bId)) {
-                    g_world.businesses[bId].wage_level = args["value"].asInt();
-                    response.set("status", "ok");
-                } else response.set("status", "error");
-            }
-            else if (action == "set_maintenance") {
-                std::string bId = args["businessId"].asString();
-                if (g_world.businesses.count(bId)) {
-                    g_world.businesses[bId].maintenance_budget = args["value"].asInt();
-                    response.set("status", "ok");
-                } else response.set("status", "error");
-            }
-
             else if (action == "set_employees") {
                 std::string bId = args["businessId"].asString();
                 if (g_world.businesses.count(bId)) {
@@ -14354,40 +14322,10 @@ else if (cmd == "playerManageBusiness") {
                     response.set("status", "ok");
                 } else response.set("status", "error");
             }
-
-            else if (action == "set_wages") {
-                std::string bId = args["businessId"].asString();
-                if (g_world.businesses.count(bId)) {
-                    g_world.businesses[bId].wage_level = args["value"].asInt();
-                    response.set("status", "ok");
-                } else response.set("status", "error");
-            }
-            else if (action == "set_maintenance") {
-                std::string bId = args["businessId"].asString();
-                if (g_world.businesses.count(bId)) {
-                    g_world.businesses[bId].maintenance_budget = args["value"].asInt();
-                    response.set("status", "ok");
-                } else response.set("status", "error");
-            }
             else if (action == "set_efficiency") {
                 std::string bId = args["businessId"].asString();
                 if (g_world.businesses.count(bId)) {
                     g_world.businesses[bId].target_efficiency = std::clamp(args["efficiency"].asInt(), 0, 100);
-                    response.set("status", "ok");
-                } else response.set("status", "error");
-            }
-
-            else if (action == "set_wages") {
-                std::string bId = args["businessId"].asString();
-                if (g_world.businesses.count(bId)) {
-                    g_world.businesses[bId].wage_level = args["value"].asInt();
-                    response.set("status", "ok");
-                } else response.set("status", "error");
-            }
-            else if (action == "set_maintenance") {
-                std::string bId = args["businessId"].asString();
-                if (g_world.businesses.count(bId)) {
-                    g_world.businesses[bId].maintenance_budget = args["value"].asInt();
                     response.set("status", "ok");
                 } else response.set("status", "error");
             }
@@ -14399,41 +14337,11 @@ else if (cmd == "playerManageBusiness") {
                     response.set("status", "ok");
                 } else response.set("status", "error");
             }
-
-            else if (action == "set_wages") {
-                std::string bId = args["businessId"].asString();
-                if (g_world.businesses.count(bId)) {
-                    g_world.businesses[bId].wage_level = args["value"].asInt();
-                    response.set("status", "ok");
-                } else response.set("status", "error");
-            }
-            else if (action == "set_maintenance") {
-                std::string bId = args["businessId"].asString();
-                if (g_world.businesses.count(bId)) {
-                    g_world.businesses[bId].maintenance_budget = args["value"].asInt();
-                    response.set("status", "ok");
-                } else response.set("status", "error");
-            }
             else if (action == "withdraw_cash") {
                 std::string bId = args["businessId"].asString();
                 int amount = args["amount"].asInt();
                 if (g_world.businesses.count(bId) && g_world.businesses[bId].cash_balance >= amount) {
                     g_world.businesses[bId].cash_balance -= amount;
-                    response.set("status", "ok");
-                } else response.set("status", "error");
-            }
-
-            else if (action == "set_wages") {
-                std::string bId = args["businessId"].asString();
-                if (g_world.businesses.count(bId)) {
-                    g_world.businesses[bId].wage_level = args["value"].asInt();
-                    response.set("status", "ok");
-                } else response.set("status", "error");
-            }
-            else if (action == "set_maintenance") {
-                std::string bId = args["businessId"].asString();
-                if (g_world.businesses.count(bId)) {
-                    g_world.businesses[bId].maintenance_budget = args["value"].asInt();
                     response.set("status", "ok");
                 } else response.set("status", "error");
             }
@@ -14648,22 +14556,19 @@ else if (cmd == "ping") {
             response.set("message", "Unknown command: " + cmd);
         }
         
-        std::cout << response.toString() << std::endl;
-        std::cout.flush();
+        { std::lock_guard<std::mutex> outLock(g_output_mutex); std::cout << response.toString() << std::endl; std::cout.flush(); }
 
         } // end try
         catch (const std::exception& e) {
             JsonValue errResp = JsonValue::object();
             errResp.set("status", "error");
             errResp.set("message", std::string("Engine exception: ") + e.what());
-            std::cout << errResp.toString() << std::endl;
-            std::cout.flush();
+            { std::lock_guard<std::mutex> outLock(g_output_mutex); std::cout << errResp.toString() << std::endl; std::cout.flush(); }
         } catch (...) {
             JsonValue errResp = JsonValue::object();
             errResp.set("status", "error");
             errResp.set("message", "Engine crashed with unknown exception");
-            std::cout << errResp.toString() << std::endl;
-            std::cout.flush();
+            { std::lock_guard<std::mutex> outLock(g_output_mutex); std::cout << errResp.toString() << std::endl; std::cout.flush(); }
         }
     }
     

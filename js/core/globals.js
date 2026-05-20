@@ -50,7 +50,7 @@ if (hasElectronAPI) {
 
 // --- Утилиты для асинхронных сохранений (Streaming) ---
 let autoSaveIntervalMs = (() => { const v = parseInt(localStorage.getItem('autoSaveInterval')); return (isNaN(v) || v < 60000) ? 300000 : v; })();
-const yieldThread = () => new Promise(resolve => setTimeout(resolve, 50));
+const yieldThread = () => new Promise(resolve => setTimeout(resolve, 0));
 
 function updateLoadingText(text) {
     const loadingTextEl = document.getElementById('loading-text');

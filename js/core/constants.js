@@ -79,10 +79,11 @@ function applyDatabaseStats(racesArray) {
     Object.assign(BASE_CLASS_STATS, newClassStats);
 
     // Deep-freeze the stats objects after loading from database to prevent accidental mutation
-    for (const race of Object.values(RACE_MODIFIERS)) Object.freeze(race);
-    Object.freeze(RACE_MODIFIERS);
-    for (const cls of Object.values(BASE_CLASS_STATS)) Object.freeze(cls);
-    Object.freeze(BASE_CLASS_STATS);
+    // Note: Use Object.seal() instead of Object.freeze() to allow mod modifications
+    for (const race of Object.values(RACE_MODIFIERS)) Object.seal(race);
+    Object.seal(RACE_MODIFIERS);
+    for (const cls of Object.values(BASE_CLASS_STATS)) Object.seal(cls);
+    Object.seal(BASE_CLASS_STATS);
 
     console.log('[Constants] BASE_CLASS_STATS and RACE_MODIFIERS loaded from database (frozen).',
         Object.keys(RACE_MODIFIERS).length, 'races,', Object.keys(BASE_CLASS_STATS).length, 'classes');

@@ -378,6 +378,11 @@ ipcMain.handle('nexus-sync-state', async (event, world, items, containers) => {
 });
 
 ipcMain.handle('nexus-load-world-file', async (event, filePath) => {
+    // Validate filePath is within SAVES_DIR to prevent path traversal
+    const resolvedPath = path.resolve(filePath);
+    if (!resolvedPath.startsWith(path.resolve(SAVES_DIR))) {
+        return { status: 'error', message: 'Invalid file path: must be within saves directory' };
+    }
     return await loadWorldFile(filePath);
 });
 
@@ -742,6 +747,8 @@ ipcMain.handle('init-save-file', async (event, filename) => {
 
 ipcMain.handle('append-save-line', async (event, filename, line) => {
     if (!isSafeFileName(filename)) return false;
+    // Limit line size to prevent memory exhaustion (10MB max)
+    if (typeof line !== 'string' || line.length > 10485760) return false;
     try {
         await fs.promises.appendFile(path.join(SAVES_DIR, filename), line);
         return true;
@@ -756,8 +763,15 @@ ipcMain.handle('get-file-size', async (event, filename) => {
     } catch (e) { return 0; }
 });
 
+ipcMain.handle('get-save-path', async () => {
+    return SAVES_DIR;
+});
+
 ipcMain.handle('read-save-chunk', async (event, filename, position, size) => {
     if (!isSafeFileName(filename)) return "";
+    // Validate bounds
+    if (typeof position !== 'number' || position < 0) return "";
+    if (typeof size !== 'number' || size <= 0 || size > 1048576) return ""; // Max 1MB per chunk
     try {
         const fd = await fs.promises.open(path.join(SAVES_DIR, filename), 'r');
         const buffer = Buffer.alloc(size);
@@ -902,6 +916,12 @@ ipcMain.handle('speak-text', async (event, text, voiceModel) => {
     const fs = require('fs');
 
     return new Promise((resolve) => {
+        // Validate voiceModel to prevent path traversal
+        if (!voiceModel || !/^[a-zA-Z0-9_.\-]+\.onnx$/.test(voiceModel)) {
+            resolve({ success: false, error: 'Invalid voice model name' });
+            return;
+        }
+        
         let ttsDir;
         if (app.isPackaged) {
             ttsDir = path.join(process.resourcesPath, 'app.asar.unpacked', 'assets', 'tts');

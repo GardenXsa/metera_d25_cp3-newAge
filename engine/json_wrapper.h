@@ -16,7 +16,7 @@ struct JsonValue {
     double d_val = 0.0;
     bool b_val = false;
 
-    JsonValue() : _data(nlohmann::json::object()), type(OBJECT) {}
+    JsonValue() : _data(nullptr), type(NULL_VAL) {}
     
     JsonValue(const nlohmann::json& j) : _data(j) {
         if (j.is_object()) {
@@ -69,7 +69,12 @@ struct JsonValue {
         if (type == INT) return (double)i_val;
         return d_val;
     }
-    bool asBool() const { return b_val; }
+    bool asBool() const {
+        if (type == NULL_VAL) return false;
+        if (type == INT) return i_val != 0;
+        if (type == STRING) return !s_val.empty();
+        return b_val;
+    }
 
     JsonValue operator[](const std::string& key) const {
         if (has(key)) return obj_val.at(key);
