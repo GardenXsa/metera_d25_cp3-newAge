@@ -2779,9 +2779,18 @@ struct WorldMap {
         obj.set("generation_tick", generation_tick);
         obj.set("version", 2);
         
-        JsonValue gridArr = JsonValue::array();
-        for (const auto& t : grid) gridArr.push(t.toJson());
-        obj.set("grid", gridArr);
+        // FIX: Serialize grid directly to nlohmann::json for massive speedup.
+        // Previously, each MapTile.toJson() created 6 JsonValue objects, then
+        // gridArr.push() rebuilt them into nlohmann::json. For 65536 tiles,
+        // this meant ~400K JsonValue allocations and 65536 nlohmann rebuilds.
+        // Now we build the nlohmann::json array directly — one allocation.
+        nlohmann::json gridJson = nlohmann::json::array();
+        gridJson.get_ref<nlohmann::json::array_t&>().reserve(grid.size());
+        for (const auto& t : grid) {
+            gridJson.push_back({(int)t.biome_id, (int)t.road_level, (int)t.bridge_flag,
+                               (int)t.water_depth, t.is_flooded, (int)t.road_condition});
+        }
+        obj.set("grid", JsonValue(gridJson));
         
         JsonValue locs = JsonValue::object();
         for (const auto& [id, loc] : locations) {
@@ -2790,6 +2799,7 @@ struct WorldMap {
         obj.set("locations", locs);
         
         JsonValue rds = JsonValue::array();
+        rds.arr_val.reserve(roads.size());
         for (const auto& r : roads) {
             rds.push(r.toJson());
         }
@@ -3383,6 +3393,10 @@ int getShelfLifeDays(const std::string& type) {
     return 999999;
 }
 
+// Maximum news items retained — prevents unbounded memory growth during long simulations.
+// Old news beyond this limit is pruned on every addNews() call.
+static constexpr size_t MAX_NEWS_ITEMS = 500;
+
 std::string addNews(const std::string& text, const std::string& location, int importance, const std::string& category = "misc", const std::string& causal_link = "", const std::vector<std::string>& entities = {}) {
     std::lock_guard<std::mutex> lock(g_news_mutex);
     News nw;
@@ -3397,6 +3411,30 @@ std::string addNews(const std::string& text, const std::string& location, int im
     nw.current_weight = nw.base_weight;
     g_world.news.push_back(nw);
     g_world.ari_graph.addEvent(nw.id, location, entities);
+
+    // Prune old news to prevent unbounded memory growth.
+    // Keep only the most recent MAX_NEWS_ITEMS entries.
+    if (g_world.news.size() > MAX_NEWS_ITEMS) {
+        size_t excess = g_world.news.size() - MAX_NEWS_ITEMS;
+        g_world.news.erase(g_world.news.begin(), g_world.news.begin() + excess);
+    }
+
+    // Prune ari_graph: remove event references older than MAX_NEWS_ITEMS
+    if (g_world.ari_graph.entity_to_events.size() > MAX_NEWS_ITEMS * 2) {
+        for (auto& [k, v] : g_world.ari_graph.entity_to_events) {
+            if (v.size() > 50) {
+                v.erase(v.begin(), v.begin() + (v.size() - 50));
+            }
+        }
+    }
+    if (g_world.ari_graph.location_to_events.size() > MAX_NEWS_ITEMS * 2) {
+        for (auto& [k, v] : g_world.ari_graph.location_to_events) {
+            if (v.size() > 50) {
+                v.erase(v.begin(), v.begin() + (v.size() - 50));
+            }
+        }
+    }
+
     return nw.id;
 }
 
@@ -13169,6 +13207,19 @@ void realtimeLoop() {
             JsonValue response = JsonValue::object();
             response.set("status", "realtime_update");
             response.set("tick", g_world.tick);
+            response.set("current_day", g_world.current_day);
+            
+            // Send lightweight status info every tick
+            JsonValue t = JsonValue::object();
+            t.set("accumulatedMinutes", g_world.time.accumulatedMinutes);
+            t.set("internalHour", g_world.time.internalHour);
+            response.set("time", t);
+
+            JsonValue h = JsonValue::object();
+            h.set("warWeariness", g_world.homeostasis.warWeariness);
+            h.set("fertility", g_world.homeostasis.fertility);
+            h.set("peaceBoredom", g_world.homeostasis.peaceBoredom);
+            response.set("homeostasis", h);
             
             JsonValue eventsArr = JsonValue::array();
             for (const auto& ev : g_world.player_trek.pending_events) {
@@ -13177,7 +13228,10 @@ void realtimeLoop() {
             g_world.player_trek.pending_events.clear();
             response.set("trek_events", eventsArr);
 
-            response.set("world", g_world.toJson());
+            // FIX: Do NOT serialize entire world every 500ms — that was causing
+            // massive CPU spikes and blocking g_main_mutex for seconds.
+            // Instead, only send dirty items/containers (delta update).
+            // JS client can request full world via getFullState when needed.
             serializeRegistriesGlobal(response, false);
             
             {

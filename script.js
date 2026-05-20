@@ -5635,11 +5635,16 @@ async function initializeApp() {
     }
 
     // Слушатель реалтайм-обновлений от движка — мир обновляется мгновенно
+    // FIX: Engine now sends lightweight delta updates (time, homeostasis, dirty items/containers)
+    // instead of the entire world every 500ms. Full world is fetched on demand via getFullState.
     if (window.electronAPI && window.electronAPI.onNexusRealtimeUpdate) {
         window.electronAPI.onNexusRealtimeUpdate((data) => {
             if (!World) return;
-            if (data.world) setWorld(data.world);
-            if (data.relevant_news) { const w = getWorld(); if (w) w.relevant_news = data.relevant_news; }
+            // Apply lightweight updates from engine delta
+            if (data.time) World.time = data.time;
+            if (data.homeostasis) World.homeostasis = data.homeostasis;
+            if (data.tick !== undefined) World.tick = data.tick;
+            if (data.current_day !== undefined) World.current_day = data.current_day;
             if (data.items) data.items.forEach(([k, v]) => ItemRegistry.set(k, v));
             if (data.containers) data.containers.forEach(([k, v]) => setContainer(k, v));
             if (data.deleted_items) data.deleted_items.forEach(id => ItemRegistry.delete(id));

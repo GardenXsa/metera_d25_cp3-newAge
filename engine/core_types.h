@@ -276,6 +276,7 @@ struct ObjectPool {
     std::vector<T> data;
     std::vector<bool> active;
     std::unordered_map<std::string, size_t> id_to_index;
+    std::vector<size_t> free_slots;  // Reusable slots from erased entries
 
     bool contains(const std::string& id) const {
         return id_to_index.count(id) > 0 && active[id_to_index.at(id)];
@@ -290,17 +291,29 @@ struct ObjectPool {
         if (id_to_index.count(id)) {
             return data[id_to_index[id]];
         }
-        size_t idx = data.size();
+        size_t idx;
+        if (!free_slots.empty()) {
+            // Reuse an erased slot instead of growing the vector
+            idx = free_slots.back();
+            free_slots.pop_back();
+            data[idx] = T{};
+            data[idx].id = id;
+            active[idx] = true;
+        } else {
+            idx = data.size();
+            data.push_back(T{});
+            active.push_back(true);
+            data.back().id = id;
+        }
         id_to_index[id] = idx;
-        data.push_back(T{});
-        active.push_back(true);
-        data.back().id = id;
-        return data.back();
+        return data[idx];
     }
 
     void erase(const std::string& id) {
         if (id_to_index.count(id)) {
-            active[id_to_index[id]] = false;
+            size_t idx = id_to_index[id];
+            active[idx] = false;
+            free_slots.push_back(idx);  // Make slot available for reuse
             id_to_index.erase(id);
         }
     }
@@ -309,6 +322,7 @@ struct ObjectPool {
         data.clear();
         active.clear();
         id_to_index.clear();
+        free_slots.clear();
     }
 };
 
