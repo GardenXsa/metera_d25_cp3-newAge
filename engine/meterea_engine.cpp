@@ -13660,7 +13660,20 @@ response.set("world", g_world.toJson());
                     } else {
                         nlohmann::json worldJson;
                         f >> worldJson;
-                        g_world = World::fromJson(JsonValue(worldJson));
+
+                        // Файл может быть в двух форматах:
+                        // 1) Обёрнутый: { "world": {...}, "items": [...], "containers": [...] }
+                        //    (от nexusWriteSyncFile)
+                        // 2) Плоский: { "tick": ..., "regions": {...}, "map": {...}, ... }
+                        //    (от прямого экспорта World.toJson)
+                        nlohmann::json worldData;
+                        if (worldJson.contains("world") && worldJson["world"].is_object()) {
+                            worldData = worldJson["world"];
+                        } else {
+                            worldData = worldJson;
+                        }
+
+                        g_world = World::fromJson(JsonValue(worldData));
 
                         // Optionally load items and containers from separate keys
                         if (worldJson.contains("items") && worldJson["items"].is_array()) {
