@@ -242,6 +242,8 @@ static std::mutex g_output_mutex; // Protects std::cout from concurrent writes
     static std::mutex g_faction_state_mutex;
     static std::map<std::pair<std::string, std::string>, std::vector<std::pair<int,int>>> g_path_cache;
     static std::atomic<bool> g_path_cache_dirty{true};
+    static std::mutex g_path_cache_mutex;
+
 
         void rebuildContainerIndices() {
         std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
@@ -305,6 +307,8 @@ struct AStarCompare {
 
 // Forward declaration for A* pathfinding
 std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int startY, int goalX, int goalY, const std::vector<bool>& has_road, const std::vector<int>& path_status, MovementType moveType, int entity_size = 0);
+
+std::vector<std::pair<int,int>> getLandPath(const std::string& from, const std::string& to, int entity_size = 0);
 
 std::string createContainer(const std::string& type, const std::string& ownerId, 
                             int maxWeight, int maxSlots, const std::string& regionId = "",
@@ -4232,9 +4236,7 @@ void processLogistics() {
                             
                             std::vector<std::pair<int,int>> caravan_path;
                             if (targetRegion != bus.region_id && !targetRegion.empty()) {
-                                if (g_path_cache.count({bus.region_id, targetRegion})) {
-                                    caravan_path = g_path_cache[{bus.region_id, targetRegion}];
-                                }
+                                caravan_path = getLandPath(bus.region_id, targetRegion);
                                 if (caravan_path.empty()) continue;
                             }
 
@@ -4372,9 +4374,7 @@ void processLogistics() {
                             
                             std::vector<std::pair<int,int>> caravan_path;
                             if (sourceRegion != bus.region_id && !sourceRegion.empty()) {
-                                if (g_path_cache.count({sourceRegion, bus.region_id})) {
-                                    caravan_path = g_path_cache[{sourceRegion, bus.region_id}];
-                                }
+                                caravan_path = getLandPath(sourceRegion, bus.region_id);
                                 if (caravan_path.empty()) continue;
                             }
 
@@ -8243,16 +8243,13 @@ void processRulerDiplomacy() {
                 }
 
                 if (!targetRegionId.empty() && !alreadyAttacking) {
-                    std::vector<std::pair<int,int>> army_path;
-                    if (g_path_cache.count({homeRegionId, targetRegionId})) {
-                        army_path = g_path_cache[{homeRegionId, targetRegionId}];
-                    }
-                    if (army_path.empty()) continue; // Нет наземного пути для атаки
-
                     // Генерал собирает от 40% до 75% доступного резерва, оставляя часть на защиту
                     int armySize = power * (0.40 + (rand() % 35) / 100.0);
                     if (armySize < 50) armySize = power;
                     if (armySize < 50) continue; // Армии меньше 50 человек не формируются
+
+                    std::vector<std::pair<int,int>> army_path = getLandPath(homeRegionId, targetRegionId, armySize);
+                    if (army_path.empty()) continue; // Нет наземного пути для атаки
 
                     int weaponsAvailable = vaultStocks[homeRegionId]["weapons"];
                     int foodAvailable = vaultStocks[homeRegionId]["bread"] + vaultStocks[homeRegionId]["meat"] + vaultStocks[homeRegionId]["fish"] + vaultStocks[homeRegionId]["wheat"] + vaultStocks[homeRegionId]["smoked_meat"];
@@ -8306,17 +8303,15 @@ void processRulerDiplomacy() {
                     army.siegeDays = -1;
                     army.supply_chest_id = armyChestId;
                     
-                    if (g_path_cache.count({homeRegionId, targetRegionId})) {
-                        army.path = g_path_cache[{homeRegionId, targetRegionId}];
-                        if (!army.path.empty()) {
-                            army.x = army.path[0].first;
-                            army.y = army.path[0].second;
-                        }
+                    army.path = army_path;
+                    if (!army.path.empty()) {
+                        army.x = army.path[0].first;
+                        army.y = army.path[0].second;
                     }
                     
                     faction.armies.push_back(army);
                     std::string targetName = g_world.regions.count(targetRegionId) ? g_world.regions[targetRegionId].name : targetRegionId;
-                    addNews(locStr("engine.news.warmy_deployed", {{"faction", faction.name}, {"size", std::to_string(armySize)}, {"origin", homeRegion.name}, {"target", targetName}}), homeRegionId, 4, "war");
+                    addNews(locStr("engine.news.army_deployed", {{"faction", faction.name}, {"size", std::to_string(armySize)}, {"origin", homeRegion.name}, {"target", targetName}}), homeRegionId, 4, "war");
                 }
             }
         }
@@ -9257,34 +9252,10 @@ std::string processGmIntervention(const JsonValue& command) {
 
         void processMerchants() {
         static int last_rebuild_day = -999;
-        // Ленивое кэширование: перестраиваем глобальный кэш путей не чаще раза в 14 дней.
-        // Если дорога сломалась, караваны и армии сами найдут обход в реальном времени.
         if (g_path_cache_dirty && (g_world.current_day - last_rebuild_day > 14 || g_path_cache.empty())) {
             last_rebuild_day = g_world.current_day;
+            std::lock_guard<std::mutex> lock(g_path_cache_mutex);
             g_path_cache.clear();
-            std::vector<bool> has_road(g_world.map.width * g_world.map.height, false);
-            std::vector<int> path_status(g_world.map.width * g_world.map.height, 0);
-            for (const auto& road : g_world.map.roads) {
-                if (road.condition == "blocked") {
-                    for (const auto& wp : road.waypoints) path_status[wp.second * g_world.map.width + wp.first] = 2;
-                } else if (road.condition == "ruined") {
-                    for (const auto& wp : road.waypoints) {
-                        path_status[wp.second * g_world.map.width + wp.first] = 1;
-                        has_road[wp.second * g_world.map.width + wp.first] = true;
-                    }
-                } else {
-                    for (const auto& wp : road.waypoints) has_road[wp.second * g_world.map.width + wp.first] = true;
-                }
-            }
-            for (const auto& [r1, reg1] : g_world.regions) {
-                for (const auto& [r2, reg2] : g_world.regions) {
-                    if (r1 != r2 && g_world.map.locations.count(r1) && g_world.map.locations.count(r2)) {
-                        auto loc1 = g_world.map.locations[r1];
-                        auto loc2 = g_world.map.locations[r2];
-                        g_path_cache[{r1, r2}] = findPath(g_world.map, loc1.x, loc1.y, loc2.x, loc2.y, has_road, path_status, MovementType::LAND);
-                    }
-                }
-            }
             g_path_cache_dirty = false;
         }
 
@@ -9341,16 +9312,13 @@ std::string processGmIntervention(const JsonValue& command) {
                     
                     if (profitMargin > maxProfit && profitMargin > localP * 0.3) {
                         task.bestGood = gtStr;
-                        // ИСПОЛЬЗУЕМ КЭШИРОВАННЫЕ МАРШРУТЫ (O(1) вместо O(N^2))
-                        if (g_path_cache.count({mLoc, destId})) {
-                            auto path = g_path_cache.at({mLoc, destId});
-                            if (!path.empty()) {
-                                maxProfit = profitMargin;
-                                task.bestDest = destId;
-                                task.bestGood = gtStr;
-                                task.buyPrice = localP;
-                                task.execute = true;
-                            }
+                        auto path = getLandPath(mLoc, destId);
+                        if (!path.empty()) {
+                            maxProfit = profitMargin;
+                            task.bestDest = destId;
+                            task.bestGood = gtStr;
+                            task.buyPrice = localP;
+                            task.execute = true;
                         }
                     }
                 }
@@ -11139,9 +11107,8 @@ void processFactionTrade() {
                     if (g_world.regions.count(rid) && g_world.regions[rid].starvation_days > 3) {
                         int sendAmount = std::min(capFood / 2, g_world.regions[rid].population / 2);
                         if (sendAmount > 100) {
-                            std::vector<std::pair<int,int>> caravan_path;
-                            if (g_path_cache.count({capitalId, rid})) caravan_path = g_path_cache[{capitalId, rid}];
-                            if (caravan_path.empty()) continue;
+                                                    std::vector<std::pair<int,int>> caravan_path = getLandPath(capitalId, rid);
+                        if (caravan_path.empty()) continue;
 
                             std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
                             consumeItemsFromContainer(g_world.regions[capitalId].vault_id, f_id, sendAmount);
@@ -11193,8 +11160,7 @@ void processFactionTrade() {
                 std::string sellerCapId = g_world.factions[bestSellerId].regions[0];
                 int buyAmount = std::min(bestSellerFood / 3, capitalGold / 10);
                 if (buyAmount > 100) {
-                    std::vector<std::pair<int,int>> caravan_path;
-                    if (g_path_cache.count({sellerCapId, capitalId})) caravan_path = g_path_cache[{sellerCapId, capitalId}];
+                    std::vector<std::pair<int,int>> caravan_path = getLandPath(sellerCapId, capitalId);
                     if (caravan_path.empty()) continue;
 
                     int cost = buyAmount * 10;
@@ -11237,8 +11203,7 @@ void processFactionTrade() {
                 if (g_world.regions.count(oCapId) && g_world.regions[oCapId].starvation_days > 5) {
                     int aidAmount = std::min(vaultStocks[capitalId][f_id] / 4, g_world.regions[oCapId].population / 2);
                     if (aidAmount > 100) {
-                        std::vector<std::pair<int,int>> caravan_path;
-                        if (g_path_cache.count({capitalId, oCapId})) caravan_path = g_path_cache[{capitalId, oCapId}];
+                        std::vector<std::pair<int,int>> caravan_path = getLandPath(capitalId, oCapId);
                         if (caravan_path.empty()) continue;
 
                         std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
@@ -11799,20 +11764,25 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
     goalX = std::clamp(goalX, 0, w - 1);
     goalY = std::clamp(goalY, 0, h - 1);
     
-    // Оптимизация выделения памяти: используем thread_local для предотвращения постоянных аллокаций
+    thread_local int search_id = 0;
+    search_id++;
+    if (search_id > 1000000000) search_id = 1;
+
     thread_local std::vector<int> g_cost;
     thread_local std::vector<int> parent;
+    thread_local std::vector<int> visited_id;
     if (g_cost.size() != static_cast<size_t>(w * h)) {
         g_cost.resize(w * h);
         parent.resize(w * h);
+        visited_id.resize(w * h, 0);
     }
-    std::fill(g_cost.begin(), g_cost.end(), 1e9);
-    std::fill(parent.begin(), parent.end(), -1);
     
     std::priority_queue<AStarNode, std::vector<AStarNode>, AStarCompare> pq;
 
     int startIdx = startY * w + startX;
+    visited_id[startIdx] = search_id;
     g_cost[startIdx] = 0;
+    parent[startIdx] = -1;
     pq.push({startX, startY, 0, 0});
 
     int dx[] = {0, 1, 0, -1, 1, 1, -1, -1};
@@ -11823,7 +11793,7 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
         pq.pop();
 
         if (curr.x == goalX && curr.y == goalY) break;
-        if (curr.g > g_cost[curr.y * w + curr.x]) continue;
+        if (visited_id[curr.y * w + curr.x] == search_id && curr.g > g_cost[curr.y * w + curr.x]) continue;
 
         for (int i = 0; i < 8; ++i) {
             int nx = curr.x + dx[i];
@@ -11929,6 +11899,12 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
                 cost = std::max(cost, 200);
             }
 
+            if (visited_id[nIdx] != search_id) {
+                g_cost[nIdx] = 1e9;
+                parent[nIdx] = -1;
+                visited_id[nIdx] = search_id;
+            }
+
             if (cost >= 9000) {
                 if (nx == goalX && ny == goalY) cost = 5;
                 else continue;
@@ -11946,7 +11922,7 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
 
     std::vector<std::pair<int,int>> path;
     int currIdx = goalY * w + goalX;
-    if (parent[currIdx] == -1) return path;
+    if (visited_id[currIdx] != search_id || parent[currIdx] == -1) return path;
 
     while (currIdx != startIdx) {
         path.push_back({currIdx % w, currIdx / w});
@@ -11955,6 +11931,37 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
     path.push_back({startX, startY});
     std::reverse(path.begin(), path.end());
     return path;
+}
+
+std::vector<std::pair<int,int>> getLandPath(const std::string& from, const std::string& to, int entity_size) {
+    if (from == to || from.empty() || to.empty()) return {};
+    {
+        std::lock_guard<std::mutex> lock(g_path_cache_mutex);
+        if (g_path_cache.count({from, to})) return g_path_cache.at({from, to});
+    }
+    std::vector<bool> has_road(g_world.map.width * g_world.map.height, false);
+    std::vector<int> path_status(g_world.map.width * g_world.map.height, 0);
+    for (const auto& road : g_world.map.roads) {
+        if (road.condition == "blocked") {
+            for (const auto& wp : road.waypoints) path_status[wp.second * g_world.map.width + wp.first] = 2;
+        } else if (road.condition == "ruined") {
+            for (const auto& wp : road.waypoints) {
+                path_status[wp.second * g_world.map.width + wp.first] = 1;
+                has_road[wp.second * g_world.map.width + wp.first] = true;
+            }
+        } else {
+            for (const auto& wp : road.waypoints) has_road[wp.second * g_world.map.width + wp.first] = true;
+        }
+    }
+    if (g_world.map.locations.count(from) && g_world.map.locations.count(to)) {
+        auto loc1 = g_world.map.locations.at(from);
+        auto loc2 = g_world.map.locations.at(to);
+        auto path = findPath(g_world.map, loc1.x, loc1.y, loc2.x, loc2.y, has_road, path_status, MovementType::LAND, entity_size);
+        std::lock_guard<std::mutex> lock(g_path_cache_mutex);
+        g_path_cache[{from, to}] = path;
+        return path;
+    }
+    return {};
 }
 
 void placeRegionsOnMap(WorldMap& map, const World& w) {
@@ -13033,8 +13040,7 @@ void bootstrapWorld(int days, int targetStartDay) {
             std::string origin = capitals[i];
             std::string dest = capitals[(i + 1) % capitals.size()];
             
-            std::vector<std::pair<int,int>> caravan_path;
-            if (g_path_cache.count({origin, dest})) caravan_path = g_path_cache[{origin, dest}];
+            std::vector<std::pair<int,int>> caravan_path = getLandPath(origin, dest);
             if (caravan_path.empty()) continue;
 
             std::string chestId = createContainer("caravan_chest", "bootstrap", 999999, 1000, origin);
@@ -13054,10 +13060,8 @@ void bootstrapWorld(int days, int targetStartDay) {
             c.wagons = 2;
             c.guards = 5;
             c.hoursLeft = 24 + thread_safe_rand() % 49;
-            if (g_path_cache.count({origin, dest})) {
-                c.path = g_path_cache[{origin, dest}];
-                if (!c.path.empty()) { c.x = c.path[0].first; c.y = c.path[0].second; }
-            }
+            c.path = caravan_path;
+            if (!c.path.empty()) { c.x = c.path[0].first; c.y = c.path[0].second; }
             g_world.regions[origin].caravans.push_back(c);
         }
     }
