@@ -39,7 +39,7 @@
 // API VERSION
 // ============================================================================
 #define METERA_API_VERSION_MAJOR 3
-#define METERA_API_VERSION_MINOR 0
+#define METERA_API_VERSION_MINOR 1
 #define METERA_API_VERSION_PATCH 0
 
 // ============================================================================
@@ -144,6 +144,25 @@ typedef double (*MeteraGetItemPriceFunc)(const char* item_id);
 // Get a global string value by key (for mod data exchange). Returns NULL if not found.
 typedef const char* (*MeteraGetGlobalStringFunc)(const char* key);
 
+// Get NPC HP. Returns -1 if not found.
+typedef int32_t (*MeteraGetNpcHpFunc)(const char* npc_id);
+
+// Get item count in a specific container by prototype ID.
+typedef int32_t (*MeteraGetContainerItemCountFunc)(const char* container_id, const char* item_prototype);
+
+
+// Remove items from a container. Returns the actual amount removed.
+typedef int32_t (*MeteraRemoveItemFunc)(const char* container_id, const char* item_prototype, int32_t quantity);
+
+
+// Get map dimensions.
+typedef int32_t (*MeteraGetMapWidthFunc)(void);
+typedef int32_t (*MeteraGetMapHeightFunc)(void);
+
+// Get biome ID of a specific tile. Returns -1 if out of bounds.
+typedef int32_t (*MeteraGetTileBiomeFunc)(int32_t x, int32_t y);
+
+
 // --- World Mutations (deferred — applied on next tick) ---
 
 // Set region stability (0-100). Applied on next tick.
@@ -160,6 +179,53 @@ typedef MeteraResult (*MeteraMultiplyItemPriceFunc)(const char* item_id, double 
 
 // Set a global string value (for mod data exchange). Persists across ticks.
 typedef MeteraResult (*MeteraSetGlobalStringFunc)(const char* key, const char* value);
+
+// Spawn an item in a container. Applied on next tick.
+typedef MeteraResult (*MeteraSpawnItemFunc)(const char* item_id, int32_t quantity, const char* container_id);
+
+// Trigger a disaster in a region. Applied on next tick.
+typedef MeteraResult (*MeteraTriggerDisasterFunc)(const char* disaster_type, const char* region_id, int32_t severity);
+
+// Spawn an epic monster in a region. Applied on next tick.
+typedef MeteraResult (*MeteraSpawnMonsterFunc)(const char* monster_type, const char* region_id);
+
+// Add a news entry to the world chronicles. Applied on next tick.
+typedef MeteraResult (*MeteraAddNewsFunc)(const char* text, const char* location, int32_t importance, const char* category);
+
+
+// Set NPC HP. Applied immediately for combat logic.
+typedef MeteraResult (*MeteraSetNpcHpFunc)(const char* npc_id, int32_t hp);
+
+
+// Block 1: Factions & Diplomacy
+typedef int32_t (*MeteraGetFactionRelationFunc)(const char* f1, const char* f2);
+typedef const char* (*MeteraGetFactionStateFunc)(const char* faction_id);
+typedef MeteraResult (*MeteraSetFactionRelationFunc)(const char* f1, const char* f2, int32_t value);
+typedef MeteraResult (*MeteraForceWarFunc)(const char* f1, const char* f2);
+typedef MeteraResult (*MeteraForcePeaceFunc)(const char* f1, const char* f2);
+
+// Block 2: Economy
+typedef double (*MeteraGetRegionMoneySupplyFunc)(const char* region_id);
+typedef int32_t (*MeteraGetBusinessCashFunc)(const char* business_id);
+typedef MeteraResult (*MeteraModifyRegionMoneyFunc)(const char* region_id, double delta);
+typedef MeteraResult (*MeteraModifyBusinessCashFunc)(const char* business_id, int32_t delta);
+
+// Block 3: NPC & Armies
+typedef const char* (*MeteraGetNpcLocationFunc)(const char* npc_id);
+typedef int32_t (*MeteraGetNpcGoldFunc)(const char* npc_id);
+typedef MeteraResult (*MeteraTeleportNpcFunc)(const char* npc_id, const char* region_id);
+typedef MeteraResult (*MeteraModifyNpcGoldFunc)(const char* npc_id, int32_t delta);
+typedef MeteraResult (*MeteraSpawnArmyFunc)(const char* faction_id, const char* region_id, int32_t size);
+
+// Block 4: Infrastructure & Threats
+typedef int32_t (*MeteraGetRegionThreatFunc)(const char* region_id);
+typedef MeteraResult (*MeteraSetRegionThreatFunc)(const char* region_id, int32_t value);
+typedef MeteraResult (*MeteraSetRoadStateFunc)(const char* from_region, const char* to_region, int32_t state);
+
+
+// Set biome ID of a specific tile. Applied on next tick.
+typedef MeteraResult (*MeteraSetTileBiomeFunc)(int32_t x, int32_t y, int32_t biome_id);
+
 
 // Log a message to the engine log (visible in console/debug output).
 typedef void (*MeteraLogFunc)(const char* message);
@@ -185,12 +251,50 @@ typedef struct MeteraAPI {
     MeteraGetItemPriceFunc         getItemPrice;
     MeteraGetGlobalStringFunc      getGlobalString;
 
+    MeteraGetNpcHpFunc             getNpcHp;
+    MeteraGetContainerItemCountFunc getContainerItemCount;
+
+    MeteraRemoveItemFunc           removeItem;
+
+    MeteraGetMapWidthFunc          getMapWidth;
+    MeteraGetMapHeightFunc         getMapHeight;
+    MeteraGetTileBiomeFunc         getTileBiome;
+
+    MeteraGetFactionRelationFunc   getFactionRelation;
+    MeteraGetFactionStateFunc      getFactionState;
+    MeteraGetRegionMoneySupplyFunc getRegionMoneySupply;
+    MeteraGetBusinessCashFunc      getBusinessCash;
+    MeteraGetNpcLocationFunc       getNpcLocation;
+    MeteraGetNpcGoldFunc           getNpcGold;
+    MeteraGetRegionThreatFunc      getRegionThreat;
+
     // World mutations (deferred)
     MeteraSetRegionStabilityFunc      setRegionStability;
     MeteraModifyRegionPopulationFunc  modifyRegionPopulation;
     MeteraMultiplyAllPricesFunc       multiplyAllPrices;
     MeteraMultiplyItemPriceFunc       multiplyItemPrice;
     MeteraSetGlobalStringFunc         setGlobalString;
+
+    MeteraSpawnItemFunc               spawnItem;
+    MeteraTriggerDisasterFunc         triggerDisaster;
+    MeteraSpawnMonsterFunc            spawnMonster;
+    MeteraAddNewsFunc                 addNews;
+
+    MeteraSetNpcHpFunc                setNpcHp;
+
+    MeteraSetTileBiomeFunc            setTileBiome;
+
+    MeteraSetFactionRelationFunc      setFactionRelation;
+    MeteraForceWarFunc                forceWar;
+    MeteraForcePeaceFunc              forcePeace;
+    MeteraModifyRegionMoneyFunc       modifyRegionMoney;
+    MeteraModifyBusinessCashFunc      modifyBusinessCash;
+    MeteraTeleportNpcFunc             teleportNpc;
+    MeteraModifyNpcGoldFunc           modifyNpcGold;
+    MeteraSpawnArmyFunc               spawnArmy;
+    MeteraSetRegionThreatFunc         setRegionThreat;
+    MeteraSetRoadStateFunc            setRoadState;
+
 
     // Utility
     MeteraLogFunc log;

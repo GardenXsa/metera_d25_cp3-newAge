@@ -65,10 +65,11 @@ bash test_runner.sh --game --verbose
 
 ### КРИТИЧЕСКИЕ (блокируют игру)
 
-- [ ] **Движок/симуляция** — JS→Python→C++ pipeline. Сейчас работает FALLBACK
+- [x] **Движок/симуляция** — JS→Python→C++ pipeline. Сейчас работает FALLBACK
   на локальную реализацию (OldCoreInventorySystem), если IPC недоступен.
   Нужно трассировать: script.js → electronAPI → main.js IPC → engine_client.py → meterea_engine
   Проверить: запускается ли C++ процесс, приходит ли ответ, парсится ли JSON.
+  (ИСПРАВЛЕНО: Добавлен сигнал ready в C++ ядро для устранения 10-секундной задержки в main.js, устранен краш select.select на Windows в engine_client.py)
 
 - [x] **Инвентарь не работает без движка** — ИСПРАВЛЕНО: sendInventoryCommand() теперь
   fallback на OldCoreInventorySystem когда IPC недоступен. ensurePlayerContainers()

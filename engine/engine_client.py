@@ -70,7 +70,7 @@ class EngineProcess:
         while self.is_running and self.proc:
             try:
                 # Use select to add a timeout so we don't block forever
-                if hasattr(_select, 'select'):
+                if sys.platform != 'win32' and hasattr(_select, 'select'):
                     readable, _, _ = _select.select([self.proc.stdout], [], [], 5.0)
                     if not readable:
                         # No data for 5 seconds — check if process is still alive

@@ -13,7 +13,9 @@ async function initModKit() {
     
     const settings = await window.electronAPI.loadSettings();
     const activeIds = (settings && settings.mods) ? settings.mods.active : ['base_game'];
+    const safeMode = (settings && settings.mods) ? settings.mods.safeMode : false;
     const activeMods = modsResponse.mods.filter(m => activeIds.includes(m.id) && !m.error);
+    window.ModAPI.safeMode = safeMode;
     
     // Batch mutations to reduce IPC round trips
     window.ModAPI._pendingMutations = [];
@@ -111,7 +113,15 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
 
         console.log('[ModLoader] База данных собрана. Инициализация C++ ядра...');
         
-        const activeModIds = Object.keys(window.ModAPI.mods);
+        // В безопасном режиме не передаем C++ ядру моды с нативными плагинами
+        const activeModIds = Object.keys(window.ModAPI.mods).filter(id => {
+            const m = window.ModAPI.mods[id];
+            if (window.ModAPI.safeMode && m.native_plugins && m.native_plugins.length > 0) {
+                console.warn(`[ModLoader] Safe Mode: Блокировка загрузки нативного плагина для мода ${id}`);
+                return false;
+            }
+            return true;
+        });
         const initResult = await window.electronAPI.nexusInit(true, activeModIds);
         if (initResult.status !== 'ok') {
             throw new Error(`Nexus Engine init failed: ${initResult.message}`);

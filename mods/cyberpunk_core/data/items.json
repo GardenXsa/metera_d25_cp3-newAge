@@ -1,0 +1,82 @@
+{
+    "eurodollar": {
+        "names": { "rebirth": "Евродоллар" },
+        "basePrice": 1,
+        "category": "currency",
+        "tags": ["currency", "metal_ingot"],
+        "properties": { "weight_per_unit": 0.001 }
+    },
+    "synth_paste": {
+        "names": { "rebirth": "Синт-паста" },
+        "basePrice": 5,
+        "category": "consumable",
+        "tags": ["food", "consumable", "processed_food"],
+        "shelfLife": 999999,
+        "properties": { "nutrition": 20.0, "weight": 0.2 }
+    },
+    "kibble": {
+        "names": { "rebirth": "Киббл" },
+        "basePrice": 2,
+        "category": "raw_food",
+        "tags": ["food", "raw_food"],
+        "shelfLife": 999999,
+        "properties": { "nutrition": 10.0, "weight": 0.5 }
+    },
+    "scrap_electronics": {
+        "names": { "rebirth": "Электронный лом" },
+        "basePrice": 3,
+        "category": "raw_material",
+        "tags": ["raw_material", "ore"],
+        "shelfLife": 999999
+    },
+    "bioplastic": {
+        "names": { "rebirth": "Биопластик" },
+        "basePrice": 4,
+        "category": "raw_material",
+        "tags": ["raw_material", "wood"],
+        "shelfLife": 999999
+    },
+    "smart_pistol": {
+        "names": { "rebirth": "Умный пистолет" },
+        "basePrice": 150,
+        "category": "weapon",
+        "tags": ["weapon", "ranged"],
+        "shelfLife": 999999
+    },
+    "thermal_katana": {
+        "names": { "rebirth": "Термальная катана" },
+        "basePrice": 300,
+        "category": "weapon",
+        "tags": ["weapon", "melee"],
+        "shelfLife": 999999
+    },
+    "kevlar_vest": {
+        "names": { "rebirth": "Кевларовый жилет" },
+        "basePrice": 200,
+        "category": "armor",
+        "tags": ["armor", "torso"],
+        "shelfLife": 999999
+    },
+    "med_hypo": {
+        "names": { "rebirth": "Мед-инъектор" },
+        "basePrice": 50,
+        "category": "consumable",
+        "tags": ["potion", "medical", "consumable"],
+        "shelfLife": 999999
+    },
+    "neural_processor": {
+        "names": { "rebirth": "Нейропроцессор" },
+        "basePrice": 1000,
+        "category": "cyberware",
+        "tags": ["cyberware", "head", "luxury"],
+        "shelfLife": 999999
+    },
+    "hover_car": {
+        "names": { "rebirth": "Ховер-кар" },
+        "basePrice": 5000,
+        "category": "vehicle",
+        "tags": ["vehicle", "mount"],
+        "shelfLife": 999999,
+        "properties": { "isTransport": true, "speedMultiplier": 3.5, "cargoBonus": 50 }
+    }
+}

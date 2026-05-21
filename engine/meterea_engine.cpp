@@ -3247,12 +3247,17 @@ static std::set<std::string> g_active_hooks;
 
 // --- Deferred mutation queue: mutations are buffered and applied on next tick ---
 struct DeferredMutation {
-    enum Type { SET_STABILITY, MODIFY_POPULATION, MULTIPLY_ALL_PRICES, MULTIPLY_ITEM_PRICE, SET_GLOBAL_STRING };
+    enum Type { SET_STABILITY, MODIFY_POPULATION, MULTIPLY_ALL_PRICES, MULTIPLY_ITEM_PRICE, SET_GLOBAL_STRING, SPAWN_ITEM, TRIGGER_DISASTER, SPAWN_MONSTER, ADD_NEWS, SET_TILE_BIOME, SET_FACTION_RELATION, FORCE_WAR, FORCE_PEACE, MODIFY_REGION_MONEY, MODIFY_BUSINESS_CASH, TELEPORT_NPC, MODIFY_NPC_GOLD, SPAWN_ARMY, SET_REGION_THREAT, SET_ROAD_STATE };
     Type type;
+    std::string transaction_id;
     std::string target_id;  // region_id or item_id or key
     int32_t int_value = 0;
+    int32_t int_value2 = 0;
+    int32_t int_value3 = 0;
     double double_value = 0.0;
     std::string string_value;
+    std::string string_value2;
+    std::string string_value3;
 };
 
 static std::vector<DeferredMutation> g_deferred_mutations;
@@ -3263,6 +3268,16 @@ static std::unordered_map<std::string, std::string> g_global_strings;
 static std::mutex g_globals_mutex;
 
 // --- Engine API implementation (functions provided TO plugins) ---
+
+static const char* get_thread_local_string(const std::string& str) {
+    static thread_local std::vector<std::string> ring(16);
+    static thread_local size_t idx = 0;
+    ring[idx] = str;
+    const char* res = ring[idx].c_str();
+    idx = (idx + 1) % 16;
+    return res;
+}
+
 
 static int32_t apiGetRegionPopulation(const char* region_id) {
     std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
@@ -3277,19 +3292,15 @@ static int32_t apiGetRegionStability(const char* region_id) {
 }
 
 static const char* apiGetRegionFaction(const char* region_id) {
-    static thread_local std::string result;
     std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
     auto it = g_world.regions.find(region_id);
-    result = (it != g_world.regions.end()) ? it->second.factionId : "";
-    return result.c_str();
+    return get_thread_local_string((it != g_world.regions.end()) ? it->second.factionId : "");
 }
 
 static const char* apiGetRegionBiome(const char* region_id) {
-    static thread_local std::string result;
     std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
     auto it = g_world.regions.find(region_id);
-    result = (it != g_world.regions.end()) ? it->second.climate : "";
-    return result.c_str();
+    return get_thread_local_string((it != g_world.regions.end()) ? it->second.climate : "");
 }
 
 static int64_t apiGetWorldPopulation() {
@@ -3326,12 +3337,98 @@ static const char* apiGetGlobalString(const char* key) {
     std::lock_guard<std::mutex> lock(g_globals_mutex);
     auto it = g_global_strings.find(key);
     if (it != g_global_strings.end()) {
-        static thread_local std::string result;
-        result = it->second;
-        return result.c_str();
+        return get_thread_local_string(it->second);
     }
     return nullptr;
 }
+
+static int32_t apiGetNpcHp(const char* npc_id) {
+    std::lock_guard<std::mutex> lock(g_npc_state_mutex);
+    auto it = g_world.npcs.find(npc_id);
+    return it != g_world.npcs.end() ? it->second.hp : -1;
+}
+
+static int32_t apiGetContainerItemCount(const char* container_id, const char* item_prototype) {
+    return countItemsInContainer(container_id, item_prototype);
+}
+
+
+static int32_t apiRemoveItem(const char* container_id, const char* item_prototype, int32_t quantity) {
+    return consumeItemsFromContainer(container_id, item_prototype, quantity);
+}
+
+static MeteraResult apiSetNpcHp(const char* npc_id, int32_t hp) {
+    std::lock_guard<std::mutex> lock(g_npc_state_mutex);
+    auto it = g_world.npcs.find(npc_id);
+    if (it != g_world.npcs.end()) {
+        it->second.hp = hp;
+        it->second.isAlive = (hp > 0);
+        return METERA_OK;
+    }
+    return METERA_ERR_NOT_FOUND;
+}
+
+
+static int32_t apiGetMapWidth() {
+    return g_world.map.width;
+}
+
+static int32_t apiGetMapHeight() {
+    return g_world.map.height;
+}
+
+static int32_t apiGetTileBiome(int32_t x, int32_t y) {
+    if (x < 0 || x >= g_world.map.width || y < 0 || y >= g_world.map.height) return -1;
+    return g_world.map.grid[y * g_world.map.width + x].biome_id;
+}
+
+
+static int32_t apiGetFactionRelation(const char* f1, const char* f2) {
+    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
+    if (g_world.factions.count(f1) && g_world.factions[f1].relations.count(f2)) {
+        return g_world.factions[f1].relations[f2];
+    }
+    return 0;
+}
+
+static const char* apiGetFactionState(const char* faction_id) {
+    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
+    if (g_world.factions.count(faction_id)) {
+        return get_thread_local_string(diploStateToString(g_world.factions[faction_id].warType));
+    }
+    return get_thread_local_string("PEACE");
+}
+
+static double apiGetRegionMoneySupply(const char* region_id) {
+    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
+    if (g_world.regions.count(region_id)) return g_world.regions[region_id].moneySupply;
+    return -1.0;
+}
+
+static int32_t apiGetBusinessCash(const char* business_id) {
+    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
+    if (g_world.businesses.count(business_id)) return g_world.businesses[business_id].cash_balance;
+    return -1;
+}
+
+static const char* apiGetNpcLocation(const char* npc_id) {
+    std::lock_guard<std::mutex> lock(g_npc_state_mutex);
+    if (g_world.npcs.count(npc_id)) return get_thread_local_string(g_world.npcs[npc_id].currentLocation);
+    return get_thread_local_string("");
+}
+
+static int32_t apiGetNpcGold(const char* npc_id) {
+    std::lock_guard<std::mutex> lock(g_npc_state_mutex);
+    if (g_world.npcs.count(npc_id)) return g_world.npcs[npc_id].gold + g_world.npcs[npc_id].economy.savings;
+    return -1;
+}
+
+static int32_t apiGetRegionThreat(const char* region_id) {
+    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
+    if (g_world.regions.count(region_id)) return g_world.regions[region_id].threat_level;
+    return -1;
+}
+
 
 static MeteraResult apiSetRegionStability(const char* region_id, int32_t value) {
     std::lock_guard<std::mutex> lock(g_deferred_mutex);
@@ -3372,6 +3469,124 @@ static MeteraResult apiMultiplyItemPrice(const char* item_id, double factor) {
     return METERA_OK;
 }
 
+static MeteraResult apiSpawnItem(const char* item_id, int32_t quantity, const char* container_id) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m;
+    m.type = DeferredMutation::SPAWN_ITEM;
+    m.target_id = item_id;
+    m.int_value = quantity;
+    m.string_value = container_id;
+    g_deferred_mutations.push_back(m);
+    return METERA_OK;
+}
+
+static MeteraResult apiTriggerDisaster(const char* disaster_type, const char* region_id, int32_t severity) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m;
+    m.type = DeferredMutation::TRIGGER_DISASTER;
+    m.target_id = disaster_type;
+    m.string_value = region_id;
+    m.int_value = severity;
+    g_deferred_mutations.push_back(m);
+    return METERA_OK;
+}
+
+static MeteraResult apiSpawnMonster(const char* monster_type, const char* region_id) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m;
+    m.type = DeferredMutation::SPAWN_MONSTER;
+    m.target_id = monster_type;
+    m.string_value = region_id;
+    g_deferred_mutations.push_back(m);
+    return METERA_OK;
+}
+
+static MeteraResult apiAddNews(const char* text, const char* location, int32_t importance, const char* category) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m;
+    m.type = DeferredMutation::ADD_NEWS;
+    m.target_id = text;
+    m.string_value = location;
+    m.int_value = importance;
+    m.string_value2 = category;
+    g_deferred_mutations.push_back(m);
+    return METERA_OK;
+}
+
+
+static MeteraResult apiSetTileBiome(int32_t x, int32_t y, int32_t biome_id) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m;
+    m.type = DeferredMutation::SET_TILE_BIOME;
+    m.int_value = x;
+    m.int_value2 = y;
+    m.int_value3 = biome_id;
+    g_deferred_mutations.push_back(m);
+    return METERA_OK;
+}
+
+
+static MeteraResult apiSetFactionRelation(const char* f1, const char* f2, int32_t value) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m; m.type = DeferredMutation::SET_FACTION_RELATION; m.target_id = f1; m.string_value = f2; m.int_value = value;
+    g_deferred_mutations.push_back(m); return METERA_OK;
+}
+
+static MeteraResult apiForceWar(const char* f1, const char* f2) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m; m.type = DeferredMutation::FORCE_WAR; m.target_id = f1; m.string_value = f2;
+    g_deferred_mutations.push_back(m); return METERA_OK;
+}
+
+static MeteraResult apiForcePeace(const char* f1, const char* f2) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m; m.type = DeferredMutation::FORCE_PEACE; m.target_id = f1; m.string_value = f2;
+    g_deferred_mutations.push_back(m); return METERA_OK;
+}
+
+static MeteraResult apiModifyRegionMoney(const char* region_id, double delta) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m; m.type = DeferredMutation::MODIFY_REGION_MONEY; m.target_id = region_id; m.double_value = delta;
+    g_deferred_mutations.push_back(m); return METERA_OK;
+}
+
+static MeteraResult apiModifyBusinessCash(const char* business_id, int32_t delta) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m; m.type = DeferredMutation::MODIFY_BUSINESS_CASH; m.target_id = business_id; m.int_value = delta;
+    g_deferred_mutations.push_back(m); return METERA_OK;
+}
+
+static MeteraResult apiTeleportNpc(const char* npc_id, const char* region_id) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m; m.type = DeferredMutation::TELEPORT_NPC; m.target_id = npc_id; m.string_value = region_id;
+    g_deferred_mutations.push_back(m); return METERA_OK;
+}
+
+static MeteraResult apiModifyNpcGold(const char* npc_id, int32_t delta) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m; m.type = DeferredMutation::MODIFY_NPC_GOLD; m.target_id = npc_id; m.int_value = delta;
+    g_deferred_mutations.push_back(m); return METERA_OK;
+}
+
+static MeteraResult apiSpawnArmy(const char* faction_id, const char* region_id, int32_t size) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m; m.type = DeferredMutation::SPAWN_ARMY; m.target_id = faction_id; m.string_value = region_id; m.int_value = size;
+    g_deferred_mutations.push_back(m); return METERA_OK;
+}
+
+static MeteraResult apiSetRegionThreat(const char* region_id, int32_t value) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m; m.type = DeferredMutation::SET_REGION_THREAT; m.target_id = region_id; m.int_value = value;
+    g_deferred_mutations.push_back(m); return METERA_OK;
+}
+
+static MeteraResult apiSetRoadState(const char* from_region, const char* to_region, int32_t state) {
+    std::lock_guard<std::mutex> lock(g_deferred_mutex);
+    DeferredMutation m; m.type = DeferredMutation::SET_ROAD_STATE; m.target_id = from_region; m.string_value = to_region; m.int_value = state;
+    g_deferred_mutations.push_back(m); return METERA_OK;
+}
+
+
 static MeteraResult apiSetGlobalString(const char* key, const char* value) {
     std::lock_guard<std::mutex> lock(g_globals_mutex);
     g_global_strings[key] = value;
@@ -3391,55 +3606,241 @@ static MeteraAPI g_metera_api = {
     apiGetRegionPopulation, apiGetRegionStability, apiGetRegionFaction, apiGetRegionBiome,
     apiGetWorldPopulation, apiGetCurrentDay, apiGetCurrentHour, apiGetRegionNpcCount,
     apiGetItemPrice, apiGetGlobalString,
+    apiGetNpcHp, apiGetContainerItemCount, apiRemoveItem,
+    apiGetMapWidth, apiGetMapHeight, apiGetTileBiome,
+    apiGetFactionRelation, apiGetFactionState, apiGetRegionMoneySupply, apiGetBusinessCash, apiGetNpcLocation, apiGetNpcGold, apiGetRegionThreat,
     apiSetRegionStability, apiModifyRegionPopulation, apiMultiplyAllPrices,
     apiMultiplyItemPrice, apiSetGlobalString,
+    apiSpawnItem, apiTriggerDisaster, apiSpawnMonster, apiAddNews,
+    apiSetNpcHp,
+    apiSetTileBiome,
+    apiSetFactionRelation, apiForceWar, apiForcePeace, apiModifyRegionMoney, apiModifyBusinessCash, apiTeleportNpc, apiModifyNpcGold, apiSpawnArmy, apiSetRegionThreat, apiSetRoadState,
     apiLog
 };
 
+// --- Forward declaration for addNews ---
+std::string addNews(const std::string& text, const std::string& location, int importance, const std::string& category = "misc", const std::string& causal_link = "", const std::vector<std::string>& entities = {});
+
+
 // --- Apply deferred mutations (called at start of each tick) ---
-static void applyDeferredMutations() {
+static JsonValue applyDeferredMutations() {
     std::vector<DeferredMutation> mutations;
     {
         std::lock_guard<std::mutex> lock(g_deferred_mutex);
         mutations.swap(g_deferred_mutations);
     }
+    JsonValue resultsArr = JsonValue::array();
+    if (mutations.empty()) return resultsArr;
 
     for (auto& m : mutations) {
+        bool success = false;
+        std::string error_msg = "";
+
         switch (m.type) {
             case DeferredMutation::SET_STABILITY: {
                 auto it = g_world.regions.find(m.target_id);
                 if (it != g_world.regions.end()) {
                     it->second.stability = std::max(0, std::min(100, m.int_value));
-                }
+                    success = true;
+                } else { error_msg = "Region not found"; }
                 break;
             }
             case DeferredMutation::MODIFY_POPULATION: {
                 auto it = g_world.regions.find(m.target_id);
                 if (it != g_world.regions.end()) {
                     it->second.population = std::max(0, it->second.population + m.int_value);
-                }
+                    success = true;
+                } else { error_msg = "Region not found"; }
                 break;
             }
             case DeferredMutation::MULTIPLY_ALL_PRICES: {
                 for (auto& [id, item] : g_db.items) {
                     item.basePrice *= m.double_value;
                 }
+                success = true;
                 break;
             }
             case DeferredMutation::MULTIPLY_ITEM_PRICE: {
                 auto it = g_db.items.find(m.target_id);
                 if (it != g_db.items.end()) {
                     it->second.basePrice *= m.double_value;
-                }
+                    success = true;
+                } else { error_msg = "Item not found"; }
                 break;
             }
             case DeferredMutation::SET_GLOBAL_STRING: {
                 std::lock_guard<std::mutex> lock(g_globals_mutex);
                 g_global_strings[m.target_id] = m.string_value;
+                success = true;
+                break;
+            }
+            case DeferredMutation::SPAWN_ITEM: {
+                if (g_containers.count(m.string_value)) {
+                    createItem(m.target_id, m.int_value, m.string_value, g_world.current_day, "Mod Spawn");
+                    success = true;
+                } else { error_msg = "Container not found"; }
+                break;
+            }
+            case DeferredMutation::TRIGGER_DISASTER: {
+                if (g_world.regions.count(m.string_value) && g_world.map.locations.count(m.string_value)) {
+                    auto loc = g_world.map.locations[m.string_value];
+                    Disaster d;
+                    d.id = "dis_" + generateUUID();
+                    d.type = m.target_id;
+                    d.epicenter_x = loc.x;
+                    d.epicenter_y = loc.y;
+                    d.radius = m.int_value;
+                    d.strength = m.int_value;
+                    d.affected_regions.push_back(m.string_value);
+                    d.days_active = m.int_value * 2;
+                    g_world.map.disasters.push_back(d);
+                    addNews(locStr("engine.news." + d.type, {{"region", g_world.regions[m.string_value].name}}), m.string_value, 5, "disaster");
+                    success = true;
+                } else { error_msg = "Region or location not found"; }
+                break;
+            }
+            case DeferredMutation::SPAWN_MONSTER: {
+                if (g_world.regions.count(m.string_value)) {
+                    EpicMonster mon;
+                    mon.id = "epic_" + generateUUID();
+                    mon.type = m.target_id;
+                    mon.name = g_db.monsters.count(m.target_id) ? g_db.monsters[m.target_id].name : "Modded Monster";
+                    mon.region_id = m.string_value;
+                    if (g_world.map.locations.count(m.string_value)) {
+                        mon.lair_x = g_world.map.locations[m.string_value].x;
+                        mon.lair_y = g_world.map.locations[m.string_value].y;
+                    }
+                    mon.treasure_chest_id = createContainer("monster_lair", "monster", 999999, 100, m.string_value);
+                    g_world.monsters.push_back(mon);
+                    addNews("A terrifying creature has appeared in " + g_world.regions[m.string_value].name + "!", m.string_value, 5, "disaster");
+                    success = true;
+                } else { error_msg = "Region not found"; }
+                break;
+            }
+            case DeferredMutation::SET_TILE_BIOME: {
+                int x = m.int_value;
+                int y = m.int_value2;
+                int b_id = m.int_value3;
+                if (x >= 0 && x < g_world.map.width && y >= 0 && y < g_world.map.height) {
+                    g_world.map.grid[y * g_world.map.width + x].biome_id = b_id;
+                    g_world.map.generation_tick = g_world.tick;
+                    success = true;
+                } else { error_msg = "Coordinates out of bounds"; }
+                break;
+            }
+
+            case DeferredMutation::SET_FACTION_RELATION: {
+                if (g_world.factions.count(m.target_id) && g_world.factions.count(m.string_value)) {
+                    g_world.factions[m.target_id].relations[m.string_value] = m.int_value;
+                    g_world.factions[m.string_value].relations[m.target_id] = m.int_value;
+                    success = true;
+                } else { error_msg = "Faction not found"; }
+                break;
+            }
+            case DeferredMutation::FORCE_WAR: {
+                if (g_world.factions.count(m.target_id) && g_world.factions.count(m.string_value)) {
+                    g_world.factions[m.target_id].diplomacy[m.string_value] = "war";
+                    g_world.factions[m.string_value].diplomacy[m.target_id] = "war";
+                    g_world.factions[m.target_id].warType = DiplomaticState::LIMITED_WAR;
+                    g_world.factions[m.string_value].warType = DiplomaticState::LIMITED_WAR;
+                    success = true;
+                } else { error_msg = "Faction not found"; }
+                break;
+            }
+            case DeferredMutation::FORCE_PEACE: {
+                if (g_world.factions.count(m.target_id) && g_world.factions.count(m.string_value)) {
+                    g_world.factions[m.target_id].diplomacy[m.string_value] = "neutral";
+                    g_world.factions[m.string_value].diplomacy[m.target_id] = "neutral";
+                    g_world.factions[m.target_id].warType = DiplomaticState::PEACE;
+                    g_world.factions[m.string_value].warType = DiplomaticState::PEACE;
+                    success = true;
+                } else { error_msg = "Faction not found"; }
+                break;
+            }
+            case DeferredMutation::MODIFY_REGION_MONEY: {
+                if (g_world.regions.count(m.target_id)) {
+                    g_world.regions[m.target_id].moneySupply = std::max(0.0, g_world.regions[m.target_id].moneySupply + m.double_value);
+                    success = true;
+                } else { error_msg = "Region not found"; }
+                break;
+            }
+            case DeferredMutation::MODIFY_BUSINESS_CASH: {
+                if (g_world.businesses.count(m.target_id)) {
+                    g_world.businesses[m.target_id].cash_balance = std::max(0, g_world.businesses[m.target_id].cash_balance + m.int_value);
+                    success = true;
+                } else { error_msg = "Business not found"; }
+                break;
+            }
+            case DeferredMutation::TELEPORT_NPC: {
+                if (g_world.npcs.count(m.target_id) && g_world.regions.count(m.string_value)) {
+                    g_world.npcs[m.target_id].currentLocation = m.string_value;
+                    success = true;
+                } else { error_msg = "NPC or Region not found"; }
+                break;
+            }
+            case DeferredMutation::MODIFY_NPC_GOLD: {
+                if (g_world.npcs.count(m.target_id)) {
+                    g_world.npcs[m.target_id].gold = std::max(0, g_world.npcs[m.target_id].gold + m.int_value);
+                    success = true;
+                } else { error_msg = "NPC not found"; }
+                break;
+            }
+            case DeferredMutation::SPAWN_ARMY: {
+                if (g_world.factions.count(m.target_id) && g_world.regions.count(m.string_value)) {
+                    Army a;
+                    a.id = "army_" + generateUUID();
+                    a.size = m.int_value;
+                    a.morale = 100;
+                    a.location = m.string_value;
+                    a.destination = m.string_value;
+                    if (g_world.map.locations.count(m.string_value)) {
+                        a.x = g_world.map.locations[m.string_value].x;
+                        a.y = g_world.map.locations[m.string_value].y;
+                    }
+                    g_world.factions[m.target_id].armies.push_back(a);
+                    success = true;
+                } else { error_msg = "Faction or Region not found"; }
+                break;
+            }
+            case DeferredMutation::SET_REGION_THREAT: {
+                if (g_world.regions.count(m.target_id)) {
+                    g_world.regions[m.target_id].threat_level = std::clamp(m.int_value, 0, 100);
+                    success = true;
+                } else { error_msg = "Region not found"; }
+                break;
+            }
+            case DeferredMutation::SET_ROAD_STATE: {
+                bool found = false;
+                for (auto& road : g_world.map.roads) {
+                    if ((road.from == m.target_id && road.to == m.string_value) || (road.from == m.string_value && road.to == m.target_id)) {
+                        if (m.int_value == 0) { road.condition = "ruined"; road.integrity = 0; }
+                        else if (m.int_value == 1) { road.condition = "dirt"; road.integrity = 100; }
+                        else if (m.int_value == 2) { road.condition = "paved"; road.integrity = 100; }
+                        found = true;
+                        g_path_cache_dirty = true;
+                    }
+                }
+                if (found) success = true; else error_msg = "Road not found";
+                break;
+            }
+
+            case DeferredMutation::ADD_NEWS: {
+                addNews(m.target_id, m.string_value, m.int_value, m.string_value2);
+                success = true;
                 break;
             }
         }
+
+        if (!m.transaction_id.empty()) {
+            JsonValue res = JsonValue::object();
+            res.set("transaction_id", m.transaction_id);
+            res.set("success", success);
+            if (!success) res.set("error", error_msg);
+            resultsArr.push(res);
+        }
     }
+
+    return resultsArr;
 }
 
 // --- New PluginManager: Opaque C-API based ---
@@ -3733,7 +4134,7 @@ int getShelfLifeDays(const std::string& type) {
 // Old news beyond this limit is pruned on every addNews() call.
 static constexpr size_t MAX_NEWS_ITEMS = 500;
 
-std::string addNews(const std::string& text, const std::string& location, int importance, const std::string& category = "misc", const std::string& causal_link = "", const std::vector<std::string>& entities = {}) {
+std::string addNews(const std::string& text, const std::string& location, int importance, const std::string& category, const std::string& causal_link, const std::vector<std::string>& entities) {
     std::lock_guard<std::mutex> lock(g_news_mutex);
     News nw;
     nw.id = "news_" + generateUUID();
@@ -8224,7 +8625,8 @@ void globalHomeostasis() {
 
 
 void hourlyTick() {
-    applyDeferredMutations();
+    JsonValue mutRes = applyDeferredMutations();
+    if (mutRes.size() > 0) emitJsEvent("mutation_results", mutRes);
     triggerJsHook("onBeforeHourlyTick");
     g_pluginManager.fireHourlyTick(g_world.current_day, g_world.time.internalHour);
     processConsumption();
@@ -13588,6 +13990,10 @@ int main() {
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
 #endif
+
+    // Signal readiness to Electron/Python clients
+    std::cout << "{\"status\":\"ready\",\"message\":\"Engine ready for commands\"}" << std::endl;
+
     std::string line;
     
     while (std::getline(std::cin, line)) {
@@ -13656,6 +14062,7 @@ int main() {
                 for (size_t i = 0; i < command["mutations"].size(); i++) {
                     JsonValue m = command["mutations"][i];
                     DeferredMutation dm;
+                    dm.transaction_id = m.has("transaction_id") ? m["transaction_id"].asString() : "";
                     std::string mtype = m.has("type") ? m["type"].asString() : "";
                     if (mtype == "setStability") {
                         dm.type = DeferredMutation::SET_STABILITY;
@@ -13681,11 +14088,37 @@ int main() {
                         dm.target_id = m.has("key") ? m["key"].asString() : "";
                         dm.string_value = m.has("value") ? m["value"].asString() : "";
                         g_deferred_mutations.push_back(dm);
-                    }
+                    } else if (mtype == "spawnItem") {
+                        dm.type = DeferredMutation::SPAWN_ITEM;
+                        dm.target_id = m.has("item_id") ? m["item_id"].asString() : "";
+                        dm.int_value = m.has("quantity") ? m["quantity"].asInt() : 1;
+                        dm.string_value = m.has("container_id") ? m["container_id"].asString() : "";
+                        g_deferred_mutations.push_back(dm);
+                    } else if (mtype == "triggerDisaster") {
+                        dm.type = DeferredMutation::TRIGGER_DISASTER;
+                        dm.target_id = m.has("disaster_type") ? m["disaster_type"].asString() : "";
+                        dm.string_value = m.has("region_id") ? m["region_id"].asString() : "";
+                        dm.int_value = m.has("severity") ? m["severity"].asInt() : 5;
+                        g_deferred_mutations.push_back(dm);
+                    } else if (mtype == "spawnMonster") {
+                        dm.type = DeferredMutation::SPAWN_MONSTER;
+                        dm.target_id = m.has("monster_type") ? m["monster_type"].asString() : "";
+                        dm.string_value = m.has("region_id") ? m["region_id"].asString() : "";
+                        g_deferred_mutations.push_back(dm);
+                                            } else if (mtype == "addNews") {
+                            dm.type = DeferredMutation::ADD_NEWS;
+                            dm.target_id = m.has("text") ? m["text"].asString() : "";
+                            dm.string_value = m.has("location") ? m["location"].asString() : "global";
+                            dm.int_value = m.has("importance") ? m["importance"].asInt() : 1;
+                            dm.string_value2 = m.has("category") ? m["category"].asString() : "misc";
+                            g_deferred_mutations.push_back(dm);
+                        }
                 }
+                JsonValue resultsArr = applyDeferredMutations();
+                response.set("status", "ok");
+                response.set("message", "Mod changes applied immediately");
+                response.set("results", resultsArr);
             }
-            response.set("status", "ok");
-            response.set("message", "Mod changes queued for next tick");
         }
 
         else if (cmd == "loadDatabase") {
@@ -14126,15 +14559,6 @@ response.set("world", g_world.toJson());
                         //    (от nexusWriteSyncFile)
                         // 2) Плоский: { "tick": ..., "regions": {...}, "map": {...}, ... }
                         //    (от прямого экспорта World.toJson)
-                        nlohmann::json worldData;
-                        if (worldJson.contains("world") && worldJson["world"].is_object()) {
-                            worldData = worldJson["world"];
-                        } else {
-                            worldData = worldJson;
-                        }
-
-                        g_world = World::fromJson(JsonValue(worldData));
-
                         // Optionally load items and containers from separate keys
                         if (worldJson.contains("items") && worldJson["items"].is_array()) {
                             g_items.clear();
@@ -14152,6 +14576,15 @@ response.set("world", g_world.toJson());
                                 g_containers[worldJson["containers"][i][0].get<std::string>()] = cont;
                             }
                         }
+
+                        nlohmann::json worldData;
+                        if (worldJson.contains("world") && worldJson["world"].is_object()) {
+                            worldData = std::move(worldJson["world"]);
+                        } else {
+                            worldData = std::move(worldJson);
+                        }
+
+                        g_world = World::fromJson(JsonValue(worldData));
                         rebuildContainerIndices();
                         g_deleted_items.clear();
                         g_deleted_containers.clear();

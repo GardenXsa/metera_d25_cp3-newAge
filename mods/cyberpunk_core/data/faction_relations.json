@@ -1,0 +1,25 @@
+{
+  "faction_biome_preference": {
+    "arasaka": "mega_structures",
+    "militech": "combat_zone",
+    "maelstrom": "slums",
+    "voodoo_boys": "data_crash_zone",
+    "nomads": "wasteland"
+  },
+  "faction_corrupt_biome": {
+    "arasaka": "polluted_water",
+    "militech": "ash_wastes",
+    "maelstrom": "scrap_forest",
+    "voodoo_boys": "data_crash_zone"
+  },
+  "faction_base_relations": {
+    "rebirth": [
+      { "f1": "arasaka", "f2": "militech", "modifier": -80 },
+      { "f1": "arasaka", "f2": "nomads", "modifier": -50 },
+      { "f1": "militech", "f2": "nomads", "modifier": -40 },
+      { "f1": "maelstrom", "f2": "voodoo_boys", "modifier": -90 },
+      { "f1": "arasaka", "f2": "voodoo_boys", "modifier": -60 },
+      { "f1": "militech", "f2": "maelstrom", "modifier": -70 }
+    ]
+  }
+}

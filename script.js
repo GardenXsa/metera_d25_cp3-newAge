@@ -981,7 +981,10 @@ async function equipItemAsync(itemId, targetSlot = null) {
 async function unequipItemAsync(slot) {
     if (!player || !player.container_equipment || !player.container_backpack) return null;
     const eqCont = ContainerRegistry.get(player.container_equipment);
-    const itemId = getContainerItems(eqCont).find(id => ItemRegistry.get(id).slot_index === slot);
+    const itemId = getContainerItems(eqCont).find(id => {
+        const it = ItemRegistry.get(id);
+        return it && it.slot_index === slot;
+    });
     if (!itemId) return t('gameInterface.commandFeedback.slotIsEmpty', { slot: slot });
 
     const itemToUnequip = ItemRegistry.get(itemId);
@@ -1490,7 +1493,13 @@ async function executeCommand(command, args) {
                     
                     if (existingItemId) {
                         await sendInventoryCommand('updateItemStat', { itemId: existingItemId, stat: 'stack_size', change: quantity });
-                        feedback = t('gameInterface.commandFeedback.itemQuantityIncreased', { itemName: name, quantity: quantity });
+                        const fullItem = ItemRegistry.get(existingItemId);
+                        if (!IS_PRE_SIMULATING && !window.isSimulatingTime) {
+                            addLogMessage(JSON.stringify(fullItem), "item-card");
+                            feedback = null;
+                        } else {
+                            feedback = t('gameInterface.commandFeedback.itemQuantityIncreased', { itemName: name, quantity: quantity });
+                        }
                     } else {
                         // Т3 ФИКС: Проверка веса
                     const currentWeight = CoreInventorySystemAsync.getContainerWeight(targetContId);
@@ -1533,11 +1542,23 @@ async function executeCommand(command, args) {
                             if (!isTransport && (aiId.toLowerCase().includes('horse') || aiId.toLowerCase().includes('cart') || aiId.toLowerCase().includes('wagon'))) {
                                 const validIds = TransportSystem.getAllTransportIds();
                                 console.warn(`[addItem] Suspicious transport-like ID "${aiId}". Valid transport IDs: ${validIds.join(', ')}`);
-                                await CoreInventorySystemAsync.createItem(aiId, quantity, targetContId, customProps);
-                                feedback = t('gameInterface.commandFeedback.itemAdded', { itemName: name, quantity: quantity }) + ` [WARNING] ID "${aiId}" не является транспортом. Используйте: ${validIds.join(', ')}`;
+                                const createdId = await CoreInventorySystemAsync.createItem(aiId, quantity, targetContId, customProps);
+                                const fullItem = ItemRegistry.get(createdId);
+                                if (!IS_PRE_SIMULATING && !window.isSimulatingTime) {
+                                    addLogMessage(JSON.stringify(fullItem), "item-card");
+                                    feedback = null;
+                                } else {
+                                    feedback = t('gameInterface.commandFeedback.itemAdded', { itemName: name, quantity: quantity }) + ` [WARNING] ID "${aiId}" не является транспортом. Используйте: ${validIds.join(', ')}`;
+                                }
                             } else {
-                                await CoreInventorySystemAsync.createItem(aiId, quantity, targetContId, customProps);
-                                feedback = t('gameInterface.commandFeedback.itemAdded', { itemName: name, quantity: quantity });
+                                const createdId = await CoreInventorySystemAsync.createItem(aiId, quantity, targetContId, customProps);
+                                const fullItem = ItemRegistry.get(createdId);
+                                if (!IS_PRE_SIMULATING && !window.isSimulatingTime) {
+                                    addLogMessage(JSON.stringify(fullItem), "item-card");
+                                    feedback = null;
+                                } else {
+                                    feedback = t('gameInterface.commandFeedback.itemAdded', { itemName: name, quantity: quantity });
+                                }
                             }
                         }
                     }
@@ -1894,12 +1915,18 @@ async function executeCommand(command, args) {
 
                     if (player.container_backpack) {
                         const bp = ContainerRegistry.get(player.container_backpack);
-                        const id = getContainerItems(bp).find(i => i === searchTerm || ItemRegistry.get(i).prototype_id === searchTerm);
+                        const id = getContainerItems(bp).find(i => {
+                            const it = ItemRegistry.get(i);
+                            return i === searchTerm || (it && it.prototype_id === searchTerm);
+                        });
                         if (id) item = ItemRegistry.get(id);
                     }
                     if (!item && player.container_equipment) {
                         const eq = ContainerRegistry.get(player.container_equipment);
-                        const id = getContainerItems(eq).find(i => i === searchTerm || ItemRegistry.get(i).prototype_id === searchTerm);
+                        const id = getContainerItems(eq).find(i => {
+                            const it = ItemRegistry.get(i);
+                            return i === searchTerm || (it && it.prototype_id === searchTerm);
+                        });
                         if (id) {
                             item = ItemRegistry.get(id);
                             isEquipped = true;
@@ -2918,9 +2945,13 @@ async function preSimulateWorldHistory(yearsToSimulate) {
             updatePortPanel();
             if (typeof updateHoldingsDisplay === 'function') updateHoldingsDisplay();
             document.dispatchEvent(new Event('PreSimulateComplete'));
-            return;
+            return true;
         } else {
             console.error("[Nexus] Ошибка пре-симуляции:", res);
+            IS_PRE_SIMULATING = false;
+            hideLoadingScreen();
+            showCustomAlert("Критическая ошибка симуляции: " + (res.message || "Таймаут движка"));
+            return false;
         }
     } else {
         console.error("[Nexus] Нативный движок недоступен для пре-симуляции!");
@@ -2928,6 +2959,7 @@ async function preSimulateWorldHistory(yearsToSimulate) {
     
     IS_PRE_SIMULATING = false;
     document.dispatchEvent(new Event('PreSimulateComplete'));
+    return true;
 }
 
 function processMonsterQuests() {
@@ -3251,7 +3283,7 @@ let USE_SPRITE_RENDERER = true;
 let currentLocalMapPlots = null;
 let currentLocalMapSize = { width: 0, height: 0 };
 
-let TILE_SPRITE_MAP = {};
+let TILE_SPRITE_MAP = { 'void': { x: 0, y: 0 } };
 let AVAILABLE_TILES_LIST = "";;
 
 function getSpriteCoords(type) {
@@ -3262,34 +3294,42 @@ async function loadTileSet() {
     try {
         const response = await fetch('assets/assets/kenny1bit-tagger/tile_tags.json?t=' + Date.now());
         if (response.ok) {
-            const data = await response.json();
-            if (data.mappings) {
-                TILE_SPRITE_MAP = data.mappings;
-                AVAILABLE_TILES_LIST = Object.keys(TILE_SPRITE_MAP).join(', ');
-                console.log(`[TileSet] Загружен маппинг тайлов: ${Object.keys(TILE_SPRITE_MAP).length} шт.`);
+            const text = await response.text();
+            try {
+                const data = JSON.parse(text);
+                if (data.mappings) {
+                    TILE_SPRITE_MAP = data.mappings;
+                    AVAILABLE_TILES_LIST = Object.keys(TILE_SPRITE_MAP).join(', ');
+                    console.log(`[TileSet] Загружен маппинг тайлов: ${Object.keys(TILE_SPRITE_MAP).length} шт.`);
+                }
+            } catch (jsonError) {
+                console.error(`[TileSet] КРИТИЧЕСКАЯ ОШИБКА: Файл tile_tags.json поврежден и содержит JS-код вместо JSON. Полученный текст (первые 200 символов):\n"${text.substring(0, 200)}"`, jsonError);
+                if (!TILE_SPRITE_MAP['void']) {
+                    TILE_SPRITE_MAP['void'] = { x: 0, y: 0 };
+                }
             }
         } else {
-            console.warn('[TileSet] Не удалось загрузить tileset.json');
+            console.warn('[TileSet] Не удалось загрузить tileset.json, статус:', response.status);
         }
     } catch (e) {
-        console.error('[TileSet] Ошибка загрузки tileset.json:', e);
+        console.error('[TileSet] Ошибка сетевого запроса tileset.json:', e);
     }
 
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-            TILESET_IMAGE = img;
-            console.log('[TileSet] Загружен спрайт-лист Kenney 1-Bit');
-            resolve(true);
-        };
-        img.onerror = (err) => {
-            console.error('[TileSet] Ошибка загрузки спрайт-листа, используем fallback CSS', err);
-            USE_SPRITE_RENDERER = false;
-            resolve(false);
-        };
-        img.src = 'assets/assets/kenny1bit-tagger/Tilesheet/colored-transparent.png';
-    });
-}
+            return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                TILESET_IMAGE = img;
+                console.log('[TileSet] Загружен спрайт-лист Kenney 1-Bit');
+                resolve(true);
+            };
+            img.onerror = (err) => {
+                console.error('[TileSet] Ошибка загрузки спрайт-листа, используем fallback CSS', err);
+                USE_SPRITE_RENDERER = false;
+                resolve(false);
+            };
+            img.src = 'assets/assets/kenny1bit-tagger/Tilesheet/colored-transparent.png';
+        });
+    }
 
 function toggleMapRenderer(useSprite) {
     USE_SPRITE_RENDERER = useSprite;
@@ -4755,7 +4795,200 @@ function closeAiErrorModal() {
     setTimeout(() => aiErrorModal.style.display = 'none', 300);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+const AutocompleteController = {
+    dropdown: null,
+    input: null,
+    suggestions: [],
+    activeIndex: -1,
+
+    init: function() {
+        this.dropdown = document.getElementById('input-autocomplete-dropdown');
+        this.input = document.getElementById('user-input');
+        if (!this.dropdown || !this.input) return;
+
+        this.input.addEventListener('input', (e) => this.onInput(e));
+        this.input.addEventListener('keydown', (e) => this.onKeyDown(e));
+        
+        // Скрытие при клике снаружи
+        document.addEventListener('click', (e) => {
+            if (e.target !== this.input && e.target !== this.dropdown && !this.dropdown.contains(e.target)) {
+                this.hide();
+            }
+        });
+    },
+
+    getCommands: function() {
+        const commands = [
+            { value: '/use ', desc: 'использовать предмет из рюкзака', type: 'Расходник' },
+            { value: '/equip ', desc: 'экипировать предмет в слот', type: 'Экипировка' },
+            { value: '/unequip ', desc: 'снять предмет в рюкзак', type: 'Экипировка' },
+            { value: '/travel ', desc: 'отправиться в путешествие', type: 'Путь' },
+            { value: '/status', desc: 'показать активные статус-эффекты', type: 'Инфо' },
+            { value: '/help', desc: 'открыть справочник помощи', type: 'Инфо' }
+        ];
+        
+        if (window.ModAPI && window.ModAPI.customCommands) {
+            Object.keys(window.ModAPI.customCommands).forEach(cmd => {
+                commands.push({ value: '/' + cmd + ' ', desc: 'кастомная команда из мода', type: 'Мод' });
+            });
+        }
+        return commands;
+    },
+
+    onInput: function(e) {
+        const val = this.input.value;
+        if (!val.startsWith('/')) {
+            this.hide();
+            return;
+        }
+
+        const parts = val.split(' ');
+        const baseCmd = parts[0].toLowerCase();
+
+        if (parts.length === 1) {
+            const list = this.getCommands().filter(c => c.value.toLowerCase().startsWith(baseCmd));
+            this.show(list);
+        } else if (parts.length === 2) {
+            const argQuery = parts[1].toLowerCase();
+            let list = [];
+
+            if (baseCmd === '/use') {
+                const bp = ContainerRegistry.get(player?.container_backpack);
+                if (bp && bp.items) {
+                    const seen = new Set();
+                    bp.items.forEach(id => {
+                        const it = ItemRegistry.get(id);
+                        if (it && !seen.has(it.prototype_id)) {
+                            const name = it.custom_props?.name || it.prototype_id;
+                            if (name.toLowerCase().includes(argQuery) || it.prototype_id.toLowerCase().includes(argQuery)) {
+                                list.push({ value: '/use ' + it.prototype_id, desc: name, type: 'Расходник' });
+                                seen.add(it.prototype_id);
+                            }
+                        }
+                    });
+                }
+            } else if (baseCmd === '/equip') {
+                const bp = ContainerRegistry.get(player?.container_backpack);
+                if (bp && bp.items) {
+                    const seen = new Set();
+                    bp.items.forEach(id => {
+                        const it = ItemRegistry.get(id);
+                        if (it && it.custom_props?.slot && !seen.has(it.prototype_id)) {
+                            const name = it.custom_props?.name || it.prototype_id;
+                            if (name.toLowerCase().includes(argQuery) || it.prototype_id.toLowerCase().includes(argQuery)) {
+                                list.push({ value: '/equip ' + it.prototype_id, desc: name + ' (' + it.custom_props.slot + ')', type: 'Снаряжение' });
+                                seen.add(it.prototype_id);
+                            }
+                        }
+                    });
+                }
+            } else if (baseCmd === '/unequip') {
+                const eq = ContainerRegistry.get(player?.container_equipment);
+                if (eq && eq.items) {
+                    eq.items.forEach(id => {
+                        const it = ItemRegistry.get(id);
+                        if (it && it.slot_index) {
+                            const name = it.custom_props?.name || it.prototype_id;
+                            if (it.slot_index.toLowerCase().includes(argQuery) || name.toLowerCase().includes(argQuery)) {
+                                list.push({ value: '/unequip ' + it.slot_index, desc: name, type: 'Слот' });
+                            }
+                        }
+                    });
+                }
+            } else if (baseCmd === '/travel') {
+                const locs = [
+                    ...(typeof globalLocations === 'object' ? Object.keys(globalLocations) : []),
+                    ...(player?.mapMarkers ? Object.keys(player.mapMarkers) : [])
+                ].filter(id => id !== 'startLocation');
+                
+                const seen = new Set();
+                locs.forEach(id => {
+                    if (seen.has(id)) return;
+                    seen.add(id);
+                    const name = globalLocations[id]?.name || player.mapMarkers[id]?.name || id;
+                    if (name.toLowerCase().includes(argQuery) || id.toLowerCase().includes(argQuery)) {
+                        list.push({ value: '/travel ' + id, desc: name, type: 'Локация' });
+                    }
+                });
+            }
+
+            this.show(list);
+        } else {
+            this.hide();
+        }
+    },
+
+    show: function(list) {
+        this.suggestions = list.slice(0, 10); 
+        if (this.suggestions.length === 0) {
+            this.hide();
+            return;
+        }
+
+        this.dropdown.innerHTML = '';
+        this.suggestions.forEach((item, idx) => {
+            const el = document.createElement('div');
+            el.className = 'autocomplete-item';
+            if (idx === this.activeIndex) el.classList.add('active');
+            
+            el.innerHTML = '<div style="display:flex; flex-direction:column;">' +
+                '<span style="font-weight:bold;">' + escapeHTML(item.value) + '</span>' +
+                '<span class="item-desc">' + escapeHTML(item.desc) + '</span>' +
+                '</div>' +
+                '<span class="item-type-tag">' + escapeHTML(item.type) + '</span>';
+
+            el.addEventListener('click', () => {
+                this.selectItem(item.value);
+            });
+
+            this.dropdown.appendChild(el); 
+        });
+
+        this.dropdown.style.display = 'flex';
+    },
+
+    hide: function() {
+        if (this.dropdown) {
+            this.dropdown.style.display = 'none';
+        }
+        this.suggestions = [];
+        this.activeIndex = -1;
+    },
+
+    selectItem: function(val) {
+        this.input.value = val;
+        this.hide();
+        this.input.focus();
+    },
+
+    onKeyDown: function(e) {
+        if (this.dropdown.style.display === 'none' || this.suggestions.length === 0) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            this.activeIndex = (this.activeIndex + 1) % this.suggestions.length;
+            this.show(this.suggestions);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            this.activeIndex = (this.activeIndex - 1 + this.suggestions.length) % this.suggestions.length;
+            this.show(this.suggestions);
+        } else if (e.key === 'Enter') {
+            if (this.activeIndex >= 0 && this.activeIndex < this.suggestions.length) {
+                e.preventDefault();
+                this.selectItem(this.suggestions[this.activeIndex].value);
+            }
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            this.hide();
+        }
+    }
+};
+
+
+    document.addEventListener('DOMContentLoaded', () => {
+    // Инициализация контроллера автокомплита
+    AutocompleteController.init();
+
     if (aiErrorDetailsToggle) {
         aiErrorDetailsToggle.addEventListener('click', () => {
             if (aiErrorDetailsContent.style.display === 'none') {
@@ -6035,6 +6268,7 @@ const musicSlider = document.getElementById('music-volume-slider');
 function getFriendlyApiErrorMessage(status, rawText) {
     // Хардкодный словарь на случай сбоя системы локализации (t())
     const fallbacks = {
+        0: "Сервер недоступен (Сбой сети). Если вы используете локальную модель (LM Studio) или прокси (OmniRoute), убедитесь, что сервер запущен.",
         400: "Неверный запрос. Возможно, контекст слишком велик или модель не поддерживает выбранные параметры.",
         401: "Ошибка авторизации. Проверьте правильность API ключа.",
         402: "Недостаточно средств на балансе провайдера. Пополните счёт или смените модель.",
@@ -6111,11 +6345,11 @@ async function pingProvider() {
                 return;
         }
 
-        const response = await fetch(url, { method: 'GET', headers: headers });
+        const response = await window.electronAPI.proxyFetch(url, { method: 'GET', headers: headers });
         if (response.ok) {
             resultDiv.innerHTML = `<span style="color: #2ecc71;"><i class="fas fa-check"></i> Соединение установлено! Ключ валиден.</span>`;
         } else {
-            const errText = await response.text();
+            const errText = response.text;
             let shortMsg = t(`apiErrors.${response.status}`, null, `Ошибка ${response.status}`);
             resultDiv.innerHTML = `<span style="color: #e74c3c;" title="${errText.replace(/"/g, '&quot;')}"><i class="fas fa-times"></i> ${shortMsg} (Код: ${response.status})</span>`;
         }
@@ -6180,9 +6414,9 @@ async function fetchModels() {
                 return;
         }
 
-        const response = await fetch(url, { method: 'GET', headers: headers });
+        const response = await window.electronAPI.proxyFetch(url, { method: 'GET', headers: headers });
         if (response.ok) {
-            const data = await response.json();
+            const data = JSON.parse(response.text);
             let models = [];
             
             if (isGemini && data.models) {
@@ -6249,7 +6483,7 @@ async function fetchModels() {
                 if (typeof showCustomAlert === 'function') showCustomAlert("Связь есть, но список моделей пуст.");
             }
         } else {
-            const errText = await response.text();
+            const errText = response.text;
             if (typeof showCustomAlert === 'function') showCustomAlert(getFriendlyApiErrorMessage(response.status, errText));
         }
     } catch (e) {
@@ -6265,6 +6499,7 @@ async function fetchModels() {
 function getFriendlyApiErrorMessage(status, rawText) {
     // Хардкодный словарь на случай сбоя системы локализации (t())
     const fallbacks = {
+        0: "Сервер недоступен (Сбой сети). Если вы используете локальную модель (LM Studio) или прокси (OmniRoute), убедитесь, что сервер запущен.",
         400: "Неверный запрос. Возможно, контекст слишком велик или модель не поддерживает выбранные параметры.",
         401: "Ошибка авторизации. Проверьте правильность API ключа.",
         402: "Недостаточно средств на балансе провайдера. Пополните счёт или смените модель.",
@@ -6347,10 +6582,10 @@ async function testApiConnection() {
                 return;
         }
 
-        const response = await fetch(url, { method: 'GET', headers: headers });
+        const response = await window.electronAPI.proxyFetch(url, { method: 'GET', headers: headers });
 
         if (response.ok) {
-            const data = await response.json();
+            const data = JSON.parse(response.text);
             resultDiv.innerHTML = `<span style="color: #2ecc71;"><i class="fas fa-check"></i> Успешно! Загрузка списка...</span>`;
             
             let models = [];
@@ -6423,7 +6658,7 @@ async function testApiConnection() {
             }
 
         } else {
-            const errText = await response.text();
+            const errText = response.text;
             let shortMsg = t(`apiErrors.${response.status}`, null, `Ошибка ${response.status}`);
             resultDiv.innerHTML = `<span style="color: #e74c3c;" title="${errText.replace(/"/g, '&quot;')}"><i class="fas fa-times"></i> ${shortMsg} (Код: ${response.status})</span>`;
             console.error("Ping error:", errText);
@@ -7025,6 +7260,11 @@ function setupEventListeners() {
                     if (isExpanded) {
                         content.style.maxHeight = content.scrollHeight + "px";
                         setTimeout(() => { if (panel.classList.contains('expanded')) content.style.maxHeight = 'none'; }, 400);
+                        
+                        // Запуск рендера миникарты при раскрытии панели Карта
+                        if (panel.classList.contains('map-panel')) {
+                            if (window.Cartographer) window.Cartographer.requestRender();
+                        }
                     } else {
                         content.style.maxHeight = content.scrollHeight + "px";
                         requestAnimationFrame(() => { content.style.maxHeight = '0'; });
@@ -7786,15 +8026,17 @@ async function finalizeWorldSetupAndStart() {
     if (preloadedWorldData) {
         console.log("Используется предзагруженный мир.");
         setWorld(preloadedWorldData);
-        // Инициализируем движок, но НЕ синхронизируем мир сейчас —
-        // World JSON слишком большой (1.5МБ+), syncState таймаутится.
-        // Синхронизация будет выполнена позже, после создания контейнеров.
-        if (window.electronAPI && window.electronAPI.nexusInit) {
-            const initRes = await window.electronAPI.nexusInit(true);
-            if (initRes.status !== 'ok') {
-                console.warn('[Nexus] Init failed for preloaded world:', initRes.message);
-            }
+        
+        // Восстанавливаем реестры из сохраненного мира
+        if (preloadedWorldData.savedItems) {
+            preloadedWorldData.savedItems.forEach(([k, v]) => ItemRegistry.set(k, v));
         }
+        if (preloadedWorldData.savedContainers) {
+            preloadedWorldData.savedContainers.forEach(([k, v]) => setContainer(k, v));
+        }
+        
+        // Инициализируем движок И ЗАГРУЖАЕМ БАЗУ ДАННЫХ (isLoadMode = true)
+        await initWorldSimulator(initialAgents, absoluteStartDay, true);
     } else {
         setWorld(await initWorldSimulator(initialAgents, absoluteStartDay));
         if (!World) {
@@ -7820,7 +8062,8 @@ async function finalizeWorldSetupAndStart() {
         }
 
         if (enableWorldSim) {
-            await preSimulateWorldHistory(yearsToSimulate);
+            const simSuccess = await preSimulateWorldHistory(yearsToSimulate);
+            if (!simSuccess) return; // Прерываем запуск, если симуляция упала по таймауту
             const loadingText = document.getElementById('loading-text');
             if (loadingText) loadingText.textContent = t('loadingScreen.finalizing', null, 'Завершение...');
         }
@@ -8237,18 +8480,27 @@ function levelUp() {
     }
 
     if (levelsGainedThisCycle > 0) {
-        addLogMessage(t('gameInterface.log.levelUpSummary', {
-            finalLevel: player.stats.level
-        }), "system-message level-up");
+        if (!IS_PRE_SIMULATING && !window.isSimulatingTime) {
+            const lvlUpData = {
+                level: player.stats.level,
+                hpGain: totalHpGainThisCycle,
+                points: totalStatPointsGainedThisCycle
+            };
+            addLogMessage(JSON.stringify(lvlUpData), "level-up-card");
+        } else {
+            addLogMessage(t('gameInterface.log.levelUpSummary', {
+                finalLevel: player.stats.level
+            }), "system-message level-up");
 
-        if (totalHpGainThisCycle > 0) {
-            addLogMessage(t('gameInterface.log.levelUpHPSummary', {
-                totalHpGain: totalHpGainThisCycle
+            if (totalHpGainThisCycle > 0) {
+                addLogMessage(t('gameInterface.log.levelUpHPSummary', {
+                    totalHpGain: totalHpGainThisCycle
+                }), "system-message level-up");
+            }
+            addLogMessage(t('gameInterface.log.levelUpPointsSummary', {
+                totalStatPoints: totalStatPointsGainedThisCycle
             }), "system-message level-up");
         }
-        addLogMessage(t('gameInterface.log.levelUpPointsSummary', {
-            totalStatPoints: totalStatPointsGainedThisCycle
-        }), "system-message level-up");
         generateWorldNews(`Герой ${player.name} достиг ${player.stats.level} уровня!`, player.location || "global", 3, 'misc');
         updateCharacterSheet(); // Обновит отображение, включая кнопки "+"
     }
@@ -8923,6 +9175,13 @@ function updateCharacterSheet() {
         reputationMarker.style.left = `${percent}%`;
     }
 
+    // Рендер виджетов модов
+    if (window.ModAPI) {
+        ModAPI.renderWidgets('character-top', document.querySelector('[data-region="character-top"]'));
+        ModAPI.renderWidgets('character-bottom', document.querySelector('[data-region="character-bottom"]'));
+    }
+
+
     if (levelInfoDiv) {
         levelInfoDiv.innerHTML = t('gameInterface.characterPanel.levelInfo', {
             level: `<span id="stat-level">${player.stats.level}</span>`,
@@ -8944,6 +9203,12 @@ function updateInventoryDisplay() {
     inventoryList.innerHTML = '';
     const backpack = ContainerRegistry.get(player.container_backpack);
     const allItems = backpack ? getContainerItems(backpack).map(id => ItemRegistry.get(id)).filter(Boolean) : [];
+
+    // Рендер виджетов модов
+    if (window.ModAPI) {
+        ModAPI.renderWidgets('inventory-top', document.querySelector('[data-region="inventory-top"]'));
+    }
+
 
     const countEl = document.getElementById('inventory-count');
     if (countEl) countEl.textContent = allItems.length;
@@ -10298,8 +10563,43 @@ function closeInGameMenu() {
 }
 
 // --- Лог и Ввод ---
+// Казуальные карточки (RichCardRenderer и Toasts) удалены для соответствия хардкорному стилю симуляции.
+
+
 function addLogMessage(message, type = "gm-message", isRestoring = false, imagePrompt = "", savedImageBase64 = null) {
     if (!gameLog) return;
+
+    // --- СТРОГИЙ ТЕКСТОВЫЙ ЛОГ (Замена карточек) ---
+    let cleanHtml = "";
+    let textToSpeak = "";
+    let isCard = false; // Оставляем флаг для совместимости нижележащего кода, но он всегда false
+
+    if (["item-card", "quest-card", "level-up-card", "combat-card"].includes(type)) {
+        try {
+            const data = typeof message === 'string' ? JSON.parse(message) : message;
+            
+            if (type === "item-card") {
+                message = `Предмет получен: ${data.custom_props?.name || data.prototype_id} (${data.custom_props?.rarity || 'Обычный'})`;
+                type = "command-feedback";
+            } else if (type === "quest-card") {
+                const statusStr = data.status === 'completed' ? 'Выполнено' : (data.status === 'failed' ? 'Провалено' : 'Активно');
+                message = `Журнал обновлен: задание «${data.title}» (${statusStr})`;
+                type = "command-feedback";
+            } else if (type === "level-up-card") {
+                message = `Достигнут ${data.level} уровень. Макс. HP: +${data.hpGain}, Очки характеристик: +${data.points}.`;
+                type = "level-up";
+            } else if (type === "combat-card") {
+                message = data.total_damage > 0 
+                    ? `Сражение завершено. Получено урона: ${data.total_damage}.` 
+                    : `Сражение завершено. Урон не получен.`;
+                type = "system-message";
+            }
+        } catch (err) {
+            console.error("Ошибка парсинга системного сообщения:", err, message);
+            type = "system-message";
+        }
+    }
+
     message = parseLocString(message); // Авто-локализация
 
     // --- СИСТЕМА СОХРАНЕНИЯ ЛОГОВ ---
@@ -10321,13 +10621,15 @@ function addLogMessage(message, type = "gm-message", isRestoring = false, imageP
         if (type === 'user-message') category = 'user';
         else if (['system-message', 'command-feedback', 'level-up', 'calc-info'].includes(type)) category = 'system';
         else if (type === 'world-event') category = 'world-event';
+        else if (isCard) category = 'system';
 
-        let textToSpeak = message;
-    let cleanHtml = "";
+        textToSpeak = isCard ? textToSpeak : message;
 
     // Обработка текста (Markdown, RP-теги, Санитайзер)
     try {
-        if (type === 'world-event') {
+        if (isCard) {
+            // cleanHtml уже готов, ничего не делаем
+        } else if (type === 'world-event') {
             let sanitizedText = DOMPurify.sanitize(marked.parse(message));
             cleanHtml = `
                 <div class="world-event-card">
@@ -10375,14 +10677,14 @@ function addLogMessage(message, type = "gm-message", isRestoring = false, imageP
         textToSpeak = "";
     }
 
-    // Группировка системных логов (чтобы не спамить пузырями)
-    let targetBubble = null;
-    if (category === 'system') {
-        const lastWrapper = gameLog.lastElementChild;
-        if (lastWrapper && lastWrapper.classList.contains('wrapper-system')) {
-            targetBubble = lastWrapper.querySelector('.system-content');
-        }
-    }
+                // Группировка системных логов (чтобы не спамить пузырями)
+            let targetBubble = null;
+            if (category === 'system' && !isCard) {
+                const lastWrapper = gameLog.lastElementChild;
+                if (lastWrapper && lastWrapper.classList.contains('wrapper-system')) {
+                    targetBubble = lastWrapper.querySelector('.system-content');
+                }
+            }
 
     let bubbleElement = null;
 
@@ -10615,8 +10917,8 @@ function addLogMessage(message, type = "gm-message", isRestoring = false, imageP
         }
     }
 
-    pruneGameLog();
-    gameLog.scrollTo({ top: gameLog.scrollHeight, behavior: 'smooth' });
+                    pruneGameLog();
+    gameLog.scrollTop = gameLog.scrollHeight;
 }
 
 function processTurnEffects() {
@@ -10721,7 +11023,96 @@ function hideLoadingScreen() {
 async function handleUserInput() {
     let text = userInput.value.trim();
 
+    // Скрываем автокомплит при отправке
+    if (typeof AutocompleteController !== 'undefined') {
+        AutocompleteController.hide();
+    }
+
+    // --- ИНТЕРПРЕТАТОР СЛЭШ-КОМАНД (STEP 4) ---
+    if (text.startsWith('/')) {
+        const parts = text.split(' ');
+        const cmd = parts[0].toLowerCase();
+        const arg = parts.slice(1).join(' ').trim();
+        
+        if (cmd === '/equip') {
+            userInput.value = '';
+            if (rollsContainer) rollsContainer.innerHTML = '';
+            const feedback = await executeCommand('equipItem', { aiIdentifier: arg });
+            if (feedback) addLogMessage(feedback, 'command-feedback');
+            return;
+        }
+        else if (cmd === '/unequip') {
+            userInput.value = '';
+            if (rollsContainer) rollsContainer.innerHTML = '';
+            const feedback = await executeCommand('unequipItem', { slot: arg });
+            if (feedback) addLogMessage(feedback, 'command-feedback');
+            return;
+        }
+        else if (cmd === '/use') {
+            userInput.value = '';
+            if (rollsContainer) rollsContainer.innerHTML = '';
+            
+            const backpack = ContainerRegistry.get(player.container_backpack);
+            const itemId = getContainerItems(backpack).find(id => {
+                const it = ItemRegistry.get(id);
+                return it && (it.prototype_id === arg || (it.custom_props?.aiIdentifier || '').toLowerCase() === arg.toLowerCase() || (it.custom_props?.name || '').toLowerCase() === arg.toLowerCase());
+            });
+            
+            if (!itemId) {
+                addLogMessage(`[СИСТЕМА] Предмет '${arg}' не найден в вашем рюкзаке.`, 'command-feedback');
+                return;
+            }
+            
+            const item = ItemRegistry.get(itemId);
+            const proto = item.prototype_id.toLowerCase();
+            
+            if (proto.includes('potion_heal_small') || proto.includes('лечебн')) {
+                await CoreInventorySystemAsync.removeItem(itemId, 1);
+                player.stats.hp = Math.min(player.stats.maxHp, player.stats.hp + 15);
+                addLogMessage(`[ИСПОЛЬЗОВАНИЕ] Вы выпили малый инъектор лечения (+15 HP). Здоровье: ${player.stats.hp}/${player.stats.maxHp}`, 'level-up');
+                updateCharacterSheet();
+                updateInventoryDisplay();
+                queuePlayerActionForGM("Player used Small Health Potion.");
+            } else if (proto.includes('mana_potion') || proto.includes('маны')) {
+                await CoreInventorySystemAsync.removeItem(itemId, 1);
+                player.stats.mana = Math.min(player.stats.maxMana, player.stats.mana + 15);
+                addLogMessage(`[ИСПОЛЬЗОВАНИЕ] Вы выпили малый инъектор маны (+15 Маны). Мана: ${player.stats.mana}/${player.stats.maxMana}`, 'level-up');
+                updateCharacterSheet();
+                updateInventoryDisplay();
+                queuePlayerActionForGM("Player used Small Mana Potion.");
+            } else {
+                addLogMessage(`[СИСТЕМА] Предмет '${item.custom_props.name}' невозможно использовать напрямую.`, 'command-feedback');
+            }
+            return;
+        }
+        else if (cmd === '/travel') {
+            userInput.value = '';
+            if (rollsContainer) rollsContainer.innerHTML = '';
+            LivingRoads.start(arg);
+            return;
+        }
+        else if (cmd === '/status') {
+            userInput.value = '';
+            if (rollsContainer) rollsContainer.innerHTML = '';
+            const effects = Object.values(player.statusEffects || {});
+            if (effects.length === 0) {
+                addLogMessage("[СИСТЕМА] У вас нет активных статус-эффектов.", "command-feedback");
+            } else {
+                let msg = "[АКТИВНЫЕ ЭФФЕКТЫ]:\n" + effects.map(e => `- ${e.name} (${e.duration} ходов): ${e.description}`).join('\n');
+                addLogMessage(msg, "command-feedback");
+            }
+            return;
+        }
+        else if (cmd === '/help') {
+            userInput.value = '';
+            if (rollsContainer) rollsContainer.innerHTML = '';
+            setActiveScreen('help-screen');
+            return;
+        }
+    }
+
     // --- АНТИЧИТ: Удаляем вручную вписанные броски ---
+    text = text.replace(/\[ROLL_RESULT:.*?\]/gi, '').trim();
     text = text.replace(/\[ROLL_RESULT:.*?\]/gi, '').trim();
 
 
@@ -10774,8 +11165,19 @@ async function handleUserInput() {
         else if (cmd === 'test') {
             runUnitTests();
         }
+        else if (cmd === 'cmd') {
+            const commandName = args[2];
+            const jsonArgs = args.slice(3).join(' ');
+            try {
+                const parsedArgs = jsonArgs ? JSON.parse(jsonArgs) : {};
+                executeCommand(commandName, parsedArgs);
+                addLogMessage(`[DEV] Вызвана команда ${commandName} с аргументами ${jsonArgs}`, "system-message");
+            } catch (e) {
+                addLogMessage(`[DEV] Ошибка парсинга JSON аргументов: ${e.message}`, "system-message");
+            }
+        }
         else {
-            addLogMessage(`[DEV] Неизвестная команда. Доступно: /dev turn [число], /dev addmem, /dev killall, /dev skip [число], /dev test`, "system-message");
+            addLogMessage(`[DEV] Неизвестная команда. Доступно: /dev turn [число], /dev addmem, /dev killall, /dev skip [число], /dev test, /dev cmd [команда] [JSON аргументы]`, "system-message");
         }
 
         userInput.value = '';
@@ -10965,14 +11367,21 @@ async function handleUserInput() {
             
             let enemyRollsText = "\n\n[SYSTEM: РЕЗУЛЬТАТЫ АТАК ПРОТИВНИКОВ В ЭТОМ ХОДУ:\n";
             if (combatRes.success && combatRes.combat_log) {
-                combatRes.combat_log.forEach(logLine => {
-                    enemyRollsText += "- " + logLine + "\n";
-                });
+                if (!IS_PRE_SIMULATING && !window.isSimulatingTime) {
+                    addLogMessage(JSON.stringify(combatRes), "combat-card");
+                } else {
+                    combatRes.combat_log.forEach(logLine => {
+                        enemyRollsText += "- " + logLine + "\n";
+                    });
+                    if (combatRes.total_damage > 0) {
+                        enemyRollsText += `ИТОГО УРОНА ПО ИГРОКУ: ${combatRes.total_damage}. HP игрока снижено.\n`;
+                    } else {
+                        enemyRollsText += "Игрок успешно уклонился/заблокировал все атаки.\n";
+                    }
+                    addLogMessage(enemyRollsText, "system-message");
+                }
                 if (combatRes.total_damage > 0) {
                     damagePlayerHP(combatRes.total_damage);
-                    enemyRollsText += `ИТОГО УРОНА ПО ИГРОКУ: ${combatRes.total_damage}. HP игрока снижено.\n`;
-                } else {
-                    enemyRollsText += "Игрок успешно уклонился/заблокировал все атаки.\n";
                 }
             }
             enemyRollsText += "СТРОЖАЙШИЙ ПРИКАЗ: ВРАГИ ЖИВЫ (HP > 0)! ТЫ ОБЯЗАН учесть эти результаты в своем художественном описании! ЗАПРЕЩЕНО завершать бой, выдавать лут или обновлять квесты! Напиши Поэту в logic_summary: 'БОЙ ПРОДОЛЖАЕТСЯ. Опиши ответный удар врагов'.]";
@@ -11105,11 +11514,29 @@ async function _internalPerformAiFetch(systemInstruction, history, providerModel
                 ]
             });
         } else {
+            let parsedActions = [];
+            try {
+                const jsonStart = currentInput.indexOf('{');
+                const arrayStart = currentInput.indexOf('[');
+                if (arrayStart !== -1 && (jsonStart === -1 || arrayStart < jsonStart)) {
+                    const matchArray = currentInput.substring(arrayStart).match(/\[\s*\{[\s\S]*\}\s*\]/);
+                    if (matchArray) parsedActions = JSON.parse(matchArray[0]);
+                } else if (jsonStart !== -1) {
+                    const matchObj = currentInput.substring(jsonStart).match(/\{[\s\S]*\}/);
+                    if (matchObj) {
+                        const parsedObj = JSON.parse(matchObj[0]);
+                        if (parsedObj.actions) parsedActions = parsedObj.actions;
+                        else parsedActions = [parsedObj];
+                    }
+                }
+            } catch (e) {
+                console.warn("Dummy provider failed to parse JSON from input:", e);
+            }
             return JSON.stringify({
                 "director_notes": "Dummy response.",
                 "time_passed": { "days": 0, "hours": 1, "minutes": 0 },
                 "narrative": "(( ТЕСТОВЫЙ ОТВЕТ ЗАГЛУШКИ. Время продвинуто на 1 час. ))\n\nВаш запрос: *" + currentInput + "*",
-                "actions": []
+                "actions": parsedActions
             });
         }
     }
@@ -11337,11 +11764,12 @@ async function _internalPerformAiFetch(systemInstruction, history, providerModel
         // 3. Отправка запроса
         let response;
         try {
-            response = await fetch(targetUrl, {
+            // AbortController signal cannot be passed through IPC directly, 
+            // but we can pass the timeout/abort logic if needed. For now, we rely on the proxy.
+            response = await window.electronAPI.proxyFetch(targetUrl, {
                 method: 'POST',
                 headers: headers,
-                body: JSON.stringify(requestBody),
-                signal: currentApiAbortController.signal
+                body: JSON.stringify(requestBody)
             });
 
             if (response.status === 429 && currentApiProvider === 'gemini' && geminiApiKeys.length > 1) {
@@ -11360,7 +11788,7 @@ async function _internalPerformAiFetch(systemInstruction, history, providerModel
         }
 
                     if (!response.ok) {
-                const errText = await response.text();
+                const errText = response.text;
                 let retry = false;
 
                 // Авто-отключение неподдерживаемых параметров (временно меняем глобальные флаги)
@@ -11392,7 +11820,7 @@ async function _internalPerformAiFetch(systemInstruction, history, providerModel
                 throw new Error(getFriendlyApiErrorMessage(response.status, errText));
             }
 
-        const data = await response.json();
+                            const data = JSON.parse(response.text);
 
         // 4. Обработка ответа
         if (isGeminiFormat) {
@@ -12104,6 +12532,7 @@ ${itemsRefString}
 ${style}
 
 ЯЗЫК ОТВЕТА (КРИТИЧЕСКИ ВАЖНО): СТРОГО ${responseLanguage.toUpperCase()}! Весь текст в полях "narrative", "director_notes" и "logic_summary" ОБЯЗАН быть на этом языке. Запрещено отвечать на другом языке!
+ЗАПРЕЩЕНО писать системные сообщения (например, [СИСТЕМА], [СТРОИТЕЛЬСТВО], [ОШИБКА]) в поле narrative. Системные сообщения генерируются движком автоматически.
 
 ### ИНСТРУКЦИЯ (ЕДИНЫЙ РЕЖИМ):
 Ты должен одновременно выполнить логические расчеты (изменить статы, выдать лут, провести бой) И написать красивый художественный ответ.
@@ -13039,7 +13468,7 @@ async function executeNonInventoryCommand(command, args) {
                     const existingQuest = Object.values(player.quests).find(q => q.aiIdentifier?.toLowerCase() === args.aiIdentifier.toLowerCase() && q.status === 'active');
                     if (!existingQuest) {
                         const newId = nextInternalQuestId++;
-                        player.quests[newId] = {
+                        const questData = {
                             id: newId,
                             aiIdentifier: args.aiIdentifier,
                             title: args.title,
@@ -13049,7 +13478,13 @@ async function executeNonInventoryCommand(command, args) {
                             issuer: args.issuer || t('quests.unknown'),
                             status: 'active'
                         };
-                        feedback = t('gameInterface.commandFeedback.questAdded', { description: args.title });
+                        player.quests[newId] = questData;
+                        if (!IS_PRE_SIMULATING && !window.isSimulatingTime) {
+                            addLogMessage(JSON.stringify(questData), "quest-card");
+                            feedback = null;
+                        } else {
+                            feedback = t('gameInterface.commandFeedback.questAdded', { description: args.title });
+                        }
                         updateQuestList();
                         executeCommand('echoMemory', { text: `[Квест] ${args.title}: ${args.objective}` });
                     } else {
@@ -13085,15 +13520,19 @@ async function executeNonInventoryCommand(command, args) {
                         if (['active', 'completed', 'failed'].includes(newStatus)) {
                             if (quest.status !== newStatus) {
                                 quest.status = newStatus;
-                                const statusLocalized = t(`quests.status${newStatus.charAt(0).toUpperCase() + newStatus.slice(1)}`);
+                                if (!IS_PRE_SIMULATING && !window.isSimulatingTime) {
+                                    addLogMessage(JSON.stringify(quest), "quest-card");
+                                    feedback = null;
+                                } else {
+                                    const statusLocalized = t(`quests.status${newStatus.charAt(0).toUpperCase() + newStatus.slice(1)}`);
+                                    feedback = t('gameInterface.commandFeedback.questStatusUpdated', { description: quest.title, status: statusLocalized });
+                                }
                                 if (newStatus === 'completed') {
                                     const xpReward = 50 * (player.stats.level || 1);
                                     player.stats.xp += xpReward;
                                     levelUp();
-                                    feedback = t('gameInterface.commandFeedback.questStatusUpdated', { description: quest.title, status: statusLocalized }) + ` Получено ${xpReward} XP.`;
+                                    if (feedback) feedback += ` Получено ${xpReward} XP.`;
                                     generateWorldNews(`Герой ${player.name} успешно завершил задание: "${quest.title}".`, player.location || "global", 2, 'misc');
-                                } else {
-                                    feedback = t('gameInterface.commandFeedback.questStatusUpdated', { description: quest.title, status: statusLocalized });
                                 }
                             } else {
                                 feedback = t('gameInterface.commandFeedback.questSameStatus', { description: quest.title });
@@ -14635,12 +15074,18 @@ case 'setEntityBinding':
                     let isEquipped = false;
                     if (player.container_backpack) {
                         const bp = ContainerRegistry.get(player.container_backpack);
-                        const id = getContainerItems(bp).find(i => ItemRegistry.get(i).prototype_id === args.aiIdentifier);
+                        const id = getContainerItems(bp).find(i => {
+                            const it = ItemRegistry.get(i);
+                            return it && it.prototype_id === args.aiIdentifier;
+                        });
                         if (id) item = ItemRegistry.get(id);
                     }
                     if (!item && player.container_equipment) {
                         const eq = ContainerRegistry.get(player.container_equipment);
-                        const id = getContainerItems(eq).find(i => ItemRegistry.get(i).prototype_id === args.aiIdentifier);
+                        const id = getContainerItems(eq).find(i => {
+                            const it = ItemRegistry.get(i);
+                            return it && it.prototype_id === args.aiIdentifier;
+                        });
                         if (id) {
                             item = ItemRegistry.get(id);
                             isEquipped = true;
@@ -14983,7 +15428,10 @@ async function handleDrop(event) {
 async function unequipItem(slot) {
     if (!player || !player.container_equipment || !player.container_backpack) return null;
     const eqCont = ContainerRegistry.get(player.container_equipment);
-    const itemId = getContainerItems(eqCont).find(id => ItemRegistry.get(id).slot_index === slot);
+    const itemId = getContainerItems(eqCont).find(id => {
+        const it = ItemRegistry.get(id);
+        return it && it.slot_index === slot;
+    });
     if (!itemId) return t('gameInterface.commandFeedback.slotIsEmpty', { slot: slot });
 
     const itemToUnequip = ItemRegistry.get(itemId);
@@ -15287,6 +15735,7 @@ async function exitToMainMenu() {
 
         isMapInitialized = false;
         if (window.Cartographer) window.Cartographer.isMapInitialized = false;
+        window.isSimulatorInitialized = false; // Сброс флага инициализации симулятора
         setActiveScreen('main-menu');
         updateDynamicUIText();
 
@@ -17246,13 +17695,13 @@ async function performAiPlayerFetch(systemInstruction, history, providerModel, c
         isGeminiFormat = true;
     }
 
-    const response = await fetch(targetUrl, { method: 'POST', headers: headers, body: JSON.stringify(requestBody) });
+    const response = await window.electronAPI.proxyFetch(targetUrl, { method: 'POST', headers: headers, body: JSON.stringify(requestBody) });
     if (!response.ok) {
-        const errText = await response.text();
+        const errText = response.text;
         throw new Error(`AI Player API Error (${response.status}): ${errText}`);
     }
 
-    const data = await response.json();
+    const data = JSON.parse(response.text);
     let resultText = "";
     if (isGeminiFormat) {
         if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
@@ -17332,21 +17781,26 @@ async function runAIPlayerTurn() {
 // ==========================================
 // --- UI OVERHAUL: СИСТЕМА ВКЛАДОК ---
 // ==========================================
-function initSidebarTabs() {
-    document.querySelectorAll('.s-tab-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const targetId = e.currentTarget.dataset.target;
-            const sidebar = e.currentTarget.closest('.sidebar');
-            
-            sidebar.querySelectorAll('.s-tab-btn').forEach(b => b.classList.remove('active'));
-            sidebar.querySelectorAll('.s-tab-content').forEach(c => c.classList.remove('active'));
-            
-            e.currentTarget.classList.add('active');
-            const targetContent = document.getElementById(targetId);
-            if (targetContent) targetContent.classList.add('active');
+    function initSidebarTabs() { 
+        document.querySelectorAll('.s-tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const targetId = e.currentTarget.dataset.target;
+                const sidebar = e.currentTarget.closest('.sidebar');
+                
+                sidebar.querySelectorAll('.s-tab-btn').forEach(b => b.classList.remove('active'));
+                sidebar.querySelectorAll('.s-tab-content').forEach(c => c.classList.remove('active'));
+                
+                e.currentTarget.classList.add('active');
+                const targetContent = document.getElementById(targetId);
+                if (targetContent) targetContent.classList.add('active');
+                
+                // Если открыли вкладку с картой, запуск рендера миникарты
+                if (targetId === 'right-tab-env') {
+                    if (window.Cartographer) window.Cartographer.requestRender();
+                }
+            });
         });
-    });
-}
+    }
 
 function restructureUI() {
     if (document.querySelector('.sidebar-tabs')) return;
@@ -17470,31 +17924,40 @@ async function openLoadWorldModal() {
         worldSlotsContainer.appendChild(btn);
     });
 
-    worldSlotsContainer.querySelectorAll('.load-w-btn').forEach(b => {
-        b.onclick = async (e) => {
-            const file = e.target.dataset.file;
-            worldSlotsContainer.innerHTML = '<p style="text-align:center; color:#f1c40f; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Загрузка мира...</p>';
-            const wData = await window.electronAPI.loadWorldState(file);
-            if (wData) {
-                preloadedWorldData = wData;
-                if (selectedWorldInfo) {
-                    selectedWorldInfo.textContent = `Выбран мир: ${wData.name || file}`;
-                    selectedWorldInfo.style.display = 'block';
+            worldSlotsContainer.querySelectorAll('.load-w-btn').forEach(b => {
+            b.onclick = async (e) => {
+                const file = e.target.dataset.file;
+                worldSlotsContainer.innerHTML = '<p style="text-align:center; color:#f1c40f; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Загрузка мира...</p>';
+                const wData = await window.electronAPI.loadWorldState(file);
+                if (wData) {
+                    // Поддержка нового формата (world + items + containers) и старого (только world)
+                    if (wData.world) {
+                        preloadedWorldData = wData.world;
+                        preloadedWorldData.savedItems = wData.items || [];
+                        preloadedWorldData.savedContainers = wData.containers || [];
+                    } else {
+                        preloadedWorldData = wData;
+                        preloadedWorldData.savedItems = [];
+                        preloadedWorldData.savedContainers = [];
+                    }
+                    if (selectedWorldInfo) {
+                        selectedWorldInfo.textContent = `Выбран мир: ${wData.name || file}`;
+                        selectedWorldInfo.style.display = 'block';
+                    }
+                    
+                    if (wData.era && charEraSelect) {
+                        charEraSelect.value = wData.era;
+                        updateEraDescription();
+                    }
+                    
+                    loadWorldModal.classList.remove('visible');
+                    setTimeout(() => loadWorldModal.style.display = 'none', 300);
+                } else {
+                    showCustomAlert("Ошибка при загрузке файла мира.");
+                    openLoadWorldModal();
                 }
-                
-                if (wData.era && charEraSelect) {
-                    charEraSelect.value = wData.era;
-                    updateEraDescription();
-                }
-                
-                loadWorldModal.classList.remove('visible');
-                setTimeout(() => loadWorldModal.style.display = 'none', 300);
-            } else {
-                showCustomAlert("Ошибка при загрузке файла мира.");
-                openLoadWorldModal();
-            }
-        };
-    });
+            };
+        });
 
     worldSlotsContainer.querySelectorAll('.del-w-btn').forEach(b => {
         b.onclick = async (e) => {
@@ -17535,7 +17998,11 @@ function promptSaveWorldModal() {
             saveWorldConfirmBtn.disabled = true;
             saveWorldSkipBtn.disabled = true;
 
-            await window.electronAPI.saveWorldState(filename, World);
+            // Сохраняем не только World, но и реестры предметов и контейнеров, чтобы мир не был пустым
+            const syncItems = Array.from(ItemRegistry.entries());
+            const syncContainers = Array.from(ContainerRegistry.entries());
+            const worldFileData = { name: World.name, era: World.era, world: World, items: syncItems, containers: syncContainers };
+            await window.electronAPI.saveWorldState(filename, worldFileData);
             
             saveWorldConfirmBtn.innerHTML = 'Сохранить';
             saveWorldConfirmBtn.disabled = false;

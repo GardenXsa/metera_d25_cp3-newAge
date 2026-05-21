@@ -66,3 +66,4 @@ deploy_key*
 pssh.py
 pssh_sh.sh
 ssh-paramiko.sh
+project_scan.txt

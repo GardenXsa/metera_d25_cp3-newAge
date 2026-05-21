@@ -3,6 +3,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
     isElectron: true,
 
+    // Network Proxy (CORS Bypass)
+    proxyFetch: (url, options) => ipcRenderer.invoke('proxy-fetch', url, options),
+
+
     // Settings
     loadSettings: () => ipcRenderer.invoke('load-settings'),
     saveSettings: (data) => ipcRenderer.invoke('save-settings', data),

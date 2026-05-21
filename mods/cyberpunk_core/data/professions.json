@@ -1,0 +1,10 @@
+[
+  { "id": "solo", "name": "Соло", "profession_type": "mercenary", "tool_tag": "weapon", "tool_chance": 10 },
+  { "id": "netrunner", "name": "Нетраннер", "profession_type": "mage", "tool_tag": "cyberware", "tool_chance": 15 },
+  { "id": "fixer", "name": "Фиксер", "profession_type": "merchant", "tool_tag": "luxury", "tool_chance": 5 },
+  { "id": "ripperdoc", "name": "Риппердок", "profession_type": "artisan", "tool_tag": "medical", "tool_chance": 20 },
+  { "id": "corpo", "name": "Корпорат", "profession_type": "ruler", "tool_tag": "document", "tool_chance": 5 },
+  { "id": "nomad", "name": "Кочевник", "profession_type": "farmer", "tool_tag": "vehicle", "tool_chance": 10 },
+  { "id": "techie", "name": "Техник", "profession_type": "artisan", "tool_tag": "tool", "tool_chance": 15 },
+  { "id": "joytoy", "name": "Кукла", "profession_type": "innkeeper", "tool_tag": "luxury", "tool_chance": 2 }
+]

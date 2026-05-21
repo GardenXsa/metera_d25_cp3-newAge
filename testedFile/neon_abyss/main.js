@@ -67,15 +67,17 @@ ModAPI.on('onModsInitialized', async () => {
         .stat-line span[data-i18n="gameInterface.characterPanel.gold"] { color: #00ffff !important; }
     `);
 
-    // 5. ДОБАВЛЕНИЕ КАСТОМНОГО UI (Шкала Токсичности)
-    ModAPI.addUI(`
+    // 5. ДОБАВЛЕНИЕ КАСТОМНОГО UI (Шкала Токсичности) - Использование новой системы виджетов
+    ModAPI.registerWidget('character-bottom', 'neon_toxicity_widget', `
         <div id="neon-toxicity-panel" style="margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.5); border: 1px solid #00ffff; border-radius: 5px;">
             <div style="color: #00ffff; font-size: 0.9em; font-weight: bold; margin-bottom: 5px;">☢️ Неоновая Токсичность</div>
             <div style="width: 100%; height: 10px; background: #111; border-radius: 5px; overflow: hidden;">
                 <div id="neon-toxicity-bar" style="width: 0%; height: 100%; background: #ff00ff; transition: width 0.3s ease; box-shadow: 0 0 10px #ff00ff;"></div>
             </div>
         </div>
-    `, '.character-sheet .panel-content');
+    `, (element) => {
+        updateToxicityUI(); // Вызываем обновление полоски сразу после рендера
+    });
 
     // 6. СИСТЕМА СОХРАНЕНИЙ И МЕХАНИКА ТОКСИЧНОСТИ
     let neonToxicity = 0;

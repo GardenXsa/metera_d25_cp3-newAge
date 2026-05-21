@@ -62,11 +62,35 @@ document.addEventListener('DOMContentLoaded', () => {
         window.electronAPI.modsOpenFolder();
     });
 
+    // --- Безопасный режим (Safe Mode) ---
+    const safeModeContainer = document.createElement('div');
+    safeModeContainer.style.cssText = 'display: flex; align-items: center; gap: 10px; margin-bottom: 15px; background: rgba(231, 76, 60, 0.1); padding: 10px; border-radius: 8px; border-left: 3px solid #e74c3c;';
+    safeModeContainer.innerHTML = `
+        <input type="checkbox" id="mod-safe-mode-checkbox" style="width: auto; margin: 0; accent-color: #e74c3c;">
+        <label for="mod-safe-mode-checkbox" style="margin: 0; color: #ecf0f1; font-weight: bold; cursor: pointer;">
+            Безопасный режим (Блокировать DLL/SO плагины)
+        </label>
+    `;
+    modsMenu.querySelector('.mm-header').insertAdjacentElement('afterend', safeModeContainer);
+
+    const safeModeCheckbox = document.getElementById('mod-safe-mode-checkbox');
+    safeModeCheckbox.addEventListener('change', async (e) => {
+        const settings = await window.electronAPI.loadSettings() || {};
+        if (!settings.mods) settings.mods = {};
+        settings.mods.safeMode = e.target.checked;
+        await window.electronAPI.saveSettings(settings);
+        console.log(`[ModManagerUI] Safe Mode: ${e.target.checked}`);
+    });
+
+
     // --- Основная логика ---
     async function initializeModManager() {
         console.log('[ModManagerUI] Initializing mod manager data...');
         const settings = await window.electronAPI.loadSettings();
         activeModIds = (settings && settings.mods && settings.mods.active) ? settings.mods.active : ['base_game'];
+        if (settings && settings.mods && settings.mods.safeMode !== undefined) {
+            safeModeCheckbox.checked = settings.mods.safeMode;
+        }
         
         // Гарантируем, что base_game всегда первый
         if (!activeModIds.includes('base_game')) activeModIds.unshift('base_game');
@@ -143,6 +167,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         infoDiv.appendChild(titleSpan);
         infoDiv.appendChild(authorSpan);
+
+        if (mod.native_plugins && mod.native_plugins.length > 0) {
+            const nativeBadge = document.createElement('span');
+            nativeBadge.style.cssText = 'font-size: 0.7em; background: #e74c3c; color: white; padding: 2px 6px; border-radius: 4px; margin-top: 4px; display: inline-block; width: fit-content; font-weight: bold;';
+            nativeBadge.innerHTML = '<i class="fas fa-exclamation-triangle"></i> NATIVE DLL';
+            infoDiv.appendChild(nativeBadge);
+        }
+
         el.appendChild(infoDiv);
 
         if (mod.id !== 'base_game') {
@@ -178,7 +210,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 addBtn.className = 'mm-ctrl-btn success';
                 addBtn.title = 'Включить мод';
                 addBtn.innerHTML = '<i class="fas fa-plus"></i>';
-                addBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMod(mod.id, true); });
+                addBtn.addEventListener('click', (e) => { 
+                    e.stopPropagation(); 
+                    if (mod.native_plugins && mod.native_plugins.length > 0 && !safeModeCheckbox.checked) {
+                        if (!confirm(`ВНИМАНИЕ!\n\nМод "${mod.name}" содержит исполняемый код (DLL/SO плагины).\nТакие моды имеют полный доступ к вашей системе и могут быть опасны, если скачаны из ненадежного источника.\n\nВы уверены, что хотите включить этот мод?`)) {
+                            return;
+                        }
+                    }
+                    toggleMod(mod.id, true); 
+                });
 
                 controlsDiv.appendChild(addBtn);
             }
@@ -289,7 +329,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function saveModSettings() {
         const fullSettings = await window.electronAPI.loadSettings() || {};
-        fullSettings.mods = { active: activeModIds };
+        // Preserve all existing mods sub-settings (safeMode, etc.) — only overwrite 'active'
+        if (!fullSettings.mods) fullSettings.mods = {};
+        fullSettings.mods.active = activeModIds;
         await window.electronAPI.saveSettings(fullSettings);
     }
 

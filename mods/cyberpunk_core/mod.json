@@ -1,0 +1,18 @@
+{
+    "id": "cyberpunk_core",
+    "name": "Neon & Chrome: Total Conversion",
+    "version": "1.0.0",
+    "author": "AI Engineer",
+    "description": "Полная конверсия игры в сеттинг мрачного киберпанка. Корпорации, импланты, неоновые пустоши.",
+    "total_conversion": true,
+    "dependencies": ["base_game"],
+    "scripts": [
+        "scripts/main.js"
+    ],
+    "data": {
+        "items": ["data/items.json", "data/items_expanded.json"],
+        "facilities": ["data/facilities.json"],
+        "locations": ["data/locations.json", "data/locations_expanded.json"],
+        "lore": ["data/lore.txt", "data/lore_expanded.txt"]
+    }
+}

@@ -878,6 +878,8 @@
                             <div id="level-info"></div>
                             <div id="time-info" style="font-size: 0.95em; color: #f1c40f; margin-top: 5px; text-align: center; font-weight: bold; background: rgba(0,0,0,0.4); padding: 5px; border-radius: 4px; border: 1px solid rgba(241, 196, 15, 0.3);">☀️ День 1 | 08:00</div>
                             <div id="transport-indicator" class="transport-indicator" style="display: none;"></div>
+                            <div class="mod-widget-region" data-region="character-top" style="margin-bottom: 10px;"></div>
+
                             <div id="character-stats">
                                 <p class="stat-line"><span data-i18n="gameInterface.characterPanel.hp">❤️ Здоровье:</span><span class="stat-value-group"><span id="stat-hp">100</span> / <span id="stat-max-hp">100</span></span></p>
                                 <p class="stat-line mage-only" id="mana-stat-line" style="display: none;"><span data-i18n="gameInterface.characterPanel.mana">💧 Мана:</span><span class="stat-value-group"><span id="stat-mana">50</span> / <span id="stat-max-mana">50</span></span></p>
@@ -898,6 +900,8 @@
                                 <p class="stat-line" id="location-stat-line"><span data-i18n="gameInterface.characterPanel.location">📍 Локация:</span> <span id="stat-location">...</span></p>
 
                             </div>
+                                <div class="mod-widget-region" data-region="character-bottom" style="margin-top: 10px;"></div>
+
                         </div>
                     </div>
                     
@@ -933,6 +937,8 @@
                                 <button class="tab-button" data-category="potion" data-i18n="gameInterface.inventoryPanel.tabs.potion">Зелья</button>
                                 <button class="tab-button" data-category="quest" data-i18n="gameInterface.inventoryPanel.tabs.quest">Квесты</button>
                             </div>
+                            <div class="mod-widget-region" data-region="inventory-top" style="margin-bottom: 10px;"></div>
+
                             <ul id="inventory-list"></ul>
                         </div>
                     </div>
@@ -944,11 +950,12 @@
                 </aside>
 
                 <main class="game-content">
-                    <div class="panel game-log" id="game-log"></div>
+                    <div class="game-log" id="game-log"></div>
                                         <div id="quick-tags-bar" class="quick-tags-bar"></div>
                     <div id="suggested-actions-container" class="suggested-actions-bar" style="display: none;"></div>
 
                     <div class="input-area">
+                        <div id="input-autocomplete-dropdown" class="autocomplete-dropdown"></div>
                         <button id="trade-confirm-btn" style="display: none; background-color: #27ae60; border-color: #2ecc71; color: white; font-weight: bold;"><i class="fas fa-handshake"></i> Подтвердить сделку</button>
                         <button id="journey-continue-btn" class="journey-btn-magical" style="display: none;"><i class="fas fa-shoe-prints"></i> Вперед в неизвестность</button>
                         <input type="text" id="user-input" placeholder="Что вы будете делать?">
@@ -1007,7 +1014,10 @@
                      <div class="panel map-panel collapsible-panel">
                          <h2 class="panel-toggle"><span data-i18n="gameInterface.mapPanel.title">Карта</span> <span class="toggle-icon">▶</span></h2>
                          <div class="panel-content">
-                                                         <button id="open-map-modal-btn" class="bus-btn btn-blue" style="width: 100%; margin-bottom: 15px; padding: 12px; justify-content: center; font-size: 1.05em; border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.4);"><i class="fas fa-map-marked-alt"></i> Развернуть Карту Мира</button>
+                                                         <button id="open-map-modal-btn" class="bus-btn btn-blue" style="width: 100%; margin-bottom: 10px; padding: 12px; justify-content: center; font-size: 1.05em; border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.4);"><i class="fas fa-map-marked-alt"></i> Развернуть Карту Мира</button>
+                             <div class="minimap-container" style="position: relative; width: 100%; height: 180px; background: #0a0a0a; border-radius: 6px; border: 1px solid var(--panel-border); margin-bottom: 15px; overflow: hidden; box-shadow: inset 0 0 15px rgba(0,0,0,0.8);">
+                                 <canvas id="minimap-canvas" width="280" height="180" style="display: block; width: 100%; height: 100%; cursor: pointer;"></canvas>
+                             </div>
                              <h3 data-i18n="gameInterface.mapPanel.globalTitle">Известные регионы:</h3>
                              <ul id="global-locations-list"></ul>
                              <h3 data-i18n="gameInterface.mapPanel.customTitle">Открытые места:</h3>

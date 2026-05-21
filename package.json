@@ -38,7 +38,8 @@
     ],
     "extraResources": [
       "engine/meterea_engine.exe",
-      "engine/meterea_engine"
+      "engine/meterea_engine",
+      "tools/ModKit.exe"
     ],
     "directories": {
       "output": "dist"

@@ -1,0 +1,40 @@
+{
+    "appName": "Cyberpunk: Neon & Chrome",
+    "mainMenu": {
+        "title": "CYBERPUNK: NEON & CHROME"
+    },
+    "gameInterface": {
+        "characterPanel": {
+            "mana": "🔋 RAM (Память):",
+            "gold": "💶 Евродоллары:",
+            "reputation": "🌐 Уличная репутация:"
+        },
+        "inventoryPanel": {
+            "tabs": {
+                "potion": "Софт/Стимы",
+                "weapon": "Оружие",
+                "armor": "Импланты/Броня"
+            }
+        },
+        "skillsPanel": {
+            "title": "Скрипты и Навыки"
+        },
+        "worldChroniclesPanel": {
+            "title": "Сводка Сети (NetWatch)"
+        },
+        "calcLogPanel": {
+            "title": "Терминал Системы"
+        }
+    },
+    "characterCreation": {
+        "eraRebirth": "2077: Эпоха Корпораций",
+        "eraRebirthDesc": "Мир, управляемый мегакорпорациями. Неоновые огни скрывают грязь улиц, а хром заменяет плоть. Выживи в Найт-Сити.",
+        "classWarrior": "Соло (Наемник)",
+        "classMage": "Нетраннер (Хакер)",
+        "classRogue": "Фиксер (Контрабандист)",
+        "classBard": "Рокербой (Медиа)",
+        "raceHuman": "Органик",
+        "raceElf": "Синтетик (Андроид)",
+        "raceDwarf": "Киборг (Тяжелый хром)"
+    }
+}

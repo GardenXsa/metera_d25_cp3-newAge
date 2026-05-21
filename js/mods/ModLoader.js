@@ -12,6 +12,8 @@ function mergeDeep(target, ...sources) {
 
     if (isObject(target) && isObject(source)) {
         for (const key in source) {
+            // SECURITY: Prevent Prototype Pollution
+            if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
             const sourceVal = source[key];
             
             // $delete sentinel: remove the key from target
@@ -72,13 +74,17 @@ window.ModAPI = {
     // --- Lifecycle tracking: stores originals for rollback ---
     _originalFunctions: {},
     _injectedStyles: [],
-    _injectedUI: [],
+    _widgets: [], // New Widget System
+    _activeTimers: {}, // Track timers per mod to prevent memory leaks
+    _currentLoadingMod: null,
 
     // --- Hook chain system ---
-    _hookChains: {},  // { funcName: [{ modId, priority, callback }] }
+    // Each entry: { modId, priority, callback, obj } — obj is stored for safe rollback in unloadMod
+    _hookChains: {},  // { funcName: [{ modId, priority, callback, obj }] }
 
     // --- IPC mutation batching ---
     _pendingMutations: [],
+    _pendingTransactions: new Map(),
     _mutationFlushTimer: null,
 
     // --- HTML sanitizer ---
@@ -115,15 +121,11 @@ window.ModAPI = {
         console.log(`[ModAPI] Зарегистрирована кастомная ГМ команда: ${commandName}`);
     },
 
-    // addPromptInjection with validation and length limit
+    // addPromptInjection without limits
     addPromptInjection: function(text) {
         if (typeof text !== 'string') {
             console.error('[ModAPI] addPromptInjection: аргумент должен быть строкой');
             return;
-        }
-        if (text.length > 2000) {
-            console.warn('[ModAPI] addPromptInjection: текст обрезан до 2000 символов');
-            text = text.substring(0, 2000);
         }
         this.promptInjections.push(text);
         console.log(`[ModAPI] Добавлена инъекция в системный промпт ИИ.`);
@@ -157,7 +159,8 @@ window.ModAPI = {
             this._hookChains[funcName] = [];
         }
         
-        this._hookChains[funcName].push({ modId, priority, callback: hookCallback });
+        // Store obj reference alongside the hook for safe rollback in unhookFunction/unloadMod
+        this._hookChains[funcName].push({ modId, priority, callback: hookCallback, obj });
         // Sort by priority (lower first = pre-hooks, higher = post-hooks)
         this._hookChains[funcName].sort((a, b) => a.priority - b.priority);
         
@@ -171,14 +174,18 @@ window.ModAPI = {
      */
     unhookFunction: function(obj, funcName, modId) {
         if (!this._hookChains[funcName]) return;
+        // Recover obj from stored hook entries if caller didn't pass it (unloadMod path)
+        const storedObj = obj || (this._hookChains[funcName][0] && this._hookChains[funcName][0].obj) || null;
         this._hookChains[funcName] = this._hookChains[funcName].filter(h => h.modId !== modId);
         if (this._hookChains[funcName].length === 0) {
-            // No more hooks — restore original
-            obj[funcName] = this._originalFunctions[funcName];
+            // No more hooks — restore original using stored obj reference
+            if (storedObj && this._originalFunctions[funcName]) {
+                storedObj[funcName] = this._originalFunctions[funcName];
+            }
             delete this._originalFunctions[funcName];
             delete this._hookChains[funcName];
-        } else {
-            this._rebuildHookChain(obj, funcName);
+        } else if (storedObj) {
+            this._rebuildHookChain(storedObj, funcName);
         }
         console.log(`[ModAPI] Hook removed from ${funcName} for mod ${modId}`);
     },
@@ -214,7 +221,7 @@ window.ModAPI = {
 
     // DEPRECATED: patchFunction — now delegates to hookFunction for backward compatibility
     patchFunction: function(obj, funcName, patchCallback) {
-        console.warn(`[ModAPI] patchFunction is DEPRECATED. Use hookFunction() instead. Called for: ${funcName}`);
+        // Убрано предупреждение console.warn, чтобы не засорять консоль мододелам
         if (!obj || typeof obj !== 'object' || typeof obj[funcName] !== 'function') {
             console.error(`[ModAPI] Ошибка патчинга: первый аргумент должен быть объектом с функцией ${funcName}. Получен тип: ${typeof obj}`);
             return;
@@ -229,7 +236,6 @@ window.ModAPI = {
 
     // DEPRECATED: unpatchFunction — now delegates to unhookFunction for backward compatibility
     unpatchFunction: function(obj, funcName) {
-        console.warn(`[ModAPI] unpatchFunction is DEPRECATED. Use unhookFunction() instead. Called for: ${funcName}`);
         const compatModId = `_patch_${funcName}`;
         this.unhookFunction(obj, funcName, compatModId);
     },
@@ -240,11 +246,20 @@ window.ModAPI = {
 
     /**
      * Queue a mutation for batch delivery to the C++ engine.
-     * Mutations are flushed automatically when all hooks finish processing.
+     * Returns a Promise that resolves when the C++ engine confirms the mutation was applied.
      */
     queueMutation: function(mutation) {
-        if (!mutation || typeof mutation !== 'object') return;
-        this._pendingMutations.push(mutation);
+        if (!mutation || typeof mutation !== 'object') return Promise.reject(new Error("Invalid mutation"));
+        return new Promise((resolve, reject) => {
+            const txId = typeof generateUUID === 'function' ? generateUUID() : Math.random().toString(36).substring(2);
+            mutation.transaction_id = txId;
+            this._pendingTransactions.set(txId, { resolve, reject });
+            this._pendingMutations.push(mutation);
+            
+            if (!this._mutationFlushTimer) {
+                this._mutationFlushTimer = setTimeout(() => this._flushMutations(), 0);
+            }
+        });
     },
 
     /**
@@ -262,23 +277,68 @@ window.ModAPI = {
     // UI / STYLES / HOTKEYS / FILTERS
     // ============================================================================
 
-    // addUI with HTML sanitization
+    // DEPRECATED: addUI is fragile. Use registerWidget instead.
     addUI: function(htmlString, targetSelector = 'body') {
+        console.warn(`[ModAPI] addUI is DEPRECATED. Use registerWidget() instead. Target: ${targetSelector}`);
         const target = document.querySelector(targetSelector);
         if (target) {
             const sanitizedHTML = this._sanitizeHTML(htmlString);
             target.insertAdjacentHTML('beforeend', sanitizedHTML);
-            // Track the last added element
-            const addedElement = target.lastElementChild;
-            if (addedElement) {
-                this._injectedUI.push({ element: addedElement, targetSelector });
-            }
-        } else {
-            console.error(`[ModAPI] Селектор ${targetSelector} не найден для addUI.`);
         }
     },
 
-    // addStyle accepts id parameter for tracking/removal
+    /**
+     * Register a UI widget to a specific region.
+     * @param {string} regionId - e.g., 'character-bottom', 'inventory-top'
+     * @param {string} widgetId - Unique ID for this widget
+     * @param {string|function} content - HTML string OR a render function(containerElement) for React/Vue
+     * @param {function} [onRenderCallback] - Optional callback if content is an HTML string
+     */
+    registerWidget: function(regionId, widgetId, content, onRenderCallback) {
+        this._widgets.push({
+            regionId,
+            widgetId,
+            content: typeof content === 'string' ? this._sanitizeHTML(content) : content,
+            onRender: onRenderCallback,
+            modId: this._currentLoadingMod
+        });
+        console.log(`[ModAPI] Зарегистрирован виджет '${widgetId}' для зоны '${regionId}'`);
+    },
+
+    /**
+     * Render all widgets for a specific region into a container.
+     * Called by the core game UI update functions.
+     */
+    renderWidgets: function(regionId, containerElement) {
+        if (!containerElement) return;
+        containerElement.innerHTML = ''; // Clear previous renders
+        const regionWidgets = this._widgets.filter(w => w.regionId === regionId);
+        for (const widget of regionWidgets) {
+            try {
+                const wrapper = document.createElement('div');
+                wrapper.id = `mod-widget-${widget.widgetId}`;
+                wrapper.className = 'mod-widget-container';
+                wrapper.dataset.modOwner = widget.modId;
+                containerElement.appendChild(wrapper);
+
+                if (typeof widget.content === 'function') {
+                    // Modern framework support (React/Vue) - pass the wrapper directly
+                    widget.content(wrapper);
+                } else {
+                    // Legacy HTML string support
+                    wrapper.innerHTML = widget.content;
+                    if (typeof widget.onRender === 'function') {
+                        widget.onRender(wrapper);
+                    }
+                }
+            } catch (e) {
+                console.error(`[ModAPI] Ошибка рендера виджета '${widget.widgetId}':`, e);
+            }
+        }
+    },
+
+    // addStyle accepts id parameter for tracking/removal.
+    // The style is always tagged with the current loading mod's ID for reliable cleanup in unloadMod.
     addStyle: function(idOrCss, cssString) {
         let id, css;
         // Backward compatibility: if only one arg, treat as cssString with auto-generated id
@@ -289,6 +349,9 @@ window.ModAPI = {
             id = idOrCss;
             css = cssString;
         }
+        // Prefix with current loading mod id so unloadMod can find styles regardless of user-supplied id
+        const ownerModId = this._currentLoadingMod || '_unknown';
+        id = `${ownerModId}__${id}`;
 
         // Remove existing style with same id if any
         const existing = document.querySelector(`style[data-mod-style="${id}"]`);
@@ -504,15 +567,25 @@ window.ModAPI = {
     },
 
     /**
-     * Send deferred mutations to the C++ engine. Changes will be applied on the next tick.
-     * This is the JS-side equivalent of the C-API deferred mutation system.
+     * Send mutations to the C++ engine. Changes are applied immediately.
      *
      * @param {Array} mutations - Array of mutation objects
      */
     applyModChanges: async function(mutations) {
         if (!Array.isArray(mutations) || mutations.length === 0) return;
         if (window.electronAPI && window.electronAPI.nexusSendRawCommand) {
-            return await window.electronAPI.nexusSendRawCommand('applyModChanges', { mutations });
+            const res = await window.electronAPI.nexusSendRawCommand('applyModChanges', { mutations });
+            if (res && res.results && Array.isArray(res.results)) {
+                for (const r of res.results) {
+                    const tx = this._pendingTransactions.get(r.transaction_id);
+                    if (tx) {
+                        if (r.success) tx.resolve(r);
+                        else tx.reject(new Error(r.error || "Unknown mutation error"));
+                        this._pendingTransactions.delete(r.transaction_id);
+                    }
+                }
+            }
+            return res;
         }
         return null;
     },
@@ -525,8 +598,10 @@ window.ModAPI = {
             return;
         }
 
-        // Remove injected styles for this mod
-        const modStylePrefix = `${modId}_`;
+        // Remove injected styles for this mod.
+        // Styles are now prefixed as `{modId}__{userProvidedId}` in addStyle(),
+        // so matching by prefix is reliable regardless of user-supplied id.
+        const modStylePrefix = `${modId}__`;
         this._injectedStyles = this._injectedStyles.filter(s => {
             if (s.id && s.id.startsWith(modStylePrefix)) {
                 s.element.remove();
@@ -535,14 +610,21 @@ window.ModAPI = {
             return true;
         });
 
-        // Remove injected UI elements for this mod
-        this._injectedUI = this._injectedUI.filter(ui => {
-            if (ui.element && ui.element.dataset && ui.element.dataset.modOwner === modId) {
-                ui.element.remove();
-                return false;
-            }
-            return true;
-        });
+        // Clear all active timers (setTimeout/setInterval) created by this mod
+        if (this._activeTimers[modId]) {
+            this._activeTimers[modId].forEach(timer => {
+                if (timer.type === 'timeout') clearTimeout(timer.id);
+                if (timer.type === 'interval') clearInterval(timer.id);
+            });
+            delete this._activeTimers[modId];
+        }
+
+
+        // Remove registered widgets for this mod
+        this._widgets = this._widgets.filter(w => w.modId !== modId);
+        // Trigger a UI update to clear removed widgets
+        if (typeof updateCharacterSheet === 'function') updateCharacterSheet();
+        if (typeof updateInventoryDisplay === 'function') updateInventoryDisplay();
 
         // Remove save handler
         this.removeSaveHandler(modId);
@@ -561,19 +643,18 @@ window.ModAPI = {
             }
         }
 
-        // Remove hook chain entries for this mod
+        // Remove hook chain entries for this mod.
+        // unhookFunction now recovers obj from stored hook entries, so full rollback is safe.
         for (const funcName of Object.keys(this._hookChains)) {
-            this._hookChains[funcName] = this._hookChains[funcName].filter(h => h.modId !== modId);
-            if (this._hookChains[funcName].length === 0) {
-                // Restore original if no hooks remain
-                // Note: we can't easily restore here without the obj reference,
-                // but the chain will self-heal on next rebuild
-                delete this._hookChains[funcName];
-            }
+            this.unhookFunction(null, funcName, modId);
         }
 
         // Remove from mods registry
         delete this.mods[modId];
+        
+        // Clean up body classes
+        const classesToRemove = Array.from(document.body.classList).filter(c => c.startsWith('theme-') && c !== 'theme-default');
+        classesToRemove.forEach(c => document.body.classList.remove(c));
 
         console.log(`[ModAPI] Мод ${modId} полностью выгружен.`);
     },
@@ -633,17 +714,15 @@ function deepFreeze(obj) {
  * These are dangerous globals that mods must not access via window.X.
  */
 const WINDOW_BLOCKED_PROPS = new Set([
-    // Network / I/O
+    // DOM/Window hierarchy escapes
     'top', 'parent', 'frames', 'contentWindow',
-    'fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource',
+    // Storage (to prevent overwriting game saves directly, though ModAPI provides save handlers)
     'localStorage', 'sessionStorage', 'indexedDB', 'caches',
     'importScripts',
-    // Code execution
-    'eval', 'Function', 'AsyncFunction', 'GeneratorFunction',
-    // Node.js
+    // Node.js / OS level access (CRITICAL TO KEEP BLOCKED)
     'require', 'module', 'exports', '__dirname', '__filename',
     'process', 'Buffer',
-    // Electron
+    // Electron IPC (CRITICAL TO KEEP BLOCKED - use ModAPI instead)
     'electronAPI',
     // Browser APIs that can exfiltrate data
     'Navigator', 'Location', 'History',
@@ -821,6 +900,19 @@ function createDocumentProxy(doc, safeWindowProxy, modId) {
  * - Game globals → access via `window.player`, `window.t`, etc.
  */
 async function executeModInSandbox(code, modAPI, modId, modMeta) {
+    // Если безопасный режим (Safe Mode) отключен, выполняем код напрямую.
+    // Песочница часто мешает легитимным модам, искажая глобальную область видимости (Proxy).
+    if (!modAPI.safeMode) {
+        try {
+            const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+            const modFunc = new AsyncFunction('ModAPI', 'modId', 'modMeta', code);
+            await modFunc(modAPI, modId, modMeta);
+        } catch (e) {
+            console.error(`[ModLoader] Ошибка выполнения мода ${modId}:`, e);
+        }
+        return;
+    }
+
     // Build safe globals that will be available as function parameters
     const safeGlobals = {};
 
@@ -828,8 +920,43 @@ async function executeModInSandbox(code, modAPI, modId, modMeta) {
     const safeWindow = createSafeWindowProxy(window, modId);
     safeGlobals.window = safeWindow;
 
-    // Deep-frozen ModAPI copy (immutable for mods)
-    safeGlobals.ModAPI = deepFreeze({ ...modAPI });
+    // Safe ModAPI facade: exposes only public methods via bound wrappers.
+    // Mods cannot access or mutate internal fields (_hookChains, hooks, mods, etc.)
+    // because the facade object has no direct reference to them.
+    const PUBLIC_MOD_API_METHODS = [
+        'on', 'emit', 'unregisterHook',
+        'addCommand', 'removeCommand',
+                    'addPromptInjection',
+            'hookFunction', 'unhookFunction',
+            'patchFunction', 'unpatchFunction',
+            'addStyle', 'removeStyle',
+        'registerWidget', 'renderWidgets',
+        'registerHotkey', 'unregisterHotkey',
+        'addPromptFilter', 'addResponseFilter', 'addTextFilter',
+        'addTranslations', 'setString',
+        'registerSaveData', 'removeSaveHandler',
+        'sendRawToEngine', 'sendToEngine',
+        'notify', 'addSettingsTab',
+        'readFile', 'readJson',
+        'resolveAsset', 'applyModChanges', 'queueMutation',
+        'mergeDeep'
+    ];
+    const PUBLIC_MOD_API_PROPS = ['apiVersion', 'isTotalConversion', 'safeMode'];
+    const safeModAPIFacade = {};
+    for (const method of PUBLIC_MOD_API_METHODS) {
+        if (typeof modAPI[method] === 'function') {
+            safeModAPIFacade[method] = modAPI[method].bind(modAPI);
+        }
+    }
+    for (const prop of PUBLIC_MOD_API_PROPS) {
+        Object.defineProperty(safeModAPIFacade, prop, {
+            get: () => modAPI[prop],
+            enumerable: true,
+            configurable: false
+        });
+    }
+    Object.freeze(safeModAPIFacade);
+    safeGlobals.ModAPI = safeModAPIFacade;
 
     // Safe console (with mod tag prefix for debugging)
     safeGlobals.console = Object.freeze({
@@ -880,29 +1007,30 @@ async function executeModInSandbox(code, modAPI, modId, modMeta) {
     // Performance
     safeGlobals.performance = performance;
 
-    // Timers with flood protection (max 50 concurrent per mod)
-    const _maxTimers = 50;
-    let _activeTimers = 0;
+    // Network & Execution (Unblocked for modders)
+    safeGlobals.fetch = fetch.bind(window);
+    safeGlobals.XMLHttpRequest = XMLHttpRequest;
+    safeGlobals.WebSocket = WebSocket;
+    safeGlobals.EventSource = EventSource;
+    // eval намеренно не передается как параметр, так как в strict mode 
+    // использование 'eval' в качестве имени аргумента вызывает SyntaxError.
+    // Он будет доступен модам напрямую из глобальной области видимости.
+    safeGlobals.Function = Function;
+
+    // Timers without artificial limits
+    if (!modAPI._activeTimers[modId]) modAPI._activeTimers[modId] = [];
     safeGlobals.setTimeout = function(fn, ms, ...args) {
-        if (_activeTimers >= _maxTimers) {
-            console.warn(`[ModLoader SANDBOX] Timer limit (${_maxTimers}) reached for mod ${modId}.`);
-            return -1;
-        }
-        _activeTimers++;
-        const id = setTimeout(() => { _activeTimers--; try { fn(...args); } catch(e) { console.error(`[Mod:${modId}] Timer callback error:`, e); } }, ms);
+        const id = setTimeout(() => { try { fn(...args); } catch(e) { console.error(`[Mod:${modId}] Timer callback error:`, e); } }, ms);
+        modAPI._activeTimers[modId].push({id, type: 'timeout'});
         return id;
     };
     safeGlobals.setInterval = function(fn, ms, ...args) {
-        if (_activeTimers >= _maxTimers) {
-            console.warn(`[ModLoader SANDBOX] Timer limit (${_maxTimers}) reached for mod ${modId}.`);
-            return -1;
-        }
-        _activeTimers++;
         const id = setInterval(() => { try { fn(...args); } catch(e) { console.error(`[Mod:${modId}] Interval callback error:`, e); } }, ms);
+        modAPI._activeTimers[modId].push({id, type: 'interval'});
         return id;
     };
-    safeGlobals.clearTimeout = function(id) { if (id > 0) { clearTimeout(id); _activeTimers = Math.max(0, _activeTimers - 1); } };
-    safeGlobals.clearInterval = function(id) { if (id > 0) { clearInterval(id); _activeTimers = Math.max(0, _activeTimers - 1); } };
+    safeGlobals.clearTimeout = clearTimeout;
+    safeGlobals.clearInterval = clearInterval;
     safeGlobals.requestAnimationFrame = function(fn) {
         return requestAnimationFrame(() => { try { fn(performance.now()); } catch(e) { console.error(`[Mod:${modId}] rAF callback error:`, e); } });
     };
@@ -916,11 +1044,11 @@ async function executeModInSandbox(code, modAPI, modId, modMeta) {
     // This prevents mods from accessing them even though the Function constructor
     // creates the function in the global scope.
     const blockedIdentifiers = [
-        'fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource',
-        'eval', 'Function', 'AsyncFunction', 'GeneratorFunction',
+        // Node.js & Electron (Strictly blocked)
         'require', 'module', 'exports', '__dirname', '__filename',
         'process', 'Buffer',
         'electronAPI',
+        // Storage & Hierarchy
         'localStorage', 'sessionStorage', 'indexedDB', 'caches',
         'importScripts',
         'SharedArrayBuffer', 'Atomics',
@@ -957,6 +1085,9 @@ async function executeModInSandbox(code, modAPI, modId, modMeta) {
     const modFunc = new AsyncFunction(...paramNames, wrappedCode);
     await modFunc(...paramValues);
 }
+
+
+
 
 class ModLoader {
     topologicalSort(adj) {
@@ -1063,6 +1194,7 @@ class ModLoader {
             if (modId === 'base_game') continue;
             
             window.ModAPI.mods[modId] = mod;
+            window.ModAPI._currentLoadingMod = modId;
 
             // 1. Выполнение кастомных скриптов мода (RimWorld-like Assemblies/Scripts)
             if (mod.scripts && Array.isArray(mod.scripts)) {
@@ -1126,6 +1258,7 @@ class ModLoader {
                     }
                 });
             }
+            window.ModAPI._currentLoadingMod = null;
         }
 
         // Регистрация активных хуков в C++ ядре
