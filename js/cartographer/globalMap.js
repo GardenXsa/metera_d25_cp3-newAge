@@ -481,7 +481,54 @@ window.Cartographer = {
             ctx.stroke();
         } else {
             ctx.beginPath();
-            if (type === 'road') {
+            // Data-driven marker lookup
+            function getMarkerDef(type) {
+                if (window.gamedata?.map_markers?.location_types) {
+                    return window.gamedata.map_markers.location_types.find(m => m.id === type);
+                }
+                return null;
+            }
+
+            const markerDef = getMarkerDef(type);
+            if (markerDef) {
+                ctx.fillStyle = markerDef.color || '#27ae60';
+                const size = markerDef.size || 6;
+                const shape = markerDef.shape || 'circle';
+                if (shape === 'triangle') {
+                    ctx.moveTo(pos.x, pos.y - size);
+                    ctx.lineTo(pos.x - size, pos.y + size);
+                    ctx.lineTo(pos.x + size, pos.y + size);
+                    ctx.fill();
+                    ctx.stroke();
+                } else if (shape === 'square') {
+                    ctx.fillRect(pos.x - size, pos.y - size, size * 2, size * 2);
+                    ctx.strokeRect(pos.x - size, pos.y - size, size * 2, size * 2);
+                } else if (shape === 'diamond') {
+                    ctx.moveTo(pos.x, pos.y - size);
+                    ctx.lineTo(pos.x + size, pos.y);
+                    ctx.lineTo(pos.x, pos.y + size);
+                    ctx.lineTo(pos.x - size, pos.y);
+                    ctx.fill();
+                    ctx.stroke();
+                } else if (shape === 'semicircle') {
+                    ctx.arc(pos.x, pos.y, size, Math.PI, 0);
+                    ctx.fill();
+                    ctx.stroke();
+                } else if (shape === 'zigzag') {
+                    ctx.moveTo(pos.x - size, pos.y + size);
+                    ctx.lineTo(pos.x - size/2, pos.y - size/2);
+                    ctx.lineTo(pos.x, pos.y + size/3);
+                    ctx.lineTo(pos.x + size/2, pos.y - size);
+                    ctx.lineTo(pos.x + size, pos.y + size);
+                    ctx.fill();
+                    ctx.stroke();
+                } else {
+                    // Default: circle
+                    ctx.arc(pos.x, pos.y, size, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.stroke();
+                }
+            } else if (type === 'road') {
                 ctx.fillStyle = '#7d6b5d';
                 ctx.beginPath();
                 ctx.moveTo(pos.x - 4, pos.y + 5);
@@ -688,8 +735,23 @@ window.Cartographer = {
             map.roads.forEach(road => {
                 ctx.beginPath();
                 let isRuined = road.condition === 'ruined' || road.integrity < 30;
-                
-                if (road.type === 'bridge') {
+
+                // Data-driven road type lookup
+                function getRoadTypeDef(type) {
+                    if (window.gamedata?.map_markers?.road_types) {
+                        return window.gamedata.map_markers.road_types.find(r => r.id === type);
+                    }
+                    return null;
+                }
+
+                const roadDef = getRoadTypeDef(road.type);
+                if (roadDef) {
+                    ctx.lineWidth = roadDef.line_width || 2;
+                    ctx.strokeStyle = isRuined ? (roadDef.ruined_color || '#e74c3c') : (roadDef.color || '#8b4513');
+                    if (isRuined && roadDef.ruined_dash) ctx.setLineDash(roadDef.ruined_dash);
+                    else if (roadDef.dash) ctx.setLineDash(roadDef.dash);
+                    else ctx.setLineDash([]);
+                } else if (road.type === 'bridge') {
                     ctx.lineWidth = 4;
                     ctx.strokeStyle = isRuined ? '#c0392b' : '#8b4513';
                     if (isRuined) ctx.setLineDash([4, 4]);

@@ -1601,5 +1601,97 @@
     "cart": "Тележка",
     "wagon": "Повозка",
     "ship": "Корабль"
+  },
+  "weather": {
+    "clear": "Ясно",
+    "cloudy": "Облачно",
+    "heat": "Жара",
+    "snow": "Снег",
+    "snowfall": "Снегопад",
+    "blizzard": "Метель",
+    "rain": "Дождь",
+    "tropical_rain": "Тропический ливень",
+    "aether_storm": "Эфирный шторм",
+    "thunderstorm": "Гроза",
+    "fog": "Туман",
+    "heavy_snow": "Сильный снегопад",
+    "heatwave": "Жара"
+  },
+  "time": {
+    "night": "Ночь",
+    "morning": "Утро",
+    "day": "День",
+    "evening": "Вечер"
+  },
+  "months": {
+    "morningStar": "Утренней Звезды",
+    "iceBreak": "Ледолома",
+    "windBlow": "Ветровея",
+    "blossom": "Цветеня",
+    "solstice": "Солнцеворота",
+    "heatMonth": "Знойника",
+    "harvest": "Жатвеня",
+    "leafFall": "Листопада",
+    "chill": "Хладника",
+    "deadMoon": "Мертвой Луны",
+    "darkFrontier": "Темного Рубежа",
+    "yearEnd": "Конца Года"
+  },
+  "map": {
+    "road": "Дорога",
+    "city": "Город",
+    "village": "Деревня",
+    "ruins": "Руины",
+    "fort": "Форт",
+    "camp": "Лагерь",
+    "anomaly": "Аномалия",
+    "observatory": "Обсерватория",
+    "mountain": "Гора"
+  },
+  "news": {
+    "war": "Война",
+    "disaster": "Бедствие",
+    "economy": "Экономика",
+    "business": "Бизнес",
+    "market": "Рынок",
+    "logistics": "Логистика",
+    "politics": "Политика"
+  },
+  "diplomacy": {
+    "states": {
+      "peace": "Мир",
+      "nonAggressionPact": "Пакт о ненападении",
+      "defensiveAlliance": "Оборонительный союз",
+      "fullAlliance": "Полный союз",
+      "coldWar": "Холодная война",
+      "borderConflict": "Пограничный конфликт",
+      "limitedWar": "Ограниченная война",
+      "totalWar": "Тотальная война"
+    },
+    "casusBelli": {
+      "none": "Нет",
+      "borderIncident": "Пограничный инцидент",
+      "reclaimCores": "Возврат ядер",
+      "humanitarian": "Гуманитарная интервенция",
+      "preemptive": "Превентивный удар",
+      "imperialism": "Империализм"
+    }
+  },
+  "ships": {
+    "types": {
+      "merchant": "Торговое судно",
+      "transport": "Транспорт",
+      "warGalley": "Военная галера",
+      "warFrigate": "Военный фрегат",
+      "explorer": "Исследовательское судно",
+      "pirate": "Пиратский корабль",
+      "seaMonster": "Морское чудовище"
+    },
+    "portTypes": {
+      "none": "Нет порта",
+      "fishing": "Рыбацкий порт",
+      "trade": "Торговый порт",
+      "military": "Военный порт"
+    }
   }
 }

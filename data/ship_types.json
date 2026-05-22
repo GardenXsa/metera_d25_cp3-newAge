@@ -1,0 +1,17 @@
+{
+  "ship_types": [
+    { "id": "merchant", "name": "Торговое судно", "speed": 1.0, "capacity": 200, "combat_power": 5, "is_monster": false, "name_i18n_key": "ships.types.merchant" },
+    { "id": "transport", "name": "Транспорт", "speed": 0.8, "capacity": 300, "combat_power": 2, "is_monster": false, "name_i18n_key": "ships.types.transport" },
+    { "id": "war_galley", "name": "Военная галера", "speed": 1.2, "capacity": 50, "combat_power": 40, "is_monster": false, "name_i18n_key": "ships.types.warGalley" },
+    { "id": "war_frigate", "name": "Военный фрегат", "speed": 1.1, "capacity": 80, "combat_power": 60, "is_monster": false, "name_i18n_key": "ships.types.warFrigate" },
+    { "id": "explorer", "name": "Исследовательское судно", "speed": 1.3, "capacity": 60, "combat_power": 10, "is_monster": false, "name_i18n_key": "ships.types.explorer" },
+    { "id": "pirate", "name": "Пиратский корабль", "speed": 1.1, "capacity": 100, "combat_power": 30, "is_monster": false, "name_i18n_key": "ships.types.pirate" },
+    { "id": "sea_monster", "name": "Морское чудовище", "speed": 0.9, "capacity": 0, "combat_power": 80, "is_monster": true, "name_i18n_key": "ships.types.seaMonster" }
+  ],
+  "port_types": [
+    { "id": "none", "name": "Нет порта", "name_i18n_key": "ships.portTypes.none" },
+    { "id": "fishing", "name": "Рыбацкий порт", "name_i18n_key": "ships.portTypes.fishing" },
+    { "id": "trade", "name": "Торговый порт", "name_i18n_key": "ships.portTypes.trade" },
+    { "id": "military", "name": "Военный порт", "name_i18n_key": "ships.portTypes.military" }
+  ]
+}

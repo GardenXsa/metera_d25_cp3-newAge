@@ -51,6 +51,9 @@
 #include "npc_personality.h"
 #include <fstream>
 
+// Logging macros (Stage 1+)
+#define LOG_WARN(msg) std::cerr << "[WARN] " << msg << std::endl
+
 // SINGLE DEFINITION OF GLOBAL REGISTRIES
 ObjectPool<PhysicalItem> g_items;
 ObjectPool<Storage> g_containers;
@@ -126,8 +129,20 @@ struct Database {
         WorldContinentConfig continent;
         WorldRiverConfig rivers;
         WorldVolcanoConfig volcanoes;
+        std::map<std::string, int> location_size_thresholds;  // "city" -> 5000, etc. (Stage 3)
     };
     WorldConfigDef world_config;
+
+    // Data-driven: tag defaults for item resolution (Stage 1)
+    std::unordered_map<std::string, std::string> tag_defaults;
+
+    // Data-driven: container type registry (Stage 8)
+    std::unordered_map<std::string, ContainerTypeDef> container_types;
+
+    // Stage 5: String-based IDs for data-driven enum replacement
+    std::vector<std::string> diplo_state_ids;
+    std::vector<std::string> casus_belli_ids;
+    std::vector<std::string> ship_type_ids;
 };
 
 
@@ -142,8 +157,13 @@ Database g_db;
 namespace NpcGen {
 
     std::string generateName(const std::string& factionId, std::mt19937& gen) {
-        // Resolve race from faction, or fall back to first available race
+        // Resolve race from faction, or fall back to first available base_race
+        // Stage 13: data-driven default race
         std::string raceId = "human";
+        for (const auto& rid : g_db.race_ids) {
+            auto rit = g_db.races.find(rid);
+            if (rit != g_db.races.end() && rit->second.base_race) { raceId = rid; break; }
+        }
         auto ftrIt = g_db.faction_to_race.find(factionId);
         if (ftrIt != g_db.faction_to_race.end()) raceId = ftrIt->second;
 
@@ -326,17 +346,28 @@ std::string createContainer(const std::string& type, const std::string& ownerId,
     if (!parentEntity.empty()) cont.location.set("parent_entity", parentEntity);
     if (!parentContainer.empty()) cont.location.set("parent_container", parentContainer);
     
-    cont.lock_data.set("is_locked", (type == "faction_vault"));
-    cont.lock_data.set("difficulty", (type == "faction_vault") ? 16 : 10);
-    cont.physical_props.set("health", (type == "faction_vault") ? 400 : 200);
-    cont.physical_props.set("flammable", (type != "faction_vault"));
+    // Stage 8c: Data-driven container type properties
+    auto ctIt = g_db.container_types.find(type);
+    bool isFaction = (ctIt != g_db.container_types.end() && ctIt->second.category == "faction");
+    if (ctIt != g_db.container_types.end()) {
+        cont.lock_data.set("is_locked", ctIt->second.is_locked);
+        cont.lock_data.set("difficulty", ctIt->second.lock_difficulty);
+        cont.physical_props.set("health", ctIt->second.health);
+        cont.physical_props.set("flammable", ctIt->second.flammable);
+    } else {
+        // Fallback: legacy hardcoded behavior
+        cont.lock_data.set("is_locked", isFaction);
+        cont.lock_data.set("difficulty", isFaction ? 16 : 10);
+        cont.physical_props.set("health", isFaction ? 400 : 200);
+        cont.physical_props.set("flammable", !isFaction);
+    }
     
     cont.is_dirty = true;
     g_containers[cont.id] = cont;
     return cont.id;
 }
 
-std::string getCoreIdByTag(const std::string& tag, const std::string& fallbackId) {
+std::string getCoreIdByTag(const std::string& tag, const std::string& fallbackId = "") {
     auto items = g_itemRegistry.findTemplatesWithTag(tag);
     if (!items.empty()) return items[0]->id;
     if (tag == "food") {
@@ -345,12 +376,93 @@ std::string getCoreIdByTag(const std::string& tag, const std::string& fallbackId
         items = g_itemRegistry.findTemplatesWithTag("raw_food");
         if (!items.empty()) return items[0]->id;
     }
-    return fallbackId;
+    // Data-driven fallback from tag_defaults.json
+    if (!fallbackId.empty()) {
+        LOG_WARN("DEPRECATED: hardcoded fallback in getCoreIdByTag tag=" + tag + " fallback=" + fallbackId + " — migrate to tag_defaults.json");
+        return fallbackId;
+    }
+    auto it = g_db.tag_defaults.find(tag);
+    if (it != g_db.tag_defaults.end()) return it->second;
+    LOG_WARN("getCoreIdByTag: no item found for tag=" + tag + " and no tag_default entry");
+    return "";
 }
 
 std::string getMappedId(const std::string& id) {
     if (g_db.items.count(id)) return id;
     return id; // Engine now expects correct IDs or uses tags directly.
+}
+
+// Data-driven helper: check if an item has a given tag (Stage 6)
+bool hasTag(const std::string& itemId, const std::string& tag) {
+    auto it = g_db.items.find(itemId);
+    if (it != g_db.items.end()) {
+        // Check item category for tag match
+        if (it->second.category == tag) return true;
+    }
+    auto items = g_itemRegistry.findTemplatesWithTag(tag);
+    for (const auto& i : items) {
+        if (i->id == itemId) return true;
+    }
+    return false;
+}
+
+// Data-driven profession helpers (Stage 2c)
+bool profHasAbility(const std::string& profType, const std::string& ability) {
+    auto it = g_db.professions.find(profType);
+    if (it != g_db.professions.end()) {
+        for (const auto& a : it->second.special_abilities) {
+            if (a == ability) return true;
+        }
+    }
+    return false;
+}
+std::string profProductionType(const std::string& profType) {
+    auto it = g_db.professions.find(profType);
+    if (it != g_db.professions.end()) return it->second.production_type;
+    return "";
+}
+
+// Backward-compatible profession type checks (Stage 2c)
+// Uses data-driven special_abilities/production_type when available, falls back to profession_type string
+bool profIsFoodProducer(const std::string& pt) {
+    if (profProductionType(pt) == "food" || profHasAbility(pt, "farming")) return true;
+    return (pt == "farmer" || pt == "fisherman"); // fallback
+}
+bool profIsGatherer(const std::string& pt) {
+    if (profHasAbility(pt, "gathering")) return true;
+    return (pt == "gatherer"); // fallback
+}
+bool profIsCrafter(const std::string& pt) {
+    if (profProductionType(pt) == "crafts" || profHasAbility(pt, "crafting")) return true;
+    return (pt == "artisan"); // fallback
+}
+bool profIsMage(const std::string& pt) {
+    if (profHasAbility(pt, "spellcasting") || profHasAbility(pt, "healing")) return true;
+    return (pt == "mage"); // fallback
+}
+bool profIsInnkeeper(const std::string& pt) {
+    if (profHasAbility(pt, "hospitality")) return true;
+    return (pt == "innkeeper"); // fallback
+}
+bool profIsCleric(const std::string& pt) {
+    if (profHasAbility(pt, "religious")) return true;
+    return (pt == "cleric"); // fallback
+}
+bool profIsMerchant(const std::string& pt) {
+    if (profHasAbility(pt, "trading")) return true;
+    return (pt == "merchant"); // fallback
+}
+bool profIsMercenary(const std::string& pt) {
+    if (profHasAbility(pt, "combat_hire")) return true;
+    return (pt == "mercenary"); // fallback
+}
+bool profIsSeafarer(const std::string& pt) {
+    if (profHasAbility(pt, "seafaring")) return true;
+    return (pt == "admiral" || pt == "sailor"); // fallback
+}
+bool profIsMilitaryCommander(const std::string& pt) {
+    if (profHasAbility(pt, "military_command")) return true;
+    return (pt == "general" || pt == "commander"); // fallback
 }
 
 
@@ -532,7 +644,7 @@ int getCategoryAmount(const std::string& vault_id, const std::string& category) 
             if (tpl) {
                 if (tpl->hasTag(category)) match = true;
                 if (category == "food" && (tpl->hasTag("consumable") || tpl->hasTag("raw_food"))) match = true;
-            } else if (item_type == "bread" || item_type == "meat") {
+            } else if (hasTag(item_type, "food")) {
                 match = (category == "food");
             }
             if (match) total += qty;
@@ -554,7 +666,7 @@ int consumeCategory(const std::string& vault_id, const std::string& category, in
             if (tpl) {
                 if (tpl->hasTag(category)) match = true;
                 if (category == "food" && (tpl->hasTag("consumable") || tpl->hasTag("raw_food"))) match = true;
-            } else if (item_type == "bread" || item_type == "meat") {
+            } else if (hasTag(item_type, "food")) {
                 match = (category == "food");
             }
             if (match) {
@@ -767,7 +879,7 @@ struct NPC {
     std::string inventory_id; // Container ID for physical items
     
     // Demographics & Life Cycle
-    std::string race = "human"; // human, elf, dwarf, orc
+    std::string race = "human"; // Stage 13: default overridden by g_db.races base_race lookup
     int age_days = 0;
     bool is_male = true;
     std::string father_id;
@@ -1629,6 +1741,7 @@ struct Ship {
     std::string id;
     std::string owner_id;
     ShipType type = ShipType::MERCHANT;
+    std::string ship_type_id; // Stage 5: string-based ID alongside enum for data-driven comparisons
     int hull = 100;
     int sailors = 10;
     int cargo_capacity = 100;
@@ -1810,6 +1923,7 @@ struct PortFacility {
     int level = 1;
     int durability = 100;
     PortType type = PortType::NONE;
+    std::string port_type_id; // Stage 5: string-based ID alongside enum for data-driven comparisons
     std::string dock_container_id;
     std::vector<std::string> docked_ship_ids;
     bool is_blockaded = false;
@@ -1967,9 +2081,10 @@ struct Region {
     // Weather & Climate
     double fertility = 1.0;
     double mineral_wealth = 1.0;
-    std::string weather = "Ясно";
+    std::string weather = "clear";
     int weatherDaysLeft = 0;
     std::string climate = "temperate";
+    std::string biome; // Stage 3a: biome string ID for data-driven resource assignment
     std::string placement_type;
     std::string base_type; // Explicit location type (city, fort, anomaly, etc.)
     
@@ -2049,6 +2164,7 @@ struct Region {
         obj.set("caravans", cars);
         
         obj.set("climate", climate);
+        if (!biome.empty()) obj.set("biome", biome); // Stage 3a
         
         JsonValue facs = JsonValue::object();
         for (const auto& [k, v] : facilities) facs.set(k, v.toJson());
@@ -2150,6 +2266,7 @@ struct Region {
         }
         
         if (j.has("climate")) r.climate = j["climate"].asString();
+        if (j.has("biome")) r.biome = j["biome"].asString(); // Stage 3a: biome string ID
         
         if (j.has("facilities")) {
             for (const auto& kv : j["facilities"].obj_val) {
@@ -2214,18 +2331,17 @@ struct Region {
         
 // Backward compatibility for old saves
         if (r.available_raw_resources.empty()) {
-            std::string lowerName = r.name;
-            std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), [](unsigned char c){ return std::tolower(c); });
-            if (lowerName.find("гор") != std::string::npos || lowerName.find("пик") != std::string::npos || lowerName.find("шахт") != std::string::npos || lowerName.find("mountain") != std::string::npos || lowerName.find("citadel") != std::string::npos || lowerName.find("цитадель") != std::string::npos) {
-                r.available_raw_resources = {"iron_ore", "gold_ore", "meat"};
-            } else if (lowerName.find("лес") != std::string::npos || lowerName.find("рощ") != std::string::npos || lowerName.find("forest") != std::string::npos || lowerName.find("wood") != std::string::npos) {
-                r.available_raw_resources = {"wood", "herbs", "cotton", "meat"};
-            } else if (lowerName.find("пустын") != std::string::npos || lowerName.find("песк") != std::string::npos || lowerName.find("desert") != std::string::npos || lowerName.find("sand") != std::string::npos || lowerName.find("пепел") != std::string::npos || lowerName.find("ash") != std::string::npos) {
-                r.available_raw_resources = {"iron_ore", "herbs"};
-            } else if (lowerName.find("море") != std::string::npos || lowerName.find("озер") != std::string::npos || lowerName.find("гавань") != std::string::npos || lowerName.find("порт") != std::string::npos || lowerName.find("sea") != std::string::npos || lowerName.find("haven") != std::string::npos) {
-                r.available_raw_resources = {"fish", "wood", "herbs"};
-            } else {
-                r.available_raw_resources = {"wheat", "cotton", "wood", "meat"};
+            // Data-driven: assign resources from biome definition (Stage 3a)
+            auto biomeIt = g_db.biome_string_to_id.find(r.biome);
+            if (biomeIt != g_db.biome_string_to_id.end()) {
+                size_t bidx = g_db.biome_numeric_to_index[biomeIt->second];
+                if (bidx < g_db.biomes.size() && !g_db.biomes[bidx].resources.empty()) {
+                    r.available_raw_resources = std::set<std::string>(g_db.biomes[bidx].resources.begin(), g_db.biomes[bidx].resources.end());
+                }
+            }
+            // Fallback: default resources if biome not found or has no resources defined
+            if (r.available_raw_resources.empty()) {
+                r.available_raw_resources = std::set<std::string>{"wheat", "cotton", "wood", "meat"};
             }
         }
         
@@ -2324,6 +2440,7 @@ struct Faction {
     
     // T3: Advanced Diplomacy & War
     DiplomaticState warType = DiplomaticState::PEACE;
+    std::string diplo_state_id; // Stage 5: string-based ID alongside enum for data-driven comparisons
     int stability = 70;
     int legitimacy = 100;
     WarGoal activeWarGoal;
@@ -2331,6 +2448,7 @@ struct Faction {
     std::vector<Coalition> coalitions;
     int daysInCurrentWar = 0;
     CasusBelli currentCasusBelli = CasusBelli::NONE;
+    std::string casus_belli_id; // Stage 5: string-based ID alongside enum for data-driven comparisons
     std::unordered_map<std::string, int> truceUntil;
     
     
@@ -2956,7 +3074,7 @@ struct KnowledgeGraph {
 struct World {
     int tick = 0;
     int current_day = 0;
-    std::string era = "rebirth";
+    std::string era = "rebirth"; // Stage 13: default overridden by first era from g_db or world_config
     
     // Time tracking
     struct Time {
@@ -4438,8 +4556,8 @@ void processSpoilage() {
         std::string regionId = container.location.has("region_id") ? container.location["region_id"].asString() : "";
         if (!regionId.empty() && g_world.regions.count(regionId)) {
             std::string weather = g_world.regions[regionId].weather;
-            if (weather == "Жара") heatMod = 2.0;
-            if (weather == "Снег" || weather == "Метель") coldMod = 0.3;
+            if (weather == "heat") heatMod = 2.0;
+            if (weather == "snow" || weather == "blizzard") coldMod = 0.3;
         }
         
         for (const auto& itemId : container.item_ids) {
@@ -4597,7 +4715,7 @@ void processConsumption() {
                             npc.currentActivity = sched.activity;
                             if (sched.activity == "Working") {
                                 npc.needs.rest -= 2;
-                                if (npc.economy.profession_type == "merchant") {
+                                if (profIsMerchant(npc.economy.profession_type)) {
                                     npc.gold += (thread_safe_rand() % 15) + 5;
                                     if ((thread_safe_rand() % 10) == 0 && !npc.inventory_id.empty()) {
                                         if (!region.markets.empty()) {
@@ -4687,8 +4805,8 @@ void processConsumption() {
                 for (int i = (int)region.caravans.size() - 1; i >= 0; i--) {
                     Caravan& caravan = region.caravans[i];
                     double speedMod = 1.0;
-                    if (region.weather == "Метель" || region.weather == "Тропический ливень") speedMod = 0.5;
-                    else if (region.weather == "Эфирный шторм") speedMod = 0.0;
+                    if (region.weather == "blizzard" || region.weather == "tropical_rain") speedMod = 0.5;
+                    else if (region.weather == "aether_storm") speedMod = 0.0;
                     else if (region.current_season == "winter") speedMod = 0.7;
                     
                     if (speedMod > 0) {
@@ -4959,13 +5077,13 @@ void updateWeather() {
         else {
             std::vector<std::string> weathers = {"clear", "cloudy"};
             if (region.climate == "tropical") {
-                weathers.push_back("tropical_rain"); weathers.push_back("heatwave");
+                weathers.push_back("tropical_rain"); weathers.push_back("heat");
             } else if (region.climate == "cold") {
-                weathers.push_back("heavy_snow"); weathers.push_back("blizzard");
+                weathers.push_back("snowfall"); weathers.push_back("blizzard");
             } else {
                 if (season == "winter") { weathers.push_back("snow"); weathers.push_back("blizzard"); }
                 else if (season == "spring" || season == "autumn") { weathers.push_back("rain"); weathers.push_back("fog"); }
-                else { weathers.push_back("rain"); weathers.push_back("heatwave"); }
+                else { weathers.push_back("rain"); weathers.push_back("heat"); }
             }
             if (thread_safe_rand() % 100 < 1) weathers.push_back("aether_storm");
             region.weather = weathers[thread_safe_rand() % weathers.size()];
@@ -5055,7 +5173,7 @@ void processDailyBusinesses() {
                 double price = r.markets[focusStr];
                 if (price <= 0) price = (g_db.items.count(focusStr) ? g_db.items.at(focusStr).basePrice : 1);
                 
-                double itemWeight = (focusStr == "gold_ingot") ? 0.01 : 1.0;
+                double itemWeight = hasTag(focusStr, "currency") ? 0.01 : 1.0;
                 double currentVaultWeight = calculateContainerWeight(r.vault_id);
                 int maxCanSell = (r.storage_capacity - currentVaultWeight) / itemWeight;
                 int actualSell = std::min(stock, maxCanSell);
@@ -5582,7 +5700,7 @@ void processPrivateProduction() {
 
 void processFarmers() {
     std::vector<NPC*> active_npcs;
-    for (auto& [id, npc] : g_world.npcs) if (npc.isAlive && (npc.economy.profession_type == "farmer" || npc.economy.profession_type == "fisherman")) active_npcs.push_back(&npc);
+    for (auto& [id, npc] : g_world.npcs) if (npc.isAlive && profIsFoodProducer(npc.economy.profession_type)) active_npcs.push_back(&npc);
     std::unordered_map<std::string, std::unique_ptr<std::mutex>> r_locks;
     for (const auto& [rid, r] : g_world.regions) r_locks[rid] = std::make_unique<std::mutex>();
 
@@ -5609,7 +5727,7 @@ void processFarmers() {
                 else if (r.current_season == "summer") seasonMod = 1.5;
                 else if (r.current_season == "autumn") seasonMod = 2.0;
                 else if (r.current_season == "winter") seasonMod = 0.2;
-                if (r.weather == "Эфирный шторм") seasonMod = 0.0;
+                if (r.weather == "aether_storm") seasonMod = 0.0;
                 
                 double yield = npc.economy.skillLevel * r.fertility * seasonMod;
                 if (countItemsInContainer(contId, "sickle") > 0) yield *= 1.5;
@@ -5670,7 +5788,7 @@ void processFarmers() {
 
 void processGatherers() {
     std::vector<NPC*> active_npcs;
-    for (auto& [id, npc] : g_world.npcs) if (npc.isAlive && npc.economy.profession_type == "gatherer") active_npcs.push_back(&npc);
+    for (auto& [id, npc] : g_world.npcs) if (npc.isAlive && profIsGatherer(npc.economy.profession_type)) active_npcs.push_back(&npc);
     std::unordered_map<std::string, std::unique_ptr<std::mutex>> r_locks;
     for (const auto& [rid, r] : g_world.regions) r_locks[rid] = std::make_unique<std::mutex>();
 
@@ -5738,7 +5856,7 @@ void processGatherers() {
 
 void processArtisans() {
     std::vector<NPC*> active_npcs;
-    for (auto& [id, npc] : g_world.npcs) if (npc.isAlive && npc.economy.profession_type == "artisan") active_npcs.push_back(&npc);
+    for (auto& [id, npc] : g_world.npcs) if (npc.isAlive && profIsCrafter(npc.economy.profession_type)) active_npcs.push_back(&npc);
     std::unordered_map<std::string, std::unique_ptr<std::mutex>> r_locks;
     for (const auto& [rid, r] : g_world.regions) r_locks[rid] = std::make_unique<std::mutex>();
 
@@ -5852,7 +5970,7 @@ void processArtisans() {
 
 void processMages() {
     std::vector<NPC*> active_npcs;
-    for (auto& [id, npc] : g_world.npcs) if (npc.isAlive && npc.economy.profession_type == "mage") active_npcs.push_back(&npc);
+    for (auto& [id, npc] : g_world.npcs) if (npc.isAlive && profIsMage(npc.economy.profession_type)) active_npcs.push_back(&npc);
     std::unordered_map<std::string, std::unique_ptr<std::mutex>> r_locks;
     for (const auto& [rid, r] : g_world.regions) r_locks[rid] = std::make_unique<std::mutex>();
 
@@ -5963,7 +6081,7 @@ void processMages() {
 
 void processServices() {
     std::vector<NPC*> active_npcs;
-    for (auto& [id, npc] : g_world.npcs) if (npc.isAlive && (npc.economy.profession_type == "innkeeper" || npc.economy.profession_type == "cleric")) active_npcs.push_back(&npc);
+    for (auto& [id, npc] : g_world.npcs) if (npc.isAlive && (profIsInnkeeper(npc.economy.profession_type) || profIsCleric(npc.economy.profession_type))) active_npcs.push_back(&npc);
     std::unordered_map<std::string, std::unique_ptr<std::mutex>> r_locks;
     for (const auto& [rid, r] : g_world.regions) r_locks[rid] = std::make_unique<std::mutex>();
 
@@ -5983,7 +6101,7 @@ void processServices() {
                 if (!g_world.regions.count(npc.currentLocation)) continue;
                 Region& r = g_world.regions[npc.currentLocation];
 
-                if (npc.economy.profession_type == "innkeeper") {
+                if (profIsInnkeeper(npc.economy.profession_type)) {
                     int visitors = 5 + (r.caravans.size() * 2) + (r.population / 1000);
                     int foodNeeded = visitors;
                     int foodBought = 0;
@@ -6018,7 +6136,7 @@ void processServices() {
                     int profit = foodBought * 8;
                     npc.economy.savings += profit;
                     
-                } else if (npc.economy.profession_type == "cleric") {
+                } else if (profIsCleric(npc.economy.profession_type)) {
                     int rituals = 2 + (r.population / 2000);
                     int suppliesBought = 0;
                     
@@ -6107,7 +6225,7 @@ void processDailyEconomy() {
                 
                 std::string wheat_id = getCoreIdByTag("crop", "wheat");
                 std::string wood_id = getCoreIdByTag("wood", "wood");
-                if (!g_bootstrap && (season == "summer" || region.weather == "Жара") && (thread_safe_rand() % 1000) < 2) {
+                if (!g_bootstrap && (season == "summer" || region.weather == "heat") && (thread_safe_rand() % 1000) < 2) {
                     int wheatAmount = vaultStocks[wheat_id];
                     int woodAmount = vaultStocks[wood_id];
                     int cw = consumeItemsFromContainer(region.vault_id, wheat_id, wheatAmount * 0.8);
@@ -6146,7 +6264,7 @@ void processDailyEconomy() {
                 int numFacilities = std::max(1, (int)region.facilities.size());
                 int workersPerSector = activeWorkers / numFacilities;
                 
-                double weatherMod = (region.weather == "Ясно") ? 1.2 : (region.weather == "Гроза" || region.weather == "Снег" || region.weather == "Метель" || region.weather == "Тропический ливень" || region.weather == "Снегопад") ? 0.5 : 1.0;
+                double weatherMod = (region.weather == "clear") ? 1.2 : (region.weather == "thunderstorm" || region.weather == "snow" || region.weather == "blizzard" || region.weather == "tropical_rain" || region.weather == "snowfall") ? 0.5 : 1.0;
                 double fert = g_world.homeostasis.fertility;
 
                 std::string bread_id = getCoreIdByTag("consumable", "bread");
@@ -6342,7 +6460,7 @@ void processDailyEconomy() {
                             double weightPerCraft = 0.0;
                             for (const auto& out : recipe.outputs) {
                                 std::string outS = out.first;
-                                double w = (outS == "gold_ingot") ? 0.01 : 1.0;
+                                double w = hasTag(outS, "currency") ? 0.01 : 1.0;
                                 weightPerCraft += w * out.second;
                             }
                             if (weightPerCraft > 0) {
@@ -6624,13 +6742,13 @@ void processMarkets() {
                         if (thread_safe_rand() % 100 < 15) shoppingList.push_back(getCoreIdByTag("luxury", "jewelry"));
                     }
                     
-                    if (npc.economy.profession_type == "mercenary" || npc.economy.profession_type == "mage") {
+                    if (profIsMercenary(npc.economy.profession_type) || profIsMage(npc.economy.profession_type)) {
                         if (npc.economy.savings > npc.economy.reserve_gold + 200 && thread_safe_rand() % 100 < 10) shoppingList.push_back(getCoreIdByTag("medical", "potions"));
                         if (npc.economy.savings > npc.economy.reserve_gold + 500 && thread_safe_rand() % 100 < 2) shoppingList.push_back(getCoreIdByTag("weapon", "weapons"));
                         if (npc.economy.savings > npc.economy.reserve_gold + 500 && thread_safe_rand() % 100 < 2) shoppingList.push_back(getCoreIdByTag("armor", "armor"));
                     }
                     
-                    if (npc.economy.profession_type == "merchant") {
+                    if (profIsMerchant(npc.economy.profession_type)) {
                         std::string wagon_id = getCoreIdByTag("vehicle", "wagon");
                     if (npc.economy.savings > npc.economy.reserve_gold + 1000 && countItemsInContainer(contId, wagon_id) < 5) shoppingList.push_back(wagon_id);
                     }
@@ -6946,7 +7064,7 @@ void processDailyMilitary() {
             fl.owner_id = fid;
             fl.ship_ids = available_warships;
             for (auto& [nid, npc] : g_world.npcs) {
-                if (npc.isAlive && npc.factionId == fid && (npc.economy.profession_type == "admiral" || npc.economy.profession_type == "sailor")) {
+                if (npc.isAlive && npc.factionId == fid && profIsSeafarer(npc.economy.profession_type)) {
                     fl.admiral_id = nid; break;
                 }
             }
@@ -7139,11 +7257,13 @@ void processDailyMilitary() {
                                 if (!already_building) {
                                     std::string capId = faction.regions.empty() ? "" : faction.regions[0];
                                     if (!capId.empty() && g_world.regions.count(capId)) {
-                                        int boards = countItemsInContainer(g_world.regions[capId].vault_id, "boards");
-                                        int cloth = countItemsInContainer(g_world.regions[capId].vault_id, "cloth");
+                                        std::string boards_id = getCoreIdByTag("building", "boards");
+                                        std::string cloth_id = getCoreIdByTag("cloth", "cloth");
+                                        int boards = countItemsInContainer(g_world.regions[capId].vault_id, boards_id);
+                                        int cloth = countItemsInContainer(g_world.regions[capId].vault_id, cloth_id);
                                         if (boards >= 500 && cloth >= 50) {
-                                            consumeItemsFromContainer(g_world.regions[capId].vault_id, "boards", 500);
-                                            consumeItemsFromContainer(g_world.regions[capId].vault_id, "cloth", 50);
+                                            consumeItemsFromContainer(g_world.regions[capId].vault_id, boards_id, 500);
+                                            consumeItemsFromContainer(g_world.regions[capId].vault_id, cloth_id, 50);
                                             ShipBuildOrder order;
                                             order.id = "build_" + generateUUID();
                                             order.type = ShipType::TRANSPORT;
@@ -7234,7 +7354,7 @@ void processDailyMilitary() {
                 auto assignGeneral = [&](Army& army, const std::string& fId) {
                     if (army.general_id.empty()) {
                         for (auto& [nid, npc] : g_world.npcs) {
-                            if (npc.isAlive && npc.factionId == fId && (npc.type == "ruler" || npc.economy.profession_type == "general" || npc.economy.profession_type == "commander")) {
+                            if (npc.isAlive && npc.factionId == fId && (npc.type == "ruler" || profIsMilitaryCommander(npc.economy.profession_type))) {
                                 army.general_id = nid; break;
                             }
                         }
@@ -7968,7 +8088,17 @@ void processTaxation() {
         if (r.isOccupied && r.daysUnderOccupation < 30) continue; // T3: 7.2 No taxes during early occupation
 
         // Лорд забирает 25% пшеницы и мяса
-        std::vector<std::string> taxGoods = {"wheat", "meat"};
+        // Stage 6: data-driven tax goods from tag_defaults or fallback
+        std::vector<std::string> taxGoods;
+        if (g_db.tag_defaults.count("tax_goods")) {
+            // Comma-separated list in tag_defaults
+            std::istringstream tss(g_db.tag_defaults["tax_goods"]);
+            std::string item;
+            while (std::getline(tss, item, ',')) {
+                if (!item.empty()) taxGoods.push_back(item);
+            }
+        }
+        if (taxGoods.empty()) taxGoods = {"wheat", "meat"}; // fallback
         for (const std::string& gt : taxGoods) {
             int stock = countItemsInContainer(contId, gt);
             int tax = stock * 0.25;
@@ -8206,9 +8336,9 @@ void processFleets() {
             }
             if (!current_region.empty() && g_world.regions.count(current_region)) {
                 std::string w = g_world.regions[current_region].weather;
-                if (w == "Эфирный шторм" || w == "Метель") speed *= 0.2;
-                else if (w == "Дождь" || w == "Тропический ливень") speed *= 0.7;
-                else if (w == "Туман") speed *= 0.5;
+                if (w == "aether_storm" || w == "blizzard") speed *= 0.2;
+                else if (w == "rain" || w == "tropical_rain") speed *= 0.7;
+                else if (w == "fog") speed *= 0.5;
             }
 
             while (speed > 0 && f.path_index < (int)f.path.size() - 1) {
@@ -8281,8 +8411,8 @@ void processShips() {
         double speed = ship.speed;
         if (g_world.regions.count(ship.destination)) {
             std::string w = g_world.regions[ship.destination].weather;
-            if (w == "Эфирный шторм" || w == "Метель") speed *= 0.2;
-            else if (w == "Дождь" || w == "Туман" || w == "Тропический ливень") speed *= 0.7;
+            if (w == "aether_storm" || w == "blizzard") speed *= 0.2;
+            else if (w == "rain" || w == "fog" || w == "tropical_rain") speed *= 0.7;
         }
         
         while (speed > 0 && ship.path_index < (int)ship.path.size() - 1) {
@@ -8359,7 +8489,7 @@ void processShips() {
                     if (g_world.factions.count(ship.owner_id)) {
                         std::string capId = g_world.factions[ship.owner_id].regions.empty() ? "" : g_world.factions[ship.owner_id].regions[0];
                         if (!capId.empty() && g_world.regions.count(capId)) {
-                            createItem("gold_ingot", netRevenue, g_world.regions[capId].vault_id, g_world.current_day, "Морская торговля");
+                            createItem(getCoreIdByTag("currency"), netRevenue, g_world.regions[capId].vault_id, g_world.current_day, "Морская торговля");
                         }
                     } else if (g_world.npcs.count(ship.owner_id)) {
                         g_world.npcs[ship.owner_id].economy.savings += netRevenue;
@@ -8560,7 +8690,7 @@ void processCouriers() {
                     std::string targetInbox = "";
                     std::string targetRegion = "";
                     for (const auto& [nId, merchant] : g_world.npcs) {
-                        if (merchant.economy.profession_type == "merchant" && !merchant.economy.workplaceId.empty()) {
+                        if (profIsMerchant(merchant.economy.profession_type) && !merchant.economy.workplaceId.empty()) {
                             targetInbox = getSubContainer(merchant.economy.workplaceId, "inbox");
                             targetRegion = merchant.homeLocation;
                             if (!targetInbox.empty()) break;
@@ -8709,8 +8839,8 @@ void processTrekTick() {
     
     if (g_world.regions.count(current_region)) {
         std::string w = g_world.regions[current_region].weather;
-        if (w == "Эфирный шторм" || w == "Метель") speed *= 0.2;
-        else if (w == "Дождь" || w == "Тропический ливень" || w == "Снегопад") speed *= 0.7;
+        if (w == "aether_storm" || w == "blizzard") speed *= 0.2;
+        else if (w == "rain" || w == "tropical_rain" || w == "snowfall") speed *= 0.7;
     }
 
     if (!g_world.player_trek.path.empty() && g_world.player_trek.path_index < (int)g_world.player_trek.path.size() - 1) {
@@ -9231,8 +9361,8 @@ void processRulerDiplomacy() {
                 ruler.currentGoal = "trade_pact -> " + targetF;
                 faction.relations[targetF] += 10;
                 if (!capitalVault.empty()) {
-                    createItem("gold_ingot", 2000, capitalVault, g_world.current_day, locStr("engine.reason.trade_agreement"));
-                    vaultStocks[capitalRegionId]["gold_ingot"] += 2000;
+                    createItem(getCoreIdByTag("currency"), 2000, capitalVault, g_world.current_day, locStr("engine.reason.trade_agreement"));
+                    vaultStocks[capitalRegionId][getCoreIdByTag("currency")] += 2000;
                 }
                 addNews(locStr("engine.news.diplomacy.trade_agreement", {{"ruler", ruler.name}, {"target", targetFaction.name}}), "global", 2, "misc");
             }
@@ -9837,8 +9967,9 @@ std::string processGmIntervention(const JsonValue& command) {
                     std::string targetCapitalId = targetFac.regions.empty() ? "" : targetFac.regions[0];
                     int foodLost = 0;
                     if (!targetCapitalId.empty() && g_world.regions.count(targetCapitalId)) {
-                        foodLost = countItemsInContainer(g_world.regions[targetCapitalId].vault_id, "bread") * 0.2;
-                        consumeItemsFromContainer(g_world.regions[targetCapitalId].vault_id, "bread", foodLost);
+                        std::string food_id = getCoreIdByTag("food");
+                        foodLost = countItemsInContainer(g_world.regions[targetCapitalId].vault_id, food_id) * 0.2;
+                        consumeItemsFromContainer(g_world.regions[targetCapitalId].vault_id, food_id, foodLost);
                     }
                     feedback = locStr("engine.gm.rumor_slander", {{"faction", fac.name}, {"target", targetFac.name}, {"food", std::to_string(foodLost)}});
                 } else {
@@ -10409,7 +10540,7 @@ std::string processGmIntervention(const JsonValue& command) {
                 
                 for (auto& [mercId, merc] : g_world.npcs) {
                     if (guardsHired >= maxGuardsWanted) break;
-                    if (merc.isAlive && merc.economy.profession_type == "mercenary" && merc.currentLocation == merchant.currentLocation && merc.currentActivity != locStr("engine.npc.guarding_caravan")) {
+                    if (merc.isAlive && profIsMercenary(merc.economy.profession_type) && merc.currentLocation == merchant.currentLocation && merc.currentActivity != locStr("engine.npc.guarding_caravan")) {
                         merc.currentActivity = locStr("engine.npc.guarding_caravan");
                         merc.travelDestination = task.bestDest;
                         merc.travelHoursLeft = 24 + (rand() % 48);
@@ -10722,14 +10853,28 @@ void processDailyNPCs() {
                         }
                         
                         std::map<std::string, int> job_demand;
-                        job_demand["farmer"] = farmer_jobs - current_workers["farmer"];
-                        job_demand["artisan"] = artisan_jobs - current_workers["artisan"];
-                        job_demand["merchant"] = (r.population / 500) - current_workers["merchant"];
-                        job_demand["mercenary"] = (r.threat_level * 2) - current_workers["mercenary"];
-                        job_demand["cleric"] = (r.population / 1000) - current_workers["cleric"];
-                        job_demand["gatherer"] = 20 - current_workers["gatherer"];
+                        for (const auto& pid : g_db.profession_ids) {
+                            auto it = g_db.professions.find(pid);
+                            if (it == g_db.professions.end() || pid == "none") continue;
+                            int demand = 0;
+                            if (it->second.demand_pattern.count("base")) demand = (int)(it->second.demand_pattern["base"]);
+                            // Keep existing facility-based calculation for farmer/artisan
+                            if (pid == "farmer") demand = farmer_jobs - current_workers["farmer"];
+                            else if (pid == "artisan") demand = artisan_jobs - current_workers["artisan"];
+                            else if (it->second.demand_pattern.count("per_population")) demand = (int)(r.population * it->second.demand_pattern["per_population"] / 1000.0) - current_workers[pid];
+                            else if (it->second.demand_pattern.count("base_demand")) demand = (int)it->second.demand_pattern["base_demand"] - current_workers[pid];
+                            else demand = 10 - current_workers[pid]; // default fallback
+                            job_demand[pid] = demand;
+                        }
 
                         std::string best_prof = "farmer";
+                        // Data-driven: find first profession with base_race demand
+                        for (const auto& pid : g_db.profession_ids) {
+                            auto it = g_db.professions.find(pid);
+                            if (it != g_db.professions.end() && it->second.demand_pattern.count("base_race") && it->second.demand_pattern["base_race"] > 0) {
+                                best_prof = pid; break;
+                            }
+                        }
                         int max_demand = -1;
                         for (const auto& [prof, demand] : job_demand) {
                             if (demand > max_demand) {
@@ -10776,7 +10921,7 @@ void processDailyNPCs() {
                 if (!npc.diseases.empty() || !npc.wounds.empty()) {
                     std::lock_guard<std::mutex> lock(g_npc_state_mutex);
                     for (auto& [docId, doctor] : g_world.npcs) {
-                        if (doctor.isAlive && doctor.currentLocation == npc.currentLocation && doctor.economy.profession_type == "mage") {
+                        if (doctor.isAlive && doctor.currentLocation == npc.currentLocation && profIsMage(doctor.economy.profession_type)) {
                             if (npc.gold >= 15) {
                                 npc.gold -= 15;
                                 doctor.gold += 15;
@@ -11675,7 +11820,7 @@ void processNavalCombat() {
     for (const auto& [rid, port] : g_world.port_facilities) {
         if (g_world.regions.count(rid)) {
             Region& r = g_world.regions[rid];
-            int pirate_base_chance = (r.weather == "Туман") ? 10 : 2;
+            int pirate_base_chance = (r.weather == "fog") ? 10 : 2;
             if (r.threat_level > 80 && (thread_safe_rand() % 100) < pirate_base_chance) {
                 auto loc = g_world.map.locations[rid];
                 int bx = loc.x + (rand()%15 - 7);
@@ -11815,7 +11960,7 @@ void processNavalCombat() {
     
     for (const auto& [lid, loc] : g_world.map.locations) {
         int spawn_chance = 10;
-        if (g_world.regions.count(lid) && g_world.regions[lid].weather == "Туман") spawn_chance = 30;
+        if (g_world.regions.count(lid) && g_world.regions[lid].weather == "fog") spawn_chance = 30;
         if (loc.type == "pirate_base" && (thread_safe_rand() % 100) < spawn_chance) {
             Ship p;
             p.id = "ship_" + generateUUID();
@@ -11983,7 +12128,10 @@ void processDisasters() {
             if (d_id == "plague" && !(r.population > r.storage_capacity * 1.2 && (!r.custom_props.has("has_well") || !r.custom_props["has_well"].asBool()))) climate_match = false;
             uint8_t b_id = g_world.map.grid[loc.y * g_world.map.width + loc.x].biome_id;
             if (d_id == "volcano" && !hasBiomeTag(b_id, "volcano")) climate_match = false;
-            if ((d_id == "storm" || d_id == "tsunami" || d_id == "sea_monster") && !r.available_raw_resources.count("fish")) climate_match = false;
+            if ((d_id == "storm" || d_id == "tsunami" || d_id == "sea_monster")) {
+                std::string seafood_id = getCoreIdByTag("seafood");
+                if (!seafood_id.empty() && !r.available_raw_resources.count(seafood_id)) climate_match = false;
+            }
             
             if (climate_match) types.push_back(d_id);
         }
@@ -13149,7 +13297,12 @@ void placeRegionsOnMap(WorldMap& map, const World& w) {
             if (!r.base_type.empty()) {
                 loc.type = r.base_type;
             } else {
-                loc.type = (r.population > 5000) ? "city" : (r.population > 0 ? "village" : "ruins");
+                // Stage 3c: configurable city threshold from world_config
+                int cityThreshold = 5000;
+                if (g_db.world_config.location_size_thresholds.count("city")) {
+                    cityThreshold = g_db.world_config.location_size_thresholds["city"];
+                }
+                loc.type = (r.population > cityThreshold) ? "city" : (r.population > 0 ? "village" : "ruins");
             }
             
             if (require_water && r.population > 0 && loc.type == "village") loc.type = "ruins"; // Legacy override
@@ -13517,7 +13670,7 @@ void generateCityLayout(Region& r, World& w) {
 
     int merchantCount = 0;
     for (const auto& [nId, npc] : w.npcs) {
-        if (npc.homeLocation == r.id && npc.economy.profession_type == "merchant" && !npc.economy.workplaceId.empty()) {
+        if (npc.homeLocation == r.id && profIsMerchant(npc.economy.profession_type) && !npc.economy.workplaceId.empty()) {
             merchantCount++;
             placeBuilding(t_office, getFacName(t_office, "Shop") + " '" + npc.name + "'", npc.economy.workplaceId, centerSpots, midSpots);
         }
@@ -13559,7 +13712,14 @@ void generateCityLayout(Region& r, World& w) {
 void buildWorld(const std::string& playerId, const std::string& era, int initialAgents, const JsonValue& globalLocs, int startDay, const JsonValue& customGrid = JsonValue::array()) {
     g_playerId = playerId;
     g_world = World();
-    g_world.era = era.empty() ? "rebirth" : era;
+    g_world.era = era;
+    // Stage 13: data-driven default era — use first era from world_config if available
+    if (g_world.era.empty()) {
+        if (g_db.world_config.location_size_thresholds.count("default_era")) {
+            // Check for era in world_config (future extension point)
+        }
+        g_world.era = "rebirth"; // fallback
+    }
     g_world.current_day = startDay;
     
     // Очистка реестров от предыдущих сессий (Fix Memory Leak)
@@ -13654,23 +13814,18 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
         }
 
         // Эвристика определения руин/аномалий (Фолбэк, если типа нет)
-        if (r.base_type.empty()) {
-            std::string lowerName = r.name;
-            std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), [](unsigned char c){ return std::tolower(c); });
-            std::string lowerId = key;
-            std::transform(lowerId.begin(), lowerId.end(), lowerId.begin(), [](unsigned char c){ return std::tolower(c); });
-
-            if (lowerName.find("руин") != std::string::npos || lowerId.find("ruin") != std::string::npos) r.base_type = "ruins";
-            else if (lowerName.find("аномал") != std::string::npos || lowerId.find("anomaly") != std::string::npos || lowerId.find("scar") != std::string::npos || lowerId.find("void") != std::string::npos) r.base_type = "anomaly";
-            else if (lowerName.find("форт") != std::string::npos || lowerId.find("fort") != std::string::npos) r.base_type = "fort";
-            else if (lowerName.find("лагерь") != std::string::npos || lowerId.find("camp") != std::string::npos) r.base_type = "camp";
-            else if (lowerName.find("обсерват") != std::string::npos || lowerId.find("obs") != std::string::npos) r.base_type = "observatory";
-        }
+        // Stage 3b: Data-driven fallback — use type from location JSON data, fallback to "village"
+        if (r.base_type.empty()) r.base_type = "village";
 
         bool is_ruin = (r.base_type == "ruins" || r.base_type == "anomaly");
 
         std::string ownerId = "";
+        // Stage 13: data-driven default race
         std::string ownerRace = "human";
+        for (const auto& rid : g_db.race_ids) {
+            auto rit = g_db.races.find(rid);
+            if (rit != g_db.races.end() && rit->second.base_race) { ownerRace = rid; break; }
+        }
         if (is_ruin) {
             r.factionId = "";
             r.population = 0;
@@ -13707,7 +13862,16 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
             r.labor_force = 0;
         }
         r.climate = "temperate";
-        r.weather = "Ясно";
+        // Stage 3a: set biome from map grid data
+        if (g_world.map.locations.count(key)) {
+            int tx = g_world.map.locations[key].x;
+            int ty = g_world.map.locations[key].y;
+            if (tx >= 0 && tx < g_world.map.width && ty >= 0 && ty < g_world.map.height) {
+                uint8_t b_id = g_world.map.grid[ty * g_world.map.width + tx].biome_id;
+                r.biome = getBiomeStringId(b_id);
+            }
+        }
+        r.weather = "clear";
 
         r.vault_id = createContainer(is_ruin ? "ruins_stash" : "faction_vault", is_ruin ? "none" : ownerId, 999999, 1000, key);
         r.storage_capacity = is_ruin ? 50000 : 100000 + (r.population * 10);
@@ -13851,7 +14015,12 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
 
         // Data-driven: resolve race from faction or pick random
         std::string homeFaction = g_world.regions.count(homeReg) ? g_world.regions[homeReg].factionId : "";
-        npc.race = "human"; // default
+        // Stage 13: data-driven default race
+        npc.race = "human";
+        for (const auto& rid : g_db.race_ids) {
+            auto rit = g_db.races.find(rid);
+            if (rit != g_db.races.end() && rit->second.base_race) { npc.race = rid; break; }
+        }
         auto ftrIt = g_db.faction_to_race.find(homeFaction);
         if (ftrIt != g_db.faction_to_race.end()) npc.race = ftrIt->second;
         else if (!g_db.race_ids.empty()) npc.race = g_db.race_ids[rand() % g_db.race_ids.size()];
@@ -13916,7 +14085,7 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
         npc.gold = rand() % 100;
         npc.inventory_id = createContainer("npc_inventory", npc.id, 100, 20, npc.homeLocation, npc.id);
         
-        if (npc.economy.profession_type == "merchant") {
+        if (profIsMerchant(npc.economy.profession_type)) {
             std::string officeId = createContainer("merchant_office", npc.id, 999999, 1000, npc.homeLocation);
             createContainer("inbox", npc.id, 999999, 1000, npc.homeLocation, "", officeId);
             createContainer("outbox", npc.id, 999999, 1000, npc.homeLocation, "", officeId);
@@ -14017,7 +14186,7 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
     // Assign Clerks to Merchant Offices
     std::map<std::string, std::vector<std::string>> regionOffices;
     for (const auto& [nid, n] : g_world.npcs) {
-        if (n.economy.profession_type == "merchant" && !n.economy.workplaceId.empty()) {
+        if (profIsMerchant(n.economy.profession_type) && !n.economy.workplaceId.empty()) {
             regionOffices[n.homeLocation].push_back(n.economy.workplaceId);
         }
     }
@@ -14629,6 +14798,11 @@ int main() {
                         b.min_moisture = rules.has("min_moist") ? rules["min_moist"].asDouble() : 0.0;
                         b.max_moisture = rules.has("max_moist") ? rules["max_moist"].asDouble() : 1.0;
                     }
+                    // Stage 3a: Load biome resources
+                    if (biomesArr[i].has("resources") && biomesArr[i]["resources"].type == JsonValue::ARRAY) {
+                        for (size_t j = 0; j < biomesArr[i]["resources"].size(); j++)
+                            b.resources.push_back(biomesArr[i]["resources"][j].asString());
+                    }
                     g_db.biomes.push_back(b);
                     g_db.biome_string_to_id[b.string_id] = b.numeric_id;
                     g_db.biome_numeric_to_index[b.numeric_id] = g_db.biomes.size() - 1;
@@ -14759,6 +14933,18 @@ int main() {
                     p.profession_type = profArr[i].has("profession_type") ? profArr[i]["profession_type"].asString() : "farmer";
                     p.tool_tag = profArr[i].has("tool_tag") ? profArr[i]["tool_tag"].asString() : "";
                     p.tool_chance = profArr[i].has("tool_chance") ? profArr[i]["tool_chance"].asInt() : 0;
+                    // Stage 2: new data-driven fields
+                    p.production_type = profArr[i].has("production_type") ? profArr[i]["production_type"].asString() : "";
+                    p.job_multiplier = profArr[i].has("job_multiplier") ? (float)profArr[i]["job_multiplier"].asDouble() : 1.0f;
+                    p.display_name_i18n_key = profArr[i].has("display_name_i18n_key") ? profArr[i]["display_name_i18n_key"].asString() : "";
+                    if (profArr[i].has("demand_pattern") && profArr[i]["demand_pattern"].type == JsonValue::OBJECT) {
+                        for (const auto& [dk, dv] : profArr[i]["demand_pattern"].obj_val)
+                            p.demand_pattern[dk] = (float)dv.asDouble();
+                    }
+                    if (profArr[i].has("special_abilities") && profArr[i]["special_abilities"].type == JsonValue::ARRAY) {
+                        for (size_t j = 0; j < profArr[i]["special_abilities"].size(); j++)
+                            p.special_abilities.push_back(profArr[i]["special_abilities"][j].asString());
+                    }
                     g_db.professions[p.string_id] = p;
                     g_db.profession_ids.push_back(p.string_id);
                 }
@@ -14880,6 +15066,55 @@ int main() {
                     if (vc.has("min_radius")) g_db.world_config.volcanoes.min_radius = vc["min_radius"].asInt();
                     if (vc.has("max_radius")) g_db.world_config.volcanoes.max_radius = vc["max_radius"].asInt();
                 }
+                // Stage 3c: location_size_thresholds from world_config
+                if (wc.has("location_size_thresholds") && wc["location_size_thresholds"].type == JsonValue::OBJECT) {
+                    for (const auto& [tk, tv] : wc["location_size_thresholds"].obj_val)
+                        g_db.world_config.location_size_thresholds[tk] = tv.asInt();
+                }
+            }
+
+            // Stage 1b: Load tag_defaults
+            if (command.has("tag_defaults") && command["tag_defaults"].type == JsonValue::OBJECT) {
+                for (const auto& [tk, tv] : command["tag_defaults"].obj_val) {
+                    g_db.tag_defaults[tk] = tv.asString();
+                }
+            }
+
+            // Stage 8b: Load container_types
+            g_db.container_types.clear();
+            if (command.has("container_types") && command["container_types"].type == JsonValue::OBJECT) {
+                for (const auto& [ck, cv] : command["container_types"].obj_val) {
+                    ContainerTypeDef ct;
+                    ct.is_locked = cv.has("is_locked") ? cv["is_locked"].asBool() : false;
+                    ct.decay_on_empty = cv.has("decay_on_empty") ? cv["decay_on_empty"].asBool() : false;
+                    ct.category = cv.has("category") ? cv["category"].asString() : "";
+                    ct.special_logic = cv.has("special_logic") ? cv["special_logic"].asString() : "";
+                    ct.health = cv.has("health") ? cv["health"].asInt() : 200;
+                    ct.lock_difficulty = cv.has("lock_difficulty") ? cv["lock_difficulty"].asInt() : 10;
+                    ct.flammable = cv.has("flammable") ? cv["flammable"].asBool() : true;
+                    ct.capacity = cv.has("capacity") ? cv["capacity"].asInt() : 100;
+                    ct.max_weight = cv.has("max_weight") ? cv["max_weight"].asInt() : 999999;
+                    ct.spell_required = cv.has("spell_required") ? cv["spell_required"].asString() : "";
+                    g_db.container_types[ck] = ct;
+                }
+            }
+
+            // Stage 5b: Load diplomacy types, casus_belli, ship_types
+            // (These are loaded as string IDs for data-driven comparisons alongside existing enums)
+            g_db.diplo_state_ids.clear();
+            if (command.has("diplomacy_states") && command["diplomacy_states"].type == JsonValue::ARRAY) {
+                for (size_t i = 0; i < command["diplomacy_states"].size(); i++)
+                    g_db.diplo_state_ids.push_back(command["diplomacy_states"][i].asString());
+            }
+            g_db.casus_belli_ids.clear();
+            if (command.has("casus_belli") && command["casus_belli"].type == JsonValue::ARRAY) {
+                for (size_t i = 0; i < command["casus_belli"].size(); i++)
+                    g_db.casus_belli_ids.push_back(command["casus_belli"][i].asString());
+            }
+            g_db.ship_type_ids.clear();
+            if (command.has("ship_types") && command["ship_types"].type == JsonValue::ARRAY) {
+                for (size_t i = 0; i < command["ship_types"].size(); i++)
+                    g_db.ship_type_ids.push_back(command["ship_types"][i].asString());
             }
 
             response.set("status", "ok");
@@ -14887,7 +15122,7 @@ int main() {
         }
         else if (cmd == "buildWorld") {
             std::string playerId = command["player_id"].asString();
-            std::string era = command.has("era") ? command["era"].asString() : "rebirth";
+            std::string era = command.has("era") ? command["era"].asString() : ""; // Stage 13: let buildWorld decide default
             int initialAgents = command.has("initial_agents") ? command["initial_agents"].asInt() : 100;
             JsonValue globalLocs = command.has("global_locations") ? command["global_locations"] : JsonValue::object();
             int startDay = command.has("start_day") ? command["start_day"].asInt() : 0;

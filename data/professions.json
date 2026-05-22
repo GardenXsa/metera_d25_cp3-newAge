@@ -4,93 +4,243 @@
     "name": "Кузнец",
     "profession_type": "artisan",
     "tool_tag": "hammer",
-    "tool_chance": 5
+    "tool_chance": 5,
+    "production_type": "crafts",
+    "demand_pattern": { "base_demand": 8 },
+    "job_multiplier": 1.0,
+    "special_abilities": ["crafting", "metalwork"],
+    "display_name_i18n_key": "professions.blacksmith"
   },
   {
     "id": "farmer",
     "name": "Фермер",
     "profession_type": "farmer",
     "tool_tag": "sickle",
-    "tool_chance": 5
+    "tool_chance": 5,
+    "production_type": "food",
+    "demand_pattern": { "base_race": 1 },
+    "job_multiplier": 1.2,
+    "special_abilities": ["farming", "food_production"],
+    "display_name_i18n_key": "professions.farmer"
   },
   {
     "id": "guard",
     "name": "Стражник",
-    "profession_type": "mercenary"
+    "profession_type": "mercenary",
+    "production_type": "military",
+    "demand_pattern": { "per_population": 2 },
+    "job_multiplier": 1.0,
+    "special_abilities": ["combat_hire", "guard"],
+    "display_name_i18n_key": "professions.guard"
   },
   {
     "id": "merchant",
     "name": "Торговец",
-    "profession_type": "merchant"
+    "profession_type": "merchant",
+    "production_type": "trade",
+    "demand_pattern": { "per_population": 2 },
+    "job_multiplier": 1.0,
+    "special_abilities": ["trading"],
+    "display_name_i18n_key": "professions.merchant"
   },
   {
     "id": "mage",
     "name": "Маг",
-    "profession_type": "mage"
+    "profession_type": "mage",
+    "production_type": "services",
+    "demand_pattern": { "per_population": 1 },
+    "job_multiplier": 0.8,
+    "special_abilities": ["spellcasting", "healing", "mana_channel"],
+    "display_name_i18n_key": "professions.mage"
   },
   {
     "id": "innkeeper",
     "name": "Трактирщик",
-    "profession_type": "innkeeper"
+    "profession_type": "innkeeper",
+    "production_type": "services",
+    "demand_pattern": { "per_population": 2 },
+    "job_multiplier": 1.0,
+    "special_abilities": ["hospitality"],
+    "display_name_i18n_key": "professions.innkeeper"
+  },
+  {
+    "id": "cleric",
+    "name": "Священник",
+    "profession_type": "cleric",
+    "production_type": "services",
+    "demand_pattern": { "per_population": 1 },
+    "job_multiplier": 1.0,
+    "special_abilities": ["religious", "healing"],
+    "display_name_i18n_key": "professions.cleric"
   },
   {
     "id": "courier",
     "name": "Курьер",
-    "profession_type": "farmer"
+    "profession_type": "farmer",
+    "production_type": "food",
+    "demand_pattern": { "base_demand": 5 },
+    "job_multiplier": 0.8,
+    "special_abilities": ["farming", "delivery"],
+    "display_name_i18n_key": "professions.courier"
   },
   {
     "id": "clerk",
     "name": "Клерк",
-    "profession_type": "farmer"
+    "profession_type": "farmer",
+    "production_type": "food",
+    "demand_pattern": { "base_demand": 3 },
+    "job_multiplier": 0.8,
+    "special_abilities": ["farming", "administration"],
+    "display_name_i18n_key": "professions.clerk"
   },
   {
     "id": "weaver",
     "name": "Ткач",
-    "profession_type": "artisan"
+    "profession_type": "artisan",
+    "production_type": "crafts",
+    "demand_pattern": { "base_demand": 6 },
+    "job_multiplier": 1.0,
+    "special_abilities": ["crafting", "weaving"],
+    "display_name_i18n_key": "professions.weaver"
   },
   {
     "id": "baker",
     "name": "Пекарь",
-    "profession_type": "artisan"
+    "profession_type": "artisan",
+    "production_type": "crafts",
+    "demand_pattern": { "base_demand": 7 },
+    "job_multiplier": 1.0,
+    "special_abilities": ["crafting", "baking"],
+    "display_name_i18n_key": "professions.baker"
   },
   {
     "id": "jeweler",
     "name": "Ювелир",
-    "profession_type": "artisan"
+    "profession_type": "artisan",
+    "production_type": "crafts",
+    "demand_pattern": { "base_demand": 4 },
+    "job_multiplier": 1.0,
+    "special_abilities": ["crafting", "jewelry"],
+    "display_name_i18n_key": "professions.jeweler"
   },
   {
     "id": "astronomer",
     "name": "Астроном",
-    "profession_type": "gatherer"
+    "profession_type": "gatherer",
+    "production_type": "raw",
+    "demand_pattern": { "base_demand": 3 },
+    "job_multiplier": 0.8,
+    "special_abilities": ["gathering", "research"],
+    "display_name_i18n_key": "professions.astronomer"
   },
   {
     "id": "hunter",
     "name": "Охотник",
-    "profession_type": "farmer"
+    "profession_type": "farmer",
+    "production_type": "food",
+    "demand_pattern": { "base_demand": 8 },
+    "job_multiplier": 0.9,
+    "special_abilities": ["farming", "hunting"],
+    "display_name_i18n_key": "professions.hunter"
   },
   {
     "id": "beekeeper",
     "name": "Пчеловод",
-    "profession_type": "farmer"
+    "profession_type": "farmer",
+    "production_type": "food",
+    "demand_pattern": { "base_demand": 5 },
+    "job_multiplier": 0.9,
+    "special_abilities": ["farming", "apiculture"],
+    "display_name_i18n_key": "professions.beekeeper"
   },
   {
     "id": "shipwright",
     "name": "Корабел",
-    "profession_type": "shipwright"
+    "profession_type": "shipwright",
+    "production_type": "crafts",
+    "demand_pattern": { "base_demand": 3 },
+    "job_multiplier": 1.0,
+    "special_abilities": ["crafting", "seafaring", "shipbuilding"],
+    "display_name_i18n_key": "professions.shipwright"
   },
   {
     "id": "fisherman",
     "name": "Рыбак",
-    "profession_type": "fisherman"
+    "profession_type": "fisherman",
+    "production_type": "food",
+    "demand_pattern": { "base_demand": 10 },
+    "job_multiplier": 1.0,
+    "special_abilities": ["farming", "fishing", "seafaring"],
+    "display_name_i18n_key": "professions.fisherman"
   },
   {
     "id": "sailor",
     "name": "Матрос",
-    "profession_type": "sailor"
+    "profession_type": "sailor",
+    "production_type": "transport",
+    "demand_pattern": { "base_demand": 6 },
+    "job_multiplier": 1.0,
+    "special_abilities": ["seafaring"],
+    "display_name_i18n_key": "professions.sailor"
   },
   {
     "id": "pirate",
     "name": "Пират",
-    "profession_type": "pirate"
+    "profession_type": "pirate",
+    "production_type": "military",
+    "demand_pattern": { "base_demand": 2 },
+    "job_multiplier": 0.5,
+    "special_abilities": ["combat_hire", "seafaring", "raiding"],
+    "display_name_i18n_key": "professions.pirate"
+  },
+  {
+    "id": "gatherer",
+    "name": "Собиратель",
+    "profession_type": "gatherer",
+    "production_type": "raw",
+    "demand_pattern": { "base_demand": 20 },
+    "job_multiplier": 1.0,
+    "special_abilities": ["gathering"],
+    "display_name_i18n_key": "professions.gatherer"
+  },
+  {
+    "id": "mercenary",
+    "name": "Наемник",
+    "profession_type": "mercenary",
+    "production_type": "military",
+    "demand_pattern": { "base_demand": 4 },
+    "job_multiplier": 1.0,
+    "special_abilities": ["combat_hire"],
+    "display_name_i18n_key": "professions.mercenary"
+  },
+  {
+    "id": "admiral",
+    "name": "Адмирал",
+    "profession_type": "admiral",
+    "production_type": "military",
+    "demand_pattern": { "base_demand": 1 },
+    "job_multiplier": 1.0,
+    "special_abilities": ["military_command", "seafaring"],
+    "display_name_i18n_key": "professions.admiral"
+  },
+  {
+    "id": "general",
+    "name": "Генерал",
+    "profession_type": "general",
+    "production_type": "military",
+    "demand_pattern": { "base_demand": 1 },
+    "job_multiplier": 1.0,
+    "special_abilities": ["military_command"],
+    "display_name_i18n_key": "professions.general"
+  },
+  {
+    "id": "commander",
+    "name": "Командир",
+    "profession_type": "commander",
+    "production_type": "military",
+    "demand_pattern": { "base_demand": 1 },
+    "job_multiplier": 1.0,
+    "special_abilities": ["military_command"],
+    "display_name_i18n_key": "professions.commander"
   }
 ]

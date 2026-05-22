@@ -1594,5 +1594,97 @@
     "cart": "Cart",
     "wagon": "Wagon",
     "ship": "Ship"
+  },
+  "weather": {
+    "clear": "Clear",
+    "cloudy": "Cloudy",
+    "heat": "Heat",
+    "snow": "Snow",
+    "snowfall": "Snowfall",
+    "blizzard": "Blizzard",
+    "rain": "Rain",
+    "tropical_rain": "Tropical Rain",
+    "aether_storm": "Aether Storm",
+    "thunderstorm": "Thunderstorm",
+    "fog": "Fog",
+    "heavy_snow": "Heavy Snow",
+    "heatwave": "Heatwave"
+  },
+  "time": {
+    "night": "Night",
+    "morning": "Morning",
+    "day": "Day",
+    "evening": "Evening"
+  },
+  "months": {
+    "morningStar": "Morning Star",
+    "iceBreak": "Ice Break",
+    "windBlow": "Wind Blow",
+    "blossom": "Blossom",
+    "solstice": "Solstice",
+    "heatMonth": "Heat Month",
+    "harvest": "Harvest",
+    "leafFall": "Leaf Fall",
+    "chill": "Chill",
+    "deadMoon": "Dead Moon",
+    "darkFrontier": "Dark Frontier",
+    "yearEnd": "Year End"
+  },
+  "map": {
+    "road": "Road",
+    "city": "City",
+    "village": "Village",
+    "ruins": "Ruins",
+    "fort": "Fort",
+    "camp": "Camp",
+    "anomaly": "Anomaly",
+    "observatory": "Observatory",
+    "mountain": "Mountain"
+  },
+  "news": {
+    "war": "War",
+    "disaster": "Disaster",
+    "economy": "Economy",
+    "business": "Business",
+    "market": "Market",
+    "logistics": "Logistics",
+    "politics": "Politics"
+  },
+  "diplomacy": {
+    "states": {
+      "peace": "Peace",
+      "nonAggressionPact": "Non-Aggression Pact",
+      "defensiveAlliance": "Defensive Alliance",
+      "fullAlliance": "Full Alliance",
+      "coldWar": "Cold War",
+      "borderConflict": "Border Conflict",
+      "limitedWar": "Limited War",
+      "totalWar": "Total War"
+    },
+    "casusBelli": {
+      "none": "None",
+      "borderIncident": "Border Incident",
+      "reclaimCores": "Reclaim Cores",
+      "humanitarian": "Humanitarian Intervention",
+      "preemptive": "Preemptive Strike",
+      "imperialism": "Imperialism"
+    }
+  },
+  "ships": {
+    "types": {
+      "merchant": "Merchant Ship",
+      "transport": "Transport",
+      "warGalley": "War Galley",
+      "warFrigate": "War Frigate",
+      "explorer": "Explorer Vessel",
+      "pirate": "Pirate Ship",
+      "seaMonster": "Sea Monster"
+    },
+    "portTypes": {
+      "none": "No Port",
+      "fishing": "Fishing Port",
+      "trade": "Trade Port",
+      "military": "Military Port"
+    }
   }
 }

@@ -56,6 +56,77 @@ const GameRNG = {
 };
 
 // ======================================================================
+// --- DATA-DRIVEN HELPER FUNCTIONS ---
+// ======================================================================
+
+function isCurrency(item) {
+    if (!item) return false;
+    const proto = (typeof gamedata !== 'undefined' && gamedata.items) ? gamedata.items[item.prototype_id] : null;
+    return (item.prototype_id === 'gold' || item.prototype_id === 'gold_ingot' || item.custom_props?.aiIdentifier === 'gold' || (proto && proto.tags && proto.tags.includes('currency')));
+}
+
+function isLockpick(item) {
+    if (!item) return false;
+    const proto = (typeof gamedata !== 'undefined' && gamedata.items) ? gamedata.items[item.prototype_id] : null;
+    return item.prototype_id === 'lockpicks_common' || (proto && proto.tags && proto.tags.includes('lockpick'));
+}
+
+function isBuildingMaterial(item) {
+    if (!item) return false;
+    const proto = (typeof gamedata !== 'undefined' && gamedata.items) ? gamedata.items[item.prototype_id] : null;
+    return item.prototype_id === 'wood' || (proto && proto.tags && (proto.tags.includes('wood') || proto.tags.includes('building')));
+}
+
+function getContainerDef(type) {
+    if (typeof gamedata !== 'undefined' && gamedata.container_types && gamedata.container_types[type]) {
+        return gamedata.container_types[type];
+    }
+    return null;
+}
+
+function classHasAbility(classId, ability) {
+    if (window.gamedata?.classes) {
+        const classDef = window.gamedata.classes.find(c => c.id === classId);
+        return classDef?.special_abilities?.includes(ability) || false;
+    }
+    // Fallback
+    return classId === 'mage' && ability === 'spellcasting';
+}
+
+function getTimeOfDay(hour) {
+    if (window.gamedata?.world_config?.time_periods) {
+        for (const period of window.gamedata.world_config.time_periods) {
+            if (period.start_hour > period.end_hour) {
+                if (hour >= period.start_hour || hour < period.end_hour) return t(period.name_i18n_key);
+            } else {
+                if (hour >= period.start_hour && hour < period.end_hour) return t(period.name_i18n_key);
+            }
+        }
+    }
+    // Fallback
+    if (hour >= 22 || hour < 6) return t('time.night') || "Ночь";
+    if (hour >= 6 && hour < 10) return t('time.morning') || "Утро";
+    if (hour >= 18 && hour < 22) return t('time.evening') || "Вечер";
+    return t('time.day') || "День";
+}
+
+function getNewsCategoryDef(categoryId) {
+    if (window.gamedata?.news_categories) {
+        return window.gamedata.news_categories.find(c => c.id === categoryId);
+    }
+    return null;
+}
+
+function getBuildingTypeDef(type) {
+    if (window.gamedata?.building_types && window.gamedata.building_types[type]) {
+        return window.gamedata.building_types[type];
+    }
+    return null;
+}
+
+const FANTASY_MONTHS = window.gamedata?.world_config?.months?.map(m => m.name_i18n_key ? t(m.name_i18n_key) : m.id) || ["Утренней Звезды", "Ледолома", "Ветровея", "Цветеня", "Солнцеворота", "Знойника", "Жатвеня", "Листопада", "Хладника", "Мертвой Луны", "Темного Рубежа", "Конца Года"];
+
+// ======================================================================
 // --- CORE INVENTORY & CONTAINER SYSTEM (T3) ---
 // ======================================================================
 
@@ -141,7 +212,8 @@ async function ensurePlayerContainers() {
     const needsBackpack = !player.container_backpack || !ContainerRegistry.has(player.container_backpack);
     if (needsBackpack) {
         console.warn("[Inventory] Рюкзак игрока отсутствует или не в реестре. Пересоздаём...");
-        player.container_backpack = await CoreInventorySystemAsync.createContainer("player_backpack", "player", 100, 30);
+        const backpackDef = getContainerDef('player_backpack');
+        player.container_backpack = await CoreInventorySystemAsync.createContainer("player_backpack", "player", backpackDef?.capacity || 100, backpackDef?.max_weight || 30);
         // Экстренный fallback, если IPC+fallback оба не сработали
         if (!player.container_backpack || !ContainerRegistry.has(player.container_backpack)) {
             player.container_backpack = OldCoreInventorySystem.createContainer("player_backpack", "player", 100, 30);
@@ -153,7 +225,8 @@ async function ensurePlayerContainers() {
     const needsEquipment = !player.container_equipment || !ContainerRegistry.has(player.container_equipment);
     if (needsEquipment) {
         console.warn("[Inventory] Контейнер экипировки отсутствует или не в реестре. Пересоздаём...");
-        player.container_equipment = await CoreInventorySystemAsync.createContainer("player_equipment", "player", 50, 10);
+        const equipDef = getContainerDef('player_equipment');
+        player.container_equipment = await CoreInventorySystemAsync.createContainer("player_equipment", "player", equipDef?.capacity || 50, equipDef?.max_weight || 10);
         // Экстренный fallback
         if (!player.container_equipment || !ContainerRegistry.has(player.container_equipment)) {
             player.container_equipment = OldCoreInventorySystem.createContainer("player_equipment", "player", 50, 10);
@@ -211,9 +284,7 @@ function getGoldAmountInContainer(containerId) {
     const physicalGold = getContainerItems(cont).reduce((sum, itemId) => {
         const item = ItemRegistry.get(itemId);
         if (!item) return sum;
-        const proto = (typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[item.prototype_id] : null;
-        const isCurrency = item.prototype_id === 'gold' || item.prototype_id === 'gold_ingot' || item.custom_props?.aiIdentifier === 'gold' || (proto && proto.tags && proto.tags.includes('currency'));
-        return sum + (isCurrency ? item.stack_size : 0);
+        return sum + (isCurrency(item) ? item.stack_size : 0);
     }, 0);
     const npcAccountGold = World?.npcs?.[cont.owner_id]?.inventory?.gold || 0;
     return physicalGold + npcAccountGold;
@@ -225,9 +296,7 @@ function syncPlayerGoldFromInventory() {
     const totalGold = getContainerItems(backpack).reduce((sum, itemId) => {
         const item = ItemRegistry.get(itemId);
         if (!item) return sum;
-        const proto = (typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[item.prototype_id] : null;
-        const isCurrency = item.prototype_id === 'gold' || item.prototype_id === 'gold_ingot' || item.custom_props?.aiIdentifier === 'gold' || (proto && proto.tags && proto.tags.includes('currency'));
-        return sum + (isCurrency ? item.stack_size : 0);
+        return sum + (isCurrency(item) ? item.stack_size : 0);
     }, 0);
     player.stats.gold = totalGold;
     return totalGold;
@@ -258,12 +327,8 @@ function availableManpower(faction) {
     if (!faction || typeof World === 'undefined' || !World) return 0;
     let total = 0;
     
-    let foodIds = ['bread', 'meat', 'smoked_meat'];
-    let weaponIds = ['weapons'];
-    if (typeof ECONOMY_ITEMS !== 'undefined') {
-        foodIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('food'));
-        weaponIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('weapon'));
-    }
+    let foodIds = (typeof ECONOMY_ITEMS !== 'undefined') ? Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('food')) : ['bread', 'meat', 'smoked_meat'];
+    let weaponIds = (typeof ECONOMY_ITEMS !== 'undefined') ? Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('weapon')) : ['weapons'];
     
     for (let rid of faction.regions || []) {
         const region = World.regions[rid];
@@ -362,7 +427,7 @@ const OldCoreInventorySystem = {
             owner_id: ownerId,
             location: normalizeContainerLocation(defaultLocation),
             lock_data: { is_locked: false, difficulty: 10, trap: null, ...(extraData.lock_data || {}) },
-            physical_props: { health: 200, flammable: type !== 'faction_vault', ...(extraData.physical_props || {}) },
+            physical_props: { health: 200, flammable: getContainerDef(type)?.category !== 'faction', ...(extraData.physical_props || {}) },
             custom_props: { ...(extraData.custom_props || {}) },
             items: []
         };
@@ -374,7 +439,8 @@ const OldCoreInventorySystem = {
         const resolvedContainerId = resolveSpecialContainerId(containerId);
         const id = "item_" + generateUUID();
         let baseWeight = proto ? (proto.weight || 1) : 1;
-        if (prototypeId === 'gold') baseWeight = 0.01;
+        const protoDef = (typeof gamedata !== 'undefined' && gamedata.items) ? gamedata.items[prototypeId] : null;
+        if (prototypeId === 'gold' || (protoDef && protoDef.tags && protoDef.tags.includes('currency'))) baseWeight = protoDef?.weight || 0.01;
 
         const reservedKeys = new Set(['flags', 'durability', 'slot_index', 'slot', 'state', 'created_at', 'last_moved_at']);
         const mergedCustomProps = {};
@@ -521,7 +587,7 @@ const OldCoreInventorySystem = {
             movingItem.flags.stolen = true;
         }
 
-        if (sourceContainer.type === 'faction_vault' && sourceContainer.owner_id !== targetContainer.owner_id) {
+        if (getContainerDef(sourceContainer.type)?.category === 'faction' && sourceContainer.owner_id !== targetContainer.owner_id) {
             const regionId = resolveContainerLocation(sourceContainer.id)?.region_id;
             if (regionId && typeof World !== 'undefined' && World?.regions?.[regionId]?.resources?.[movingItem.prototype_id]) {
                 const regionResource = World.regions[regionId].resources[movingItem.prototype_id];
@@ -530,7 +596,7 @@ const OldCoreInventorySystem = {
         }
 
         movingItem.last_moved_at = player ? player.stats.turnCount : 0;
-        if (player && (movingItem.prototype_id === 'gold' || item.prototype_id === 'gold')) syncPlayerGoldFromInventory();
+        if (player && (isCurrency(movingItem) || isCurrency(item))) syncPlayerGoldFromInventory();
 
         return { success: true, movedItemId: movingItem.id, createdItemId, targetContainerId: actualTargetId, sourceContainerId: resolvedSourceId };
     },
@@ -559,9 +625,7 @@ const OldCoreInventorySystem = {
     removeItem: function(itemId, quantity) {
         if (!ItemRegistry.has(itemId)) return false;
         const item = ItemRegistry.get(itemId);
-        const proto = (typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[item.prototype_id] : null;
-        const isCurrency = item.prototype_id === 'gold' || item.prototype_id === 'gold_ingot' || item.custom_props?.aiIdentifier === 'gold' || (proto && proto.tags && proto.tags.includes('currency'));
-        const shouldSyncGold = isCurrency && item.container_id === player?.container_backpack;
+        const shouldSyncGold = isCurrency(item) && item.container_id === player?.container_backpack;
         if (item.stack_size <= quantity) {
             if (item.container_id && ContainerRegistry.has(item.container_id)) {
                 const cont = ContainerRegistry.get(item.container_id);
@@ -602,9 +666,7 @@ const OldCoreInventorySystem = {
         const actorCont = ContainerRegistry.get(actorContId);
         const lockpickId = getContainerItems(actorCont).find(id => {
             const item = ItemRegistry.get(id);
-            if (!item) return false;
-            const proto = (typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[item.prototype_id] : null;
-            return item.prototype_id === 'lockpicks_common' || (proto && proto.tags && proto.tags.includes('lockpick'));
+            return isLockpick(item);
         });
         if (!lockpickId) return { success: false, error: "No lockpicks" };
         this.removeItem(lockpickId, 1);
@@ -639,9 +701,7 @@ const OldCoreInventorySystem = {
         const actorCont = ContainerRegistry.get(actorContId);
         const woodId = getContainerItems(actorCont).find(id => {
             const item = ItemRegistry.get(id);
-            if (!item) return false;
-            const proto = (typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[item.prototype_id] : null;
-            return item.prototype_id === 'wood' || (proto && proto.tags && (proto.tags.includes('wood') || proto.tags.includes('building')));
+            return isBuildingMaterial(item);
         });
         const woodItem = woodId ? ItemRegistry.get(woodId) : null;
         if (!woodItem || woodItem.stack_size < 5) return null;
@@ -876,9 +936,7 @@ const CoreInventorySystemAsync = {
     },
     removeItem: async function(itemId, quantity) {
         const item = ItemRegistry.get(itemId);
-        const proto = (item && typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[item.prototype_id] : null;
-        const isCurrency = item && (item.prototype_id === 'gold' || item.prototype_id === 'gold_ingot' || item.custom_props?.aiIdentifier === 'gold' || (proto && proto.tags && proto.tags.includes('currency')));
-        const shouldSyncGold = isCurrency && item.container_id === player?.container_backpack;
+        const shouldSyncGold = isCurrency(item) && item.container_id === player?.container_backpack;
         const res = await sendInventoryCommand('removeItem', { itemId, quantity });
         if (shouldSyncGold) syncPlayerGoldFromInventory();
         return res.success;
@@ -901,9 +959,7 @@ const CoreInventorySystemAsync = {
         const actorCont = ContainerRegistry.get(actorContId);
         const lockpickId = getContainerItems(actorCont).find(id => {
             const item = ItemRegistry.get(id);
-            if (!item) return false;
-            const proto = (typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[item.prototype_id] : null;
-            return item.prototype_id === 'lockpicks_common' || (proto && proto.tags && proto.tags.includes('lockpick'));
+            return isLockpick(item);
         });
         if (!lockpickId) return { success: false, error: "No lockpicks" };
         await this.removeItem(lockpickId, 1);
@@ -944,9 +1000,7 @@ const CoreInventorySystemAsync = {
         const actorCont = ContainerRegistry.get(actorContId);
         const woodId = getContainerItems(actorCont).find(id => {
             const item = ItemRegistry.get(id);
-            if (!item) return false;
-            const proto = (typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[item.prototype_id] : null;
-            return item.prototype_id === 'wood' || (proto && proto.tags && (proto.tags.includes('wood') || proto.tags.includes('building')));
+            return isBuildingMaterial(item);
         });
         const woodItem = woodId ? ItemRegistry.get(woodId) : null;
         if (!woodItem || woodItem.stack_size < 5) return null;
@@ -1321,8 +1375,7 @@ const TradeSystemAsync = {
 
         const physicalGoldItems = [...getContainerItems(targetContainer)].filter(itemId => {
             const it = ItemRegistry.get(itemId);
-            const proto = (it && typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[it.prototype_id] : null;
-            return it && (it.prototype_id === 'gold' || it.prototype_id === 'gold_ingot' || it.custom_props?.aiIdentifier === 'gold' || (proto && proto.tags && proto.tags.includes('currency')));
+            return isCurrency(it);
         });
         for (const goldItemId of physicalGoldItems) {
             if (remaining <= 0) break;
@@ -2111,8 +2164,7 @@ const OldTradeSystem = {
             if (cont) {
                         getContainerItems(cont).forEach(itemId => {
             const it = ItemRegistry.get(itemId);
-            const proto = (it && typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[it.prototype_id] : null;
-            if (it && (it.prototype_id === 'gold' || it.prototype_id === 'gold_ingot' || it.custom_props?.aiIdentifier === 'gold' || (proto && proto.tags && proto.tags.includes('currency')))) itemIds.add(itemId);
+            if (isCurrency(it)) itemIds.add(itemId);
         });
             }
         });
@@ -2333,7 +2385,7 @@ const OldTradeSystem = {
 
         const physicalGoldItems = [...getContainerItems(targetContainer)].filter(itemId => {
             const it = ItemRegistry.get(itemId);
-            return it && (it.prototype_id === 'gold' || it.prototype_id === 'gold_ingot' || it.custom_props?.aiIdentifier === 'gold');
+            return isCurrency(it);
         });
         for (const goldItemId of physicalGoldItems) {
             if (remaining <= 0) break;
@@ -3266,8 +3318,7 @@ async function runWorldSimulationTick() {
             .join("\n");
         worldSummary += `\nХронология системных событий за этот период:\n${recentNews || "Нет свежих данных"}\n`;
 
-        const fantasyMonths = ["Утренней Звезды", "Ледолома", "Ветровея", "Цветеня", "Солнцеворота", "Знойника", "Жатвеня", "Листопада", "Хладника", "Мертвой Луны", "Темного Рубежа", "Конца Года"];
-        let currentDateStr = `${player.gameTime.day} ${fantasyMonths[player.gameTime.month - 1]}, ${player.gameTime.year} года`;
+        let currentDateStr = `${player.gameTime.day} ${FANTASY_MONTHS[player.gameTime.month - 1]}, ${player.gameTime.year} года`;
         
         const prompt = `### ДИРЕКТИВА: ДВИЖОК МИРА (WORLD SIMULATOR) v5.0\nТы — аналитический модуль. Твоя задача: написать историческую сводку ("Вести из Эфира") на основе СЫРЫХ ДАННЫХ.\n\n[СИСТЕМНОЕ ВРЕМЯ]:\n- Текущая дата: ${currentDateStr}\n- Времени прошло с прошлой сводки: ровно ${daysPassed} дней.\n\n${worldSummary}\n\nПРИКАЗЫ (ЛОГИКА И ФАКТЫ):\n1. Внимательно изучи "Хронологию системных событий". Обращай внимание на пометку "[X дн. назад]". Если осада началась 14 дней назад и длилась 4 дня, значит ОНА УЖЕ ЗАВЕРШИЛАСЬ. Не смей писать, что город "продержится еще 4 дня"!\n2. Сверься с "ТЕКУЩИМ СОСТОЯНИЕМ МИРА". Если в списке "Армий в походе СЕЙЧАС" у фракции 0 армий, значит в ДАННЫЙ МОМЕНТ она никого не осаждает и никуда не идет. Все её походы из Хронологии уже завершены, описывай их как прошлые события.\n3. Опиши события в прошедшем времени, как историк, подводящий итоги за ${daysPassed} дней. Оперируй только фактами из сводки, НЕ ВЫДУМЫВАЙ действия армий, если их нет в логах.\n4. Начни текст с четкого обозначения прошедшего времени (Например: "За минувшие ${daysPassed} дней...", "К ${currentDateStr} ситуация...").\n5. Твой ответ ДОЛЖЕН БЫТЬ СТРОГО ВАЛИДНЫМ JSON ОБЪЕКТОМ. Массив actions оставляй ПУСТЫМ [].\nФормат:\n{\n  "narrative": "Твоя точная и логичная хроника событий...",\n  "actions": []\n}`;
         
@@ -3415,10 +3466,7 @@ function toggleMapRenderer(useSprite) {
 // --- ПЕРЕМЕННЫЕ КАРТЫ ПЕРЕНЕСЕНЫ В Nexus Cartographer ---
 
 // Глобальные переменные для новой системы экипировки
-const bodySlots = [
-    'head', 'face', 'neck', 'shoulders', 'torso',
-    'right_hand', 'left_hand', 'legs', 'feet'
-];
+const bodySlots = window.gamedata?.equipment_slots || ['head', 'face', 'neck', 'shoulders', 'torso', 'right_hand', 'left_hand', 'legs', 'feet'];
 let equipmentElements = {}; // Будет заполнен в DOMContentLoaded
 const inventoryTabsContainer = document.querySelector('.inventory-tabs');
 
@@ -3426,6 +3474,7 @@ const inventoryTabsContainer = document.querySelector('.inventory-tabs');
 let currentInventoryFilter = 'all';
 
 // Словарь типов для локальной карты
+// TODO: Load from data/city_gen.json instead of hardcoding — deduplicate with ProtoSystem/СityGen/js/main.js
 const tileTypeDictionary = {
     d_wall: "Стена темницы", d_wall_moss: "Замшелая стена", d_wall_crack: "Треснувшая стена", d_wall_iron: "Железная перегородка", d_wall_bars: "Тюремная решетка", d_floor: "Пол подземелья", d_floor_blood: "Окровавленный пол", d_floor_grate: "Ржавая решетка в полу", d_door: "Укрепленная дверь", d_door_locked: "Запертая дверь", d_stairs_up: "Лестница наверх", d_stairs_down: "Лестница вниз", d_pillar: "Каменная колонна", d_barrel: "Бочка", d_crate: "Ящик", d_webs: "Паутина", d_spikes: "Ловушка с шипами", d_pit: "Глубокая яма", d_chains: "Цепи на стене", d_skeleton: "Скелет узника",
     c_wall_brick: "Кирпичная стена", c_wall_plank: "Стена из досок", c_wall_rich: "Обои с узором", c_floor_cobble: "Брусчатка", c_floor_wood: "Паркет", c_floor_carpet: "Красный ковер", c_door_front: "Входная дверь", c_door_rich: "Резная дверь", c_bed: "Кровать", c_bookshelf: "Книжный шкаф", c_wardrobe: "Шкаф", c_desk: "Письменный стол", c_chair: "Стул", c_fireplace: "Камин", c_anvil: "Наковальня", c_forge: "Горн", c_fountain: "Фонтан", c_statue: "Статуя героя", c_sign: "Вывеска", c_cart: "Повозка",
@@ -3604,9 +3653,9 @@ let eroticPreferences = {
 let backgroundChangeTimer = null;
 
 function handleQuickStart() {
-    const races = ['human', 'elf', 'dwarf'];
-    const classes = ['warrior', 'mage', 'rogue', 'bard'];
-    const eras = ['rebirth', 'architects', 'sundering', 'silence'];
+    const races = (window.gamedata?.races) ? Object.keys(window.gamedata.races) : ['human', 'elf', 'dwarf'];
+    const classes = (window.gamedata?.classes) ? window.gamedata.classes.map(c => c.id) : ['warrior', 'mage', 'rogue', 'bard'];
+    const eras = (window.gamedata?.eras) ? window.gamedata.eras.map(e => e.id) : ['rebirth', 'architects', 'sundering', 'silence'];
     const names = ['Странник', 'Наемник', 'Искатель', 'Тень', 'Вестник', 'Бродяга'];
 
     charRaceSelect.value = races[Math.floor(Math.random() * races.length)];
@@ -4194,13 +4243,13 @@ function buildFullPlayerSnapshot() {
             if (!containerLocation || !playerPhysicalLocation) return false;
             return checkDistance(playerPhysicalLocation, containerLocation);
         })
-        .filter(c => getContainerItems(c).length > 0 || c.type === 'faction_vault' || c.owner_id === 'player');
+        .filter(c => getContainerItems(c).length > 0 || getContainerDef(c.type)?.category === 'faction' || c.owner_id === 'player');
         
     filteredContainers.sort((a, b) => {
         if (a.owner_id === 'player' && b.owner_id !== 'player') return -1;
         if (b.owner_id === 'player' && a.owner_id !== 'player') return 1;
-        if (a.type === 'faction_vault' && b.type !== 'faction_vault') return -1;
-        if (b.type === 'faction_vault' && a.type !== 'faction_vault') return 1;
+        if (getContainerDef(a.type)?.category === 'faction' && getContainerDef(b.type)?.category !== 'faction') return -1;
+        if (getContainerDef(b.type)?.category === 'faction' && getContainerDef(a.type)?.category !== 'faction') return 1;
         return 0;
     });
 
@@ -4528,7 +4577,7 @@ function applyEffectAction(entity, effect, action) {
                 if (stat === 'hp') {
                     entity.stats.hp = Math.max(0, Math.min(entity.stats.hp, entity.stats.maxHp));
                 }
-                if (stat === 'mana' && entity.class === 'mage') {
+                if (stat === 'mana' && classHasAbility(entity.class, 'spellcasting')) {
                     entity.stats.mana = Math.max(0, Math.min(entity.stats.mana, entity.stats.maxMana));
                 }
 
@@ -7223,7 +7272,8 @@ async function loadGlobalLocations(worldId, langCode, eraId = 'rebirth') {
         return;
     }
 
-    const fileName = eraId === 'rebirth' ? 'locations_expanded.json' : `locations_${eraId}.json`;
+    const eraObj = window.gamedata?.eras?.find(e => e.id === eraId);
+    const fileName = eraObj?.default_location_file || (eraId === 'rebirth' ? 'locations_expanded.json' : `locations_${eraId}.json`);
     const filePath = `assets/lor/${worldId}/${langCode}/${fileName}`;
     console.log(`Попытка загрузить локации из: ${filePath}`);
 
@@ -8028,7 +8078,7 @@ async function finalizeCharacterCreation() {
             },
             currentCombat: { isActive: false, participants: [] },
             gameTime: { 
-                year: selectedEra === 'architects' ? 850 : (selectedEra === 'sundering' ? 1 : (selectedEra === 'silence' ? 215 : 1042)), 
+                year: (window.gamedata?.eras) ? (window.gamedata.eras.find(e => e.id === selectedEra)?.start_year || 1042) : (selectedEra === 'architects' ? 850 : (selectedEra === 'sundering' ? 1 : (selectedEra === 'silence' ? 215 : 1042))), 
                 month: Math.floor(Math.random() * 12) + 1, 
                 day: Math.floor(Math.random() * 28) + 1, 
                 hour: 8, minute: 0, totalPulses: 0 
@@ -8074,7 +8124,7 @@ gmNotes: { "Main_Plot": "Начало пути. Игрок появляется 
         tempPlayer.stats.hp = tempPlayer.stats.maxHp;
         tempPlayer.inventoryCapacity = 10 + Math.floor((tempPlayer.stats.str - 10) / 2);
 
-        if (tempPlayer.class === 'mage') {
+        if (classHasAbility(tempPlayer.class, 'spellcasting')) {
             tempPlayer.stats.maxMana = calculateMaxMana(tempPlayer.stats.int, tempPlayer.stats.level);
             tempPlayer.stats.mana = tempPlayer.stats.maxMana;
         } else {
@@ -8460,12 +8510,7 @@ function advanceTime(pulses) {
 function checkTimeTriggers(oldHour, newHour) {
     if (oldHour === newHour) return;
 
-    let timeOfDay = "День";
-    if (newHour >= 22 || newHour < 6) timeOfDay = "Ночь";
-    else if (newHour >= 6 && newHour < 10) timeOfDay = "Утро";
-    else if (newHour >= 18 && newHour < 22) timeOfDay = "Вечер";
-
-    player.timeOfDay = timeOfDay;
+    player.timeOfDay = getTimeOfDay(newHour);
 
     if (oldHour < 22 && newHour >= 22) {
         addLogMessage("На мир опускается ночь. Становится темнее и опаснее.", "system-message");
@@ -8493,8 +8538,7 @@ function updateTimeDisplay() {
         let hh = gt.hour < 10 ? '0' + gt.hour : gt.hour;
         let icon = (gt.hour >= 6 && gt.hour < 20) ? '☀️' : '🌙';
         
-        const fantasyMonths = ["Утренней Звезды", "Ледолома", "Ветровея", "Цветеня", "Солнцеворота", "Знойника", "Жатвеня", "Листопада", "Хладника", "Мертвой Луны", "Темного Рубежа", "Конца Года"];
-        let mName = fantasyMonths[gt.month - 1] || "Месяца";
+        let mName = FANTASY_MONTHS[gt.month - 1] || "Месяца";
         
         timeInfo.innerHTML = `${icon} ${gt.day} ${mName}, ${gt.year} г. | ${hh}:${mm}`;
     }
@@ -8515,35 +8559,25 @@ function calculateMaxHp(constitution) {
 }
 
 function getStartingInventory(playerClass) {
-    let startingItemConfig = {}; // itemAiIdentifier: quantity
+    // Data-driven: load from classes.json
+    if (window.gamedata?.classes) {
+        const classDef = window.gamedata.classes.find(c => c.id === playerClass);
+        if (classDef && classDef.starting_items) return classDef.starting_items;
+    }
+    // Fallback hardcoded
+    let startingItemConfig = {};
     switch (playerClass) {
         case 'warrior':
-            startingItemConfig = {
-                'sword_short_common': 1,
-                'shield_wooden_common': 1,
-                'potion_heal_small_common': 1
-            };
+            startingItemConfig = { 'sword_short_common': 1, 'shield_wooden_common': 1, 'potion_heal_small_common': 1 };
             break;
         case 'mage':
-            startingItemConfig = {
-                'staff_simple_common': 1,
-                'robe_novice_common': 1,
-                'mana_potion_small_common': 2
-            };
+            startingItemConfig = { 'staff_simple_common': 1, 'robe_novice_common': 1, 'mana_potion_small_common': 2 };
             break;
         case 'rogue':
-            startingItemConfig = {
-                'dagger_rusty_common': 2, // Changed from dagger_basic
-                'leather_armor_light_common': 1,
-                'lockpicks_common': 1 // Quantity 1 for a set
-            };
+            startingItemConfig = { 'dagger_rusty_common': 2, 'leather_armor_light_common': 1, 'lockpicks_common': 1 };
             break;
         case 'bard':
-            startingItemConfig = {
-                'lute_simple_common': 1,
-                'dagger_rusty_common': 1,
-                'colorful_clothes_common': 1
-            };
+            startingItemConfig = { 'lute_simple_common': 1, 'dagger_rusty_common': 1, 'colorful_clothes_common': 1 };
             break;
         default:
             return {};
@@ -8605,7 +8639,7 @@ function levelUp() {
         totalHpGainThisCycle += hpGainThisLevel;
         player.stats.hp = player.stats.maxHp; // Полное восстановление HP при уровне
 
-        if (player.class === 'mage') {
+        if (classHasAbility(player.class, 'spellcasting')) {
             player.stats.maxMana = calculateMaxMana(player.stats.int, player.stats.level);
             player.stats.mana = player.stats.maxMana; // Полное восстановление маны
         }
@@ -8657,7 +8691,7 @@ function handleStatIncrease(event) {
     if (statToIncrease === 'str') {
         player.inventoryCapacity = 10 + Math.floor((player.stats.str - 10) / 2);
     }
-    if (statToIncrease === 'int' && player.class === 'mage') {
+    if (statToIncrease === 'int' && classHasAbility(player.class, 'spellcasting')) {
         const oldMaxMana = player.stats.maxMana;
         player.stats.maxMana = calculateMaxMana(player.stats.int, player.stats.level);
         player.stats.mana = Math.min((player.stats.mana || 0) + (player.stats.maxMana - oldMaxMana), player.stats.maxMana);
@@ -9255,7 +9289,7 @@ function updateCharacterSheet() {
     // RPG Health Bar Update
     _updateHpBar(player.stats.hp, effectiveStats.maxHp);
 
-    if (player.class === 'mage') {
+    if (classHasAbility(player.class, 'spellcasting')) {
         document.getElementById('mana-stat-line').style.display = 'flex';
         if (manaDisplay) manaDisplay.textContent = player.stats.mana;
         if (maxManaDisplay) maxManaDisplay.textContent = effectiveStats.maxMana;
@@ -9783,13 +9817,21 @@ function renderChroniclePage(page) {
             let icon = '<i class="fas fa-newspaper"></i>';
             let catName = t('extraLoc.chronicles.rumor');
             let color = '#aeb6bf';
-            if (news.category === 'war') { icon = '<i class="fas fa-swords"></i>'; catName = t('extraLoc.chronicles.war'); color = '#e74c3c'; }
-            if (news.category === 'disaster') { icon = '<i class="fas fa-volcano"></i>'; catName = t('extraLoc.chronicles.disaster'); color = '#e67e22'; }
-            if (news.category === 'trade') { icon = '<i class="fas fa-coins"></i>'; catName = t('extraLoc.chronicles.economy'); color = '#f1c40f'; }
-            if (news.category === 'business') { icon = '<i class="fas fa-industry"></i>'; catName = t('extraLoc.chronicles.business'); color = '#9b59b6'; }
-            if (news.category === 'market') { icon = '<i class="fas fa-balance-scale"></i>'; catName = t('extraLoc.chronicles.market'); color = '#1abc9c'; }
-            if (news.category === 'logistics') { icon = '<i class="fas fa-box"></i>'; catName = t('extraLoc.chronicles.logistics'); color = '#34495e'; }
-            if (news.category === 'politics') { icon = '<i class="fas fa-landmark"></i>'; catName = t('extraLoc.chronicles.politics', null, 'Политика'); color = '#8e44ad'; }
+            const catDef = getNewsCategoryDef(news.category);
+            if (catDef) {
+                icon = `<i class="${catDef.icon}"></i>`;
+                catName = t(catDef.name_i18n_key);
+                color = catDef.color;
+            } else {
+                // fallback defaults
+                if (news.category === 'war') { icon = '<i class="fas fa-swords"></i>'; catName = t('extraLoc.chronicles.war'); color = '#e74c3c'; }
+                if (news.category === 'disaster') { icon = '<i class="fas fa-volcano"></i>'; catName = t('extraLoc.chronicles.disaster'); color = '#e67e22'; }
+                if (news.category === 'trade') { icon = '<i class="fas fa-coins"></i>'; catName = t('extraLoc.chronicles.economy'); color = '#f1c40f'; }
+                if (news.category === 'business') { icon = '<i class="fas fa-industry"></i>'; catName = t('extraLoc.chronicles.business'); color = '#9b59b6'; }
+                if (news.category === 'market') { icon = '<i class="fas fa-balance-scale"></i>'; catName = t('extraLoc.chronicles.market'); color = '#1abc9c'; }
+                if (news.category === 'logistics') { icon = '<i class="fas fa-box"></i>'; catName = t('extraLoc.chronicles.logistics'); color = '#34495e'; }
+                if (news.category === 'politics') { icon = '<i class="fas fa-landmark"></i>'; catName = t('extraLoc.chronicles.politics', null, 'Политика'); color = '#8e44ad'; }
+            }
 
             let causalHtml = '';
             if (news.causal_link) {
@@ -10040,9 +10082,10 @@ function updateEnvironmentPanel() {
             
             // === ДОБАВЛЕНО: Клик по торговцу открывает рынок ===
             const isMerchant = entity.type === 'npc' && entity.traits &&
-                ['merchant', 'trader', 'peddler', 'торговец', 'купец'].some(t =>
-                    entity.traits.some(trait => trait.toLowerCase().includes(t))
-                );
+                entity.traits.some(trait => {
+                    const traitDef = (typeof gamedata !== 'undefined' && gamedata.traits) ? gamedata.traits[trait] : null;
+                    return traitDef?.tags?.includes('merchant') || (trait.toLowerCase() === 'merchant' || trait.toLowerCase() === 'торговец' || trait.toLowerCase() === 'купец');
+                });
 
             if (isMerchant) {
                 li.style.cursor = 'pointer';
@@ -10170,7 +10213,9 @@ function showEntityTooltip(event) {
 
     let econHtml = '';
     if (data.profession_type && data.profession_type !== 'none') {
-        const profMap = { 'farmer': 'Крестьянин', 'artisan': 'Ремесленник', 'merchant': 'Купец', 'innkeeper': 'Трактирщик', 'ruler': 'Феодал', 'cleric': 'Священник', 'mage': 'Маг', 'mercenary': 'Наемник' };
+        const profMap = (window.gamedata?.professions) ?
+            Object.fromEntries(Object.entries(window.gamedata.professions).map(([k, v]) => [k, v.display_name_i18n_key ? t(v.display_name_i18n_key) : v.name])) :
+            { 'farmer': 'Крестьянин', 'artisan': 'Ремесленник', 'merchant': 'Купец', 'innkeeper': 'Трактирщик', 'ruler': 'Феодал', 'cleric': 'Священник', 'mage': 'Маг', 'mercenary': 'Наемник' };
         econHtml = `<p><strong style="color: #2ecc71;">Роль:</strong> <span style="color: #ecf0f1;">${profMap[data.profession_type] || data.profession_type}</span> | <strong style="color: #f1c40f;">Капитал:</strong> ${data.savings} з.</p>`;
     }
 
@@ -11618,7 +11663,10 @@ async function handleUserInput() {
         }
     }
 
-        let hasGuards = Object.values(player.visibleEntities).some(e => e.type === 'npc' && (e.profession?.toLowerCase().includes('страж') || (e.traits && e.traits.includes('Стражник'))));
+        let hasGuards = Object.values(player.visibleEntities).some(e => e.type === 'npc' && (e.profession?.toLowerCase().includes('страж') || (e.traits && e.traits.some(trait => {
+            const traitDef = (typeof gamedata !== 'undefined' && gamedata.traits) ? gamedata.traits[trait] : null;
+            return traitDef?.tags?.includes('guard') || trait === 'Стражник';
+        }))));
     if (hasGuards) {
         let bp = ContainerRegistry.get(player.container_backpack);
         let hasStolen = bp && getContainerItems(bp).some(id => ItemRegistry.get(id)?.flags?.stolen);
@@ -14550,7 +14598,7 @@ if (player.nexusData && player.nexusData[args.id]) {
                     const itemName = item.custom_props?.name || item.prototype_id;
                     feedback = `[ОБМЕН] Вы передали [${itemName} x${moveQty}] персонажу ${wNpc.name}.`;
                     
-                    if (item.prototype_id === 'gold' || item.prototype_id === 'gold_ingot' || item.custom_props?.aiIdentifier === 'gold') {
+                    if (isCurrency(item)) {
                         syncPlayerGoldFromInventory();
                         animateGoldChange(-moveQty);
                     }
@@ -15768,7 +15816,7 @@ function getEffectiveStats() {
 
 
     effectiveStats.maxHp = calculateMaxHp(effectiveStats.con) + bonuses['hp'];
-    if (player.class === 'mage') {
+    if (classHasAbility(player.class, 'spellcasting')) {
         effectiveStats.maxMana = calculateMaxMana(effectiveStats.int, player.stats.level) + bonuses['mana'];
     }
 
@@ -16495,7 +16543,7 @@ window.adminAddGold = function () {
 
 window.adminHeal = function () {
     executeCommand('updateStat', { stat: 'hp', change: 9999 });
-    if (player.class === 'mage') executeCommand('updateStat', { stat: 'mana', change: 9999 });
+    if (classHasAbility(player.class, 'spellcasting')) executeCommand('updateStat', { stat: 'mana', change: 9999 });
     populateAdminMenu();
 };
 
@@ -17034,6 +17082,12 @@ function updateWorldSimDebugDisplay() {
                         else if (block.type === 'market') ch = '<span style="color:#f1c40f">M</span>';
                         else if (block.type === 'office') ch = '<span style="color:#3498db">O</span>';
                         else if (block.type === 'temple') ch = '<span style="color:#9b59b6">+</span>';
+                        else {
+                            const btDef = getBuildingTypeDef(block.type);
+                            if (btDef) {
+                                ch = `<span style="color:${btDef.color}">${btDef.mini_char}</span>`;
+                            }
+                        }
                         rowStr += ch + ' ';
                     }
                     layoutHtml += rowStr + '<br>';
@@ -17365,7 +17419,7 @@ window.openBusinessModal = async function(bId) {
             let it = ItemRegistry.get(id);
             if (it) {
                 let w = it.custom_props?.weight_per_unit || 1;
-                if (it.prototype_id === 'gold') w = 0.01;
+                if (isCurrency(it)) w = 0.01;
                 currentWeight += w * it.stack_size;
             }
         });

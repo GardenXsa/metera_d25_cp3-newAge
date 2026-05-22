@@ -1,0 +1,22 @@
+{
+  "location_types": [
+    { "id": "road", "color": "#7d6b5d", "size": 3, "shape": "line", "name_i18n_key": "map.road" },
+    { "id": "city", "color": "#f1c40f", "size": 8, "shape": "rectangle", "name_i18n_key": "map.city" },
+    { "id": "village", "color": "#bdc3c7", "size": 5, "shape": "circle", "name_i18n_key": "map.village" },
+    { "id": "ruins", "color": "#7f8c8d", "size": 5, "shape": "diamond", "name_i18n_key": "map.ruins" },
+    { "id": "fort", "color": "#95a5a6", "size": 6, "shape": "square", "name_i18n_key": "map.fort" },
+    { "id": "camp", "color": "#d35400", "size": 4, "shape": "triangle", "name_i18n_key": "map.camp" },
+    { "id": "anomaly", "color": "#9b59b6", "size": 6, "shape": "diamond", "name_i18n_key": "map.anomaly" },
+    { "id": "observatory", "color": "#2980b9", "size": 5, "shape": "circle", "name_i18n_key": "map.observatory" },
+    { "id": "mountain", "color": "#95a5a6", "size": 7, "shape": "triangle", "name_i18n_key": "map.mountain" }
+  ],
+  "road_types": [
+    { "id": "bridge", "color": "#8b4513", "width": 4, "dash": [], "ruined_color": "#e74c3c", "ruined_dash": [5,5] },
+    { "id": "tunnel", "color": "#555555", "width": 3, "dash": [6,4], "ruined_color": "#e74c3c", "ruined_dash": [5,5] },
+    { "id": "ferry", "color": "#3498db", "width": 2, "dash": [4,4], "ruined_color": "#e74c3c", "ruined_dash": [5,5] },
+    { "id": "highway", "color": "#7f8c8d", "width": 3, "dash": [], "ruined_color": "#e74c3c", "ruined_dash": [5,5] },
+    { "id": "sea_route", "color": "#3498db", "width": 2, "dash": [8,4], "ruined_color": "#e74c3c", "ruined_dash": [5,5] },
+    { "id": "paved", "color": "#95a5a6", "width": 2, "dash": [], "ruined_color": "#e74c3c", "ruined_dash": [5,5] },
+    { "id": "dirt", "color": "#8b4513", "width": 2, "dash": [8,4], "ruined_color": "#e74c3c", "ruined_dash": [4,4] }
+  ]
+}

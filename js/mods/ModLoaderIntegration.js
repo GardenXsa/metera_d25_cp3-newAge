@@ -59,13 +59,13 @@ async function initModKit() {
         if (eraSelect) {
             Array.from(eraSelect.options).forEach(opt => {
                 // Оставляем только базовую эпоху (которую мод переименовывает)
-                if (['architects', 'sundering', 'silence'].includes(opt.value)) {
+                if (window.gamedata?.eras && !window.gamedata.eras.some(e => e.id === opt.value) && opt.value !== 'rebirth') {
                     opt.style.display = 'none';
                     opt.disabled = true;
                 }
             });
             // Если была выбрана скрытая эпоха, сбрасываем на базовую
-            if (['architects', 'sundering', 'silence'].includes(eraSelect.value)) {
+            if (window.gamedata?.eras && !window.gamedata.eras.some(e => e.id === eraSelect.value) && eraSelect.value !== 'rebirth') {
                 eraSelect.value = 'rebirth';
             }
             if (typeof updateEraDescription === 'function') updateEraDescription();
@@ -86,7 +86,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         if (typeof initModKit === 'function') await initModKit();
 
         const modLoader = new ModLoader();
-        let database = { items: {}, recipes: [], facilities: {}, biomes: [], city_gen: {}, monsters: [], disasters: [], races: [], professions: [], traits: [], npc_names: {}, faction_relations: {}, world_config: {} };
+        let database = { items: {}, recipes: [], facilities: {}, biomes: [], city_gen: {}, monsters: [], disasters: [], races: [], professions: [], traits: [], npc_names: {}, faction_relations: {}, world_config: {}, tag_defaults: {}, classes: [], eras: [], diplomacy: {}, casus_belli: {}, ship_types: {}, container_types: {}, map_markers: {}, equipment_slots: [], news_categories: [], building_types: {} };
         if (window.ModAPI && window.ModAPI.isTotalConversion) {
             console.log('[ModLoader] Тотальная конверсия: пропуск загрузки ванильной БД.');
         } else {
@@ -103,6 +103,17 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
             database.npc_names = await modLoader.readJsonFile('./data/npc_names.json');
             database.faction_relations = await modLoader.readJsonFile('./data/faction_relations.json');
             database.world_config = await modLoader.readJsonFile('./data/world_config.json');
+            database.tag_defaults = await modLoader.readJsonFile('./data/tag_defaults.json');
+            database.classes = await modLoader.readJsonFile('./data/classes.json');
+            database.eras = await modLoader.readJsonFile('./data/eras.json');
+            database.diplomacy = await modLoader.readJsonFile('./data/diplomacy.json');
+            database.casus_belli = await modLoader.readJsonFile('./data/casus_belli.json');
+            database.ship_types = await modLoader.readJsonFile('./data/ship_types.json');
+            database.container_types = await modLoader.readJsonFile('./data/container_types.json');
+            database.map_markers = await modLoader.readJsonFile('./data/map_markers.json');
+            database.equipment_slots = await modLoader.readJsonFile('./data/equipment_slots.json');
+            database.news_categories = await modLoader.readJsonFile('./data/news_categories.json');
+            database.building_types = await modLoader.readJsonFile('./data/building_types.json');
         }
         // --- END REFACTOR ---
 

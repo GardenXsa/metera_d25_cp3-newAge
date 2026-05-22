@@ -17,7 +17,8 @@ const POINTS_PER_LEVEL = 4;
 const SAVE_STORAGE_KEY = 'textRpgSaves_v3';
 const ECHO_MEMORY_MAX_ITEMS = 20;
 const ECHO_MEMORY_MAX_LENGTH = 200;
-const DEFAULT_WORLD_ID = 'world_metera';
+let DEFAULT_WORLD_ID = 'world_metera';
+// Will be overridden by mod.json if total_conversion is active
 const LANGUAGE_STORAGE_KEY = 'textRpgLang_v1';
 const DEFAULT_LANGUAGE = 'ru';
 const SOUND_FOLDER_PATH = "assets/sound/";
@@ -35,15 +36,15 @@ const BACKGROUND_CHANGE_INTERVAL = 3.5 * 60 * 1000; // 3.5 минуты
 
 // --- Data-driven: BASE_CLASS_STATS and RACE_MODIFIERS are now loaded from races.json ---
 // Hardcoded defaults remain as fallback; applyDatabaseStats() overwrites them at runtime.
-const BASE_CLASS_STATS = {
+let BASE_CLASS_STATS = {
     warrior: { str: 13, dex: 10, int: 8, con: 12, cha: 9, res: 12 },
-    mage: { str: 8, dex: 11, int: 13, con: 9, cha: 11, res: 8 },
-    rogue: { str: 10, dex: 13, int: 10, con: 10, cha: 9, res: 10 },
-    bard: { str: 9, dex: 12, int: 11, con: 9, cha: 12, res: 9 },
+    mage:    { str: 8,  dex: 11, int: 13, con: 9, cha: 11, res: 8 },
+    rogue:   { str: 10, dex: 13, int: 10, con: 10, cha: 9, res: 10 },
+    bard:    { str: 9,  dex: 12, int: 11, con: 9, cha: 12, res: 9 },
     default: { str: 10, dex: 10, int: 10, con: 10, cha: 10, res: 10 }
 };
 
-const RACE_MODIFIERS = {
+let RACE_MODIFIERS = {
     human: { str: 1, dex: 1, int: 1, con: 1, cha: 1 },
     elf: { str: 0, dex: 2, int: 1, con: 0, cha: 0 },
     dwarf: { str: 1, dex: 0, int: 0, con: 2, cha: 0 }

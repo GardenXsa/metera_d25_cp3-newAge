@@ -1,0 +1,12 @@
+{
+  "states": [
+    { "id": "peace", "name": "Мир", "level": 0, "allow_trade": true, "allow_passage": true, "name_i18n_key": "diplomacy.states.peace" },
+    { "id": "non_aggression_pact", "name": "Пакт о ненападении", "level": 1, "allow_trade": true, "allow_passage": true, "name_i18n_key": "diplomacy.states.nonAggressionPact" },
+    { "id": "defensive_alliance", "name": "Оборонительный союз", "level": 2, "allow_trade": true, "allow_passage": true, "name_i18n_key": "diplomacy.states.defensiveAlliance" },
+    { "id": "full_alliance", "name": "Полный союз", "level": 3, "allow_trade": true, "allow_passage": true, "name_i18n_key": "diplomacy.states.fullAlliance" },
+    { "id": "cold_war", "name": "Холодная война", "level": 4, "allow_trade": false, "allow_passage": false, "name_i18n_key": "diplomacy.states.coldWar" },
+    { "id": "border_conflict", "name": "Пограничный конфликт", "level": 5, "allow_trade": false, "allow_passage": false, "name_i18n_key": "diplomacy.states.borderConflict" },
+    { "id": "limited_war", "name": "Ограниченная война", "level": 6, "allow_trade": false, "allow_passage": false, "name_i18n_key": "diplomacy.states.limitedWar" },
+    { "id": "total_war", "name": "Тотальная война", "level": 7, "allow_trade": false, "allow_passage": false, "name_i18n_key": "diplomacy.states.totalWar" }
+  ]
+}

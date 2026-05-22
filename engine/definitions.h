@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 #include <unordered_map>
+#include <map>
 
 // 2.1. Реестр Биомов (Biome Registry)
 struct BiomeDef {
@@ -15,6 +16,7 @@ struct BiomeDef {
     bool is_impassable;
     std::string color_hex;
     std::vector<std::string> tags;
+    std::vector<std::string> resources;  // Data-driven: resources available in this biome
     
     // Generation rules (Perlin Noise)
     double min_elevation;
@@ -88,6 +90,12 @@ struct ProfessionDef {
     std::string profession_type;  // farmer, artisan, merchant, innkeeper, etc.
     std::string tool_tag;
     int tool_chance = 0;
+    // Data-driven fields (Stage 2)
+    std::string production_type;  // "food", "crafts", "military", "services", etc.
+    std::map<std::string, float> demand_pattern;  // "base", "per_population", "base_demand", "base_race"
+    float job_multiplier = 1.0f;
+    std::vector<std::string> special_abilities;  // "farming", "gathering", "crafting", "spellcasting", etc.
+    std::string display_name_i18n_key;
 };
 
 // 2.7. Реестр Черт Характера (Trait Registry)
@@ -114,4 +122,18 @@ struct FactionRelationsDef {
     std::unordered_map<std::string, std::string> faction_biome_preference;
     std::unordered_map<std::string, std::string> faction_corrupt_biome;
     std::unordered_map<std::string, std::vector<FactionRelationRule>> era_relations;
+};
+
+// Container Type Definition (Stage 8)
+struct ContainerTypeDef {
+    bool is_locked = false;
+    bool decay_on_empty = false;
+    std::string category;  // "faction", "personal", "ship_hold", etc.
+    std::string special_logic;
+    int health = 200;
+    int lock_difficulty = 10;
+    bool flammable = true;
+    int capacity = 100;
+    int max_weight = 999999;
+    std::string spell_required;
 };

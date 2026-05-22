@@ -1,3 +1,6 @@
+// typeDictionary: Shared tile type definitions.
+// TODO: This should be loaded from data/city_gen.json instead of being hardcoded here,
+// to deduplicate with the tileTypeDictionary in script.js.
 const typeDictionary = {
     void: "Неизведанная тьма", dirt: "Сырая земля", grass_dead: "Мертвая трава", mud: "Вязкая грязь", water_deep: "Глубокая темная вода", tree_dead: "Мертвое дерево", tree_pine_dark: "Мрачная сосна", bush_dry: "Колючий кустарник", stone_floor: "Каменный пол", wood_floor: "Сгнившие доски", wall_stone: "Каменная кладка", wall_cave: "Стена пещеры", wall_wood: "Деревянный частокол", door_wood: "Тяжелая дверь", campfire: "Костер", torch: "Настенный факел", chest: "Старый сундук", table: "Грубый стол", bones: "Останки", blood: "Запекшаяся кровь",
     d_wall: "Стена темницы", d_wall_moss: "Замшелая стена", d_wall_crack: "Треснувшая стена", d_wall_iron: "Железная перегородка", d_wall_bars: "Тюремная решетка", d_floor: "Пол подземелья", d_floor_blood: "Окровавленный пол", d_floor_grate: "Ржавая решетка в полу", d_door: "Укрепленная дверь", d_door_locked: "Запертая дверь", d_stairs_up: "Лестница наверх", d_stairs_down: "Лестница вниз", d_pillar: "Каменная колонна", d_barrel: "Бочка", d_crate: "Ящик", d_webs: "Паутина", d_spikes: "Ловушка с шипами", d_pit: "Глубокая яма", d_chains: "Цепи на стене", d_skeleton: "Скелет узника",

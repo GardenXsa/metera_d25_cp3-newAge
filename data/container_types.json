@@ -1,0 +1,23 @@
+{
+  "monster_lair": { "is_locked": false, "decay_on_empty": true, "category": "loot", "health": 200, "lock_difficulty": 10 },
+  "bandit_stash": { "is_locked": true, "decay_on_empty": true, "category": "loot", "health": 150, "lock_difficulty": 12 },
+  "caravan_chest": { "is_locked": true, "decay_on_empty": false, "category": "trade", "health": 250, "lock_difficulty": 14 },
+  "faction_vault": { "is_locked": true, "decay_on_empty": false, "category": "faction", "special_logic": "faction_access", "health": 400, "lock_difficulty": 16, "flammable": false },
+  "business_storage": { "is_locked": false, "decay_on_empty": false, "category": "economy", "health": 200, "lock_difficulty": 10 },
+  "army_supply_chest": { "is_locked": false, "decay_on_empty": false, "category": "military", "health": 300, "lock_difficulty": 10 },
+  "port_dock": { "is_locked": false, "decay_on_empty": false, "category": "trade", "health": 200, "lock_difficulty": 10 },
+  "ship_hold": { "is_locked": false, "decay_on_empty": false, "category": "transport", "health": 200, "lock_difficulty": 10 },
+  "npc_inventory": { "is_locked": false, "decay_on_empty": false, "category": "npc", "health": 100, "lock_difficulty": 5 },
+  "merchant_office": { "is_locked": true, "decay_on_empty": false, "category": "trade", "health": 200, "lock_difficulty": 12 },
+  "inbox": { "is_locked": false, "decay_on_empty": false, "category": "communication", "health": 100, "lock_difficulty": 5 },
+  "outbox": { "is_locked": false, "decay_on_empty": false, "category": "communication", "health": 100, "lock_difficulty": 5 },
+  "archive": { "is_locked": true, "decay_on_empty": false, "category": "communication", "health": 150, "lock_difficulty": 14 },
+  "safe": { "is_locked": true, "decay_on_empty": false, "category": "faction", "health": 350, "lock_difficulty": 16, "flammable": false },
+  "ruins_stash": { "is_locked": false, "decay_on_empty": true, "category": "loot", "health": 100, "lock_difficulty": 8 },
+  "player_backpack": { "is_locked": false, "decay_on_empty": false, "category": "player", "capacity": 100, "max_weight": 30, "health": 100, "lock_difficulty": 0 },
+  "player_equipment": { "is_locked": false, "decay_on_empty": false, "category": "player", "capacity": 50, "max_weight": 10, "health": 100, "lock_difficulty": 0 },
+  "magical_pocket": { "is_locked": false, "decay_on_empty": false, "category": "player", "spell_required": "spell_magical_pocket", "capacity": 500, "max_weight": 100, "health": 50, "lock_difficulty": 0 },
+  "ground_pile": { "is_locked": false, "decay_on_empty": true, "category": "world", "health": 50, "lock_difficulty": 0 },
+  "static_chest": { "is_locked": false, "decay_on_empty": false, "category": "world", "health": 200, "lock_difficulty": 8 },
+  "market_square": { "is_locked": false, "decay_on_empty": false, "category": "trade", "health": 200, "lock_difficulty": 10 }
+}

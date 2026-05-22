@@ -1899,7 +1899,7 @@ class ModLoader {
             // 2. Декларативная загрузка данных (опционально, если мод не использует скрипты)
             if (mod.data && isObject(mod.data)) {
                 window.ModAPI.on('onDatabaseLoad', async (db) => {
-                    const dataTypes = ['items', 'recipes', 'facilities', 'biomes', 'city_gen', 'monsters', 'disasters', 'races', 'professions', 'traits', 'npc_names', 'faction_relations', 'world_config'];
+                    const dataTypes = ['items', 'recipes', 'facilities', 'biomes', 'city_gen', 'monsters', 'disasters', 'races', 'professions', 'traits', 'npc_names', 'faction_relations', 'world_config', 'tag_defaults', 'classes', 'eras', 'diplomacy', 'casus_belli', 'ship_types', 'container_types', 'map_markers', 'equipment_slots', 'news_categories', 'building_types'];
                     for (const type of dataTypes) {
                         if (mod.data[type]) {
                             for (const file of mod.data[type]) {

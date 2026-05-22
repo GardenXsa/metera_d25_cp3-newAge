@@ -1,0 +1,9 @@
+[
+  { "id": "war", "icon": "fas fa-swords", "color": "#e74c3c", "name_i18n_key": "news.war" },
+  { "id": "disaster", "icon": "fas fa-volcano", "color": "#e67e22", "name_i18n_key": "news.disaster" },
+  { "id": "trade", "icon": "fas fa-coins", "color": "#f1c40f", "name_i18n_key": "news.economy" },
+  { "id": "business", "icon": "fas fa-industry", "color": "#9b59b6", "name_i18n_key": "news.business" },
+  { "id": "market", "icon": "fas fa-balance-scale", "color": "#1abc9c", "name_i18n_key": "news.market" },
+  { "id": "logistics", "icon": "fas fa-box", "color": "#34495e", "name_i18n_key": "news.logistics" },
+  { "id": "politics", "icon": "fas fa-landmark", "color": "#8e44ad", "name_i18n_key": "news.politics" }
+]

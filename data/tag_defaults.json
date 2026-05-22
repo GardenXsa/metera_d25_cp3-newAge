@@ -1,0 +1,22 @@
+{
+  "food": "bread",
+  "raw_food": "meat",
+  "currency": "gold_ingot",
+  "weapon": "weapons",
+  "wood": "wood",
+  "crop": "wheat",
+  "building": "boards",
+  "luxury": "jewelry",
+  "medical": "potions",
+  "vehicle": "wagon",
+  "metal_ingot": "iron_ingot",
+  "ore": "iron_ore",
+  "magic_raw": "monster_parts",
+  "armor": "armor",
+  "seafood": "fish",
+  "cloth": "cloth",
+  "stone": "stone",
+  "consumable": "bread",
+  "tool": "sickle",
+  "tax_goods_list": ["wheat", "meat"]
+}

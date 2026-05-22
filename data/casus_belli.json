@@ -1,0 +1,10 @@
+{
+  "types": [
+    { "id": "none", "name": "Нет", "effects": {}, "name_i18n_key": "diplomacy.casusBelli.none" },
+    { "id": "border_incident", "name": "Пограничный инцидент", "effects": { "aggression_cost_modifier": 0.5 }, "name_i18n_key": "diplomacy.casusBelli.borderIncident" },
+    { "id": "reclaim_cores", "name": "Возврат ядер", "effects": { "aggression_cost_modifier": 0.25 }, "name_i18n_key": "diplomacy.casusBelli.reclaimCores" },
+    { "id": "humanitarian", "name": "Гуманитарная интервенция", "effects": { "aggression_cost_modifier": 0.3 }, "name_i18n_key": "diplomacy.casusBelli.humanitarian" },
+    { "id": "preemptive", "name": "Превентивный удар", "effects": { "aggression_cost_modifier": 0.7 }, "name_i18n_key": "diplomacy.casusBelli.preemptive" },
+    { "id": "imperialism", "name": "Империализм", "effects": { "aggression_cost_modifier": 1.0 }, "name_i18n_key": "diplomacy.casusBelli.imperialism" }
+  ]
+}
