@@ -39,7 +39,7 @@
 // API VERSION
 // ============================================================================
 #define METERA_API_VERSION_MAJOR 3
-#define METERA_API_VERSION_MINOR 1
+#define METERA_API_VERSION_MINOR 3
 #define METERA_API_VERSION_PATCH 0
 
 // ============================================================================
@@ -163,6 +163,19 @@ typedef int32_t (*MeteraGetMapHeightFunc)(void);
 typedef int32_t (*MeteraGetTileBiomeFunc)(int32_t x, int32_t y);
 
 
+// Get road level of a specific tile (0=none, 1=dirt, 2=paved, 3=highway).
+typedef int32_t (*MeteraGetTileRoadLevelFunc)(int32_t x, int32_t y);
+
+// Get water depth of a specific tile.
+typedef int32_t (*MeteraGetTileWaterDepthFunc)(int32_t x, int32_t y);
+
+// Check if a specific tile is flooded.
+typedef bool (*MeteraIsTileFloodedFunc)(int32_t x, int32_t y);
+
+// Get location ID at specific coordinates. Returns "" if none.
+typedef const char* (*MeteraGetLocationAtFunc)(int32_t x, int32_t y);
+
+
 // --- World Mutations (deferred — applied on next tick) ---
 
 // Set region stability (0-100). Applied on next tick.
@@ -225,6 +238,32 @@ typedef MeteraResult (*MeteraSetRoadStateFunc)(const char* from_region, const ch
 
 // Set biome ID of a specific tile. Applied on next tick.
 typedef MeteraResult (*MeteraSetTileBiomeFunc)(int32_t x, int32_t y, int32_t biome_id);
+
+
+// Set road level of a specific tile. Applied on next tick.
+typedef MeteraResult (*MeteraSetTileRoadLevelFunc)(int32_t x, int32_t y, int32_t level);
+
+// Set water depth of a specific tile. Applied on next tick.
+typedef MeteraResult (*MeteraSetTileWaterDepthFunc)(int32_t x, int32_t y, int32_t depth);
+
+// Set flooded state of a specific tile. Applied on next tick.
+typedef MeteraResult (*MeteraSetTileFloodedFunc)(int32_t x, int32_t y, bool is_flooded);
+
+// Add a new location (city/ruins/anomaly) to the map. Applied on next tick.
+typedef MeteraResult (*MeteraAddLocationFunc)(const char* id, const char* name, int32_t x, int32_t y, const char* type, const char* faction);
+
+// Remove a location from the map by ID. Applied on next tick.
+typedef MeteraResult (*MeteraRemoveLocationFunc)(const char* id);
+
+
+// Update world generation configuration. Applied on next tick.
+typedef MeteraResult (*MeteraUpdateWorldConfigFunc)(const char* json_config);
+
+// Update biome generation rules and properties. Applied on next tick.
+typedef MeteraResult (*MeteraUpdateBiomeDefFunc)(const char* biome_id, const char* json_def);
+
+// Regenerate the entire world map using current config and biome rules. Applied on next tick.
+typedef MeteraResult (*MeteraRegenerateMapFunc)(int32_t seed);
 
 
 // Log a message to the engine log (visible in console/debug output).
@@ -298,6 +337,23 @@ typedef struct MeteraAPI {
 
     // Utility
     MeteraLogFunc log;
+
+    // Map Terrain & Locations (v3.2)
+    MeteraGetTileRoadLevelFunc     getTileRoadLevel;
+    MeteraGetTileWaterDepthFunc    getTileWaterDepth;
+    MeteraIsTileFloodedFunc        isTileFlooded;
+    MeteraGetLocationAtFunc        getLocationAt;
+    MeteraSetTileRoadLevelFunc     setTileRoadLevel;
+    MeteraSetTileWaterDepthFunc    setTileWaterDepth;
+    MeteraSetTileFloodedFunc       setTileFlooded;
+    MeteraAddLocationFunc          addLocation;
+    MeteraRemoveLocationFunc       removeLocation;
+
+
+    // Map Generation & Config (v3.3)
+    MeteraUpdateWorldConfigFunc    updateWorldConfig;
+    MeteraUpdateBiomeDefFunc       updateBiomeDef;
+    MeteraRegenerateMapFunc        regenerateMap;
 } MeteraAPI;
 
 // ============================================================================

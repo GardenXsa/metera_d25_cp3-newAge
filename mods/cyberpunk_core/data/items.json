@@ -26,14 +26,14 @@
         "names": { "rebirth": "Электронный лом" },
         "basePrice": 3,
         "category": "raw_material",
-        "tags": ["raw_material", "ore"],
+        "tags": ["raw_material", "ore", "metal_ingot", "stone"],
         "shelfLife": 999999
     },
     "bioplastic": {
         "names": { "rebirth": "Биопластик" },
         "basePrice": 4,
         "category": "raw_material",
-        "tags": ["raw_material", "wood"],
+        "tags": ["raw_material", "wood", "building"],
         "shelfLife": 999999
     },
     "smart_pistol": {

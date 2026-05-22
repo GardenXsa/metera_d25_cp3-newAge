@@ -210,7 +210,10 @@ function getGoldAmountInContainer(containerId) {
     const cont = ContainerRegistry.get(resolvedId);
     const physicalGold = getContainerItems(cont).reduce((sum, itemId) => {
         const item = ItemRegistry.get(itemId);
-        return sum + ((item?.prototype_id === 'gold' || item?.prototype_id === 'gold_ingot' || item?.custom_props?.aiIdentifier === 'gold') ? item.stack_size : 0);
+        if (!item) return sum;
+        const proto = (typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[item.prototype_id] : null;
+        const isCurrency = item.prototype_id === 'gold' || item.prototype_id === 'gold_ingot' || item.custom_props?.aiIdentifier === 'gold' || (proto && proto.tags && proto.tags.includes('currency'));
+        return sum + (isCurrency ? item.stack_size : 0);
     }, 0);
     const npcAccountGold = World?.npcs?.[cont.owner_id]?.inventory?.gold || 0;
     return physicalGold + npcAccountGold;
@@ -221,7 +224,10 @@ function syncPlayerGoldFromInventory() {
     const backpack = ContainerRegistry.get(player.container_backpack);
     const totalGold = getContainerItems(backpack).reduce((sum, itemId) => {
         const item = ItemRegistry.get(itemId);
-        return sum + ((item?.prototype_id === 'gold' || item?.prototype_id === 'gold_ingot' || item?.custom_props?.aiIdentifier === 'gold') ? item.stack_size : 0);
+        if (!item) return sum;
+        const proto = (typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[item.prototype_id] : null;
+        const isCurrency = item.prototype_id === 'gold' || item.prototype_id === 'gold_ingot' || item.custom_props?.aiIdentifier === 'gold' || (proto && proto.tags && proto.tags.includes('currency'));
+        return sum + (isCurrency ? item.stack_size : 0);
     }, 0);
     player.stats.gold = totalGold;
     return totalGold;
@@ -251,11 +257,24 @@ async function addRealItems(containerId, prototypeId, quantity, customProps = {}
 function availableManpower(faction) {
     if (!faction || typeof World === 'undefined' || !World) return 0;
     let total = 0;
+    
+    let foodIds = ['bread', 'meat', 'smoked_meat'];
+    let weaponIds = ['weapons'];
+    if (typeof ECONOMY_ITEMS !== 'undefined') {
+        foodIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('food'));
+        weaponIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('weapon'));
+    }
+    
     for (let rid of faction.regions || []) {
         const region = World.regions[rid];
         if (!region || !region.vault_id) continue;
-        const weapons = countRealItems(region.vault_id, 'weapons');
-        const food = countRealItems(region.vault_id, 'bread') + countRealItems(region.vault_id, 'meat') + countRealItems(region.vault_id, 'smoked_meat');
+        
+        let weapons = 0;
+        weaponIds.forEach(id => weapons += countRealItems(region.vault_id, id));
+        
+        let food = 0;
+        foodIds.forEach(id => food += countRealItems(region.vault_id, id));
+        
         const population = region.population || 0;
         const possibleSoldiers = Math.min(Math.floor(population * 0.1), weapons);
         if (food < possibleSoldiers * 0.5) continue;
@@ -540,7 +559,9 @@ const OldCoreInventorySystem = {
     removeItem: function(itemId, quantity) {
         if (!ItemRegistry.has(itemId)) return false;
         const item = ItemRegistry.get(itemId);
-        const shouldSyncGold = item.prototype_id === 'gold' && item.container_id === player?.container_backpack;
+        const proto = (typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[item.prototype_id] : null;
+        const isCurrency = item.prototype_id === 'gold' || item.prototype_id === 'gold_ingot' || item.custom_props?.aiIdentifier === 'gold' || (proto && proto.tags && proto.tags.includes('currency'));
+        const shouldSyncGold = isCurrency && item.container_id === player?.container_backpack;
         if (item.stack_size <= quantity) {
             if (item.container_id && ContainerRegistry.has(item.container_id)) {
                 const cont = ContainerRegistry.get(item.container_id);
@@ -579,7 +600,12 @@ const OldCoreInventorySystem = {
         const actorContId = actorId === 'player' ? player.container_backpack : null;
         if (!actorContId) return { success: false, error: "Actor inventory not found" };
         const actorCont = ContainerRegistry.get(actorContId);
-        const lockpickId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'lockpicks_common');
+        const lockpickId = getContainerItems(actorCont).find(id => {
+            const item = ItemRegistry.get(id);
+            if (!item) return false;
+            const proto = (typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[item.prototype_id] : null;
+            return item.prototype_id === 'lockpicks_common' || (proto && proto.tags && proto.tags.includes('lockpick'));
+        });
         if (!lockpickId) return { success: false, error: "No lockpicks" };
         this.removeItem(lockpickId, 1);
         const roll = GameRNG.d20((player.stats.dex - 10)/2);
@@ -611,7 +637,12 @@ const OldCoreInventorySystem = {
         const actorContId = actorId === 'player' ? player.container_backpack : null;
         if (!actorContId) return null;
         const actorCont = ContainerRegistry.get(actorContId);
-        const woodId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'wood');
+        const woodId = getContainerItems(actorCont).find(id => {
+            const item = ItemRegistry.get(id);
+            if (!item) return false;
+            const proto = (typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[item.prototype_id] : null;
+            return item.prototype_id === 'wood' || (proto && proto.tags && (proto.tags.includes('wood') || proto.tags.includes('building')));
+        });
         const woodItem = woodId ? ItemRegistry.get(woodId) : null;
         if (!woodItem || woodItem.stack_size < 5) return null;
         this.removeItem(woodId, 5);
@@ -845,7 +876,9 @@ const CoreInventorySystemAsync = {
     },
     removeItem: async function(itemId, quantity) {
         const item = ItemRegistry.get(itemId);
-        const shouldSyncGold = item && (item.prototype_id === 'gold' || item.prototype_id === 'gold_ingot' || item.custom_props?.aiIdentifier === 'gold') && item.container_id === player?.container_backpack;
+        const proto = (item && typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[item.prototype_id] : null;
+        const isCurrency = item && (item.prototype_id === 'gold' || item.prototype_id === 'gold_ingot' || item.custom_props?.aiIdentifier === 'gold' || (proto && proto.tags && proto.tags.includes('currency')));
+        const shouldSyncGold = isCurrency && item.container_id === player?.container_backpack;
         const res = await sendInventoryCommand('removeItem', { itemId, quantity });
         if (shouldSyncGold) syncPlayerGoldFromInventory();
         return res.success;
@@ -866,7 +899,12 @@ const CoreInventorySystemAsync = {
         const actorContId = actorId === 'player' ? player.container_backpack : null;
         if (!actorContId) return { success: false, error: "Actor inventory not found" };
         const actorCont = ContainerRegistry.get(actorContId);
-        const lockpickId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'lockpicks_common');
+        const lockpickId = getContainerItems(actorCont).find(id => {
+            const item = ItemRegistry.get(id);
+            if (!item) return false;
+            const proto = (typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[item.prototype_id] : null;
+            return item.prototype_id === 'lockpicks_common' || (proto && proto.tags && proto.tags.includes('lockpick'));
+        });
         if (!lockpickId) return { success: false, error: "No lockpicks" };
         await this.removeItem(lockpickId, 1);
         const roll = GameRNG.d20((player.stats.dex - 10)/2);
@@ -904,7 +942,12 @@ const CoreInventorySystemAsync = {
         const actorContId = actorId === 'player' ? player.container_backpack : null;
         if (!actorContId) return null;
         const actorCont = ContainerRegistry.get(actorContId);
-        const woodId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'wood');
+        const woodId = getContainerItems(actorCont).find(id => {
+            const item = ItemRegistry.get(id);
+            if (!item) return false;
+            const proto = (typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[item.prototype_id] : null;
+            return item.prototype_id === 'wood' || (proto && proto.tags && (proto.tags.includes('wood') || proto.tags.includes('building')));
+        });
         const woodItem = woodId ? ItemRegistry.get(woodId) : null;
         if (!woodItem || woodItem.stack_size < 5) return null;
         await this.removeItem(woodId, 5);
@@ -1278,7 +1321,8 @@ const TradeSystemAsync = {
 
         const physicalGoldItems = [...getContainerItems(targetContainer)].filter(itemId => {
             const it = ItemRegistry.get(itemId);
-            return it && (it.prototype_id === 'gold' || it.prototype_id === 'gold_ingot' || it.custom_props?.aiIdentifier === 'gold');
+            const proto = (it && typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[it.prototype_id] : null;
+            return it && (it.prototype_id === 'gold' || it.prototype_id === 'gold_ingot' || it.custom_props?.aiIdentifier === 'gold' || (proto && proto.tags && proto.tags.includes('currency')));
         });
         for (const goldItemId of physicalGoldItems) {
             if (remaining <= 0) break;
@@ -1825,7 +1869,7 @@ async function executeCommand(command, args) {
             case 'buildContainer':
                 if (args.type) {
                     const contId = await CoreInventorySystemAsync.buildContainer('player', args.type, player.location);
-                    feedback = contId ? `[КРАФТ] Создан контейнер ${contId}. Потрачено 5 дерева.` : `[ERROR] Недостаточно дерева (нужно 5 wood).`;
+                    feedback = contId ? `[КРАФТ] Создан контейнер ${contId}. Потрачено 5 ед. материалов.` : `[ERROR] Недостаточно стройматериалов (нужно 5 ед. дерева/пластика).`;
                     updateInventoryDisplay();
                     updateCharacterSheet();
                 } else {
@@ -2065,10 +2109,11 @@ const OldTradeSystem = {
         containerIds.forEach(containerId => {
             const cont = ContainerRegistry.get(containerId);
             if (cont) {
-                getContainerItems(cont).forEach(itemId => {
-                    const it = ItemRegistry.get(itemId);
-                    if (it && (it.prototype_id === 'gold' || it.prototype_id === 'gold_ingot' || it.custom_props?.aiIdentifier === 'gold')) itemIds.add(itemId);
-                });
+                        getContainerItems(cont).forEach(itemId => {
+            const it = ItemRegistry.get(itemId);
+            const proto = (it && typeof ECONOMY_ITEMS !== 'undefined') ? ECONOMY_ITEMS[it.prototype_id] : null;
+            if (it && (it.prototype_id === 'gold' || it.prototype_id === 'gold_ingot' || it.custom_props?.aiIdentifier === 'gold' || (proto && proto.tags && proto.tags.includes('currency')))) itemIds.add(itemId);
+        });
             }
         });
         return {
@@ -2323,7 +2368,12 @@ const OldTradeSystem = {
             if (existingGoldId) {
                 ItemRegistry.get(existingGoldId).stack_size += remaining;
             } else {
-                const createdGoldId = await CoreInventorySystemAsync.createItem('gold', remaining, trade.initiator_container, { name: getItemName('gold', player?.era) });
+                let currencyId = 'gold';
+                if (typeof ECONOMY_ITEMS !== 'undefined') {
+                    const cIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('currency'));
+                    if (cIds.length > 0) currencyId = cIds[0];
+                }
+                const createdGoldId = await CoreInventorySystemAsync.createItem(currencyId, remaining, trade.initiator_container, { name: getItemName(currencyId, player?.era) });
                 createdItemIds.push(createdGoldId);
             }
             remaining = 0;
@@ -3192,7 +3242,12 @@ async function runWorldSimulationTick() {
             const capitalRegionId = Object.keys(World.regions).find(rid => World.regions[rid].factionId === fId);
             let gold = 0;
             if (capitalRegionId && World.regions[capitalRegionId]?.vault_id) {
-                gold = countRealItems(World.regions[capitalRegionId].vault_id, 'gold_ingot');
+                let currencyIds = ['gold_ingot'];
+                if (typeof ECONOMY_ITEMS !== 'undefined') {
+                    const cIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('currency'));
+                    if (cIds.length > 0) currencyIds = cIds;
+                }
+                currencyIds.forEach(id => gold += countRealItems(World.regions[capitalRegionId].vault_id, id));
             }
             const manpower = availableManpower(f);
             worldSummary += `Фракция: ${f.name}. Доступная живая сила: ${manpower}. Золото в столице: ${gold}. Армий в походе СЕЙЧАС: ${f.armies.length}.\n`;
@@ -3245,6 +3300,10 @@ async function runWorldSimulationTick() {
             }
             
             addLogMessage(res.narrative, "world-event");
+        }
+
+        if (typeof EventBus !== 'undefined') {
+            EventBus.emit('world:tick', World);
         }
 
     } catch (e) { 
@@ -4052,7 +4111,17 @@ function buildFullPlayerSnapshot() {
             
             worldContextString += `[SYS_VEC | LOC:${r.id} | SEA:${r.current_season} | WTH:${r.weather || "clear"} | FAC:${ownerId} | THR:${r.threat_level} | STAB:${r.stability} | OCC:${r.isOccupied}]\n`;
             
-            let prices = `food:${Math.round(r.markets.bread || 5)},wood:${Math.round(r.markets.wood || 2)},ore:${Math.round(r.markets.iron_ore || 3)},weap:${Math.round(r.markets.weapons || 40)}`;
+            let foodId = 'bread';
+            let woodId = 'wood';
+            let oreId = 'iron_ore';
+            let weapId = 'weapons';
+            if (typeof ECONOMY_ITEMS !== 'undefined') {
+                foodId = Object.keys(ECONOMY_ITEMS).find(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('food')) || foodId;
+                woodId = Object.keys(ECONOMY_ITEMS).find(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('wood')) || woodId;
+                oreId = Object.keys(ECONOMY_ITEMS).find(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('ore')) || oreId;
+                weapId = Object.keys(ECONOMY_ITEMS).find(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('weapon')) || weapId;
+            }
+            let prices = `food:${Math.round(r.markets[foodId] || 5)},wood:${Math.round(r.markets[woodId] || 2)},ore:${Math.round(r.markets[oreId] || 3)},weap:${Math.round(r.markets[weapId] || 40)}`;
             worldContextString += `[ECON_VEC | LOC:${r.id} | PRICES:${prices}]\n`;
             
             if (r.cityLayout && r.cityLayout.length > 0) {
@@ -6056,10 +6125,19 @@ function initSettingsUI() {
         Object.values(settingsGroups).forEach(group => {
             if (group) group.style.display = 'none';
         });
+        if (window.ModAPI && window.ModAPI.customAiProviders) {
+            Object.keys(window.ModAPI.customAiProviders).forEach(id => {
+                const grp = document.getElementById(`${id}-settings-group`);
+                if (grp) grp.style.display = 'none';
+            });
+        }
 
         // 2. Показываем нужную группу
         if (settingsGroups[provider]) {
             settingsGroups[provider].style.display = 'block';
+        } else if (window.ModAPI && window.ModAPI.customAiProviders && window.ModAPI.customAiProviders[provider]) {
+            const grp = document.getElementById(`${provider}-settings-group`);
+            if (grp) grp.style.display = 'block';
         }
 
         // 3. Загружаем и устанавливаем ID модели для выбранного провайдера
@@ -6072,6 +6150,14 @@ function initSettingsUI() {
             case 'omniroute': modelId = omnirouteModelId; break;
             case 'local': modelId = localModelId; break; // Для LM Studio это тоже ID
             case 'dummy': modelId = 'dummy-test-model'; break;
+            default:
+                if (window.ModAPI && window.ModAPI.customAiProviders && window.ModAPI.customAiProviders[provider]) {
+                    const customConfig = window.ModAPI.customAiProviders[provider];
+                    if (customConfig.onSwitchView) {
+                        modelId = customConfig.onSwitchView() || '';
+                    }
+                }
+                break;
         }
         if (modelIdInput) modelIdInput.value = modelId;
 
@@ -6300,6 +6386,25 @@ async function pingProvider() {
     resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin" style="color: #f39c12;"></i> Пинг провайдера...';
     btn.disabled = true;
 
+    if (window.ModAPI && window.ModAPI.customAiProviders && window.ModAPI.customAiProviders[provider]) {
+        const customProvider = window.ModAPI.customAiProviders[provider];
+        if (customProvider.pingHandler) {
+            try {
+                const res = await customProvider.pingHandler();
+                if (res && res.ok) {
+                    resultDiv.innerHTML = `<span style="color: #2ecc71;"><i class="fas fa-check"></i> ${res.message || 'Соединение установлено!'}</span>`;
+                } else {
+                    resultDiv.innerHTML = `<span style="color: #e74c3c;"><i class="fas fa-times"></i> ${res?.message || 'Ошибка соединения'}</span>`;
+                }
+            } catch (e) {
+                resultDiv.innerHTML = `<span style="color: #e74c3c;"><i class="fas fa-times"></i> Ошибка: ${e.message}</span>`;
+            } finally {
+                btn.disabled = false;
+            }
+            return;
+        }
+    }
+
     let url = ''; let headers = {}; let key = '';
     try {
         switch (provider) {
@@ -6369,6 +6474,26 @@ async function fetchModels() {
     const originalIcon = btn.innerHTML;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
     btn.disabled = true;
+
+    if (window.ModAPI && window.ModAPI.customAiProviders && window.ModAPI.customAiProviders[provider]) {
+        const customProvider = window.ModAPI.customAiProviders[provider];
+        if (customProvider.modelsHandler) {
+            try {
+                const models = await customProvider.modelsHandler();
+                if (models && models.length > 0) {
+                    showModelSelector(models);
+                } else {
+                    if (typeof showCustomAlert === 'function') showCustomAlert("Список моделей пуст.");
+                }
+            } catch (e) {
+                if (typeof showCustomAlert === 'function') showCustomAlert("Ошибка получения списка моделей: " + e.message);
+            } finally {
+                btn.innerHTML = originalIcon;
+                btn.disabled = false;
+            }
+            return;
+        }
+    }
 
     let url = ''; let headers = {}; let key = ''; let isGemini = false;
     try {
@@ -6895,6 +7020,14 @@ function saveSettings() {
         case 'local':
             localModelId = modelId;
             localStorage.setItem('localModelId', localModelId);
+            break;
+        default:
+            if (window.ModAPI && window.ModAPI.customAiProviders && window.ModAPI.customAiProviders[provider]) {
+                const customConfig = window.ModAPI.customAiProviders[provider];
+                if (customConfig.onSave) {
+                    customConfig.onSave(modelId);
+                }
+            }
             break;
     }
 
@@ -11066,7 +11199,35 @@ async function handleUserInput() {
             const item = ItemRegistry.get(itemId);
             const proto = item.prototype_id.toLowerCase();
             
-            if (proto.includes('potion_heal_small') || proto.includes('лечебн')) {
+            // --- DATA-DRIVEN TAG SYSTEM (T3) ---
+            let template = null;
+            if (typeof ECONOMY_ITEMS !== 'undefined' && ECONOMY_ITEMS[item.prototype_id]) {
+                template = ECONOMY_ITEMS[item.prototype_id];
+            } else if (typeof itemsReferenceData !== 'undefined' && Array.isArray(itemsReferenceData)) {
+                template = itemsReferenceData.find(i => i.id === item.prototype_id);
+            }
+            
+            const itemProps = item.custom_props?.properties || template?.properties || {};
+            const tags = item.custom_props?.tags || template?.tags || [];
+            const itemName = item.custom_props?.name || template?.name || proto;
+
+            if (itemProps.heal || itemProps.nutrition) {
+                const healAmount = itemProps.heal || Math.floor(itemProps.nutrition / 2) || 15;
+                await CoreInventorySystemAsync.removeItem(itemId, 1);
+                player.stats.hp = Math.min(player.stats.maxHp, player.stats.hp + healAmount);
+                addLogMessage(`[ИСПОЛЬЗОВАНИЕ] Вы использовали '${itemName}'. Восстановлено ${healAmount} HP. Здоровье: ${player.stats.hp}/${player.stats.maxHp}`, 'level-up');
+                updateCharacterSheet();
+                updateInventoryDisplay();
+                queuePlayerActionForGM(`Player used ${itemName} and healed ${healAmount} HP.`);
+            } else if (itemProps.mana_restore || itemProps.ram_restore) {
+                const manaAmount = itemProps.mana_restore || itemProps.ram_restore || 15;
+                await CoreInventorySystemAsync.removeItem(itemId, 1);
+                player.stats.mana = Math.min(player.stats.maxMana, player.stats.mana + manaAmount);
+                addLogMessage(`[ИСПОЛЬЗОВАНИЕ] Вы использовали '${itemName}'. Восстановлено ${manaAmount} Маны/RAM. Мана: ${player.stats.mana}/${player.stats.maxMana}`, 'level-up');
+                updateCharacterSheet();
+                updateInventoryDisplay();
+                queuePlayerActionForGM(`Player used ${itemName} and restored ${manaAmount} Mana/RAM.`);
+            } else if (proto.includes('potion_heal_small') || proto.includes('лечебн')) {
                 await CoreInventorySystemAsync.removeItem(itemId, 1);
                 player.stats.hp = Math.min(player.stats.maxHp, player.stats.hp + 15);
                 addLogMessage(`[ИСПОЛЬЗОВАНИЕ] Вы выпили малый инъектор лечения (+15 HP). Здоровье: ${player.stats.hp}/${player.stats.maxHp}`, 'level-up');
@@ -11081,7 +11242,7 @@ async function handleUserInput() {
                 updateInventoryDisplay();
                 queuePlayerActionForGM("Player used Small Mana Potion.");
             } else {
-                addLogMessage(`[СИСТЕМА] Предмет '${item.custom_props.name}' невозможно использовать напрямую.`, 'command-feedback');
+                addLogMessage(`[СИСТЕМА] Предмет '${itemName}' невозможно использовать напрямую.`, 'command-feedback');
             }
             return;
         }
@@ -11341,27 +11502,45 @@ async function handleUserInput() {
         }
     }
 
-    // --- АВТОМАТИЗИРОВАННАЯ БОЕВАЯ СИСТЕМА ---
-    if (player.currentCombat && player.currentCombat.isActive) {
-        // 1. Проверка на авто-завершение боя
-        const activeEnemies = player.currentCombat.participants.filter(id => player.visibleEntities[id]);
+            // --- АВТОМАТИЗИРОВАННАЯ БОЕВАЯ СИСТЕМА ---
+        if (player.currentCombat && player.currentCombat.isActive) {
+            // 1. Проверка на авто-завершение боя
+            let hasAliveEnemies = false;
+            let activeEnemies = [];
 
-        if (activeEnemies.length === 0) {
-            player.currentCombat.isActive = false;
-            player.currentCombat.participants = [];
-            finalMessageForGM += "\n\n[SYSTEM: Бой автоматически завершен. Все противники устранены или покинули поле боя. Опиши исход боя и победителя.]";
-            addCalculationMessage("[СИСТЕМА] Бой автоматически завершен.");
-            if (player.travel && player.travel.active && player.travel.paused && player.travel.pauseReason === 'combat') {
-                TravelSystem.resume();
-                finalMessageForGM += " [SYSTEM: ПУТЕШЕСТВИЕ ВОЗОБНОВЛЕНО. Упомяни, что герой продолжает путь.]";
+            if (player.currentCombat.participants && player.currentCombat.participants.length > 0) {
+                for (const id of player.currentCombat.participants) {
+                    const ent = player.visibleEntities[id] || player.allKnownEntities[id];
+                    if (ent) {
+                        if (ent.stats.hp > 0) {
+                            hasAliveEnemies = true;
+                            activeEnemies.push(id);
+                        }
+                    } else {
+                        // Если ГМ указал ID, которого нет в реестре (опечатка или задержка создания),
+                        // мы не отменяем бой, чтобы не ломать повествование.
+                        hasAliveEnemies = true;
+                        activeEnemies.push(id);
+                    }
+                }
             }
-        } else {
-            // 2. Расчет атак противников через C++ ядро
-            let playerDef = 10 + Math.floor((player.stats.dex - 10) / 2);
-            const { bonuses } = getEffectiveStats();
-            playerDef += (bonuses['res'] || 0);
 
-            let enemiesData = activeEnemies; // Просто передаем массив ID
+            if (!hasAliveEnemies) {
+                player.currentCombat.isActive = false;
+                player.currentCombat.participants = [];
+                finalMessageForGM += "\n\n[SYSTEM: Бой автоматически завершен. Все противники устранены. Опиши исход боя и победителя.]";
+                addCalculationMessage("[СИСТЕМА] Бой автоматически завершен (противники мертвы).");
+                if (player.travel && player.travel.active && player.travel.paused && player.travel.pauseReason === 'combat') {
+                    if (typeof LivingRoads !== 'undefined') LivingRoads.resume();
+                    finalMessageForGM += " [SYSTEM: ПУТЕШЕСТВИЕ ВОЗОБНОВЛЕНО. Упомяни, что герой продолжает путь.]";
+                }
+            } else {
+                // 2. Расчет атак противников через C++ ядро
+                let playerDef = 10 + Math.floor((player.stats.dex - 10) / 2);
+                const { bonuses } = getEffectiveStats();
+                playerDef += (bonuses['res'] || 0);
+
+                let enemiesData = activeEnemies; // Просто передаем массив ID
 
             const combatRes = await sendInventoryCommand('resolveEnemyAttacks', { player_def: playerDef, enemies: enemiesData });
             
@@ -11490,6 +11669,14 @@ async function _internalPerformAiFetch(systemInstruction, history, providerModel
         currentApiAbortController.abort();
     }
     currentApiAbortController = new AbortController();
+
+    // --- КАСТОМНЫЕ ПРОВАЙДЕРЫ МОДОВ ---
+    if (window.ModAPI && window.ModAPI.customAiProviders && window.ModAPI.customAiProviders[currentApiProvider]) {
+        const customProvider = window.ModAPI.customAiProviders[currentApiProvider];
+        if (customProvider.fetchHandler) {
+            return await customProvider.fetchHandler(systemInstruction, history, providerModel, currentInput);
+        }
+    }
 
     // --- ПРОВАЙДЕР-ЗАГЛУШКА (ДЛЯ ТЕСТОВ) ---
     if (currentApiProvider === 'dummy') {
@@ -12496,7 +12683,7 @@ async function prepareUnifiedPrompt() {
         const logicRules = await loadPromptFromFile('assets/promts/logic_rules.txt');
         const narrativeRules = await loadPromptFromFile('assets/promts/narrative_rules.txt');
         let masterInstructions = await loadPromptFromFile('assets/promts/1.txt');
-        let imgInstructionMaster = enableImageGeneration ? '"image_prompt": "ОБЯЗАТЕЛЬНО! Описание ТЕКУЩЕЙ сцены СТРОГО НА АНГЛИЙСКОМ ЯЗЫКЕ для нейросети генерации картинок. Пиши тегами через запятую. Укажи персонажей и детали. Обязательно добавляй в конце: \'Ado music video aesthetic, monochrome anime style with one spot color, dark gothic, creepy vibe, extreme contrast, inverted colors, masterpiece, highly detailed\'.",' : '';
+        let imgInstructionMaster = enableImageGeneration ? '"image_prompt": "ОБЯЗАТЕЛЬНО! Опиши сцену для генератора картинок (на английском). ИСПОЛЬЗУЙ ТОЛЬКО ТЕГИ ЧЕРЕЗ ЗАПЯТУЮ (например: 1boy, night, rain, holding sword, neon lights). В конце ВСЕГДА добавляй: \'masterpiece, best quality, highres, cinematic lighting, dramatic shadows, 2d illustration, anime art style, highly detailed background\'. НЕ пиши связными предложениями!",' : '';
         masterInstructions = masterInstructions.replace(/\{image_prompt_instruction\}/g, imgInstructionMaster)
                                                .replace(/\{debugMode\}/g, DEBUG_MODE ? "true" : "false");
         const rulesAndInstructions = await loadPromptFromFile('assets/promts/rules_and_instructions.txt');
@@ -12681,7 +12868,14 @@ function getFactionCapitalVault(factionId) {
 function getFactionGold(factionId) {
     let vaultId = getFactionCapitalVault(factionId);
     if (!vaultId) return 0;
-    return countRealItems(vaultId, 'gold_ingot');
+    let currencyIds = ['gold_ingot'];
+    if (typeof ECONOMY_ITEMS !== 'undefined') {
+        const cIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('currency'));
+        if (cIds.length > 0) currencyIds = cIds;
+    }
+    let total = 0;
+    currencyIds.forEach(id => total += countRealItems(vaultId, id));
+    return total;
 }
 function getFactionGoodStock(factionId, goodType) {
     let vaultId = getFactionCapitalVault(factionId);
@@ -13228,13 +13422,23 @@ async function executeNonInventoryCommand(command, args) {
                     // --- СИНХРОНИЗАЦИЯ ФИЗИЧЕСКОГО ЗОЛОТА ---
                     if (stat === 'gold') {
                         if (change > 0) {
-                            const addRes = await executeCommand('addItem', { aiIdentifier: 'gold', name: 'Золото', quantity: change });
+                            let currencyId = 'gold';
+                            if (typeof ECONOMY_ITEMS !== 'undefined') {
+                                const cIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('currency'));
+                                if (cIds.length > 0) currencyId = cIds[0];
+                            }
+                            const addRes = await executeCommand('addItem', { aiIdentifier: currencyId, name: getItemName(currencyId, player.era), quantity: change });
                             if (addRes && addRes.includes("[ОШИБКА")) {
                                 feedback = addRes; // Пробрасываем ошибку перегруза
                                 break;
                             }
                         } else if (change < 0) {
-                            await executeCommand('removeItem', { aiIdentifier: 'gold', quantity: Math.abs(change) });
+                            let currencyId = 'gold';
+                            if (typeof ECONOMY_ITEMS !== 'undefined') {
+                                const cIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('currency'));
+                                if (cIds.length > 0) currencyId = cIds[0];
+                            }
+                            await executeCommand('removeItem', { aiIdentifier: currencyId, quantity: Math.abs(change) });
                         }
                         feedback = t('gameInterface.commandFeedback.goldChanged', { change: change > 0 ? `+${change}` : change, gold: player.stats.gold });
                         break;
@@ -13298,14 +13502,19 @@ async function executeNonInventoryCommand(command, args) {
                     if (stat === 'gold') {
                         let currentGold = syncPlayerGoldFromInventory();
                         let diff = value - currentGold;
+                        let currencyId = 'gold';
+                        if (typeof ECONOMY_ITEMS !== 'undefined') {
+                            const cIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('currency'));
+                            if (cIds.length > 0) currencyId = cIds[0];
+                        }
                         if (diff > 0) {
-                            const addRes = await executeCommand('addItem', { aiIdentifier: 'gold', name: 'Золото', quantity: diff });
+                            const addRes = await executeCommand('addItem', { aiIdentifier: currencyId, name: getItemName(currencyId, player.era), quantity: diff });
                             if (addRes && addRes.includes("[ОШИБКА")) {
                                 feedback = addRes;
                                 break;
                             }
                         }
-                        else if (diff < 0) await executeCommand('removeItem', { aiIdentifier: 'gold', quantity: Math.abs(diff) });
+                        else if (diff < 0) await executeCommand('removeItem', { aiIdentifier: currencyId, quantity: Math.abs(diff) });
                         feedback = `Золото установлено на ${value}.`;
                         break;
                     }
@@ -14579,19 +14788,37 @@ if (player.nexusData && player.nexusData[args.id]) {
                 break;
             case 'overthrowRuler':
                 if (args.factionId && World.factions[args.factionId]) {
-                    // Вместо стабильности - физическое последствие: бунт уничтожает ресурсы столицы
                     const capitalRegionId = Object.keys(World.regions).find(rid => World.regions[rid].factionId === args.factionId);
                     if (capitalRegionId && World.regions[capitalRegionId]?.vault_id) {
                         const capitalVault = World.regions[capitalRegionId].vault_id;
-                        const weaponsLost = Math.floor(countRealItems(capitalVault, 'weapons') * 0.3);
-                        const foodLost = Math.floor(countRealItems(capitalVault, 'bread') * 0.5);
-                        consumeRealItems(capitalVault, 'weapons', weaponsLost);
-                        consumeRealItems(capitalVault, 'bread', foodLost);
+                        let weaponsLost = 0;
+                        let foodLost = 0;
+                        let weaponIds = ['weapons'];
+                        let foodIds = ['bread', 'meat'];
+                        if (typeof ECONOMY_ITEMS !== 'undefined') {
+                            weaponIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('weapon'));
+                            foodIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('food'));
+                        }
+                        weaponIds.forEach(id => {
+                            let count = countRealItems(capitalVault, id);
+                            if (count > 0) {
+                                let lost = Math.floor(count * 0.3);
+                                weaponsLost += lost;
+                                consumeRealItems(capitalVault, id, lost);
+                            }
+                        });
+                        foodIds.forEach(id => {
+                            let count = countRealItems(capitalVault, id);
+                            if (count > 0) {
+                                let lost = Math.floor(count * 0.5);
+                                foodLost += lost;
+                                consumeRealItems(capitalVault, id, lost);
+                            }
+                        });
                         generateWorldNews(`МЯТЕЖ! В землях ${World.factions[args.factionId].name} вспыхнуло восстание! Уничтожено запасов: ${weaponsLost} оружия, ${foodLost} еды.`, "global", 5, 'war');
                     } else {
                         generateWorldNews(`МЯТЕЖ! В землях ${World.factions[args.factionId].name} вспыхнуло восстание!`, "global", 5, 'war');
                     }
-                    generateWorldNews(`МЯТЕЖ! В землях ${World.factions[args.factionId].name} вспыхнуло восстание!`, "global", 5, 'war');
                     feedback = `[Мятеж] Инициирован бунт во фракции '${args.factionId}'.`;
                 }
                 break;
@@ -14702,21 +14929,7 @@ if (player.nexusData && player.nexusData[args.id]) {
                     checkRulerDeaths();
                 } else { feedback = `[ERROR] Правитель '${args.id}' не найден.`; }
                 break;
-            case 'overthrowRuler':
-                if (args.factionId && World.factions[args.factionId]) {
-                    // Вместо стабильности - физическое последствие: бунт уничтожает ресурсы столицы
-                    const capitalRegionId = Object.keys(World.regions).find(rid => World.regions[rid].factionId === args.factionId);
-                    if (capitalRegionId) {
-                        const capitalVault = World.regions[capitalRegionId].vault_id;
-                        const weaponsLost = Math.floor(countRealItems(capitalVault, 'weapons') * 0.3);
-                        const foodLost = Math.floor(countRealItems(capitalVault, 'bread') * 0.5);
-                        consumeRealItems(capitalVault, 'weapons', weaponsLost);
-                        consumeRealItems(capitalVault, 'bread', foodLost);
-                    }
-                    generateWorldNews(`МЯТЕЖ! В землях ${World.factions[args.factionId].name} вспыхнуло восстание!`, "global", 5, 'war');
-                    feedback = `[Мятеж] Инициирован бунт во фракции '${args.factionId}'. Ресурсы столицы разграблены!`;
-                }
-                break;
+            // Already handled above, this is a duplicate block in the original file
             case 'setFactionGoal':
                 if (args.rulerId && World.rulers && World.rulers[args.rulerId]) {
                     World.rulers[args.rulerId].gmOverride = args.goal;
@@ -15992,14 +16205,16 @@ async function generateVisionImage(prompt) {
 
     // ====================== Pollinations (без изменений) ======================
     else if (imgProvider === 'pollinations') {
+        // Добавляем негативный промпт прямо в текст (Pollinations парсит его через разделитель)
+        const finalPrompt = prompt + " | negative prompt: 3d, realistic, photo, ugly, bad anatomy, text, watermark, blurry, extra limbs";
         const params = new URLSearchParams({
-            prompt: prompt,
-            model: imgModel || 'flux',
+            prompt: finalPrompt,
+            model: imgModel || 'flux-anime', // Используем аниме-модель по умолчанию
             width: 1024,
             height: 1024,
             seed: Math.floor(Math.random() * 999999),
             nologo: 'true',
-            enhance: 'true'
+            enhance: 'false' // ОТКЛЮЧАЕМ enhance, чтобы ChatGPT не переписывал наш промпт в мыльное 3D
         });
 
         const response = await fetch(`https://image.pollinations.ai/prompt?${params}`);
@@ -16579,7 +16794,7 @@ async function runDeepSetupPipeline(narratorStyleGuide) {
         // --- STAGE 5 ---
         updateLoader("Этап 5/5: Пролог", "Ожидание Рассказчика...");
                 let p5 = await loadPromptFromFile('assets/promts/deep_setup/stage5_prologue.txt');
-        let imgExample = enableImageGeneration ? '"image_prompt": "Ado music video aesthetic, monochrome with red accent...",' : '';
+        let imgExample = enableImageGeneration ? '"image_prompt": "1girl, standing in ruins, holding flare, dark sky, masterpiece, anime style...",' : '';
 
         window.smartDeepContextStr = "";
         if (typeof World !== 'undefined' && World) {

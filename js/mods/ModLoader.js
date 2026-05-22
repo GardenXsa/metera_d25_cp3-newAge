@@ -67,6 +67,7 @@ window.ModAPI = {
     textFilters: [],
     saveHandlers: {},
     customTranslations: {},
+    customAiProviders: {},
     initialized: false,
     isTotalConversion: false,
     apiVersion: '3.0',
@@ -129,6 +130,40 @@ window.ModAPI = {
         }
         this.promptInjections.push(text);
         console.log(`[ModAPI] Добавлена инъекция в системный промпт ИИ.`);
+    },
+
+    registerAiProvider: function(id, config) {
+        this.customAiProviders[id] = config;
+        console.log(`[ModAPI] Зарегистрирован кастомный ИИ провайдер: ${id}`);
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+            this._injectProviderUI(id, config);
+        } else {
+            document.addEventListener('DOMContentLoaded', () => this._injectProviderUI(id, config));
+        }
+    },
+
+    _injectProviderUI: function(id, config) {
+        const select = document.getElementById('api-provider-select');
+        if (select && !select.querySelector(`option[value="${id}"]`)) {
+            const opt = document.createElement('option');
+            opt.value = id;
+            opt.textContent = config.name || id;
+            select.appendChild(opt);
+        }
+        const container = document.getElementById('dynamic-keys-container');
+        if (container && config.settingsHtml && !document.getElementById(`${id}-settings-group`)) {
+            const div = document.createElement('div');
+            div.id = `${id}-settings-group`;
+            div.className = 'provider-settings-group';
+            div.style.display = 'none';
+            div.style.margin = '0';
+            div.style.padding = '0';
+            div.style.border = 'none';
+            div.style.borderTop = '1px solid rgba(93, 123, 151, 0.2)';
+            div.style.paddingTop = '10px';
+            div.innerHTML = this._sanitizeHTML(config.settingsHtml);
+            container.appendChild(div);
+        }
     },
 
     // ============================================================================
@@ -574,18 +609,46 @@ window.ModAPI = {
     applyModChanges: async function(mutations) {
         if (!Array.isArray(mutations) || mutations.length === 0) return;
         if (window.electronAPI && window.electronAPI.nexusSendRawCommand) {
-            const res = await window.electronAPI.nexusSendRawCommand('applyModChanges', { mutations });
-            if (res && res.results && Array.isArray(res.results)) {
-                for (const r of res.results) {
-                    const tx = this._pendingTransactions.get(r.transaction_id);
-                    if (tx) {
-                        if (r.success) tx.resolve(r);
-                        else tx.reject(new Error(r.error || "Unknown mutation error"));
-                        this._pendingTransactions.delete(r.transaction_id);
+            try {
+                const res = await window.electronAPI.nexusSendRawCommand('applyModChanges', { mutations });
+                if (res && res.results && Array.isArray(res.results)) {
+                    for (const r of res.results) {
+                        const tx = this._pendingTransactions.get(r.transaction_id);
+                        if (tx) {
+                            if (r.success) tx.resolve(r);
+                            else tx.reject(new Error(r.error || "Unknown mutation error"));
+                            this._pendingTransactions.delete(r.transaction_id);
+                        }
+                    }
+                } else {
+                    console.warn("[ModAPI] Engine did not return mutation results. Resolving optimistically.");
+                    for (const m of mutations) {
+                        const tx = this._pendingTransactions.get(m.transaction_id);
+                        if (tx) {
+                            tx.resolve({ success: true, note: "Optimistic fallback" });
+                            this._pendingTransactions.delete(m.transaction_id);
+                        }
                     }
                 }
+                return res;
+            } catch (e) {
+                for (const m of mutations) {
+                    const tx = this._pendingTransactions.get(m.transaction_id);
+                    if (tx) {
+                        tx.reject(e);
+                        this._pendingTransactions.delete(m.transaction_id);
+                    }
+                }
+                throw e;
             }
-            return res;
+        } else {
+            for (const m of mutations) {
+                const tx = this._pendingTransactions.get(m.transaction_id);
+                if (tx) {
+                    tx.resolve({ success: true, note: "Local fallback" });
+                    this._pendingTransactions.delete(m.transaction_id);
+                }
+            }
         }
         return null;
     },
@@ -659,6 +722,610 @@ window.ModAPI = {
         console.log(`[ModAPI] Мод ${modId} полностью выгружен.`);
     },
     
+    // ============================================================================
+    // NEW METHODS (T3)
+    // ============================================================================
+
+    setCustomMapGenerator: function(callback) {
+        this._customMapGenerator = callback;
+        console.log(`[ModAPI] Зарегистрирован кастомный генератор карты.`);
+    },
+
+
+    // --- 1. NPC Management ---
+    getNpc: async function(npcId) {
+        if (typeof World !== 'undefined' && World && World.npcs && World.npcs[npcId]) return World.npcs[npcId];
+        if (typeof player !== 'undefined' && player && player.allKnownEntities && player.allKnownEntities[npcId]) return player.allKnownEntities[npcId];
+        return null;
+    },
+    queryNpcs: async function(filter) {
+        if (typeof World === 'undefined' || !World || !World.npcs) return [];
+        return Object.values(World.npcs).filter(npc => {
+            if (filter.race && npc.race !== filter.race) return false;
+            if (filter.class && npc.class !== filter.class) return false;
+            if (filter.region && npc.currentLocation !== filter.region && npc.homeLocation !== filter.region) return false;
+            if (filter.hpMin !== undefined && (npc.stats?.hp || 0) < filter.hpMin) return false;
+            if (filter.faction && npc.factionId !== filter.faction) return false;
+            if (filter.trait && (!npc.traits || !npc.traits.includes(filter.trait))) return false;
+            return true;
+        });
+    },
+    setNpcProperty: async function(npcId, property, value) {
+        const npc = await this.getNpc(npcId);
+        if (!npc) return false;
+        const keys = property.split('.');
+        let current = npc;
+        for (let i = 0; i < keys.length - 1; i++) {
+            if (current[keys[i]] === undefined) current[keys[i]] = {};
+            current = current[keys[i]];
+        }
+        current[keys[keys.length - 1]] = value;
+        await this.queueMutation({ type: 'setNpcProperty', npcId, property, value });
+        return true;
+    },
+    createNpc: async function(template) {
+        const npcId = template.id || 'npc_' + (typeof generateUUID === 'function' ? generateUUID() : Math.random().toString(36).substring(2));
+        if (typeof World !== 'undefined' && World && World.npcs) {
+            World.npcs[npcId] = { id: npcId, aiIdentifier: npcId, type: 'npc', stats: { hp: 10, maxHp: 10 }, ...template };
+        }
+        await this.queueMutation({ type: 'createNpc', npcId, template });
+        return npcId;
+    },
+    removeNpc: async function(npcId) {
+        let removed = false;
+        if (typeof World !== 'undefined' && World && World.npcs && World.npcs[npcId]) {
+            delete World.npcs[npcId];
+            removed = true;
+        }
+        if (typeof player !== 'undefined' && player && player.allKnownEntities && player.allKnownEntities[npcId]) {
+            delete player.allKnownEntities[npcId];
+            removed = true;
+        }
+        if (removed) await this.queueMutation({ type: 'removeNpc', npcId });
+        return removed;
+    },
+    addNpcTrait: async function(npcId, traitId) {
+        const npc = await this.getNpc(npcId);
+        if (!npc) return false;
+        if (!npc.traits) npc.traits = [];
+        if (npc.traits.includes(traitId)) return false;
+        npc.traits.push(traitId);
+        await this.queueMutation({ type: 'addNpcTrait', npcId, traitId });
+        return true;
+    },
+    removeNpcTrait: async function(npcId, traitId) {
+        const npc = await this.getNpc(npcId);
+        if (!npc || !npc.traits || !npc.traits.includes(traitId)) return false;
+        npc.traits = npc.traits.filter(t => t !== traitId);
+        await this.queueMutation({ type: 'removeNpcTrait', npcId, traitId });
+        return true;
+    },
+
+    // --- 2. Region Management ---
+    getRegion: async function(regionId) {
+        if (typeof World !== 'undefined' && World && World.regions && World.regions[regionId]) return World.regions[regionId];
+        return null;
+    },
+    queryRegions: async function(filter) {
+        if (typeof World === 'undefined' || !World || !World.regions) return [];
+        return Object.values(World.regions).filter(r => {
+            if (filter.stabilityMax !== undefined && r.stability > filter.stabilityMax) return false;
+            if (filter.stabilityMin !== undefined && r.stability < filter.stabilityMin) return false;
+            if (filter.biome && r.biome !== filter.biome) return false;
+            if (filter.owner && r.factionId !== filter.owner) return false;
+            return true;
+        });
+    },
+    setRegionProperty: async function(regionId, property, value) {
+        const region = await this.getRegion(regionId);
+        if (!region) return false;
+        region[property] = value;
+        await this.queueMutation({ type: 'setRegionProperty', regionId, property, value });
+        return true;
+    },
+    getRegionMarket: async function(regionId) {
+        const region = await this.getRegion(regionId);
+        if (!region || !region.markets) return { items: {} };
+        const market = { items: {} };
+        for (const [item, price] of Object.entries(region.markets)) {
+            const basePrice = (typeof ECONOMY_ITEMS !== 'undefined' && ECONOMY_ITEMS[item]) ? ECONOMY_ITEMS[item].basePrice : 1;
+            market.items[item] = {
+                base: basePrice,
+                current: price,
+                trend: price > basePrice ? 'up' : (price < basePrice ? 'down' : 'stable')
+            };
+        }
+        return market;
+    },
+    getRegionHistory: async function(regionId, limit = 50) {
+        if (typeof World === 'undefined' || !World || !World.news) return [];
+        const history = World.news.filter(n => n.location === regionId || n.location === 'global');
+        history.sort((a, b) => (b.day || 0) - (a.day || 0));
+        return history.slice(0, limit);
+    },
+
+    // --- 3. Economy & Trade ---
+    getItemData: async function(itemId) {
+        if (typeof ECONOMY_ITEMS !== 'undefined' && ECONOMY_ITEMS[itemId]) return { id: itemId, ...ECONOMY_ITEMS[itemId] };
+        if (typeof itemsReferenceData !== 'undefined' && Array.isArray(itemsReferenceData)) {
+            const item = itemsReferenceData.find(i => i.id === itemId);
+            if (item) return item;
+        }
+        return null;
+    },
+    setItemPriceOverride: async function(itemId, price) {
+        if (!this._priceOverrides) this._priceOverrides = {};
+        this._priceOverrides[itemId] = price;
+        if (!this._economyHooked && typeof EconomySim !== 'undefined') {
+            this.hookFunction(EconomySim, 'calculatePrice', '_ModAPI_Economy', (original, protoId, regionId, isBuying) => {
+                if (this._priceOverrides && this._priceOverrides[protoId] !== undefined) {
+                    let finalPrice = this._priceOverrides[protoId];
+                    let chaMod = (typeof player !== 'undefined' && player) ? (player.stats.cha - 10) * 0.05 : 0;
+                    if (isBuying) finalPrice *= (1.2 - chaMod);
+                    else finalPrice *= (0.8 + chaMod);
+                    return Math.max(1, Math.floor(finalPrice));
+                }
+                return original(protoId, regionId, isBuying);
+            }, 10);
+            this._economyHooked = true;
+        }
+    },
+    createTradeRoute: async function(config) {
+        const routeId = 'route_' + (typeof generateUUID === 'function' ? generateUUID() : Math.random().toString(36).substring(2));
+        const route = { id: routeId, ...config };
+        if (typeof World !== 'undefined' && World && World.regions && World.regions[config.from]) {
+            if (!World.regions[config.from].caravans) World.regions[config.from].caravans = [];
+            World.regions[config.from].caravans.push(route);
+        }
+        await this.queueMutation({ type: 'createTradeRoute', routeId, config });
+        return routeId;
+    },
+    removeTradeRoute: async function(routeId) {
+        let removed = false;
+        if (typeof World !== 'undefined' && World && World.regions) {
+            for (const rId in World.regions) {
+                const region = World.regions[rId];
+                if (region.caravans) {
+                    const idx = region.caravans.findIndex(c => c.id === routeId);
+                    if (idx !== -1) {
+                        region.caravans.splice(idx, 1);
+                        removed = true;
+                    }
+                }
+            }
+        }
+        if (removed) await this.queueMutation({ type: 'removeTradeRoute', routeId });
+        return removed;
+    },
+    getEconomySummary: async function() {
+        const summary = { totalMoney: 0, priceIndex: 1.0, deficits: [], surpluses: [], factionBalance: {} };
+        if (typeof World === 'undefined' || !World || !World.regions) return summary;
+        
+        let totalBase = 0;
+        let totalCurrent = 0;
+        const goodsStats = {};
+
+        for (const rId in World.regions) {
+            const r = World.regions[rId];
+            summary.totalMoney += r.moneySupply || 0;
+            
+            if (!summary.factionBalance[r.factionId]) summary.factionBalance[r.factionId] = 0;
+            summary.factionBalance[r.factionId] += r.moneySupply || 0;
+
+            if (r.markets) {
+                for (const [item, price] of Object.entries(r.markets)) {
+                    const basePrice = (typeof ECONOMY_ITEMS !== 'undefined' && ECONOMY_ITEMS[item]) ? ECONOMY_ITEMS[item].basePrice : 1;
+                    totalBase += basePrice;
+                    totalCurrent += price;
+                    
+                    if (!goodsStats[item]) goodsStats[item] = { stock: 0, demand: 0 };
+                    if (r.vault_id && typeof countRealItems === 'function') {
+                        goodsStats[item].stock += countRealItems(r.vault_id, item);
+                    }
+                    goodsStats[item].demand += (r.population || 0) * 0.01;
+                }
+            }
+        }
+        if (totalBase > 0) summary.priceIndex = totalCurrent / totalBase;
+
+        const deficitArray = [];
+        for (const good in goodsStats) {
+            const ratio = goodsStats[good].demand / (goodsStats[good].stock + 1);
+            deficitArray.push({ good, ratio });
+        }
+        deficitArray.sort((a, b) => b.ratio - a.ratio);
+        summary.deficits = deficitArray.slice(0, 5).map(i => i.good);
+        summary.surpluses = deficitArray.slice(-5).reverse().map(i => i.good);
+
+        return summary;
+    },
+
+    // --- 4. Map & Navigation ---
+    getTile: async function(x, y) {
+        if (typeof World === 'undefined' || !World || !World.map) return null;
+        const map = World.map;
+        if (x < 0 || x >= map.width || y < 0 || y >= map.height) return null;
+        const idx = y * map.width + x;
+        const cell = map.grid ? map.grid[idx] : null;
+        if (!cell) return null;
+        
+        // MapTile format: [biome_id, road_level, bridge_flag, water_depth, is_flooded, road_condition]
+        const biomeId = cell[0];
+        const roadLevel = cell[1];
+        const bridgeFlag = cell[2];
+        const waterDepth = cell[3];
+        const isFlooded = cell[4];
+        const roadCondition = cell[5];
+
+        let regionId = null;
+        if (map.locations) {
+            for (const loc of Object.values(map.locations)) {
+                if (loc.x === x && loc.y === y) {
+                    regionId = loc.id;
+                    break;
+                }
+            }
+        }
+        
+        let hasRoad = false;
+        if (map.roads) {
+            hasRoad = map.roads.some(r => r.waypoints.some(wp => wp[0] === x && wp[1] === y));
+        }
+
+        return { x, y, biomeId, roadLevel, bridgeFlag, waterDepth, isFlooded, roadCondition, regionId, hasRoad, isExplored: true };
+    },
+    setTileBiome: async function(x, y, biomeId) {
+        if (typeof World !== 'undefined' && World && World.map && World.map.grid) {
+            const idx = y * World.map.width + x;
+            if (World.map.grid[idx]) World.map.grid[idx][0] = biomeId;
+        }
+        await this.queueMutation({ type: 'setTileBiome', x, y, biome_id: biomeId });
+    },
+    setTileRoadLevel: async function(x, y, level) {
+        if (typeof World !== 'undefined' && World && World.map && World.map.grid) {
+            const idx = y * World.map.width + x;
+            if (World.map.grid[idx]) World.map.grid[idx][1] = level;
+        }
+        await this.queueMutation({ type: 'setTileRoadLevel', x, y, level });
+    },
+    setTileWaterDepth: async function(x, y, depth) {
+        if (typeof World !== 'undefined' && World && World.map && World.map.grid) {
+            const idx = y * World.map.width + x;
+            if (World.map.grid[idx]) World.map.grid[idx][3] = depth;
+        }
+        await this.queueMutation({ type: 'setTileWaterDepth', x, y, depth });
+    },
+    setTileFlooded: async function(x, y, isFlooded) {
+        if (typeof World !== 'undefined' && World && World.map && World.map.grid) {
+            const idx = y * World.map.width + x;
+            if (World.map.grid[idx]) World.map.grid[idx][4] = isFlooded;
+        }
+        await this.queueMutation({ type: 'setTileFlooded', x, y, isFlooded });
+    },
+    addMapLocation: async function(id, name, x, y, type = 'village', faction = '') {
+        if (typeof World !== 'undefined' && World && World.map && World.map.locations) {
+            World.map.locations[id] = { id, name, x, y, type, faction, no_road: false };
+        }
+        await this.queueMutation({ type: 'addLocation', id, name, x, y, locType: type, faction });
+    },
+    removeMapLocation: async function(id) {
+        if (typeof World !== 'undefined' && World && World.map && World.map.locations) {
+            delete World.map.locations[id];
+        }
+        await this.queueMutation({ type: 'removeLocation', id });
+    },
+    findPath: async function(fromX, fromY, toX, toY, options = {}) {
+        return await this.sendRawToEngine('findPath', { fromX, fromY, toX, toY, options });
+    },
+    revealTile: async function(x, y, radius = 1) {
+        await this.queueMutation({ type: 'revealTile', x, y, radius });
+    },
+
+    updateWorldConfig: async function(configObj) {
+        await this.queueMutation({ type: 'updateWorldConfig', config: configObj });
+    },
+    updateBiomeDef: async function(biomeId, defObj) {
+        await this.queueMutation({ type: 'updateBiomeDef', biomeId, def: defObj });
+    },
+    regenerateMap: async function(seed = Math.floor(Math.random() * 1000000)) {
+        await this.queueMutation({ type: 'regenerateMap', seed });
+    },
+
+
+    // --- 5. Faction & Diplomacy ---
+    getFaction: async function(factionId) {
+        if (typeof World !== 'undefined' && World && World.factions && World.factions[factionId]) return World.factions[factionId];
+        return null;
+    },
+    setFactionProperty: async function(factionId, property, value) {
+        const faction = await this.getFaction(factionId);
+        if (!faction) return false;
+        faction[property] = value;
+        await this.queueMutation({ type: 'setFactionProperty', factionId, property, value });
+        return true;
+    },
+    createFaction: async function(config) {
+        const factionId = config.id || 'faction_' + (typeof generateUUID === 'function' ? generateUUID() : Math.random().toString(36).substring(2));
+        if (typeof World !== 'undefined' && World && World.factions) {
+            World.factions[factionId] = { id: factionId, diplomacy: {}, regions: [], armies: [], ...config };
+        }
+        await this.queueMutation({ type: 'createFaction', factionId, config });
+        return factionId;
+    },
+    getFactionMembers: async function(factionId) {
+        const members = [];
+        if (typeof World === 'undefined' || !World) return members;
+        if (World.npcs) {
+            for (const [id, npc] of Object.entries(World.npcs)) {
+                if (npc.factionId === factionId) members.push(id);
+            }
+        }
+        if (World.rulers) {
+            for (const [id, ruler] of Object.entries(World.rulers)) {
+                if (ruler.factionId === factionId) members.push(id);
+            }
+        }
+        return members;
+    },
+
+    // --- 6. Time & Simulation Control ---
+    getCurrentDate: function() {
+        if (typeof player !== 'undefined' && player && player.gameTime) {
+            return {
+                day: player.gameTime.day,
+                month: player.gameTime.month,
+                year: player.gameTime.year,
+                hour: player.gameTime.hour,
+                minute: player.gameTime.minute,
+                era: player.era,
+                tick: (typeof World !== 'undefined' && World) ? World.tick : 0
+            };
+        }
+        return null;
+    },
+    pauseSimulation: function() {
+        this._simulationPausedByMod = true;
+        if (typeof window !== 'undefined') window.isSimulatingTime = true;
+        console.log('[ModAPI] Simulation paused by mod.');
+    },
+    resumeSimulation: function() {
+        this._simulationPausedByMod = false;
+        if (typeof window !== 'undefined') window.isSimulatingTime = false;
+        console.log('[ModAPI] Simulation resumed by mod.');
+    },
+    setSimulationSpeed: function(speed) {
+        if (typeof TREK_CONFIG !== 'undefined') {
+            const base = 1000;
+            TREK_CONFIG.tick_interval_ms = Math.max(50, Math.floor(base / speed));
+            console.log(`[ModAPI] Simulation speed set to ${speed}x (${TREK_CONFIG.tick_interval_ms}ms per tick)`);
+        }
+    },
+
+    // --- 7. Quest System ---
+    registerQuest: function(questId, config) {
+        if (!this._registeredQuests) this._registeredQuests = {};
+        this._registeredQuests[questId] = config;
+        console.log(`[ModAPI] Quest registered: ${questId}`);
+    },
+    advanceQuest: async function(questId, stageId) {
+        if (!this._registeredQuests || !this._registeredQuests[questId]) return false;
+        if (typeof player === 'undefined' || !player || !player.quests) return false;
+        
+        const questConfig = this._registeredQuests[questId];
+        const stage = questConfig.stages.find(s => s.id === stageId);
+        if (!stage) return false;
+
+        if (!player.quests[questId]) {
+            player.quests[questId] = {
+                id: questId,
+                aiIdentifier: questId,
+                title: questConfig.title,
+                objective: stage.description,
+                description: questConfig.description || '',
+                reward: questConfig.rewards ? JSON.stringify(questConfig.rewards) : 'Unknown',
+                issuer: questConfig.issuer || 'System',
+                status: 'active',
+                currentStage: stageId
+            };
+            if (typeof addLogMessage === 'function') addLogMessage(`Новое задание: ${questConfig.title}`, 'quest-card');
+        } else {
+            player.quests[questId].objective = stage.description;
+            player.quests[questId].currentStage = stageId;
+            if (typeof addLogMessage === 'function') addLogMessage(`Задание обновлено: ${questConfig.title} - ${stage.description}`, 'quest-card');
+        }
+        if (typeof updateQuestList === 'function') updateQuestList();
+        await this.queueMutation({ type: 'advanceQuest', questId, stageId });
+        return true;
+    },
+    completeQuest: async function(questId, result = null) {
+        if (typeof player === 'undefined' || !player || !player.quests || !player.quests[questId]) return;
+        player.quests[questId].status = 'completed';
+        
+        const questConfig = this._registeredQuests ? this._registeredQuests[questId] : null;
+        if (questConfig && questConfig.rewards) {
+            if (questConfig.rewards.gold && typeof executeCommand === 'function') {
+                await executeCommand('updateStat', { stat: 'gold', change: questConfig.rewards.gold });
+            }
+            if (questConfig.rewards.xp && typeof executeCommand === 'function') {
+                await executeCommand('updateStat', { stat: 'xp', change: questConfig.rewards.xp });
+            }
+            if (questConfig.rewards.items && typeof executeCommand === 'function') {
+                for (const item of questConfig.rewards.items) {
+                    await executeCommand('addItem', { aiIdentifier: item, name: item, quantity: 1 });
+                }
+            }
+        }
+        
+        if (typeof addLogMessage === 'function') addLogMessage(`Задание выполнено: ${player.quests[questId].title}`, 'quest-card');
+        if (typeof updateQuestList === 'function') updateQuestList();
+        await this.queueMutation({ type: 'completeQuest', questId, result });
+    },
+    failQuest: async function(questId, reason = null) {
+        if (typeof player === 'undefined' || !player || !player.quests || !player.quests[questId]) return;
+        player.quests[questId].status = 'failed';
+        
+        const questConfig = this._registeredQuests ? this._registeredQuests[questId] : null;
+        if (questConfig && questConfig.onFailure) {
+            if (typeof questConfig.onFailure === 'function') {
+                await questConfig.onFailure(reason);
+            }
+        }
+        
+        if (typeof addLogMessage === 'function') addLogMessage(`Задание провалено: ${player.quests[questId].title}`, 'quest-card');
+        if (typeof updateQuestList === 'function') updateQuestList();
+        await this.queueMutation({ type: 'failQuest', questId, reason });
+    },
+
+    // --- 8. World Events ---
+    registerWorldEvent: function(eventId, config) {
+        if (!this._worldEvents) {
+            this._worldEvents = {};
+            if (typeof EventBus !== 'undefined') {
+                EventBus.on('world:tick', async () => {
+                    if (!this._worldEvents) return;
+                    const currentDay = (typeof World !== 'undefined' && World) ? Math.floor((World.tick || 0) / 24) : 0;
+                    for (const [id, ev] of Object.entries(this._worldEvents)) {
+                        if (ev.frequency && currentDay % ev.frequency === 0) {
+                            if (!ev.condition || ev.condition(typeof World !== 'undefined' ? World : null)) {
+                                if (ev.onTrigger) await ev.onTrigger();
+                            }
+                        }
+                    }
+                });
+            } else {
+                if (typeof runWorldSimulationTick !== 'undefined') {
+                    this.hookFunction(window, 'runWorldSimulationTick', '_ModAPI_WorldEvents', async (original, ...args) => {
+                        await original(...args);
+                        const currentDay = (typeof World !== 'undefined' && World) ? Math.floor((World.tick || 0) / 24) : 0;
+                        for (const [id, ev] of Object.entries(this._worldEvents)) {
+                            if (ev.frequency && currentDay % ev.frequency === 0) {
+                                if (!ev.condition || ev.condition(typeof World !== 'undefined' ? World : null)) {
+                                    if (ev.onTrigger) await ev.onTrigger();
+                                }
+                            }
+                        }
+                    }, 200);
+                }
+            }
+        }
+        this._worldEvents[eventId] = config;
+        console.log(`[ModAPI] World event registered: ${eventId}`);
+    },
+    triggerWorldEvent: async function(eventId, args = null) {
+        if (this._worldEvents && this._worldEvents[eventId] && this._worldEvents[eventId].onTrigger) {
+            await this._worldEvents[eventId].onTrigger(args);
+        }
+    },
+
+    // --- 9. Facility Management ---
+    buildFacility: async function(regionId, type, config = {}) {
+        const facilityId = config.id || 'fac_' + (typeof generateUUID === 'function' ? generateUUID() : Math.random().toString(36).substring(2));
+        if (typeof World !== 'undefined' && World && World.businesses) {
+            World.businesses[facilityId] = {
+                id: facilityId,
+                region_id: regionId,
+                facility_type: type,
+                owner_ids: [config.owner || 'system'],
+                level: config.level || 1,
+                cash_balance: config.cash || 0,
+                employee_count: config.workers || 0,
+                is_active: true,
+                construction_days_left: 0,
+                ...config
+            };
+            if (World.regions && World.regions[regionId]) {
+                if (!World.regions[regionId].cityLayout) World.regions[regionId].cityLayout = [];
+                World.regions[regionId].cityLayout.push({ type: type, linked_id: facilityId, name: config.name || type });
+            }
+        }
+        await this.queueMutation({ type: 'buildFacility', regionId, facilityType: type, facilityId, config });
+        if (typeof updateHoldingsDisplay === 'function') updateHoldingsDisplay();
+        return facilityId;
+    },
+    destroyFacility: async function(facilityId) {
+        let removed = false;
+        if (typeof World !== 'undefined' && World && World.businesses && World.businesses[facilityId]) {
+            const fac = World.businesses[facilityId];
+            if (World.regions && World.regions[fac.region_id] && World.regions[fac.region_id].cityLayout) {
+                World.regions[fac.region_id].cityLayout = World.regions[fac.region_id].cityLayout.filter(b => b.linked_id !== facilityId);
+            }
+            delete World.businesses[facilityId];
+            removed = true;
+        }
+        if (removed) {
+            await this.queueMutation({ type: 'destroyFacility', facilityId });
+            if (typeof updateHoldingsDisplay === 'function') updateHoldingsDisplay();
+        }
+        return removed;
+    },
+    getFacility: async function(facilityId) {
+        if (typeof World !== 'undefined' && World && World.businesses && World.businesses[facilityId]) {
+            return World.businesses[facilityId];
+        }
+        return null;
+    },
+
+    // --- 10. Inter-Mod Communication ---
+    broadcast: function(channel, data) {
+        if (!this._broadcastChannels) this._broadcastChannels = {};
+        if (this._broadcastChannels[channel]) {
+            for (const cb of this._broadcastChannels[channel]) {
+                try { cb(data); } catch(e) { console.error(`[ModAPI] Error in broadcast channel ${channel}:`, e); }
+            }
+        }
+    },
+    onBroadcast: function(channel, callback) {
+        if (!this._broadcastChannels) this._broadcastChannels = {};
+        if (!this._broadcastChannels[channel]) this._broadcastChannels[channel] = [];
+        this._broadcastChannels[channel].push(callback);
+    },
+
+    // --- 11. Audio ---
+    playSound: function(assetUrl, options = {}) {
+        const soundId = 'snd_' + Date.now() + '_' + Math.random().toString(36).substring(2);
+        if (!this._activeSounds) this._activeSounds = {};
+        
+        const audio = new Audio(assetUrl);
+        audio.volume = options.volume !== undefined ? options.volume : 1.0;
+        audio.loop = options.loop || false;
+        
+        if (options.fadeIn) {
+            audio.volume = 0;
+            audio.play().catch(e => console.warn('[ModAPI] playSound autoplay blocked:', e));
+            let vol = 0;
+            const step = (options.volume !== undefined ? options.volume : 1.0) / (options.fadeIn / 50);
+            const fadeInterval = setInterval(() => {
+                vol += step;
+                if (vol >= (options.volume !== undefined ? options.volume : 1.0)) {
+                    audio.volume = options.volume !== undefined ? options.volume : 1.0;
+                    clearInterval(fadeInterval);
+                } else {
+                    audio.volume = vol;
+                }
+            }, 50);
+        } else {
+            audio.play().catch(e => console.warn('[ModAPI] playSound autoplay blocked:', e));
+        }
+        
+        this._activeSounds[soundId] = audio;
+        
+        audio.addEventListener('ended', () => {
+            if (!audio.loop) {
+                delete this._activeSounds[soundId];
+            }
+        });
+        
+        return soundId;
+    },
+    stopSound: function(soundId) {
+        if (this._activeSounds && this._activeSounds[soundId]) {
+            const audio = this._activeSounds[soundId];
+            audio.pause();
+            audio.currentTime = 0;
+            delete this._activeSounds[soundId];
+        }
+    },
+
     mergeDeep: mergeDeep
 };
 
@@ -926,10 +1593,10 @@ async function executeModInSandbox(code, modAPI, modId, modMeta) {
     const PUBLIC_MOD_API_METHODS = [
         'on', 'emit', 'unregisterHook',
         'addCommand', 'removeCommand',
-                    'addPromptInjection',
-            'hookFunction', 'unhookFunction',
-            'patchFunction', 'unpatchFunction',
-            'addStyle', 'removeStyle',
+        'addPromptInjection',
+        'hookFunction', 'unhookFunction',
+        'patchFunction', 'unpatchFunction',
+        'addStyle', 'removeStyle',
         'registerWidget', 'renderWidgets',
         'registerHotkey', 'unregisterHotkey',
         'addPromptFilter', 'addResponseFilter', 'addTextFilter',
@@ -939,7 +1606,19 @@ async function executeModInSandbox(code, modAPI, modId, modMeta) {
         'notify', 'addSettingsTab',
         'readFile', 'readJson',
         'resolveAsset', 'applyModChanges', 'queueMutation',
-        'mergeDeep'
+        'mergeDeep', 'registerAiProvider',
+        'getNpc', 'queryNpcs', 'setNpcProperty', 'createNpc', 'removeNpc', 'addNpcTrait', 'removeNpcTrait',
+        'getRegion', 'queryRegions', 'setRegionProperty', 'getRegionMarket', 'getRegionHistory',
+        'getItemData', 'setItemPriceOverride', 'createTradeRoute', 'removeTradeRoute', 'getEconomySummary',
+        'getTile', 'findPath', 'revealTile', 'setTileBiome', 'setTileRoadLevel', 'setTileWaterDepth', 'setTileFlooded', 'addMapLocation', 'removeMapLocation',
+        'updateWorldConfig', 'updateBiomeDef', 'regenerateMap', 'setCustomMapGenerator',
+        'getFaction', 'setFactionProperty', 'createFaction', 'getFactionMembers',
+        'getCurrentDate', 'pauseSimulation', 'resumeSimulation', 'setSimulationSpeed',
+        'registerQuest', 'advanceQuest', 'completeQuest', 'failQuest',
+        'registerWorldEvent', 'triggerWorldEvent',
+        'buildFacility', 'destroyFacility', 'getFacility',
+        'broadcast', 'onBroadcast',
+        'playSound', 'stopSound'
     ];
     const PUBLIC_MOD_API_PROPS = ['apiVersion', 'isTotalConversion', 'safeMode'];
     const safeModAPIFacade = {};
@@ -1220,22 +1899,19 @@ class ModLoader {
             // 2. Декларативная загрузка данных (опционально, если мод не использует скрипты)
             if (mod.data && isObject(mod.data)) {
                 window.ModAPI.on('onDatabaseLoad', async (db) => {
-                    if (mod.data.items) {
-                        for (const file of mod.data.items) {
-                            const itemsData = await window.ModAPI.readJson(modId, file);
-                            if (itemsData) mergeDeep(db.items, itemsData);
-                        }
-                    }
-                    if (mod.data.recipes) {
-                        for (const file of mod.data.recipes) {
-                            const recipesData = await window.ModAPI.readJson(modId, file);
-                            if (recipesData) db.recipes = db.recipes.concat(recipesData);
-                        }
-                    }
-                    if (mod.data.facilities) {
-                        for (const file of mod.data.facilities) {
-                            const facData = await window.ModAPI.readJson(modId, file);
-                            if (facData) mergeDeep(db.facilities, facData);
+                    const dataTypes = ['items', 'recipes', 'facilities', 'biomes', 'city_gen', 'monsters', 'disasters', 'races', 'professions', 'traits', 'npc_names', 'faction_relations', 'world_config'];
+                    for (const type of dataTypes) {
+                        if (mod.data[type]) {
+                            for (const file of mod.data[type]) {
+                                const parsedData = await window.ModAPI.readJson(modId, file);
+                                if (parsedData) {
+                                    if (Array.isArray(db[type])) {
+                                        db[type] = db[type].concat(parsedData);
+                                    } else {
+                                        mergeDeep(db[type], parsedData);
+                                    }
+                                }
+                            }
                         }
                     }
                 });

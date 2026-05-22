@@ -274,10 +274,10 @@ async function initEngine(forceRestart = false, activeMods = []) {
     return await sendCommand('init', { mods_dir: MODS_DIR, active_mods: activeMods });
 }
 
-async function buildWorld(playerId, era, initialAgents, globalLocations, startDay) {
+async function buildWorld(playerId, era, initialAgents, globalLocations, startDay, customGrid = null) {
     // buildWorld generates 256x256 terrain (Perlin noise), A* roads, NPCs — heavy computation.
     // 30s default timeout is too short; use 5 minutes like bootstrapWorld.
-    return await sendCommand('buildWorld', { player_id: playerId, era: era, initial_agents: initialAgents, global_locations: globalLocations, start_day: startDay }, 300000);
+    return await sendCommand('buildWorld', { player_id: playerId, era: era, initial_agents: initialAgents, global_locations: globalLocations, start_day: startDay, custom_grid: customGrid }, 300000);
 }
 
 async function bootstrapWorld(days, startDay) {
@@ -369,8 +369,8 @@ ipcMain.handle('nexus-load-database', async (event, databaseString) => {
     return await sendCommand('loadDatabase', dbObj);
 });
 
-ipcMain.handle('nexus-build-world', async (event, playerId, era, initialAgents, globalLocations, startDay) => {
-    return await buildWorld(playerId, era, initialAgents, globalLocations, startDay);
+ipcMain.handle('nexus-build-world', async (event, playerId, era, initialAgents, globalLocations, startDay, customGrid) => {
+    return await buildWorld(playerId, era, initialAgents, globalLocations, startDay, customGrid);
 });
 
 ipcMain.handle('nexus-bootstrap', async (event, days, startDay) => {
@@ -460,7 +460,8 @@ const ALLOWED_RAW_COMMANDS = new Set([
     'getWorldMap',
     'getGraphContext',
     'getFullState',
-    'applyModChanges'
+    'applyModChanges',
+    'findPath'
 ]);
 
 ipcMain.handle('nexus-send-raw-command', async (event, command, params) => {

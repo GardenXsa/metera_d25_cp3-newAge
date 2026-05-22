@@ -240,5 +240,6 @@ ModAPI.on('onModsInitialized', async () => {
         }
     });
 
+
     console.log('[Cyberpunk Mod] Инициализация завершена. Добро пожаловать в Найт-Сити.');
 });

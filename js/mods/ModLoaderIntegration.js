@@ -52,6 +52,26 @@ async function initModKit() {
     }
 
     await modLoader.initMods(activeMods);
+
+    // --- ФИКС: Скрытие ванильных эпох при тотальной конверсии ---
+    if (window.ModAPI.isTotalConversion) {
+        const eraSelect = document.getElementById('char-era-select');
+        if (eraSelect) {
+            Array.from(eraSelect.options).forEach(opt => {
+                // Оставляем только базовую эпоху (которую мод переименовывает)
+                if (['architects', 'sundering', 'silence'].includes(opt.value)) {
+                    opt.style.display = 'none';
+                    opt.disabled = true;
+                }
+            });
+            // Если была выбрана скрытая эпоха, сбрасываем на базовую
+            if (['architects', 'sundering', 'silence'].includes(eraSelect.value)) {
+                eraSelect.value = 'rebirth';
+            }
+            if (typeof updateEraDescription === 'function') updateEraDescription();
+        }
+    }
+
     window.ModAPI.initialized = true;
 }
 
@@ -66,30 +86,24 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         if (typeof initModKit === 'function') await initModKit();
 
         const modLoader = new ModLoader();
-        let database = { items: {}, recipes: [], facilities: {} };
+        let database = { items: {}, recipes: [], facilities: {}, biomes: [], city_gen: {}, monsters: [], disasters: [], races: [], professions: [], traits: [], npc_names: {}, faction_relations: {}, world_config: {} };
         if (window.ModAPI && window.ModAPI.isTotalConversion) {
-            console.log('[ModLoader] Тотальная конверсия: пропуск загрузки ванильной БД (items, recipes, facilities).');
+            console.log('[ModLoader] Тотальная конверсия: пропуск загрузки ванильной БД.');
         } else {
             database.items = await modLoader.readJsonFile('./data/economy_items.json');
             database.recipes = await modLoader.readJsonFile('./data/economy_recipes.json');
             database.facilities = await modLoader.readJsonFile('./data/facility_names.json');
+            database.biomes = await modLoader.readJsonFile('./data/biomes.json');
+            database.city_gen = await modLoader.readJsonFile('./data/city_gen.json');
+            database.monsters = await modLoader.readJsonFile('./data/monsters.json');
+            database.disasters = await modLoader.readJsonFile('./data/disasters.json');
+            database.races = await modLoader.readJsonFile('./data/races.json');
+            database.professions = await modLoader.readJsonFile('./data/professions.json');
+            database.traits = await modLoader.readJsonFile('./data/traits.json');
+            database.npc_names = await modLoader.readJsonFile('./data/npc_names.json');
+            database.faction_relations = await modLoader.readJsonFile('./data/faction_relations.json');
+            database.world_config = await modLoader.readJsonFile('./data/world_config.json');
         }
-
-        
-        // --- DATA-DRIVEN REFACTOR ---
-        // Load all game data from JSON files.
-        database.biomes = await modLoader.readJsonFile('./data/biomes.json');
-        database.city_gen = await modLoader.readJsonFile('./data/city_gen.json');
-        database.monsters = await modLoader.readJsonFile('./data/monsters.json');
-        database.disasters = await modLoader.readJsonFile('./data/disasters.json');
-        // Phase 1: Character registries
-        database.races = await modLoader.readJsonFile('./data/races.json');
-        database.professions = await modLoader.readJsonFile('./data/professions.json');
-        database.traits = await modLoader.readJsonFile('./data/traits.json');
-        database.npc_names = await modLoader.readJsonFile('./data/npc_names.json');
-        database.faction_relations = await modLoader.readJsonFile('./data/faction_relations.json');
-        // World generation config
-        database.world_config = await modLoader.readJsonFile('./data/world_config.json');
         // --- END REFACTOR ---
 
         // --- BIOME COLOR SYNC ---
@@ -149,7 +163,13 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
             showLoadingScreen('loadingScreen.generatingWorld', 'Построение мира...');
         }
         
-        const buildResult = await window.electronAPI.nexusBuildWorld(player.id, player.era, initialAgents, globalLocations, startDay);
+        let customGrid = null;
+        if (window.ModAPI && window.ModAPI._customMapGenerator) {
+            console.log('[ModLoader] Запуск кастомного генератора карты из мода...');
+            customGrid = await window.ModAPI._customMapGenerator(database.world_config.map_width || 256, database.world_config.map_height || 256);
+        }
+        
+        const buildResult = await window.electronAPI.nexusBuildWorld(player.id, player.era, initialAgents, globalLocations, startDay, customGrid);
         if (buildResult.status !== 'ok') throw new Error(`World build failed: ${buildResult.message}`);
         
         let newWorld = buildResult.world;
