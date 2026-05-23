@@ -32,12 +32,6 @@ struct CityGenDef {
     std::unordered_map<std::string, std::vector<std::string>> facility_names;
     std::vector<std::string> road_names;
     std::vector<std::string> square_names;
-
-    std::string residential_type = "house";
-    std::string tavern_type = "tavern";
-    std::string market_type = "market";
-    std::string temple_type = "temple";
-    std::string office_type = "office";
 };
 
 // 2.3. Реестр Эпических Монстров (Monster Registry)

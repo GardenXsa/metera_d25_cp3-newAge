@@ -21,14 +21,14 @@
 }
 
 body {
-    font-family: var(--font-main);
-    color: var(--text-main);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #ecf0f1;
     margin: 0;
     padding: 0;
     height: 100vh;
     width: 100vw;
     overflow: hidden; /* Жестко запрещаем скролл всей страницы */
-    background: linear-gradient(135deg, var(--bg-gradient-1), var(--bg-gradient-2), var(--bg-gradient-3));
+    background: linear-gradient(135deg, #1a2530, #2c3e50, #1a2530);
     background-size: 200% 200%;
     animation: backgroundGradient 40s ease infinite;
     display: flex;
@@ -420,8 +420,7 @@ body {
 .main-layout {
     position: relative;
     width: 100%;
-    flex: 1 1 0;
-    min-height: 0;
+    height: 100%;
     display: flex;
     justify-content: space-between;
     align-items: stretch;
@@ -498,31 +497,33 @@ body {
 
 .game-content {
     position: relative;
-    flex: 1 1 0;
-    min-width: 0;
-    min-height: 0;
+    flex-grow: 1;
+    height: 100%;
     display: flex;
     flex-direction: column;
+    justify-content: flex-end;
     padding: 20px 40px 25px 40px;
     z-index: 40;
+    min-width: 0;
 }
 
 /* --- ЛОГ ИГРЫ --- */
 .game-log {
-    display: block !important; /* ФИКС СКРОЛЛА: Форсируем блочную модель, убираем наследование flex */
     width: 100%;
     max-width: 100%;
-    flex: 1 1 0;
-    min-height: 0;
+    flex-grow: 1;
+    height: 0;
     overflow-y: auto;
     margin-bottom: 20px;
     border: none;
     background: transparent !important;
-    padding: 20px 40px;
+    padding: 40px 40px 20px 40px;
     box-shadow: none !important;
-    pointer-events: auto;
-    scroll-behavior: smooth;
+    mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 95%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 95%, transparent 100%);
+    scrollbar-width: none;
 }
+.game-log::-webkit-scrollbar { display: none; }
 
 /* --- СИСТЕМА ЧАТ-ПУЗЫРЕЙ --- */
 
@@ -616,23 +617,20 @@ body {
 }
 
 .message-wrapper {
-    display: block; /* ФИКС СКРОЛЛА: Блочная модель гарантирует правильный расчет высоты */
+    display: flex;
     width: 100%;
     margin-bottom: 15px;
     animation: textAppear 0.4s ease-out forwards;
 }
 
-/* Выравнивание пузырей через margin (так как wrapper теперь block) */
-.wrapper-gm .message-bubble { margin-right: auto; margin-left: 0; }
-.wrapper-user .message-bubble { margin-left: auto; margin-right: 0; }
-.wrapper-system .message-bubble,
-.wrapper-system .rich-card,
-.wrapper-system .world-event-card { margin-left: auto; margin-right: auto; }
+/* Выравнивание пузырей */
+.wrapper-gm { justify-content: flex-start; }
+.wrapper-user { justify-content: flex-end; }
+.wrapper-system { justify-content: center; }
 
 /* Общий стиль пузыря */
 .message-bubble {
     max-width: 85%;
-    width: fit-content; /* Пузырь облегает текст */
     padding: 12px 18px;
     border-radius: 12px;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
@@ -644,34 +642,33 @@ body {
 
 /* Пузырь Гейм-Мастера (Слева) */
 .bubble-gm {
-    background: var(--bubble-gm-bg);
-    border: 1px solid var(--bubble-gm-border);
+    background: linear-gradient(135deg, rgba(22, 33, 45, 0.95), rgba(30, 42, 56, 0.95));
+    border: 1px solid rgba(52, 152, 219, 0.5);
     border-top-left-radius: 4px;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
 }
 
 /* Пузырь Игрока (Справа) */
 .bubble-user {
-    background: var(--bubble-user-bg);
-    border: 1px solid var(--bubble-user-border);
+    background: linear-gradient(135deg, rgba(25, 60, 40, 0.8), rgba(35, 75, 50, 0.8));
+    border: 1px solid rgba(46, 204, 113, 0.5);
     border-top-right-radius: 4px;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
 }
 
 /* Системный лог (По центру) */
 .bubble-system {
-    background: var(--bubble-system-bg);
-    border: 1px solid var(--bubble-system-border);
-    border-top: 1px solid var(--bubble-system-border-top);
+    background: linear-gradient(180deg, rgba(20, 25, 30, 0.9) 0%, rgba(10, 12, 15, 0.95) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid rgba(93, 173, 226, 0.4);
     backdrop-filter: blur(10px);
     box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 0 20px rgba(93, 173, 226, 0.05);
-    width: 100%; /* Переопределяем fit-content от общего класса */
     max-width: 600px;
     margin: 0 auto 15px auto;
     text-align: center;
     padding: 16px;
     border-radius: 12px;
-    color: var(--text-muted);
+    color: #bdc3c7;
 }
 
 /* Сворачивание системного лога */
@@ -1916,7 +1913,7 @@ button:not(.arrow-button):hover::after {
         flex: 1 1 250px;
     }
     .game-log {
-        flex: 1 1 0;
+        height: 55vh;
         min-height: 250px;
     }
 }
@@ -1954,7 +1951,7 @@ button:not(.arrow-button):hover::after {
 }
     .sidebar .panel:last-child { margin-bottom: 0; }
 
-    .game-log { flex: 1 1 0; min-height: 200px;}
+    .game-log { height: 45vh; min-height: 200px;}
     .input-area { flex-direction: row; gap: 5px; } /* Изменено для мобильной верстки */
     #user-input { flex-grow: 1; }
     #send-button, #voice-input-button { width: auto; flex-shrink: 0; margin: 0; }
@@ -1982,11 +1979,11 @@ button:not(.arrow-button):hover::after {
 /* Firefox */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb-color) rgba(26, 37, 48, 0.8);
+  scrollbar-color: rgba(93, 173, 226, 0.7) rgba(26, 37, 48, 0.8);
 }
 /* Webkit (Chrome, Safari, Edge) */
 ::-webkit-scrollbar {
-  width: 10px; 
+  width: 10px;
   height: 10px;
 }
 ::-webkit-scrollbar-track {
@@ -1994,13 +1991,13 @@ button:not(.arrow-button):hover::after {
   border-radius: 5px;
 }
 ::-webkit-scrollbar-thumb {
-  background-color: var(--scrollbar-thumb-color);
+  background-color: rgba(93, 173, 226, 0.6);
   border-radius: 5px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: var(--scrollbar-thumb-hover);
+  background-color: rgba(93, 173, 226, 0.9);
 }
 
 /* --- СТИЛИ ДЛЯ МОДАЛЬНОГО ОКНА РЕПУТАЦИИ (ИСПРАВЛЕНИЕ) --- */
@@ -3245,19 +3242,7 @@ input, textarea, select, button {
     border-top: 1px solid rgba(243, 156, 18, 0.3);
 }
 
-/* Позиционирование слотов в сетке */
-#equipment-slot-face { grid-column: 1; grid-row: 1; }
-#equipment-slot-head { grid-column: 2; grid-row: 1; }
-#equipment-slot-neck { grid-column: 3; grid-row: 1; }
-
-#equipment-slot-shoulders { grid-column: 1; grid-row: 2; }
-#equipment-slot-torso { grid-column: 2; grid-row: 2; height: 100%; }
-#equipment-slot-left_hand { grid-column: 3; grid-row: 2; }
-
-#equipment-slot-right_hand { grid-column: 1; grid-row: 3; }
-#equipment-slot-legs { grid-column: 2; grid-row: 3; }
-
-#equipment-slot-feet { grid-column: 2; grid-row: 4; }
+/* Позиционирование слотов в сетке теперь автоматическое (auto-flow) */
 
 /* Стилизация под конкретные слоты */
 #equipment-slot-legs .slot-icon-v2 i::before {
@@ -3471,71 +3456,28 @@ input, textarea, select, button {
 :root {
     --parallax-x: 0px;
     --parallax-y: 0px;
-    
-    /* Fonts */
-    --font-main: 'Lora', serif;
-    --font-heading: 'MedievalSharp', cursive;
-    --font-mono: 'Consolas', monospace;
-
-    /* Base Colors */
     --bg-base: #05070a;
-    --bg-gradient-1: #1a2530;
-    --bg-gradient-2: #2c3e50;
-    --bg-gradient-3: #1a2530;
-
-    /* Panels */
     --panel-bg: rgba(12, 16, 22, 0.85);
     --panel-border: rgba(93, 173, 226, 0.25);
     --panel-border-hover: rgba(212, 175, 55, 0.6);
-    --panel-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
-    --panel-hover-glow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 20px rgba(212, 175, 55, 0.08);
-
-    /* Accents */
     --accent-blue: #5dade2;
     --accent-gold: #d4af37;
     --accent-green: #2ecc71;
     --accent-red: #e74c3c;
-    --accent-orange: #e67e22;
-    --accent-purple: #9b59b6;
-
-    /* Text */
     --text-main: #e8dcc4;
     --text-muted: #8b97a3;
-
-    /* Chat Bubbles */
-    --bubble-gm-bg: linear-gradient(135deg, rgba(22, 33, 45, 0.95), rgba(30, 42, 56, 0.95));
-    --bubble-gm-border: rgba(52, 152, 219, 0.4);
-    --bubble-user-bg: linear-gradient(135deg, rgba(25, 60, 40, 0.8), rgba(35, 75, 50, 0.8));
-    --bubble-user-border: rgba(46, 204, 113, 0.5);
-    --bubble-system-bg: linear-gradient(180deg, rgba(20, 25, 30, 0.9) 0%, rgba(10, 12, 15, 0.95) 100%);
-    --bubble-system-border: rgba(255, 255, 255, 0.05);
-    --bubble-system-border-top: rgba(93, 173, 226, 0.4);
-
-    /* Inputs */
-    --input-bg: rgba(0, 0, 0, 0.3);
-    --input-bg-focus: rgba(0, 0, 0, 0.6);
-    --input-border-focus: var(--accent-gold);
-
-    /* Scrollbars */
-    --scrollbar-thumb-color: rgba(93, 173, 226, 0.5);
-    --scrollbar-thumb-hover: rgba(212, 175, 55, 0.8);
-
-    /* Special Effects */
-    --astrolabe-glow-1: #fff;
-    --astrolabe-glow-2: #5dade2;
-    --astrolabe-glow-3: #9b59b6;
 }
 
 body {
-    font-family: var(--font-main);
+    font-family: 'Lora', serif;
     background-color: var(--bg-base);
-    color: var(--text-main);
+    color: #ecf0f1;
     margin: 0;
     overflow: hidden;
 }
 
 h1, h2, h3, .slot-name-v2, #game-title {
-    font-family: var(--font-heading); /* Заголовки в стиле RPG */
+    font-family: 'MedievalSharp', cursive; /* Заголовки в стиле RPG */
     letter-spacing: 1px;
 }
 
@@ -3926,7 +3868,8 @@ button:hover {
 
 /* --- RPG ENHANCED GAME LOG --- */
 .game-log {
-    /* Удален mask-image для фикса скролла в чате */
+    mask-image: linear-gradient(to bottom, transparent 0%, black 3%, black 97%, transparent 100%) !important;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 3%, black 97%, transparent 100%) !important;
 }
 
 /* --- RPG CHAT BUBBLE ENHANCEMENTS --- */
@@ -4348,7 +4291,7 @@ button:hover {
     background: #fff;
     border-radius: 50%;
     transform: translate(-50%, -50%);
-    box-shadow: 0 0 15px var(--astrolabe-glow-1), 0 0 30px var(--astrolabe-glow-2), 0 0 45px var(--astrolabe-glow-3);
+    box-shadow: 0 0 15px #fff, 0 0 30px #5dade2, 0 0 45px #9b59b6;
     animation: pulseCore 1.2s ease-in-out infinite alternate;
 }
 
@@ -5538,64 +5481,3 @@ button:hover {
 .api-key-status.valid { color: var(--accent-green) !important; }
 .api-key-status.invalid { color: var(--accent-danger) !important; }
 
-
-
-/* --- SMART AUTOCOMPLETE DROPDOWN (STEP 4) --- */
-.autocomplete-dropdown {
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: 15px;
-    right: 15px;
-    background: var(--panel-bg);
-    border: 1px solid var(--panel-border);
-    border-radius: 8px;
-    box-shadow: var(--panel-shadow);
-    max-height: 250px;
-    overflow-y: auto;
-    z-index: 1000;
-    display: none;
-    flex-direction: column;
-    padding: 6px 0;
-    backdrop-filter: blur(15px);
-    -webkit-backdrop-filter: blur(15px);
-}
-.autocomplete-dropdown::-webkit-scrollbar { width: 4px; }
-.autocomplete-dropdown::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb-color); border-radius: 2px; }
-
-.autocomplete-item {
-    padding: 8px 16px;
-    cursor: pointer;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.95em;
-    color: var(--text-main);
-    font-family: var(--font-main);
-    transition: background 0.2s ease, color 0.2s ease;
-    border-bottom: 1px solid rgba(255,255,255,0.02);
-}
-.autocomplete-item:last-child { border-bottom: none; }
-.autocomplete-item:hover,
-.autocomplete-item.active {
-    background: rgba(93, 173, 226, 0.15);
-    color: var(--accent-blue);
-}
-.autocomplete-item .item-desc {
-    font-size: 0.8em;
-    color: var(--text-muted);
-    font-style: italic;
-    margin-top: 2px;
-}
-.autocomplete-item .item-type-tag {
-    font-size: 0.75em;
-    background: rgba(212, 175, 55, 0.15);
-    color: var(--accent-gold);
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-family: var(--font-heading);
-    font-weight: bold;
-    letter-spacing: 0.5px;
-}
-
-
-/* Toasts removed for hardcore text-based UI */

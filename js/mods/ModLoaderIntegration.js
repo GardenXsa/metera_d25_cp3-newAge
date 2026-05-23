@@ -1,3 +1,60 @@
+function getRuntimeDataUtils() {
+    if (!window.RuntimeDataUtils) {
+        throw new Error('RuntimeDataUtils is not loaded.');
+    }
+    return window.RuntimeDataUtils;
+}
+
+function createDefaultValue(defaultType) {
+    return defaultType === 'array' ? [] : {};
+}
+
+function renderTemplate(template, replacements) {
+    let output = template || '';
+    Object.entries(replacements || {}).forEach(([key, value]) => {
+        output = output.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
+    });
+    return output;
+}
+
+async function loadTextAsset(assetPath) {
+    const response = await fetch(`${assetPath}?t=${Date.now()}`);
+    if (!response.ok) {
+        throw new Error(`Failed to load text asset ${assetPath}: HTTP ${response.status}`);
+    }
+    return response.text();
+}
+
+async function hydratePromptPack(promptPack) {
+    const utils = getRuntimeDataUtils();
+    const hydratedPack = utils.cloneValue(promptPack || {});
+    if (!utils.isPlainObject(hydratedPack.entries)) {
+        hydratedPack.entries = {};
+    }
+    if (!utils.isPlainObject(hydratedPack.aliases)) {
+        hydratedPack.aliases = {};
+    }
+
+    const keys = Object.keys(hydratedPack.entries);
+    await Promise.all(keys.map(async (semanticKey) => {
+        const entry = hydratedPack.entries[semanticKey];
+        if (!entry || typeof entry !== 'object') {
+            return;
+        }
+        if (!entry.content && entry.path) {
+            try {
+                entry.content = await loadTextAsset(entry.path);
+            } catch (error) {
+                console.warn(`[RuntimeData] Failed to hydrate prompt "${semanticKey}" from ${entry.path}:`, error);
+                entry.content = `Ошибка: не удалось загрузить prompt "${semanticKey}" из ${entry.path}. ${error.message}`;
+            }
+        }
+        utils.ensurePromptAlias(hydratedPack, semanticKey, entry.path);
+    }));
+
+    return hydratedPack;
+}
+
 async function initModKit() {
     if (window.ModAPI && window.ModAPI.initialized) return;
     console.log('[ModKit] Инициализация глобального API модов...');
@@ -13,67 +70,166 @@ async function initModKit() {
     
     const settings = await window.electronAPI.loadSettings();
     const activeIds = (settings && settings.mods) ? settings.mods.active : ['base_game'];
-    const safeMode = (settings && settings.mods) ? settings.mods.safeMode : false;
     const activeMods = modsResponse.mods.filter(m => activeIds.includes(m.id) && !m.error);
-    window.ModAPI.safeMode = safeMode;
     
-    // Batch mutations to reduce IPC round trips
-    window.ModAPI._pendingMutations = [];
-    window.ModAPI._mutationFlushTimer = null;
-
-    window.ModAPI._flushMutations = async function() {
-        if (window.ModAPI._pendingMutations.length === 0) return;
-        const batch = window.ModAPI._pendingMutations.splice(0);
-        clearTimeout(window.ModAPI._mutationFlushTimer);
-        window.ModAPI._mutationFlushTimer = null;
-        await window.ModAPI.applyModChanges(batch);
-    };
-
-    // Настройка моста между C++ хуками и JS модами (with IPC batching)
     if (window.electronAPI && window.electronAPI.onNexusHookRequest) {
         window.electronAPI.onNexusHookRequest(async (hook, world) => {
-            // Передаем состояние мира модам для модификации
             await window.ModAPI.emit(hook, world);
-            // Flush any pending mutations after all hooks processed
-            await window.ModAPI._flushMutations();
-            // Возвращаем измененный мир обратно в C++ ядро, чтобы оно продолжило симуляцию
             await window.electronAPI.sendNexusHookResponse(world);
         });
     }
 
-    // ModKit 3.0: Listen for async mod events from engine (fire-and-forget)
-    if (window.electronAPI && window.electronAPI.onNexusModEvent) {
-        window.electronAPI.onNexusModEvent(async (data) => {
-            if (data && data.event) {
-                // Emit to ModAPI hooks with the context data
-                await window.ModAPI.emit(data.event, data.context || {});
-            }
-        });
-    }
-
     await modLoader.initMods(activeMods);
+    window.ModAPI.initialized = true;
+}
 
-    // --- ФИКС: Скрытие ванильных эпох при тотальной конверсии ---
-    if (window.ModAPI.isTotalConversion) {
-        const eraSelect = document.getElementById('char-era-select');
-        if (eraSelect) {
-            Array.from(eraSelect.options).forEach(opt => {
-                // Оставляем только базовую эпоху (которую мод переименовывает)
-                if (window.gamedata?.eras && !window.gamedata.eras.some(e => e.id === opt.value) && opt.value !== 'rebirth') {
-                    opt.style.display = 'none';
-                    opt.disabled = true;
-                }
-            });
-            // Если была выбрана скрытая эпоха, сбрасываем на базовую
-            if (window.gamedata?.eras && !window.gamedata.eras.some(e => e.id === eraSelect.value) && eraSelect.value !== 'rebirth') {
-                eraSelect.value = 'rebirth';
-            }
-            if (typeof updateEraDescription === 'function') updateEraDescription();
+async function buildRuntimeDatabase() {
+    const utils = getRuntimeDataUtils();
+    const modLoader = new ModLoader();
+    const manifest = await modLoader.readJsonFile('./data/runtime_manifest.json');
+    const manifestFiles = manifest && manifest.database_files ? manifest.database_files : {};
+    const database = {};
+
+    for (const [key, descriptor] of Object.entries(manifestFiles)) {
+        const defaultValue = createDefaultValue(descriptor.default_type);
+        try {
+            const rawValue = await modLoader.readJsonFile(descriptor.path);
+            database[key] = rawValue ?? defaultValue;
+        } catch (error) {
+            console.warn(`[RuntimeData] Failed to load ${key} from ${descriptor.path}, using default.`, error);
+            database[key] = utils.cloneValue(defaultValue);
         }
     }
 
-    window.ModAPI.initialized = true;
+    if (database.prompt_pack) {
+        database.prompt_pack = await hydratePromptPack(database.prompt_pack);
+    }
+
+    await window.ModAPI.emit('onDatabaseLoad', database);
+
+    if (database.prompt_pack) {
+        database.prompt_pack = await hydratePromptPack(database.prompt_pack);
+    }
+
+    database.runtime_manifest = manifest;
+    return database;
 }
+
+function applyRuntimeDatabaseGlobals(database) {
+    window.RUNTIME_DATABASE = database;
+    window.RUNTIME_MANIFEST = database.runtime_manifest || {};
+    window.ERAS_DATA = database.eras || [];
+    window.RACES_DATA = database.races || [];
+    window.CLASSES_DATA = database.classes || [];
+    window.EQUIPMENT_SLOTS = database.equipment_slots || ["head", "face", "neck", "shoulders", "torso", "right_hand", "left_hand", "legs", "feet"];
+    window.WORLD_CONFIG = database.world_config || {};
+    window.CONTAINER_TYPES = database.container_types || {};
+    window.SHIP_TYPES = database.ship_types || {};
+    window.DIPLOMACY = database.diplomacy || {};
+    window.CASUS_BELLI = database.casus_belli || {};
+    window.FURNITURE_CATALOG = database.furniture_catalog || {};
+    window.TAG_DEFAULTS = database.tag_defaults || {};
+    window.ECONOMY_ITEMS = database.items || {};
+    window.CRAFTING_RECIPES = database.recipes || [];
+    window.FACILITY_NAMES = database.facilities || {};
+    window.TREK_CONFIG = database.trek_config || { base_travel_speed: 5, tick_interval_ms: 1000 };
+    window.TILE_TYPE_DICTIONARY = database.tile_dictionary || {};
+    window.TRANSPORT_REGISTRY = database.transport_registry || {};
+    window.NARRATORS_DATA = database.narrators || [];
+    window.PREDEFINED_EFFECTS_DATA = database.predefined_effects || [];
+
+    if (Array.isArray(database.biomes)) {
+        window.BIOME_COLORS = database.biomes
+            .slice()
+            .sort((a, b) => (a.numeric_id ?? 0) - (b.numeric_id ?? 0))
+            .map(b => b.color_hex || '#000000');
+        console.log(`[RuntimeData] BIOME_COLORS synchronized (${window.BIOME_COLORS.length} biomes)`);
+    }
+}
+
+async function ensureRuntimeDataLoaded(forceRefresh = false) {
+    if (window.RUNTIME_DATABASE && !forceRefresh) {
+        return window.RUNTIME_DATABASE;
+    }
+    if (window.RUNTIME_DATABASE_PROMISE && !forceRefresh) {
+        return window.RUNTIME_DATABASE_PROMISE;
+    }
+
+    window.RUNTIME_DATABASE_PROMISE = (async () => {
+        if (typeof initModKit === 'function') {
+            await initModKit();
+        }
+
+        const database = await buildRuntimeDatabase();
+
+        if (!database.eras || database.eras.length === 0) {
+            console.warn('[RuntimeData] Список эпох пуст. Использую fallback (rebirth).');
+            database.eras = [{
+                id: 'rebirth',
+                name: 'Возрождение',
+                start_year: 1042,
+                default_location_file: 'locations_expanded.json',
+                display_name_i18n_key: 'characterCreation.eraRebirth',
+                description_i18n_key: 'characterCreation.eraRebirthDesc'
+            }];
+        }
+
+        applyRuntimeDatabaseGlobals(database);
+        return database;
+    })();
+
+    try {
+        return await window.RUNTIME_DATABASE_PROMISE;
+    } finally {
+        if (forceRefresh) {
+            window.RUNTIME_DATABASE_PROMISE = null;
+        }
+    }
+}
+
+function getRuntimeDatabase() {
+    return window.RUNTIME_DATABASE || null;
+}
+
+function getRuntimePrompt(keyOrPath) {
+    const database = getRuntimeDatabase();
+    const utils = getRuntimeDataUtils();
+    return utils.resolvePromptEntry(database ? database.prompt_pack : null, keyOrPath);
+}
+
+function resolveEraLocationInfo(eraId) {
+    const database = getRuntimeDatabase() || {};
+    const utils = getRuntimeDataUtils();
+    const fallbackFile = (database.runtime_manifest && database.runtime_manifest.era_location_fallback_file) || 'locations_rebirth.json';
+    const result = utils.resolveEraLocationFile(database.eras || [], eraId, fallbackFile);
+    if (result.warning) {
+        console.warn(result.warning);
+    }
+    return result;
+}
+
+function resolveWorldAssetPath(assetKey, replacements) {
+    const database = getRuntimeDatabase() || {};
+    const worldAssets = database.world_assets || {};
+    const localizedAssets = worldAssets.localized_assets || {};
+
+    if (assetKey === 'lore_template' && worldAssets.lore_template) {
+        return renderTemplate(worldAssets.lore_template, replacements);
+    }
+    if (assetKey === 'locations_template' && worldAssets.locations_template) {
+        return renderTemplate(worldAssets.locations_template, replacements);
+    }
+    if (localizedAssets[assetKey]) {
+        return renderTemplate(localizedAssets[assetKey], replacements);
+    }
+    return '';
+}
+
+window.ensureRuntimeDataLoaded = ensureRuntimeDataLoaded;
+window.getRuntimeDatabase = getRuntimeDatabase;
+window.getRuntimePrompt = getRuntimePrompt;
+window.resolveEraLocationInfo = resolveEraLocationInfo;
+window.resolveWorldAssetPath = resolveWorldAssetPath;
 
 async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoadMode = false) {
     if (window.isSimulatorInitialized) return typeof World !== 'undefined' ? World : null;
@@ -83,82 +239,29 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
     }
 
     try {
-        if (typeof initModKit === 'function') await initModKit();
+        const utils = getRuntimeDataUtils();
+        const runtimeDatabase = await ensureRuntimeDataLoaded();
+        const database = utils.cloneValue(runtimeDatabase);
 
-        const modLoader = new ModLoader();
-        let database = { items: {}, recipes: [], facilities: {}, biomes: [], city_gen: {}, monsters: [], disasters: [], races: [], professions: [], traits: [], npc_names: {}, faction_relations: {}, world_config: {}, tag_defaults: {}, classes: [], eras: [], diplomacy: {}, casus_belli: {}, ship_types: {}, container_types: {}, map_markers: {}, equipment_slots: [], news_categories: [], building_types: {} };
-        if (window.ModAPI && window.ModAPI.isTotalConversion) {
-            console.log('[ModLoader] Тотальная конверсия: пропуск загрузки ванильной БД.');
-        } else {
-            database.items = await modLoader.readJsonFile('./data/economy_items.json');
-            database.recipes = await modLoader.readJsonFile('./data/economy_recipes.json');
-            database.facilities = await modLoader.readJsonFile('./data/facility_names.json');
-            database.biomes = await modLoader.readJsonFile('./data/biomes.json');
-            database.city_gen = await modLoader.readJsonFile('./data/city_gen.json');
-            database.monsters = await modLoader.readJsonFile('./data/monsters.json');
-            database.disasters = await modLoader.readJsonFile('./data/disasters.json');
-            database.races = await modLoader.readJsonFile('./data/races.json');
-            database.professions = await modLoader.readJsonFile('./data/professions.json');
-            database.traits = await modLoader.readJsonFile('./data/traits.json');
-            database.npc_names = await modLoader.readJsonFile('./data/npc_names.json');
-            database.faction_relations = await modLoader.readJsonFile('./data/faction_relations.json');
-            database.world_config = await modLoader.readJsonFile('./data/world_config.json');
-            database.tag_defaults = await modLoader.readJsonFile('./data/tag_defaults.json');
-            database.classes = await modLoader.readJsonFile('./data/classes.json');
-            database.eras = await modLoader.readJsonFile('./data/eras.json');
-            database.diplomacy = await modLoader.readJsonFile('./data/diplomacy.json');
-            database.casus_belli = await modLoader.readJsonFile('./data/casus_belli.json');
-            database.ship_types = await modLoader.readJsonFile('./data/ship_types.json');
-            database.container_types = await modLoader.readJsonFile('./data/container_types.json');
-            database.map_markers = await modLoader.readJsonFile('./data/map_markers.json');
-            database.equipment_slots = await modLoader.readJsonFile('./data/equipment_slots.json');
-            database.news_categories = await modLoader.readJsonFile('./data/news_categories.json');
-            database.building_types = await modLoader.readJsonFile('./data/building_types.json');
-        }
-        // --- END REFACTOR ---
-
-        // --- BIOME COLOR SYNC ---
-        // Extract biome colors from biomes.json and expose as global BIOME_COLORS array.
-        // This ensures the JS Cartographer uses the same colors as the C++ engine,
-        // preventing biome color desync between clients and the map renderer.
-        if (Array.isArray(database.biomes)) {
-            window.BIOME_COLORS = database.biomes
-                .sort((a, b) => (a.numeric_id ?? 0) - (b.numeric_id ?? 0))
-                .map(b => b.color_hex || '#000000');
-            console.log(`[ModLoader] BIOME_COLORS synchronized from biomes.json (${window.BIOME_COLORS.length} biomes)`);
-        }
-        // --- END BIOME COLOR SYNC ---
-
-        // Apply data-driven stats to JS constants (BASE_CLASS_STATS, RACE_MODIFIERS)
         if (typeof applyDatabaseStats === 'function' && database.races) {
             applyDatabaseStats(database.races);
         }
 
-        await window.ModAPI.emit('onDatabaseLoad', database);
+        if (typeof populateErasUI === 'function') populateErasUI(database.eras);
+        if (typeof populateRacesUI === 'function') populateRacesUI(database.races);
+        if (typeof populateClassesUI === 'function') populateClassesUI(database.classes);
 
         console.log('[ModLoader] База данных собрана. Инициализация C++ ядра...');
         
-        // В безопасном режиме не передаем C++ ядру моды с нативными плагинами
-        const activeModIds = Object.keys(window.ModAPI.mods).filter(id => {
-            const m = window.ModAPI.mods[id];
-            if (window.ModAPI.safeMode && m.native_plugins && m.native_plugins.length > 0) {
-                console.warn(`[ModLoader] Safe Mode: Блокировка загрузки нативного плагина для мода ${id}`);
-                return false;
-            }
-            return true;
-        });
+        const activeModIds = Object.keys(window.ModAPI.mods);
         const initResult = await window.electronAPI.nexusInit(true, activeModIds);
         if (initResult.status !== 'ok') {
             throw new Error(`Nexus Engine init failed: ${initResult.message}`);
         }
 
         console.log('[ModLoader] Ядро запущено. Загрузка базы данных...');
-        
-        // --- DATA-DRIVEN REFACTOR ---
-        // Send the entire database as a single stringified JSON.
         const databaseString = JSON.stringify(database);
         const loadDbResult = await window.electronAPI.nexusLoadDatabase(databaseString);
-        // --- END REFACTOR ---
 
         if (loadDbResult.status !== 'ok') {
             throw new Error(`Failed to load database into engine: ${loadDbResult.message}`);
@@ -174,13 +277,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
             showLoadingScreen('loadingScreen.generatingWorld', 'Построение мира...');
         }
         
-        let customGrid = null;
-        if (window.ModAPI && window.ModAPI._customMapGenerator) {
-            console.log('[ModLoader] Запуск кастомного генератора карты из мода...');
-            customGrid = await window.ModAPI._customMapGenerator(database.world_config.map_width || 256, database.world_config.map_height || 256);
-        }
-        
-        const buildResult = await window.electronAPI.nexusBuildWorld(player.id, player.era, initialAgents, globalLocations, startDay, customGrid);
+        const buildResult = await window.electronAPI.nexusBuildWorld(player.id, player.era, initialAgents, globalLocations, startDay);
         if (buildResult.status !== 'ok') throw new Error(`World build failed: ${buildResult.message}`);
         
         let newWorld = buildResult.world;

@@ -3,10 +3,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
     isElectron: true,
 
-    // Network Proxy (CORS Bypass)
-    proxyFetch: (url, options) => ipcRenderer.invoke('proxy-fetch', url, options),
-
-
     // Settings
     loadSettings: () => ipcRenderer.invoke('load-settings'),
     saveSettings: (data) => ipcRenderer.invoke('save-settings', data),
@@ -46,7 +42,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     nexusInit: (forceRestart, activeMods) => ipcRenderer.invoke('nexus-init', forceRestart, activeMods),
 
     nexusLoadDatabase: (databaseString) => ipcRenderer.invoke('nexus-load-database', databaseString),
-    nexusBuildWorld: (playerId, era, initialAgents, globalLocations, startDay, customGrid) => ipcRenderer.invoke('nexus-build-world', playerId, era, initialAgents, globalLocations, startDay, customGrid),
+    nexusBuildWorld: (playerId, era, initialAgents, globalLocations, startDay) => ipcRenderer.invoke('nexus-build-world', playerId, era, initialAgents, globalLocations, startDay),
 
     nexusBootstrap: (days, startDay) => ipcRenderer.invoke('nexus-bootstrap', days, startDay),
     nexusSimulate: (world, ticks, playerLocation) => ipcRenderer.invoke('nexus-simulate', world, ticks, playerLocation),
@@ -89,12 +85,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // HTTP session token for authenticated fetch calls
-    getHttpToken: () => ipcRenderer.invoke('get-http-token'),
-
-    // ModKit 3.0: Async mod events from engine (non-blocking, fire-and-forget)
-    onNexusModEvent: (callback) => {
-        const handler = (event, data) => callback(data);
-        ipcRenderer.on('nexus-mod-event', handler);
-        return () => ipcRenderer.removeListener('nexus-mod-event', handler);
-    }
+    getHttpToken: () => ipcRenderer.invoke('get-http-token')
 });

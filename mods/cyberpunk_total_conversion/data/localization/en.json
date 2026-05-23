@@ -1,0 +1,44 @@
+{
+    "ui": {
+        "handle": "Handle",
+        "origin": "Origin",
+        "class": "Class",
+        "attributes": "Attributes",
+        "availablePoints": "Available Points",
+        "initializeProfile": "Initialize Profile",
+        "quickRoll": "Quick Roll",
+        "systemInitialization": "SYSTEM INITIALIZATION",
+        "createYourRunnerProfile": "Create Your Runner Profile",
+        "cpu": "CPU"
+    },
+    "origins": {
+        "street_kid": "Street Kid",
+        "corpo": "Corpo",
+        "nomad": "Nomad"
+    },
+    "classes": {
+        "solo": "Solo",
+        "netrunner": "Netrunner",
+        "techie": "Techie"
+    },
+    "stats": {
+        "body": "Body",
+        "reflex": "Reflex",
+        "tech": "Tech",
+        "net": "Net",
+        "cool": "Cool"
+    },
+    "items": {
+        "scrap_metal": "Scrap Metal",
+        "biowaste": "Biowaste",
+        "broken_electronics": "Broken Electronics",
+        "code_fragments": "Code Fragments",
+        "basic_chemicals": "Basic Chemicals",
+        "spare_parts": "Spare Parts",
+        "stim_pack_basic": "Basic Stim-Pack",
+        "icepick_software": "ICEpick v1.0",
+        "drone_chassis": "Drone Chassis",
+        "hoverbike": "Hoverbike",
+        "cargo_drone": "Cargo Drone"
+    }
+}

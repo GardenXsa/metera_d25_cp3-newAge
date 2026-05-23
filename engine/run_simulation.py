@@ -15,7 +15,13 @@ except ImportError:
     sys.exit(1)
 
 # Import shared engine client (single source of truth)
-from engine_client import EngineProcess, load_json as _shared_load_json, sync_biome_colors
+from engine_client import (
+    EngineProcess,
+    build_runtime_database,
+    load_json as _shared_load_json,
+    resolve_era_location_file,
+    sync_biome_colors,
+)
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
@@ -201,27 +207,10 @@ class SimulationApp(ctk.CTk):
         self.progress_bar.start()
         self.btn_init.configure(state="disabled")
 
-        # Load all game data from JSON files (mirrors ModLoaderIntegration.js)
-        # CRITICAL: Array fields MUST default to [] — returning {} causes C++ engine crash
         base_dir = os.path.dirname(os.path.abspath(__file__))
         data_dir = os.path.join(os.path.dirname(base_dir), 'data')
-
-        database = {
-            "command": "loadDatabase",
-            "items": self._load_json(os.path.join(data_dir, 'economy_items.json'), {}),
-            "recipes": self._load_json(os.path.join(data_dir, 'economy_recipes.json'), []),
-            "facilities": self._load_json(os.path.join(data_dir, 'facility_names.json'), {}),
-            "biomes": self._load_json(os.path.join(data_dir, 'biomes.json'), []),
-            "city_gen": self._load_json(os.path.join(data_dir, 'city_gen.json'), {}),
-            "monsters": self._load_json(os.path.join(data_dir, 'monsters.json'), []),
-            "disasters": self._load_json(os.path.join(data_dir, 'disasters.json'), []),
-            "races": self._load_json(os.path.join(data_dir, 'races.json'), []),
-            "professions": self._load_json(os.path.join(data_dir, 'professions.json'), []),
-            "traits": self._load_json(os.path.join(data_dir, 'traits.json'), []),
-            "npc_names": self._load_json(os.path.join(data_dir, 'npc_names.json'), {}),
-            "faction_relations": self._load_json(os.path.join(data_dir, 'faction_relations.json'), {}),
-            "world_config": self._load_json(os.path.join(data_dir, 'world_config.json'), {}),
-        }
+        database = build_runtime_database(data_dir)
+        database["command"] = "loadDatabase"
 
         # Send loadDatabase command and wait for acknowledgment before buildWorld
         self.engine.send(database)
@@ -249,19 +238,19 @@ class SimulationApp(ctk.CTk):
         """
         era = self.era_var.get()
 
-        # Load era-specific locations (mirrors simulation_test_client.py)
         data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
-        loc_file_map = {
-            "rebirth": "locations_rebirth.json",
-            "architects": "locations_architects.json",
-            "sundering": "locations_sundering.json",
-            "silence": "locations_silence.json",
-        }
-        loc_file = loc_file_map.get(era, "locations_rebirth.json")
-        loc_path = os.path.join(data_dir, loc_file)
+        runtime_manifest = self._pending_db.get("runtime_manifest", {}) if hasattr(self, "_pending_db") else {}
+        location_info = resolve_era_location_file(
+            self._pending_db.get("eras", []) if hasattr(self, "_pending_db") else [],
+            era,
+            runtime_manifest.get("era_location_fallback_file", "locations_rebirth.json")
+        )
+        if location_info.get("warning"):
+            print(location_info["warning"])
+        loc_path = os.path.join(data_dir, location_info["file_name"])
         global_locations = self._load_json(loc_path, {})
         loc_count = len(global_locations) if isinstance(global_locations, dict) else 0
-        print(f"[LOCATIONS] era={era} file={loc_file} count={loc_count}")
+        print(f"[LOCATIONS] era={era} file={location_info['file_name']} count={loc_count}")
         if loc_count == 0:
             print(f"[WARN] No locations loaded! World will be empty.")
 

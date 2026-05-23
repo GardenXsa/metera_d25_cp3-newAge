@@ -1,0 +1,44 @@
+{
+    "ui": {
+        "handle": "Позывной",
+        "origin": "Происхождение",
+        "class": "Класс",
+        "attributes": "Аттрибуты",
+        "availablePoints": "Доступно очков",
+        "initializeProfile": "Инициализировать профиль",
+        "quickRoll": "Быстрая генерация",
+        "systemInitialization": "ИНИЦИАЛИЗАЦИЯ СИСТЕМЫ",
+        "createYourRunnerProfile": "Создайте профиль раннера",
+        "cpu": "ЦПУ"
+    },
+    "origins": {
+        "street_kid": "Дитя улиц",
+        "corpo": "Корпорат",
+        "nomad": "Кочевник"
+    },
+    "classes": {
+        "solo": "Соло",
+        "netrunner": "Нетраннер",
+        "techie": "Техник"
+    },
+    "stats": {
+        "body": "Тело",
+        "reflex": "Рефлексы",
+        "tech": "Техника",
+        "net": "Сеть",
+        "cool": "Хладнокровие"
+    },
+    "items": {
+        "scrap_metal": "Металлолом",
+        "biowaste": "Био-отходы",
+        "broken_electronics": "Сломанная электроника",
+        "code_fragments": "Фрагменты кода",
+        "basic_chemicals": "Базовые химикаты",
+        "spare_parts": "Запчасти",
+        "stim_pack_basic": "Базовый стим-пак",
+        "icepick_software": "ICEpick v1.0",
+        "drone_chassis": "Шасси дрона",
+        "hoverbike": "Ховербайк",
+        "cargo_drone": "Грузовой дрон"
+    }
+}

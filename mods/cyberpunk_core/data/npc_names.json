@@ -1,24 +1,24 @@
 {
   "races": {
-    "organic": {
+    "human": {
       "first_names": ["Ви", "Джеки", "Джонни", "Бестия", "Панам", "Джуди", "Такэмура", "Морган", "Керри", "Альт"],
       "last_names": ["Силверхенд", "Блэкхенд", "Уэллс", "Альварес", "Палмер", "Уорд", "Смит", "Джонс"]
     },
-    "synthetic": {
+    "elf": {
       "first_names": ["Юнит-7", "Альфа", "Нейро", "Синт", "Эхо", "Нексус", "Лоджик", "Оракул"],
       "last_names": ["Прайм", "Сеть", "Код", "Матрикс", "Воид", "Сайбер"]
     },
-    "cyborg": {
+    "dwarf": {
       "first_names": ["Адам", "Ройс", "Дум-Дум", "Брик", "Кром", "Стил", "Ган", "Рекс"],
       "last_names": ["Смешер", "Борг", "Хром", "Айрон", "Мех", "Гир", "Танк"]
     }
   },
   "faction_to_race": {
-    "arasaka": "organic",
-    "militech": "cyborg",
-    "maelstrom": "cyborg",
-    "voodoo_boys": "synthetic",
-    "nomads": "organic"
+    "arasaka": "human",
+    "militech": "dwarf",
+    "maelstrom": "dwarf",
+    "voodoo_boys": "elf",
+    "nomads": "human"
   },
   "backgrounds": {
     "poor": [

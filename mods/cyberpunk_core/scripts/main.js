@@ -241,5 +241,48 @@ ModAPI.on('onModsInitialized', async () => {
     });
 
 
+    // 9. Очистка UI от ванильных рудиментов (Эпохи)
+    const eraSelect = document.getElementById('char-era-select');
+    if (eraSelect) {
+        Array.from(eraSelect.options).forEach(opt => {
+            if (opt.value !== 'rebirth') {
+                opt.remove();
+            }
+        });
+        if (typeof updateEraDescription === 'function') updateEraDescription();
+    }
+
+    // Патчим Быстрый Старт, чтобы он не выбирал удаленные эпохи и генерировал лорные имена
+    if (window.handleQuickStart) {
+        ModAPI.patchFunction(window, 'handleQuickStart', () => {
+            const races = ['human', 'elf', 'dwarf'];
+            const classes = ['warrior', 'mage', 'rogue', 'bard'];
+            const eras = ['rebirth'];
+            const names = ['V', 'Jackie', 'Johnny', 'Rogue', 'Panam', 'Judy', 'David', 'Lucy', 'Rebecca'];
+
+            charRaceSelect.value = races[Math.floor(Math.random() * races.length)];
+            charClassSelect.value = classes[Math.floor(Math.random() * classes.length)];
+            charEraSelect.value = eras[Math.floor(Math.random() * eras.length)];
+            const genderSelect = document.getElementById('char-gender-select');
+            if (genderSelect) genderSelect.value = Math.random() > 0.5 ? 'male' : 'female';
+
+            handleRaceOrClassChange();
+
+            charNameInput.value = names[Math.floor(Math.random() * names.length)] + " " + (Math.floor(Math.random() * 900) + 100);
+            charDescInput.value = "Наемник из Найт-Сити. Ищет способ выжить и стать легендой.";
+
+            const statKeys = ['str', 'dex', 'int', 'con', 'cha', 'res'];
+            while (availableStatPoints > 0) {
+                const randomStat = statKeys[Math.floor(Math.random() * statKeys.length)];
+                currentCreationStats[randomStat]++;
+                availableStatPoints--;
+            }
+
+            updateStatCreationDisplay();
+            finalizeCharacterCreation();
+        });
+    }
+
+
     console.log('[Cyberpunk Mod] Инициализация завершена. Добро пожаловать в Найт-Сити.');
 });

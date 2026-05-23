@@ -18,5 +18,8 @@
   "stone": "stone",
   "consumable": "bread",
   "tool": "sickle",
-  "tax_goods_list": ["wheat", "meat"]
+  "tax_goods_list": ["wheat", "meat"],
+  "brothel_luxury_goods": ["aphrodisiac", "lingerie"],
+  "bathhouse_luxury_goods": ["perfume"]
 }
+

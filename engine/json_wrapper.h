@@ -102,16 +102,14 @@ struct JsonValue {
         return b_val;
     }
 
-    const JsonValue& operator[](const std::string& key) const {
+    JsonValue operator[](const std::string& key) const {
         if (has(key)) return obj_val.at(key);
-        static const JsonValue empty_val;
-        return empty_val;
+        return JsonValue();
     }
 
-    const JsonValue& operator[](size_t index) const {
+    JsonValue operator[](size_t index) const {
         if (type == ARRAY && index < arr_val.size()) return arr_val[index];
-        static const JsonValue empty_val;
-        return empty_val;
+        return JsonValue();
     }
 
     // FIX: set() no longer re-creates JsonValue from _data[key] — that caused

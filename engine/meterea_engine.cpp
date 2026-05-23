@@ -13,6 +13,8 @@
 #include <iostream>
 #include <string>
 #include <vector>
+
+#include <initializer_list>
 #include <map>
 #include <unordered_map>
 #include <set>
@@ -51,9 +53,6 @@
 #include "npc_personality.h"
 #include <fstream>
 
-// Logging macros (Stage 1+)
-#define LOG_WARN(msg) std::cerr << "[WARN] " << msg << std::endl
-
 // SINGLE DEFINITION OF GLOBAL REGISTRIES
 ObjectPool<PhysicalItem> g_items;
 ObjectPool<Storage> g_containers;
@@ -73,6 +72,10 @@ struct Database {
     std::unordered_map<std::string, ItemDef> items;
     std::vector<RecipeDef> recipes;
     std::unordered_map<std::string, std::string> facility_names;
+
+    // Data-driven canonical ids by semantic tag, loaded from data/tag_defaults.json
+    std::unordered_map<std::string, std::string> tag_defaults;
+    std::unordered_map<std::string, std::vector<std::string>> tag_default_lists;
 
     // New Data-Driven Registries
     std::vector<BiomeDef> biomes;
@@ -129,20 +132,8 @@ struct Database {
         WorldContinentConfig continent;
         WorldRiverConfig rivers;
         WorldVolcanoConfig volcanoes;
-        std::map<std::string, int> location_size_thresholds;  // "city" -> 5000, etc. (Stage 3)
     };
     WorldConfigDef world_config;
-
-    // Data-driven: tag defaults for item resolution (Stage 1)
-    std::unordered_map<std::string, std::string> tag_defaults;
-
-    // Data-driven: container type registry (Stage 8)
-    std::unordered_map<std::string, ContainerTypeDef> container_types;
-
-    // Stage 5: String-based IDs for data-driven enum replacement
-    std::vector<std::string> diplo_state_ids;
-    std::vector<std::string> casus_belli_ids;
-    std::vector<std::string> ship_type_ids;
 };
 
 
@@ -157,13 +148,8 @@ Database g_db;
 namespace NpcGen {
 
     std::string generateName(const std::string& factionId, std::mt19937& gen) {
-        // Resolve race from faction, or fall back to first available base_race
-        // Stage 13: data-driven default race
+        // Resolve race from faction, or fall back to first available race
         std::string raceId = "human";
-        for (const auto& rid : g_db.race_ids) {
-            auto rit = g_db.races.find(rid);
-            if (rit != g_db.races.end() && rit->second.base_race) { raceId = rid; break; }
-        }
         auto ftrIt = g_db.faction_to_race.find(factionId);
         if (ftrIt != g_db.faction_to_race.end()) raceId = ftrIt->second;
 
@@ -262,8 +248,6 @@ static std::mutex g_output_mutex; // Protects std::cout from concurrent writes
     static std::mutex g_faction_state_mutex;
     static std::map<std::pair<std::string, std::string>, std::vector<std::pair<int,int>>> g_path_cache;
     static std::atomic<bool> g_path_cache_dirty{true};
-    static std::mutex g_path_cache_mutex;
-
 
         void rebuildContainerIndices() {
         std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
@@ -328,8 +312,6 @@ struct AStarCompare {
 // Forward declaration for A* pathfinding
 std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int startY, int goalX, int goalY, const std::vector<bool>& has_road, const std::vector<int>& path_status, MovementType moveType, int entity_size = 0);
 
-std::vector<std::pair<int,int>> getLandPath(const std::string& from, const std::string& to, int entity_size = 0);
-
 std::string createContainer(const std::string& type, const std::string& ownerId, 
                             int maxWeight, int maxSlots, const std::string& regionId = "",
                             const std::string& parentEntity = "", const std::string& parentContainer = "") {
@@ -346,123 +328,159 @@ std::string createContainer(const std::string& type, const std::string& ownerId,
     if (!parentEntity.empty()) cont.location.set("parent_entity", parentEntity);
     if (!parentContainer.empty()) cont.location.set("parent_container", parentContainer);
     
-    // Stage 8c: Data-driven container type properties
-    auto ctIt = g_db.container_types.find(type);
-    bool isFaction = (ctIt != g_db.container_types.end() && ctIt->second.category == "faction");
-    if (ctIt != g_db.container_types.end()) {
-        cont.lock_data.set("is_locked", ctIt->second.is_locked);
-        cont.lock_data.set("difficulty", ctIt->second.lock_difficulty);
-        cont.physical_props.set("health", ctIt->second.health);
-        cont.physical_props.set("flammable", ctIt->second.flammable);
-    } else {
-        // Fallback: legacy hardcoded behavior
-        cont.lock_data.set("is_locked", isFaction);
-        cont.lock_data.set("difficulty", isFaction ? 16 : 10);
-        cont.physical_props.set("health", isFaction ? 400 : 200);
-        cont.physical_props.set("flammable", !isFaction);
-    }
+    cont.lock_data.set("is_locked", (type == "faction_vault"));
+    cont.lock_data.set("difficulty", (type == "faction_vault") ? 16 : 10);
+    cont.physical_props.set("health", (type == "faction_vault") ? 400 : 200);
+    cont.physical_props.set("flammable", (type != "faction_vault"));
     
     cont.is_dirty = true;
     g_containers[cont.id] = cont;
     return cont.id;
 }
 
-std::string getCoreIdByTag(const std::string& tag, const std::string& fallbackId = "") {
-    auto items = g_itemRegistry.findTemplatesWithTag(tag);
-    if (!items.empty()) return items[0]->id;
-    if (tag == "food") {
-        items = g_itemRegistry.findTemplatesWithTag("consumable");
-        if (!items.empty()) return items[0]->id;
-        items = g_itemRegistry.findTemplatesWithTag("raw_food");
-        if (!items.empty()) return items[0]->id;
+std::string getCoreIdByTag(const std::string& tag) {
+    // Strict data-driven path: canonical ids MUST come from data/tag_defaults.json.
+    // No registry-order fallback here — missing mappings are data contract errors.
+    auto defaultIt = g_db.tag_defaults.find(tag);
+    if (defaultIt == g_db.tag_defaults.end()) {
+        std::cerr << ("DATA ERROR: missing required tag_defaults entry for tag '" + tag + "'") << std::endl;
+        return "";
     }
-    // Data-driven fallback from tag_defaults.json
-    if (!fallbackId.empty()) {
-        LOG_WARN("DEPRECATED: hardcoded fallback in getCoreIdByTag tag=" + tag + " fallback=" + fallbackId + " — migrate to tag_defaults.json");
-        return fallbackId;
+
+    const std::string& defaultId = defaultIt->second;
+    const ItemTemplate* tpl = g_itemRegistry.getTemplate(defaultId);
+
+    if (!tpl) {
+        std::cerr << ("DATA ERROR: tag_defaults['" + tag + "'] points to missing item id '" + defaultId + "'") << std::endl;
+        return "";
     }
-    auto it = g_db.tag_defaults.find(tag);
-    if (it != g_db.tag_defaults.end()) return it->second;
-    LOG_WARN("getCoreIdByTag: no item found for tag=" + tag + " and no tag_default entry");
-    return "";
+
+    if (!tpl->hasTag(tag)) {
+        std::cerr << ("DATA ERROR: tag_defaults['" + tag + "']='" + defaultId + "' exists, but item does not have required tag '" + tag + "'") << std::endl;
+        return "";
+    }
+
+    return defaultId;
+}
+
+
+std::vector<std::string> getCoreIdsByTagList(const std::string& listKey) {
+    std::vector<std::string> ids;
+
+    auto listIt = g_db.tag_default_lists.find(listKey);
+    if (listIt != g_db.tag_default_lists.end()) {
+        for (const std::string& itemId : listIt->second) {
+            if (g_db.items.count(itemId) || g_itemRegistry.getTemplate(itemId)) {
+                ids.push_back(itemId);
+            } else {
+                std::cerr << "DATA ERROR: tag_defaults['" << listKey << "'] contains missing item id '" << itemId << "'" << std::endl;
+            }
+        }
+    }
+
+    if (ids.empty()) {
+        std::string scalarFallback = getCoreIdByTag(listKey);
+        if (!scalarFallback.empty()) ids.push_back(scalarFallback);
+    }
+
+    return ids;
+}
+
+double getItemNumericProperty(const std::string& itemId, const std::string& propertyKey, double defaultValue = 0.0) {
+    const ItemTemplate* tpl = g_itemRegistry.getTemplate(itemId);
+    if (!tpl) return defaultValue;
+    auto it = tpl->properties.find(propertyKey);
+    if (it == tpl->properties.end()) return defaultValue;
+    if (std::holds_alternative<int>(it->second)) return static_cast<double>(std::get<int>(it->second));
+    if (std::holds_alternative<double>(it->second)) return std::get<double>(it->second);
+    return defaultValue;
+}
+
+bool itemHasTag(const std::string& itemId, const std::string& tag) {
+    const ItemTemplate* tpl = g_itemRegistry.getTemplate(itemId);
+    return tpl && tpl->hasTag(tag);
+}
+
+double getFoodPriority(const std::string& itemId, const std::string& propertyKey = "army_supply_priority") {
+    double explicitPriority = getItemNumericProperty(itemId, propertyKey, -1.0);
+    if (explicitPriority >= 0.0) return explicitPriority;
+
+    const ItemTemplate* tpl = g_itemRegistry.getTemplate(itemId);
+    if (!tpl) return 0.0;
+
+    if (tpl->hasTag("preserved_food")) return 100.0;
+    if (tpl->hasTag("meat")) return 90.0;
+    if (tpl->hasTag("fish")) return 85.0;
+    if (tpl->hasTag("processed_food")) return 80.0;
+    if (tpl->hasTag("bakery_product")) return 75.0;
+    if (tpl->hasTag("grain") || tpl->hasTag("taxable_crop")) return 55.0;
+    if (tpl->hasTag("raw_food")) return 45.0;
+    if (tpl->hasTag("food")) return 60.0;
+    return 0.0;
+}
+
+double getFoodReserveDays(const std::string& itemId) {
+    double explicitDays = getItemNumericProperty(itemId, "reserve_days", -1.0);
+    if (explicitDays >= 0.0) return explicitDays;
+
+    const ItemTemplate* tpl = g_itemRegistry.getTemplate(itemId);
+    if (!tpl) return 14.0;
+
+    if (tpl->hasTag("grain") || tpl->hasTag("taxable_crop") || tpl->hasTag("preserved_food")) return 30.0;
+    if (tpl->hasTag("processed_food") || tpl->hasTag("bakery_product")) return 14.0;
+    if (tpl->hasTag("raw_food")) return 7.0;
+    if (tpl->hasTag("food")) return 10.0;
+    return 0.0;
+}
+
+double getSeasonalDemandMultiplier(const std::string& itemId, const std::string& season) {
+    if (season.empty()) return 1.0;
+
+    const double explicitMult = getItemNumericProperty(itemId, season + "_demand_mult", -1.0);
+    if (explicitMult >= 0.0) return explicitMult;
+
+    const ItemTemplate* tpl = g_itemRegistry.getTemplate(itemId);
+    if (!tpl) return 1.0;
+
+    if (season == "winter") {
+        if (tpl->hasTag("food")) return 2.0;
+        if (tpl->hasTag("construction_material") || tpl->hasTag("animal_product")) return 1.5;
+    } else if (season == "autumn") {
+        if (tpl->hasTag("food")) return 0.5;
+    } else if (season == "spring") {
+        if (tpl->hasTag("tool")) return 2.0;
+    } else if (season == "summer") {
+        if (tpl->hasTag("luxury") || tpl->hasTag("potion")) return 1.5;
+    }
+
+    return 1.0;
+}
+
+std::vector<std::string> getContainerItemTypesByTagSorted(const std::string& containerId, const std::string& tag, const std::string& priorityProperty = "army_supply_priority") {
+    std::vector<std::pair<double, std::string>> rankedItems;
+    if (!g_containers.count(containerId)) return {};
+
+    for (const auto& [itemType, qty] : g_containers[containerId].cached_stocks) {
+        if (qty <= 0 || !itemHasTag(itemType, tag)) continue;
+        rankedItems.push_back({getFoodPriority(itemType, priorityProperty), itemType});
+    }
+
+    std::sort(rankedItems.begin(), rankedItems.end(), [](const auto& left, const auto& right) {
+        if (left.first != right.first) return left.first > right.first;
+        return left.second < right.second;
+    });
+
+    std::vector<std::string> itemTypes;
+    itemTypes.reserve(rankedItems.size());
+    for (const auto& [priority, itemType] : rankedItems) {
+        itemTypes.push_back(itemType);
+    }
+    return itemTypes;
 }
 
 std::string getMappedId(const std::string& id) {
     if (g_db.items.count(id)) return id;
     return id; // Engine now expects correct IDs or uses tags directly.
-}
-
-// Data-driven helper: check if an item has a given tag (Stage 6)
-bool hasTag(const std::string& itemId, const std::string& tag) {
-    auto it = g_db.items.find(itemId);
-    if (it != g_db.items.end()) {
-        // Check item category for tag match
-        if (it->second.category == tag) return true;
-    }
-    auto items = g_itemRegistry.findTemplatesWithTag(tag);
-    for (const auto& i : items) {
-        if (i->id == itemId) return true;
-    }
-    return false;
-}
-
-// Data-driven profession helpers (Stage 2c)
-bool profHasAbility(const std::string& profType, const std::string& ability) {
-    auto it = g_db.professions.find(profType);
-    if (it != g_db.professions.end()) {
-        for (const auto& a : it->second.special_abilities) {
-            if (a == ability) return true;
-        }
-    }
-    return false;
-}
-std::string profProductionType(const std::string& profType) {
-    auto it = g_db.professions.find(profType);
-    if (it != g_db.professions.end()) return it->second.production_type;
-    return "";
-}
-
-// Backward-compatible profession type checks (Stage 2c)
-// Uses data-driven special_abilities/production_type when available, falls back to profession_type string
-bool profIsFoodProducer(const std::string& pt) {
-    if (profProductionType(pt) == "food" || profHasAbility(pt, "farming")) return true;
-    return (pt == "farmer" || pt == "fisherman"); // fallback
-}
-bool profIsGatherer(const std::string& pt) {
-    if (profHasAbility(pt, "gathering")) return true;
-    return (pt == "gatherer"); // fallback
-}
-bool profIsCrafter(const std::string& pt) {
-    if (profProductionType(pt) == "crafts" || profHasAbility(pt, "crafting")) return true;
-    return (pt == "artisan"); // fallback
-}
-bool profIsMage(const std::string& pt) {
-    if (profHasAbility(pt, "spellcasting") || profHasAbility(pt, "healing")) return true;
-    return (pt == "mage"); // fallback
-}
-bool profIsInnkeeper(const std::string& pt) {
-    if (profHasAbility(pt, "hospitality")) return true;
-    return (pt == "innkeeper"); // fallback
-}
-bool profIsCleric(const std::string& pt) {
-    if (profHasAbility(pt, "religious")) return true;
-    return (pt == "cleric"); // fallback
-}
-bool profIsMerchant(const std::string& pt) {
-    if (profHasAbility(pt, "trading")) return true;
-    return (pt == "merchant"); // fallback
-}
-bool profIsMercenary(const std::string& pt) {
-    if (profHasAbility(pt, "combat_hire")) return true;
-    return (pt == "mercenary"); // fallback
-}
-bool profIsSeafarer(const std::string& pt) {
-    if (profHasAbility(pt, "seafaring")) return true;
-    return (pt == "admiral" || pt == "sailor"); // fallback
-}
-bool profIsMilitaryCommander(const std::string& pt) {
-    if (profHasAbility(pt, "military_command")) return true;
-    return (pt == "general" || pt == "commander"); // fallback
 }
 
 
@@ -640,14 +658,7 @@ int getCategoryAmount(const std::string& vault_id, const std::string& category) 
     if (g_containers.count(vault_id)) {
         for (const auto& [item_type, qty] : g_containers[vault_id].cached_stocks) {
             const ItemTemplate* tpl = g_itemRegistry.getTemplate(item_type);
-            bool match = false;
-            if (tpl) {
-                if (tpl->hasTag(category)) match = true;
-                if (category == "food" && (tpl->hasTag("consumable") || tpl->hasTag("raw_food"))) match = true;
-            } else if (hasTag(item_type, "food")) {
-                match = (category == "food");
-            }
-            if (match) total += qty;
+            if (tpl && tpl->hasTag(category)) total += qty;
         }
     }
     return total;
@@ -657,31 +668,49 @@ int getFoodAmount(const std::string& vault_id) {
     return getCategoryAmount(vault_id, "food");
 }
 
-int consumeCategory(const std::string& vault_id, const std::string& category, int amount) {
+int consumeCategory(const std::string& vault_id, const std::string& category, int amount, const std::string& priorityProperty = "") {
     int remaining = amount;
-    if (g_containers.count(vault_id)) {
+    if (!g_containers.count(vault_id)) return 0;
+
+    std::vector<std::string> itemTypes;
+    if (!priorityProperty.empty()) {
+        itemTypes = getContainerItemTypesByTagSorted(vault_id, category, priorityProperty);
+    } else {
         for (const auto& [item_type, qty] : g_containers[vault_id].cached_stocks) {
             const ItemTemplate* tpl = g_itemRegistry.getTemplate(item_type);
-            bool match = false;
-            if (tpl) {
-                if (tpl->hasTag(category)) match = true;
-                if (category == "food" && (tpl->hasTag("consumable") || tpl->hasTag("raw_food"))) match = true;
-            } else if (hasTag(item_type, "food")) {
-                match = (category == "food");
-            }
-            if (match) {
-                int taken = consumeItemsFromContainer(vault_id, item_type, remaining);
-                remaining -= taken;
-                if (remaining <= 0) break;
-            }
+            if (tpl && tpl->hasTag(category)) itemTypes.push_back(item_type);
         }
+    }
+
+    for (const auto& itemType : itemTypes) {
+        int taken = consumeItemsFromContainer(vault_id, itemType, remaining);
+        remaining -= taken;
+        if (remaining <= 0) break;
     }
     return amount - remaining;
 }
 
 int consumeFood(const std::string& vault_id, int amount) {
-    return consumeCategory(vault_id, "food", amount);
+    return consumeCategory(vault_id, "food", amount, "reserve_priority");
 }
+
+std::string getPreferredAvailableFoodId(const std::string& vaultId) {
+    auto rankedFoods = getContainerItemTypesByTagSorted(vaultId, "food", "market_priority");
+    if (!rankedFoods.empty()) return rankedFoods.front();
+    return getCoreIdByTag("food");
+}
+
+int getTaggedAmountFromStocks(const std::unordered_map<std::string, int>& stocks, const std::string& tag) {
+    int total = 0;
+    for (const auto& [itemId, qty] : stocks) {
+        if (qty > 0 && itemHasTag(itemId, tag)) total += qty;
+    }
+    return total;
+}
+
+struct Region;
+std::string inferLegacyPlacementTypeFromRegionName(const std::string& regionName);
+std::set<std::string> inferRegionRawResourcesLegacy(const Region& region);
 
 
 // ============================================================================
@@ -879,7 +908,7 @@ struct NPC {
     std::string inventory_id; // Container ID for physical items
     
     // Demographics & Life Cycle
-    std::string race = "human"; // Stage 13: default overridden by g_db.races base_race lookup
+    std::string race = "human"; // human, elf, dwarf, orc
     int age_days = 0;
     bool is_male = true;
     std::string father_id;
@@ -1741,7 +1770,6 @@ struct Ship {
     std::string id;
     std::string owner_id;
     ShipType type = ShipType::MERCHANT;
-    std::string ship_type_id; // Stage 5: string-based ID alongside enum for data-driven comparisons
     int hull = 100;
     int sailors = 10;
     int cargo_capacity = 100;
@@ -1923,7 +1951,6 @@ struct PortFacility {
     int level = 1;
     int durability = 100;
     PortType type = PortType::NONE;
-    std::string port_type_id; // Stage 5: string-based ID alongside enum for data-driven comparisons
     std::string dock_container_id;
     std::vector<std::string> docked_ship_ids;
     bool is_blockaded = false;
@@ -2081,10 +2108,9 @@ struct Region {
     // Weather & Climate
     double fertility = 1.0;
     double mineral_wealth = 1.0;
-    std::string weather = "clear";
+    std::string weather = "Ясно";
     int weatherDaysLeft = 0;
     std::string climate = "temperate";
-    std::string biome; // Stage 3a: biome string ID for data-driven resource assignment
     std::string placement_type;
     std::string base_type; // Explicit location type (city, fort, anomaly, etc.)
     
@@ -2164,7 +2190,6 @@ struct Region {
         obj.set("caravans", cars);
         
         obj.set("climate", climate);
-        if (!biome.empty()) obj.set("biome", biome); // Stage 3a
         
         JsonValue facs = JsonValue::object();
         for (const auto& [k, v] : facilities) facs.set(k, v.toJson());
@@ -2266,7 +2291,6 @@ struct Region {
         }
         
         if (j.has("climate")) r.climate = j["climate"].asString();
-        if (j.has("biome")) r.biome = j["biome"].asString(); // Stage 3a: biome string ID
         
         if (j.has("facilities")) {
             for (const auto& kv : j["facilities"].obj_val) {
@@ -2331,18 +2355,11 @@ struct Region {
         
 // Backward compatibility for old saves
         if (r.available_raw_resources.empty()) {
-            // Data-driven: assign resources from biome definition (Stage 3a)
-            auto biomeIt = g_db.biome_string_to_id.find(r.biome);
-            if (biomeIt != g_db.biome_string_to_id.end()) {
-                size_t bidx = g_db.biome_numeric_to_index[biomeIt->second];
-                if (bidx < g_db.biomes.size() && !g_db.biomes[bidx].resources.empty()) {
-                    r.available_raw_resources = std::set<std::string>(g_db.biomes[bidx].resources.begin(), g_db.biomes[bidx].resources.end());
-                }
+            Region legacyRegion = r;
+            if (legacyRegion.placement_type.empty()) {
+                legacyRegion.placement_type = inferLegacyPlacementTypeFromRegionName(r.name);
             }
-            // Fallback: default resources if biome not found or has no resources defined
-            if (r.available_raw_resources.empty()) {
-                r.available_raw_resources = std::set<std::string>{"wheat", "cotton", "wood", "meat"};
-            }
+            r.available_raw_resources = inferRegionRawResourcesLegacy(legacyRegion);
         }
         
 
@@ -2440,7 +2457,6 @@ struct Faction {
     
     // T3: Advanced Diplomacy & War
     DiplomaticState warType = DiplomaticState::PEACE;
-    std::string diplo_state_id; // Stage 5: string-based ID alongside enum for data-driven comparisons
     int stability = 70;
     int legitimacy = 100;
     WarGoal activeWarGoal;
@@ -2448,7 +2464,6 @@ struct Faction {
     std::vector<Coalition> coalitions;
     int daysInCurrentWar = 0;
     CasusBelli currentCasusBelli = CasusBelli::NONE;
-    std::string casus_belli_id; // Stage 5: string-based ID alongside enum for data-driven comparisons
     std::unordered_map<std::string, int> truceUntil;
     
     
@@ -3074,7 +3089,7 @@ struct KnowledgeGraph {
 struct World {
     int tick = 0;
     int current_day = 0;
-    std::string era = "rebirth"; // Stage 13: default overridden by first era from g_db or world_config
+    std::string era = "rebirth";
     
     // Time tracking
     struct Time {
@@ -3379,1062 +3394,102 @@ static std::set<std::string> g_active_hooks;
 
 
 // ============================================================================
-// MODKIT 3.0 — OPAQUE C-API PLUGIN SYSTEM + ASYNC IPC
+// C++ PLUGIN SYSTEM (NATIVE MODDING)
 // ============================================================================
-#include "meterea_mod_sdk.h"
-
-// --- Deferred mutation queue: mutations are buffered and applied on next tick ---
-struct DeferredMutation {
-    enum Type { SET_STABILITY, MODIFY_POPULATION, MULTIPLY_ALL_PRICES, MULTIPLY_ITEM_PRICE, SET_GLOBAL_STRING, SPAWN_ITEM, TRIGGER_DISASTER, SPAWN_MONSTER, ADD_NEWS, SET_TILE_BIOME, SET_FACTION_RELATION, FORCE_WAR, FORCE_PEACE, MODIFY_REGION_MONEY, MODIFY_BUSINESS_CASH, TELEPORT_NPC, MODIFY_NPC_GOLD, SPAWN_ARMY, SET_REGION_THREAT, SET_ROAD_STATE, SET_TILE_ROAD_LEVEL, SET_TILE_WATER_DEPTH, SET_TILE_FLOODED, ADD_LOCATION, REMOVE_LOCATION, UPDATE_WORLD_CONFIG, UPDATE_BIOME_DEF, REGENERATE_MAP };
-    Type type;
-    std::string transaction_id;
-    std::string target_id;  // region_id or item_id or key
-    int32_t int_value = 0;
-    int32_t int_value2 = 0;
-    int32_t int_value3 = 0;
-    double double_value = 0.0;
-    std::string string_value;
-    std::string string_value2;
-    std::string string_value3;
-};
-
-static std::vector<DeferredMutation> g_deferred_mutations;
-static std::mutex g_deferred_mutex;
-
-// --- Global string store for inter-mod data exchange ---
-static std::unordered_map<std::string, std::string> g_global_strings;
-static std::mutex g_globals_mutex;
-
-// --- Engine API implementation (functions provided TO plugins) ---
-
-static const char* get_thread_local_string(const std::string& str) {
-    static thread_local std::vector<std::string> ring(16);
-    static thread_local size_t idx = 0;
-    ring[idx] = str;
-    const char* res = ring[idx].c_str();
-    idx = (idx + 1) % 16;
-    return res;
+extern "C" {
+    typedef void (*MetereaPluginInitFunc)(World*, Database*, ItemRegistry*, FacilityRegistry*);
+    typedef void (*MetereaDailyTickFunc)();
 }
-
-
-static int32_t apiGetRegionPopulation(const char* region_id) {
-    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
-    auto it = g_world.regions.find(region_id);
-    return it != g_world.regions.end() ? (int32_t)it->second.population : -1;
-}
-
-static int32_t apiGetRegionStability(const char* region_id) {
-    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
-    auto it = g_world.regions.find(region_id);
-    return it != g_world.regions.end() ? (int32_t)it->second.stability : -1;
-}
-
-static const char* apiGetRegionFaction(const char* region_id) {
-    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
-    auto it = g_world.regions.find(region_id);
-    return get_thread_local_string((it != g_world.regions.end()) ? it->second.factionId : "");
-}
-
-static const char* apiGetRegionBiome(const char* region_id) {
-    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
-    auto it = g_world.regions.find(region_id);
-    return get_thread_local_string((it != g_world.regions.end()) ? it->second.climate : "");
-}
-
-static int64_t apiGetWorldPopulation() {
-    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
-    int64_t total = 0;
-    for (auto& [id, r] : g_world.regions) total += r.population;
-    return total;
-}
-
-static int32_t apiGetCurrentDay() {
-    return g_world.current_day;
-}
-
-static int32_t apiGetCurrentHour() {
-    return g_world.time.internalHour;
-}
-
-static int32_t apiGetRegionNpcCount(const char* region_id) {
-    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
-    int32_t count = 0;
-    for (auto& [id, npc] : g_world.npcs) {
-        if (npc.currentLocation == region_id) count++;
-    }
-    return count;
-}
-
-static double apiGetItemPrice(const char* item_id) {
-    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
-    auto it = g_db.items.find(item_id);
-    return it != g_db.items.end() ? it->second.basePrice : -1.0;
-}
-
-static const char* apiGetGlobalString(const char* key) {
-    std::lock_guard<std::mutex> lock(g_globals_mutex);
-    auto it = g_global_strings.find(key);
-    if (it != g_global_strings.end()) {
-        return get_thread_local_string(it->second);
-    }
-    return nullptr;
-}
-
-static int32_t apiGetNpcHp(const char* npc_id) {
-    std::lock_guard<std::mutex> lock(g_npc_state_mutex);
-    auto it = g_world.npcs.find(npc_id);
-    return it != g_world.npcs.end() ? it->second.hp : -1;
-}
-
-static int32_t apiGetContainerItemCount(const char* container_id, const char* item_prototype) {
-    return countItemsInContainer(container_id, item_prototype);
-}
-
-
-static int32_t apiRemoveItem(const char* container_id, const char* item_prototype, int32_t quantity) {
-    return consumeItemsFromContainer(container_id, item_prototype, quantity);
-}
-
-static MeteraResult apiSetNpcHp(const char* npc_id, int32_t hp) {
-    std::lock_guard<std::mutex> lock(g_npc_state_mutex);
-    auto it = g_world.npcs.find(npc_id);
-    if (it != g_world.npcs.end()) {
-        it->second.hp = hp;
-        it->second.isAlive = (hp > 0);
-        return METERA_OK;
-    }
-    return METERA_ERR_NOT_FOUND;
-}
-
-
-static int32_t apiGetMapWidth() {
-    return g_world.map.width;
-}
-
-static int32_t apiGetMapHeight() {
-    return g_world.map.height;
-}
-
-static int32_t apiGetTileBiome(int32_t x, int32_t y) {
-    if (x < 0 || x >= g_world.map.width || y < 0 || y >= g_world.map.height) return -1;
-    return g_world.map.grid[y * g_world.map.width + x].biome_id;
-}
-
-
-static int32_t apiGetFactionRelation(const char* f1, const char* f2) {
-    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
-    if (g_world.factions.count(f1) && g_world.factions[f1].relations.count(f2)) {
-        return g_world.factions[f1].relations[f2];
-    }
-    return 0;
-}
-
-static const char* apiGetFactionState(const char* faction_id) {
-    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
-    if (g_world.factions.count(faction_id)) {
-        return get_thread_local_string(diploStateToString(g_world.factions[faction_id].warType));
-    }
-    return get_thread_local_string("PEACE");
-}
-
-static double apiGetRegionMoneySupply(const char* region_id) {
-    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
-    if (g_world.regions.count(region_id)) return g_world.regions[region_id].moneySupply;
-    return -1.0;
-}
-
-static int32_t apiGetBusinessCash(const char* business_id) {
-    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
-    if (g_world.businesses.count(business_id)) return g_world.businesses[business_id].cash_balance;
-    return -1;
-}
-
-static const char* apiGetNpcLocation(const char* npc_id) {
-    std::lock_guard<std::mutex> lock(g_npc_state_mutex);
-    if (g_world.npcs.count(npc_id)) return get_thread_local_string(g_world.npcs[npc_id].currentLocation);
-    return get_thread_local_string("");
-}
-
-static int32_t apiGetNpcGold(const char* npc_id) {
-    std::lock_guard<std::mutex> lock(g_npc_state_mutex);
-    if (g_world.npcs.count(npc_id)) return g_world.npcs[npc_id].gold + g_world.npcs[npc_id].economy.savings;
-    return -1;
-}
-
-static int32_t apiGetRegionThreat(const char* region_id) {
-    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
-    if (g_world.regions.count(region_id)) return g_world.regions[region_id].threat_level;
-    return -1;
-}
-
-
-static int32_t apiGetTileRoadLevel(int32_t x, int32_t y) {
-    if (x < 0 || x >= g_world.map.width || y < 0 || y >= g_world.map.height) return -1;
-    return g_world.map.grid[y * g_world.map.width + x].road_level;
-}
-
-static int32_t apiGetTileWaterDepth(int32_t x, int32_t y) {
-    if (x < 0 || x >= g_world.map.width || y < 0 || y >= g_world.map.height) return -1;
-    return g_world.map.grid[y * g_world.map.width + x].water_depth;
-}
-
-static bool apiIsTileFlooded(int32_t x, int32_t y) {
-    if (x < 0 || x >= g_world.map.width || y < 0 || y >= g_world.map.height) return false;
-    return g_world.map.grid[y * g_world.map.width + x].is_flooded;
-}
-
-static const char* apiGetLocationAt(int32_t x, int32_t y) {
-    std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
-    for (const auto& [id, loc] : g_world.map.locations) {
-        if (loc.x == x && loc.y == y) return get_thread_local_string(id);
-    }
-    return get_thread_local_string("");
-}
-
-
-static MeteraResult apiSetRegionStability(const char* region_id, int32_t value) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m;
-    m.type = DeferredMutation::SET_STABILITY;
-    m.target_id = region_id;
-    m.int_value = value;
-    g_deferred_mutations.push_back(m);
-    return METERA_OK;
-}
-
-static MeteraResult apiModifyRegionPopulation(const char* region_id, int32_t delta) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m;
-    m.type = DeferredMutation::MODIFY_POPULATION;
-    m.target_id = region_id;
-    m.int_value = delta;
-    g_deferred_mutations.push_back(m);
-    return METERA_OK;
-}
-
-static MeteraResult apiMultiplyAllPrices(double factor) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m;
-    m.type = DeferredMutation::MULTIPLY_ALL_PRICES;
-    m.double_value = factor;
-    g_deferred_mutations.push_back(m);
-    return METERA_OK;
-}
-
-static MeteraResult apiMultiplyItemPrice(const char* item_id, double factor) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m;
-    m.type = DeferredMutation::MULTIPLY_ITEM_PRICE;
-    m.target_id = item_id;
-    m.double_value = factor;
-    g_deferred_mutations.push_back(m);
-    return METERA_OK;
-}
-
-static MeteraResult apiSpawnItem(const char* item_id, int32_t quantity, const char* container_id) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m;
-    m.type = DeferredMutation::SPAWN_ITEM;
-    m.target_id = item_id;
-    m.int_value = quantity;
-    m.string_value = container_id;
-    g_deferred_mutations.push_back(m);
-    return METERA_OK;
-}
-
-static MeteraResult apiTriggerDisaster(const char* disaster_type, const char* region_id, int32_t severity) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m;
-    m.type = DeferredMutation::TRIGGER_DISASTER;
-    m.target_id = disaster_type;
-    m.string_value = region_id;
-    m.int_value = severity;
-    g_deferred_mutations.push_back(m);
-    return METERA_OK;
-}
-
-static MeteraResult apiSpawnMonster(const char* monster_type, const char* region_id) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m;
-    m.type = DeferredMutation::SPAWN_MONSTER;
-    m.target_id = monster_type;
-    m.string_value = region_id;
-    g_deferred_mutations.push_back(m);
-    return METERA_OK;
-}
-
-static MeteraResult apiAddNews(const char* text, const char* location, int32_t importance, const char* category) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m;
-    m.type = DeferredMutation::ADD_NEWS;
-    m.target_id = text;
-    m.string_value = location;
-    m.int_value = importance;
-    m.string_value2 = category;
-    g_deferred_mutations.push_back(m);
-    return METERA_OK;
-}
-
-
-static MeteraResult apiSetTileBiome(int32_t x, int32_t y, int32_t biome_id) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m;
-    m.type = DeferredMutation::SET_TILE_BIOME;
-    m.int_value = x;
-    m.int_value2 = y;
-    m.int_value3 = biome_id;
-    g_deferred_mutations.push_back(m);
-    return METERA_OK;
-}
-
-
-static MeteraResult apiSetFactionRelation(const char* f1, const char* f2, int32_t value) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::SET_FACTION_RELATION; m.target_id = f1; m.string_value = f2; m.int_value = value;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-static MeteraResult apiForceWar(const char* f1, const char* f2) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::FORCE_WAR; m.target_id = f1; m.string_value = f2;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-static MeteraResult apiForcePeace(const char* f1, const char* f2) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::FORCE_PEACE; m.target_id = f1; m.string_value = f2;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-static MeteraResult apiModifyRegionMoney(const char* region_id, double delta) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::MODIFY_REGION_MONEY; m.target_id = region_id; m.double_value = delta;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-static MeteraResult apiModifyBusinessCash(const char* business_id, int32_t delta) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::MODIFY_BUSINESS_CASH; m.target_id = business_id; m.int_value = delta;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-static MeteraResult apiTeleportNpc(const char* npc_id, const char* region_id) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::TELEPORT_NPC; m.target_id = npc_id; m.string_value = region_id;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-static MeteraResult apiModifyNpcGold(const char* npc_id, int32_t delta) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::MODIFY_NPC_GOLD; m.target_id = npc_id; m.int_value = delta;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-static MeteraResult apiSpawnArmy(const char* faction_id, const char* region_id, int32_t size) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::SPAWN_ARMY; m.target_id = faction_id; m.string_value = region_id; m.int_value = size;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-static MeteraResult apiSetRegionThreat(const char* region_id, int32_t value) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::SET_REGION_THREAT; m.target_id = region_id; m.int_value = value;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-static MeteraResult apiSetRoadState(const char* from_region, const char* to_region, int32_t state) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::SET_ROAD_STATE; m.target_id = from_region; m.string_value = to_region; m.int_value = state;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-
-static MeteraResult apiSetTileRoadLevel(int32_t x, int32_t y, int32_t level) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::SET_TILE_ROAD_LEVEL; m.int_value = x; m.int_value2 = y; m.int_value3 = level;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-static MeteraResult apiSetTileWaterDepth(int32_t x, int32_t y, int32_t depth) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::SET_TILE_WATER_DEPTH; m.int_value = x; m.int_value2 = y; m.int_value3 = depth;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-static MeteraResult apiSetTileFlooded(int32_t x, int32_t y, bool is_flooded) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::SET_TILE_FLOODED; m.int_value = x; m.int_value2 = y; m.int_value3 = is_flooded ? 1 : 0;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-static MeteraResult apiAddLocation(const char* id, const char* name, int32_t x, int32_t y, const char* type, const char* faction) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::ADD_LOCATION; m.target_id = id; m.string_value = name; m.string_value2 = type; m.string_value3 = faction; m.int_value = x; m.int_value2 = y;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-static MeteraResult apiRemoveLocation(const char* id) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::REMOVE_LOCATION; m.target_id = id;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-
-static MeteraResult apiUpdateWorldConfig(const char* json_config) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::UPDATE_WORLD_CONFIG; m.string_value = json_config;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-static MeteraResult apiUpdateBiomeDef(const char* biome_id, const char* json_def) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::UPDATE_BIOME_DEF; m.target_id = biome_id; m.string_value = json_def;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-static MeteraResult apiRegenerateMap(int32_t seed) {
-    std::lock_guard<std::mutex> lock(g_deferred_mutex);
-    DeferredMutation m; m.type = DeferredMutation::REGENERATE_MAP; m.int_value = seed;
-    g_deferred_mutations.push_back(m); return METERA_OK;
-}
-
-
-static MeteraResult apiSetGlobalString(const char* key, const char* value) {
-    std::lock_guard<std::mutex> lock(g_globals_mutex);
-    g_global_strings[key] = value;
-    return METERA_OK;
-}
-
-static void apiLog(const char* message) {
-    {
-        std::lock_guard<std::mutex> outLock(g_output_mutex);
-        std::cerr << "[ModPlugin] " << message << std::endl;
-    }
-}
-
-// --- Build the API table ---
-static MeteraAPI g_metera_api = {
-    METERA_API_VERSION_MAJOR, METERA_API_VERSION_MINOR, METERA_API_VERSION_PATCH,
-    apiGetRegionPopulation, apiGetRegionStability, apiGetRegionFaction, apiGetRegionBiome,
-    apiGetWorldPopulation, apiGetCurrentDay, apiGetCurrentHour, apiGetRegionNpcCount,
-    apiGetItemPrice, apiGetGlobalString,
-    apiGetNpcHp, apiGetContainerItemCount, apiRemoveItem,
-    apiGetMapWidth, apiGetMapHeight, apiGetTileBiome,
-    apiGetFactionRelation, apiGetFactionState, apiGetRegionMoneySupply, apiGetBusinessCash, apiGetNpcLocation, apiGetNpcGold, apiGetRegionThreat,
-    apiSetRegionStability, apiModifyRegionPopulation, apiMultiplyAllPrices,
-    apiMultiplyItemPrice, apiSetGlobalString,
-    apiSpawnItem, apiTriggerDisaster, apiSpawnMonster, apiAddNews,
-    apiSetNpcHp,
-    apiSetTileBiome,
-    apiSetFactionRelation, apiForceWar, apiForcePeace, apiModifyRegionMoney, apiModifyBusinessCash, apiTeleportNpc, apiModifyNpcGold, apiSpawnArmy, apiSetRegionThreat, apiSetRoadState,
-    apiLog,
-    apiGetTileRoadLevel, apiGetTileWaterDepth, apiIsTileFlooded, apiGetLocationAt,
-    apiSetTileRoadLevel, apiSetTileWaterDepth, apiSetTileFlooded, apiAddLocation, apiRemoveLocation,
-    apiUpdateWorldConfig, apiUpdateBiomeDef, apiRegenerateMap
-};
-
-// --- Forward declaration for addNews ---
-std::string addNews(const std::string& text, const std::string& location, int importance, const std::string& category = "misc", const std::string& causal_link = "", const std::vector<std::string>& entities = {});
-
-void generateWorldMapTerrain(WorldMap& map, int seed);
-void placeRegionsOnMap(WorldMap& map, const World& w);
-void generateRoads(WorldMap& map, const World& w);
-void generateSeaRoutes(WorldMap& map, World& w);
-
-
-// --- Apply deferred mutations (called at start of each tick) ---
-static JsonValue applyDeferredMutations() {
-    std::vector<DeferredMutation> mutations;
-    {
-        std::lock_guard<std::mutex> lock(g_deferred_mutex);
-        mutations.swap(g_deferred_mutations);
-    }
-    JsonValue resultsArr = JsonValue::array();
-    if (mutations.empty()) return resultsArr;
-
-    for (auto& m : mutations) {
-        bool success = false;
-        std::string error_msg = "";
-
-        switch (m.type) {
-            case DeferredMutation::SET_STABILITY: {
-                auto it = g_world.regions.find(m.target_id);
-                if (it != g_world.regions.end()) {
-                    it->second.stability = std::max(0, std::min(100, m.int_value));
-                    success = true;
-                } else { error_msg = "Region not found"; }
-                break;
-            }
-            case DeferredMutation::MODIFY_POPULATION: {
-                auto it = g_world.regions.find(m.target_id);
-                if (it != g_world.regions.end()) {
-                    it->second.population = std::max(0, it->second.population + m.int_value);
-                    success = true;
-                } else { error_msg = "Region not found"; }
-                break;
-            }
-            case DeferredMutation::MULTIPLY_ALL_PRICES: {
-                for (auto& [id, item] : g_db.items) {
-                    item.basePrice *= m.double_value;
-                }
-                success = true;
-                break;
-            }
-            case DeferredMutation::MULTIPLY_ITEM_PRICE: {
-                auto it = g_db.items.find(m.target_id);
-                if (it != g_db.items.end()) {
-                    it->second.basePrice *= m.double_value;
-                    success = true;
-                } else { error_msg = "Item not found"; }
-                break;
-            }
-            case DeferredMutation::SET_GLOBAL_STRING: {
-                std::lock_guard<std::mutex> lock(g_globals_mutex);
-                g_global_strings[m.target_id] = m.string_value;
-                success = true;
-                break;
-            }
-            case DeferredMutation::SPAWN_ITEM: {
-                if (g_containers.count(m.string_value)) {
-                    createItem(m.target_id, m.int_value, m.string_value, g_world.current_day, "Mod Spawn");
-                    success = true;
-                } else { error_msg = "Container not found"; }
-                break;
-            }
-            case DeferredMutation::TRIGGER_DISASTER: {
-                if (g_world.regions.count(m.string_value) && g_world.map.locations.count(m.string_value)) {
-                    auto loc = g_world.map.locations[m.string_value];
-                    Disaster d;
-                    d.id = "dis_" + generateUUID();
-                    d.type = m.target_id;
-                    d.epicenter_x = loc.x;
-                    d.epicenter_y = loc.y;
-                    d.radius = m.int_value;
-                    d.strength = m.int_value;
-                    d.affected_regions.push_back(m.string_value);
-                    d.days_active = m.int_value * 2;
-                    const DisasterDef& d_def = g_db.disasters.count(m.target_id) ? g_db.disasters.at(m.target_id) : DisasterDef{"", "", 5, 1, 10, 25, {}};
-                    if (d_def.floods_tiles) {
-                        for (int y = std::max(0, d.epicenter_y - d.radius); y <= std::min(g_world.map.height - 1, d.epicenter_y + d.radius); ++y) {
-                            for (int x = std::max(0, d.epicenter_x - d.radius); x <= std::min(g_world.map.width - 1, d.epicenter_x + d.radius); ++x) {
-                                if (std::hypot(x - d.epicenter_x, y - d.epicenter_y) <= d.radius) {
-                                    int idx = y * g_world.map.width + x;
-                                    uint8_t b_id = g_world.map.grid[idx].biome_id;
-                                    bool is_affected = d_def.affected_biomes.empty();
-                                    for (const auto& ab : d_def.affected_biomes) if (hasBiomeTag(b_id, ab)) is_affected = true;
-                                    if (is_affected) {
-                                        g_world.map.grid[idx].is_flooded = true;
-                                        d.affected_tiles.push_back({x, y});
-                                    }
-                                }
-                            }
-                        }
-                        g_world.map.generation_tick = g_world.tick;
-                    }
-                    if (d_def.ruins_roads) {
-                        for (auto& road : g_world.map.roads) {
-                            if (road.from == m.string_value || road.to == m.string_value) {
-                                road.condition = "ruined";
-                                road.integrity = 0;
-                            }
-                        }
-                        g_path_cache_dirty = true;
-                    }
-                    g_world.map.disasters.push_back(d);
-                    addNews(locStr("engine.news." + d.type, {{"region", g_world.regions[m.string_value].name}}), m.string_value, 5, "disaster");
-                    success = true;
-                } else { error_msg = "Region or location not found"; }
-                break;
-            }
-            case DeferredMutation::SPAWN_MONSTER: {
-                if (g_world.regions.count(m.string_value)) {
-                    EpicMonster mon;
-                    mon.id = "epic_" + generateUUID();
-                    mon.type = m.target_id;
-                    mon.name = g_db.monsters.count(m.target_id) ? g_db.monsters[m.target_id].name : "Modded Monster";
-                    mon.region_id = m.string_value;
-                    if (g_world.map.locations.count(m.string_value)) {
-                        mon.lair_x = g_world.map.locations[m.string_value].x;
-                        mon.lair_y = g_world.map.locations[m.string_value].y;
-                    }
-                    mon.treasure_chest_id = createContainer("monster_lair", "monster", 999999, 100, m.string_value);
-                    g_world.monsters.push_back(mon);
-                    addNews("A terrifying creature has appeared in " + g_world.regions[m.string_value].name + "!", m.string_value, 5, "disaster");
-                    success = true;
-                } else { error_msg = "Region not found"; }
-                break;
-            }
-            case DeferredMutation::SET_TILE_BIOME: {
-                int x = m.int_value;
-                int y = m.int_value2;
-                int b_id = m.int_value3;
-                if (x >= 0 && x < g_world.map.width && y >= 0 && y < g_world.map.height) {
-                    g_world.map.grid[y * g_world.map.width + x].biome_id = b_id;
-                    g_world.map.generation_tick = g_world.tick;
-                    success = true;
-                } else { error_msg = "Coordinates out of bounds"; }
-                break;
-            }
-
-            case DeferredMutation::SET_TILE_ROAD_LEVEL: {
-                int x = m.int_value; int y = m.int_value2; int val = m.int_value3;
-                if (x >= 0 && x < g_world.map.width && y >= 0 && y < g_world.map.height) {
-                    g_world.map.grid[y * g_world.map.width + x].road_level = val;
-                    g_world.map.generation_tick = g_world.tick;
-                    success = true;
-                } else { error_msg = "Coordinates out of bounds"; }
-                break;
-            }
-            case DeferredMutation::SET_TILE_WATER_DEPTH: {
-                int x = m.int_value; int y = m.int_value2; int val = m.int_value3;
-                if (x >= 0 && x < g_world.map.width && y >= 0 && y < g_world.map.height) {
-                    g_world.map.grid[y * g_world.map.width + x].water_depth = val;
-                    g_world.map.generation_tick = g_world.tick;
-                    success = true;
-                } else { error_msg = "Coordinates out of bounds"; }
-                break;
-            }
-            case DeferredMutation::SET_TILE_FLOODED: {
-                int x = m.int_value; int y = m.int_value2; bool val = (m.int_value3 != 0);
-                if (x >= 0 && x < g_world.map.width && y >= 0 && y < g_world.map.height) {
-                    g_world.map.grid[y * g_world.map.width + x].is_flooded = val;
-                    g_world.map.generation_tick = g_world.tick;
-                    success = true;
-                } else { error_msg = "Coordinates out of bounds"; }
-                break;
-            }
-            case DeferredMutation::ADD_LOCATION: {
-                MapLocation loc;
-                loc.id = m.target_id;
-                loc.name = m.string_value;
-                loc.type = m.string_value2;
-                loc.faction = m.string_value3;
-                loc.x = m.int_value;
-                loc.y = m.int_value2;
-                g_world.map.locations[loc.id] = loc;
-                g_world.map.generation_tick = g_world.tick;
-                success = true;
-                break;
-            }
-            case DeferredMutation::REMOVE_LOCATION: {
-                if (g_world.map.locations.count(m.target_id)) {
-                    g_world.map.locations.erase(m.target_id);
-                    g_world.map.generation_tick = g_world.tick;
-                    success = true;
-                } else { error_msg = "Location not found"; }
-                break;
-            }
-
-            case DeferredMutation::SET_FACTION_RELATION: {
-                if (g_world.factions.count(m.target_id) && g_world.factions.count(m.string_value)) {
-                    g_world.factions[m.target_id].relations[m.string_value] = m.int_value;
-                    g_world.factions[m.string_value].relations[m.target_id] = m.int_value;
-                    success = true;
-                } else { error_msg = "Faction not found"; }
-                break;
-            }
-            case DeferredMutation::FORCE_WAR: {
-                if (g_world.factions.count(m.target_id) && g_world.factions.count(m.string_value)) {
-                    g_world.factions[m.target_id].diplomacy[m.string_value] = "war";
-                    g_world.factions[m.string_value].diplomacy[m.target_id] = "war";
-                    g_world.factions[m.target_id].warType = DiplomaticState::LIMITED_WAR;
-                    g_world.factions[m.string_value].warType = DiplomaticState::LIMITED_WAR;
-                    success = true;
-                } else { error_msg = "Faction not found"; }
-                break;
-            }
-            case DeferredMutation::FORCE_PEACE: {
-                if (g_world.factions.count(m.target_id) && g_world.factions.count(m.string_value)) {
-                    g_world.factions[m.target_id].diplomacy[m.string_value] = "neutral";
-                    g_world.factions[m.string_value].diplomacy[m.target_id] = "neutral";
-                    g_world.factions[m.target_id].warType = DiplomaticState::PEACE;
-                    g_world.factions[m.string_value].warType = DiplomaticState::PEACE;
-                    success = true;
-                } else { error_msg = "Faction not found"; }
-                break;
-            }
-            case DeferredMutation::MODIFY_REGION_MONEY: {
-                if (g_world.regions.count(m.target_id)) {
-                    g_world.regions[m.target_id].moneySupply = std::max(0.0, g_world.regions[m.target_id].moneySupply + m.double_value);
-                    success = true;
-                } else { error_msg = "Region not found"; }
-                break;
-            }
-            case DeferredMutation::MODIFY_BUSINESS_CASH: {
-                if (g_world.businesses.count(m.target_id)) {
-                    g_world.businesses[m.target_id].cash_balance = std::max(0, g_world.businesses[m.target_id].cash_balance + m.int_value);
-                    success = true;
-                } else { error_msg = "Business not found"; }
-                break;
-            }
-            case DeferredMutation::TELEPORT_NPC: {
-                if (g_world.npcs.count(m.target_id) && g_world.regions.count(m.string_value)) {
-                    g_world.npcs[m.target_id].currentLocation = m.string_value;
-                    success = true;
-                } else { error_msg = "NPC or Region not found"; }
-                break;
-            }
-            case DeferredMutation::MODIFY_NPC_GOLD: {
-                if (g_world.npcs.count(m.target_id)) {
-                    g_world.npcs[m.target_id].gold = std::max(0, g_world.npcs[m.target_id].gold + m.int_value);
-                    success = true;
-                } else { error_msg = "NPC not found"; }
-                break;
-            }
-            case DeferredMutation::SPAWN_ARMY: {
-                if (g_world.factions.count(m.target_id) && g_world.regions.count(m.string_value)) {
-                    Army a;
-                    a.id = "army_" + generateUUID();
-                    a.size = m.int_value;
-                    a.morale = 100;
-                    a.location = m.string_value;
-                    a.destination = m.string_value;
-                    if (g_world.map.locations.count(m.string_value)) {
-                        a.x = g_world.map.locations[m.string_value].x;
-                        a.y = g_world.map.locations[m.string_value].y;
-                    }
-                    g_world.factions[m.target_id].armies.push_back(a);
-                    success = true;
-                } else { error_msg = "Faction or Region not found"; }
-                break;
-            }
-            case DeferredMutation::SET_REGION_THREAT: {
-                if (g_world.regions.count(m.target_id)) {
-                    g_world.regions[m.target_id].threat_level = std::clamp(m.int_value, 0, 100);
-                    success = true;
-                } else { error_msg = "Region not found"; }
-                break;
-            }
-            case DeferredMutation::SET_ROAD_STATE: {
-                bool found = false;
-                for (auto& road : g_world.map.roads) {
-                    if ((road.from == m.target_id && road.to == m.string_value) || (road.from == m.string_value && road.to == m.target_id)) {
-                        if (m.int_value == 0) { road.condition = "ruined"; road.integrity = 0; }
-                        else if (m.int_value == 1) { road.condition = "dirt"; road.integrity = 100; }
-                        else if (m.int_value == 2) { road.condition = "paved"; road.integrity = 100; }
-                        found = true;
-                        g_path_cache_dirty = true;
-                    }
-                }
-                if (found) success = true; else error_msg = "Road not found";
-                break;
-            }
-
-            case DeferredMutation::UPDATE_WORLD_CONFIG: {
-                JsonValue wc = parseJson(m.string_value);
-                if (wc.has("map_width")) g_db.world_config.map_width = wc["map_width"].asInt();
-                if (wc.has("map_height")) g_db.world_config.map_height = wc["map_height"].asInt();
-                if (wc.has("landform")) g_db.world_config.landform = wc["landform"].asString();
-                if (wc.has("continent")) {
-                    JsonValue cc = wc["continent"];
-                    if (cc.has("noise_frequency")) g_db.world_config.continent.noise_frequency = cc["noise_frequency"].asDouble();
-                    if (cc.has("noise_octaves")) g_db.world_config.continent.noise_octaves = cc["noise_octaves"].asInt();
-                    if (cc.has("elevation_shift")) g_db.world_config.continent.elevation_shift = cc["elevation_shift"].asDouble();
-                    if (cc.has("edge_falloff_power")) g_db.world_config.continent.edge_falloff_power = cc["edge_falloff_power"].asDouble();
-                    if (cc.has("edge_falloff_range")) g_db.world_config.continent.edge_falloff_range = cc["edge_falloff_range"].asDouble();
-                    if (cc.has("edge_ocean_elevation")) g_db.world_config.continent.edge_ocean_elevation = cc["edge_ocean_elevation"].asDouble();
-                    if (cc.has("min_land_ratio")) g_db.world_config.continent.min_land_ratio = cc["min_land_ratio"].asDouble();
-                    if (cc.has("connectivity_pass")) g_db.world_config.continent.connectivity_pass = cc["connectivity_pass"].asBool();
-                    if (cc.has("land_bridge_max_gap")) g_db.world_config.continent.land_bridge_max_gap = cc["land_bridge_max_gap"].asInt();
-                    if (cc.has("remove_islands_under")) g_db.world_config.continent.remove_islands_under = cc["remove_islands_under"].asInt();
-                    if (cc.has("smoothing_passes")) g_db.world_config.continent.smoothing_passes = cc["smoothing_passes"].asInt();
-                }
-                if (wc.has("rivers")) {
-                    JsonValue rc = wc["rivers"];
-                    if (rc.has("noise_frequency")) g_db.world_config.rivers.noise_frequency = rc["noise_frequency"].asDouble();
-                    if (rc.has("noise_octaves")) g_db.world_config.rivers.noise_octaves = rc["noise_octaves"].asInt();
-                    if (rc.has("threshold_default")) g_db.world_config.rivers.threshold_default = rc["threshold_default"].asDouble();
-                    if (rc.has("threshold_plains")) g_db.world_config.rivers.threshold_plains = rc["threshold_plains"].asDouble();
-                    if (rc.has("threshold_mountains")) g_db.world_config.rivers.threshold_mountains = rc["threshold_mountains"].asDouble();
-                }
-                success = true;
-                break;
-            }
-            case DeferredMutation::UPDATE_BIOME_DEF: {
-                JsonValue b = parseJson(m.string_value);
-                if (g_db.biome_string_to_id.count(m.target_id)) {
-                    uint8_t num_id = g_db.biome_string_to_id[m.target_id];
-                    if (g_db.biome_numeric_to_index.count(num_id)) {
-                        size_t idx = g_db.biome_numeric_to_index[num_id];
-                        BiomeDef& def = g_db.biomes[idx];
-                        if (b.has("name")) def.name = b["name"].asString();
-                        if (b.has("movement_cost")) def.movement_cost = b["movement_cost"].asInt();
-                        if (b.has("is_water")) def.is_water = b["is_water"].asBool();
-                        if (b.has("is_impassable")) def.is_impassable = b["is_impassable"].asBool();
-                        if (b.has("color_hex")) def.color_hex = b["color_hex"].asString();
-                        if (b.has("gen_rules")) {
-                            JsonValue rules = b["gen_rules"];
-                            if (rules.has("min_elev")) def.min_elevation = rules["min_elev"].asDouble();
-                            if (rules.has("max_elev")) def.max_elevation = rules["max_elev"].asDouble();
-                            if (rules.has("min_temp")) def.min_temp = rules["min_temp"].asDouble();
-                            if (rules.has("max_temp")) def.max_temp = rules["max_temp"].asDouble();
-                            if (rules.has("min_moist")) def.min_moisture = rules["min_moist"].asDouble();
-                            if (rules.has("max_moist")) def.max_moisture = rules["max_moist"].asDouble();
-                        }
-                        success = true;
-                    } else { error_msg = "Biome index not found"; }
-                } else { error_msg = "Biome ID not found"; }
-                break;
-            }
-            case DeferredMutation::REGENERATE_MAP: {
-                g_world.map.width = g_db.world_config.map_width;
-                g_world.map.height = g_db.world_config.map_height;
-                generateWorldMapTerrain(g_world.map, m.int_value);
-                placeRegionsOnMap(g_world.map, g_world);
-                generateRoads(g_world.map, g_world);
-                generateSeaRoutes(g_world.map, g_world);
-                g_world.map.generation_tick = g_world.tick;
-                g_path_cache_dirty = true;
-                success = true;
-                break;
-            }
-
-            case DeferredMutation::ADD_NEWS: {
-                addNews(m.target_id, m.string_value, m.int_value, m.string_value2);
-                success = true;
-                break;
-            }
-        }
-
-        if (!m.transaction_id.empty()) {
-            JsonValue res = JsonValue::object();
-            res.set("transaction_id", m.transaction_id);
-            res.set("success", success);
-            if (!success) res.set("error", error_msg);
-            resultsArr.push(res);
-        }
-    }
-
-    return resultsArr;
-}
-
-// --- New PluginManager: Opaque C-API based ---
-
-struct LoadedPlugin {
-    void* library_handle;
-    std::string name;
-    std::string version;
-    int32_t plugin_id;
-    // Callbacks
-    MeteraOnDailyTickFunc onDailyTick = nullptr;
-    MeteraOnHourlyTickFunc onHourlyTick = nullptr;
-    MeteraOnRegionChangedFunc onRegionChanged = nullptr;
-    MeteraOnNpcDeathFunc onNpcDeath = nullptr;
-    MeteraOnBattleFunc onBattle = nullptr;
-    MeteraOnTradeFunc onTrade = nullptr;
-    MeteraOnDisasterFunc onDisaster = nullptr;
-    MeteraOnBuildingBuiltFunc onBuildingBuilt = nullptr;
-};
 
 class PluginManager {
 private:
-    std::vector<LoadedPlugin> plugins;
-    int32_t next_plugin_id = 1;
-
-    // Typedefs for plugin exported functions
-    typedef const char* (*GetNameFunc)(void);
-    typedef const char* (*GetVersionFunc)(void);
-    typedef void (*GetAPIFunc)(const MeteraAPI*);
-    typedef MeteraResult (*InitFunc)(int32_t);
-    typedef void (*OnLoadFunc)(void);
-    typedef void (*ShutdownFunc)(void);
-
-    void* resolveSymbol(void* handle, const char* name) {
-        #ifdef _WIN32
-        return (void*)GetProcAddress((HMODULE)handle, name);
-        #else
-        return dlsym(handle, name);
-        #endif
-    }
-
+    std::vector<void*> loaded_libraries;
+    std::vector<MetereaDailyTickFunc> daily_hooks;
 public:
-    void loadPlugins(const std::string& base_dir, const std::vector<std::string>& active_mods) {
+    void loadPlugins(const std::string& base_dir, const std::vector<std::string>& active_mods, World* w, Database* db, ItemRegistry* ir, FacilityRegistry* fr) {
         for (const auto& mod_id : active_mods) {
             if (mod_id == "base_game") continue;
             std::string mod_dir = base_dir + "/" + mod_id;
             if (!std::filesystem::exists(mod_dir)) continue;
-
             try {
                 for (const auto& entry : std::filesystem::recursive_directory_iterator(mod_dir)) {
-                    if (!entry.is_regular_file()) continue;
-                    std::string ext = entry.path().extension().string();
-                    if (ext != ".dll" && ext != ".so") continue;
-
-                    void* handle = nullptr;
-                    #ifdef _WIN32
-                    handle = (void*)LoadLibraryA(entry.path().string().c_str());
-                    #else
-                    handle = dlopen(entry.path().string().c_str(), RTLD_LAZY);
-                    #endif
-
-                    if (!handle) {
-                        std::cerr << "[PluginManager] Failed to load: " << entry.path().string() << std::endl;
-                        continue;
+                    if (entry.is_regular_file()) {
+                        std::string ext = entry.path().extension().string();
+                        if (ext == ".dll" || ext == ".so") {
+                            void* handle = nullptr;
+                            #ifdef _WIN32
+                            handle = (void*)LoadLibraryA(entry.path().string().c_str());
+                            #else
+                            handle = dlopen(entry.path().string().c_str(), RTLD_LAZY);
+                            #endif
+                            
+                            if (handle) {
+                                loaded_libraries.push_back(handle);
+                                MetereaPluginInitFunc initFunc = nullptr;
+                                MetereaDailyTickFunc tickFunc = nullptr;
+                                
+                                #ifdef _WIN32
+                                initFunc = (MetereaPluginInitFunc)GetProcAddress((HMODULE)handle, "MetereaPluginInit");
+                                tickFunc = (MetereaDailyTickFunc)GetProcAddress((HMODULE)handle, "MetereaDailyTick");
+                                #else
+                                initFunc = (MetereaPluginInitFunc)dlsym(handle, "MetereaPluginInit");
+                                tickFunc = (MetereaDailyTickFunc)dlsym(handle, "MetereaDailyTick");
+                                #endif
+                                
+                                if (initFunc) initFunc(w, db, ir, fr);
+                                if (tickFunc) daily_hooks.push_back(tickFunc);
+                            }
+                        }
                     }
-
-                    // Load required functions
-                    auto getName = (GetNameFunc)resolveSymbol(handle, "MeteraPlugin_GetName");
-                    auto getVersion = (GetVersionFunc)resolveSymbol(handle, "MeteraPlugin_GetVersion");
-                    auto getAPI = (GetAPIFunc)resolveSymbol(handle, "MeteraPlugin_GetAPI");
-                    auto init = (InitFunc)resolveSymbol(handle, "MeteraPlugin_Init");
-                    auto onLoad = (OnLoadFunc)resolveSymbol(handle, "MeteraPlugin_OnLoad");
-
-                    if (!getName || !getVersion || !getAPI || !init) {
-                        std::cerr << "[PluginManager] Missing required exports in: " << entry.path().string() << std::endl;
-                        #ifdef _WIN32
-                        FreeLibrary((HMODULE)handle);
-                        #else
-                        dlclose(handle);
-                        #endif
-                        continue;
-                    }
-
-                    LoadedPlugin plugin;
-                    plugin.library_handle = handle;
-                    plugin.name = getName();
-                    plugin.version = getVersion();
-                    plugin.plugin_id = next_plugin_id++;
-
-                    // Provide API table to plugin
-                    getAPI(&g_metera_api);
-
-                    // Initialize plugin
-                    MeteraResult result = init(plugin.plugin_id);
-                    if (result != METERA_OK) {
-                        std::cerr << "[PluginManager] Init failed for " << plugin.name << " (code " << result << ")" << std::endl;
-                        #ifdef _WIN32
-                        FreeLibrary((HMODULE)handle);
-                        #else
-                        dlclose(handle);
-                        #endif
-                        continue;
-                    }
-
-                    // Load optional callbacks
-                    plugin.onDailyTick = (MeteraOnDailyTickFunc)resolveSymbol(handle, "MeteraPlugin_OnDailyTick");
-                    plugin.onHourlyTick = (MeteraOnHourlyTickFunc)resolveSymbol(handle, "MeteraPlugin_OnHourlyTick");
-                    plugin.onRegionChanged = (MeteraOnRegionChangedFunc)resolveSymbol(handle, "MeteraPlugin_OnRegionChanged");
-                    plugin.onNpcDeath = (MeteraOnNpcDeathFunc)resolveSymbol(handle, "MeteraPlugin_OnNpcDeath");
-                    plugin.onBattle = (MeteraOnBattleFunc)resolveSymbol(handle, "MeteraPlugin_OnBattle");
-                    plugin.onTrade = (MeteraOnTradeFunc)resolveSymbol(handle, "MeteraPlugin_OnTrade");
-                    plugin.onDisaster = (MeteraOnDisasterFunc)resolveSymbol(handle, "MeteraPlugin_OnDisaster");
-                    plugin.onBuildingBuilt = (MeteraOnBuildingBuiltFunc)resolveSymbol(handle, "MeteraPlugin_OnBuildingBuilt");
-
-                    // Call OnLoad if available
-                    if (onLoad) onLoad();
-
-                    plugins.push_back(plugin);
-                    std::cerr << "[PluginManager] Loaded: " << plugin.name << " v" << plugin.version << " (id=" << plugin.plugin_id << ")" << std::endl;
                 }
-            } catch (const std::exception& e) {
-                std::cerr << "[PluginManager] Error scanning " << mod_dir << ": " << e.what() << std::endl;
-            }
+            } catch (...) {}
         }
     }
-
-    void shutdown() {
-        for (auto& p : plugins) {
-            auto shutdownFunc = (void(*)(void))resolveSymbol(p.library_handle, "MeteraPlugin_Shutdown");
-            if (shutdownFunc) shutdownFunc();
-            #ifdef _WIN32
-            FreeLibrary((HMODULE)p.library_handle);
-            #else
-            dlclose(p.library_handle);
-            #endif
-        }
-        plugins.clear();
-    }
-
-    void fireDailyTick(int32_t day) {
-        for (auto& p : plugins) {
-            if (p.onDailyTick) p.onDailyTick(day);
+    
+    void runDailyHooks() {
+        for (auto hook : daily_hooks) {
+            if (hook) hook();
         }
     }
-
-    void fireHourlyTick(int32_t day, int32_t hour) {
-        for (auto& p : plugins) {
-            if (p.onHourlyTick) p.onHourlyTick(day, hour);
-        }
-    }
-
-    void fireRegionChanged(const std::string& region_id, const std::string& change_type) {
-        for (auto& p : plugins) {
-            if (p.onRegionChanged) p.onRegionChanged(region_id.c_str(), change_type.c_str());
-        }
-    }
-
-    void fireNpcDeath(const std::string& npc_id, const std::string& cause) {
-        for (auto& p : plugins) {
-            if (p.onNpcDeath) p.onNpcDeath(npc_id.c_str(), cause.c_str());
-        }
-    }
-
-    void fireBattle(const std::string& region_id, int32_t attackers, int32_t defenders) {
-        for (auto& p : plugins) {
-            if (p.onBattle) p.onBattle(region_id.c_str(), attackers, defenders);
-        }
-    }
-
-    size_t pluginCount() const { return plugins.size(); }
 };
 
 PluginManager g_pluginManager;
 
-// ============================================================================
-// ASYNC JS HOOK SYSTEM (Event-Driven, Non-Blocking)
-// ============================================================================
-// Instead of blocking the engine while waiting for JS responses,
-// hook events are queued and dispatched to JS as fire-and-forget messages.
-// JS can send deferred modifications back via the "applyModChanges" command.
-
-struct PendingHookEvent {
-    std::string hook_name;
-    JsonValue data;  // Minimal context data (not the entire world!)
-};
-
-static std::vector<PendingHookEvent> g_pending_hook_events;
-static std::mutex g_hook_events_mutex;
-
-// Fire-and-forget: emit hook event to JS without waiting for response
-void emitJsEvent(const std::string& eventName, const JsonValue& context) {
-    if (g_active_hooks.count(eventName) == 0) return;
-
-    JsonValue evt = JsonValue::object();
-    evt.set("status", "mod_event");
-    evt.set("event", eventName);
-    evt.set("context", context);
-
-    {
-        std::lock_guard<std::mutex> outLock(g_output_mutex);
-        std::cout << evt.toString() << std::endl;
-        std::cout.flush();
-    }
-}
-
-// DEPRECATED: triggerJsHook is now non-blocking — fires event and continues
 void triggerJsHook(const std::string& hookName) {
     if (g_active_hooks.count(hookName) == 0) return;
-
-    // Build minimal context (not the entire world!)
-    JsonValue ctx = JsonValue::object();
-    ctx.set("day", g_world.current_day);
-    ctx.set("hour", g_world.time.internalHour);
-
-    // For daily/hourly hooks, include region summary (not full data)
-    if (hookName.find("Daily") != std::string::npos || hookName.find("Hourly") != std::string::npos) {
-        JsonValue regions = JsonValue::object();
-        int count = 0;
-        for (auto& [id, r] : g_world.regions) {
-            if (count++ > 50) break;  // Limit context size
-            JsonValue summary = JsonValue::object();
-            summary.set("population", (int)r.population);
-            summary.set("stability", (int)r.stability);
-            regions.set(id, summary);
-        }
-        ctx.set("regions", regions);
+    
+    JsonValue req = JsonValue::object();
+    req.set("status", "hook_request");
+    req.set("hook", hookName);
+    req.set("world", g_world.toJson());
+    
+    {
+        std::lock_guard<std::mutex> outLock(g_output_mutex);
+        std::cout << req.toString() << std::endl;
+        std::cout.flush();
     }
 
-    emitJsEvent(hookName, ctx);
+    // Read response with 10-second timeout to prevent indefinite hang
+    std::string line;
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (std::chrono::steady_clock::now() < deadline) {
+        // Non-blocking check: use short timeout approach
+        if (std::cin.rdbuf()->in_avail() > 0 || std::cin.peek() != std::char_traits<char>::eof()) {
+            if (std::getline(std::cin, line)) {
+                if (line.empty()) continue;
+                JsonValue resp = parseJson(line);
+                if (resp.has("command") && resp["command"].asString() == "hook_response") {
+                    if (resp.has("world")) {
+                        g_world = World::fromJson(resp["world"]);
+                    }
+                    break;
+                }
+            }
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    }
+    // If timeout, continue without hook response — don't block engine
 }
 
 bool moveItem(const std::string& itemId, const std::string& targetContainerId) {
@@ -4499,7 +3554,7 @@ int getShelfLifeDays(const std::string& type) {
 // Old news beyond this limit is pruned on every addNews() call.
 static constexpr size_t MAX_NEWS_ITEMS = 500;
 
-std::string addNews(const std::string& text, const std::string& location, int importance, const std::string& category, const std::string& causal_link, const std::vector<std::string>& entities) {
+std::string addNews(const std::string& text, const std::string& location, int importance, const std::string& category = "misc", const std::string& causal_link = "", const std::vector<std::string>& entities = {}) {
     std::lock_guard<std::mutex> lock(g_news_mutex);
     News nw;
     nw.id = "news_" + generateUUID();
@@ -4556,8 +3611,8 @@ void processSpoilage() {
         std::string regionId = container.location.has("region_id") ? container.location["region_id"].asString() : "";
         if (!regionId.empty() && g_world.regions.count(regionId)) {
             std::string weather = g_world.regions[regionId].weather;
-            if (weather == "heat") heatMod = 2.0;
-            if (weather == "snow" || weather == "blizzard") coldMod = 0.3;
+            if (weather == "Жара") heatMod = 2.0;
+            if (weather == "Снег" || weather == "Метель") coldMod = 0.3;
         }
         
         for (const auto& itemId : container.item_ids) {
@@ -4663,8 +3718,7 @@ void processConsumption() {
                     npc.currentActivity = locStr("engine.npc.searching_food");
                     
                     auto edibleItems = g_itemRegistry.findTemplatesWithTag("food");
-                    std::string fallbackFood = getCoreIdByTag("food", "bread");
-                    std::string chosenFood = fallbackFood;
+                    std::string chosenFood = getCoreIdByTag("food");
                     int foodPrice = 5;
                     bool foundFood = false;
 
@@ -4672,17 +3726,16 @@ void processConsumption() {
                         for (const auto* item : edibleItems) {
                             if (countItemsInContainer(region.vault_id, item->id) > 0) {
                                 chosenFood = item->id;
-                                foodPrice = (int)region.markets[chosenFood];
+                                foodPrice = (int)region.markets[getMappedId(chosenFood)];
                                 if (foodPrice == 0) foodPrice = item->basePrice;
                                 foundFood = true;
                                 break;
                             }
                         }
-                    }
-                    if (!foundFood) {
-                        if (countItemsInContainer(region.vault_id, fallbackFood) > 0) {
-                            chosenFood = fallbackFood;
-                            foodPrice = (int)region.markets[fallbackFood];
+                    } else {
+                        if (!chosenFood.empty() && countItemsInContainer(region.vault_id, chosenFood) > 0) {
+                            chosenFood = getCoreIdByTag("food");
+                            foodPrice = (int)region.markets[getMappedId(chosenFood)];
                             if (foodPrice == 0) foodPrice = 5;
                             foundFood = true;
                         }
@@ -4715,7 +3768,7 @@ void processConsumption() {
                             npc.currentActivity = sched.activity;
                             if (sched.activity == "Working") {
                                 npc.needs.rest -= 2;
-                                if (profIsMerchant(npc.economy.profession_type)) {
+                                if (npc.economy.profession_type == "merchant") {
                                     npc.gold += (thread_safe_rand() % 15) + 5;
                                     if ((thread_safe_rand() % 10) == 0 && !npc.inventory_id.empty()) {
                                         if (!region.markets.empty()) {
@@ -4805,8 +3858,8 @@ void processConsumption() {
                 for (int i = (int)region.caravans.size() - 1; i >= 0; i--) {
                     Caravan& caravan = region.caravans[i];
                     double speedMod = 1.0;
-                    if (region.weather == "blizzard" || region.weather == "tropical_rain") speedMod = 0.5;
-                    else if (region.weather == "aether_storm") speedMod = 0.0;
+                    if (region.weather == "Метель" || region.weather == "Тропический ливень") speedMod = 0.5;
+                    else if (region.weather == "Эфирный шторм") speedMod = 0.0;
                     else if (region.current_season == "winter") speedMod = 0.7;
                     
                     if (speedMod > 0) {
@@ -5077,13 +4130,13 @@ void updateWeather() {
         else {
             std::vector<std::string> weathers = {"clear", "cloudy"};
             if (region.climate == "tropical") {
-                weathers.push_back("tropical_rain"); weathers.push_back("heat");
+                weathers.push_back("tropical_rain"); weathers.push_back("heatwave");
             } else if (region.climate == "cold") {
-                weathers.push_back("snowfall"); weathers.push_back("blizzard");
+                weathers.push_back("heavy_snow"); weathers.push_back("blizzard");
             } else {
                 if (season == "winter") { weathers.push_back("snow"); weathers.push_back("blizzard"); }
                 else if (season == "spring" || season == "autumn") { weathers.push_back("rain"); weathers.push_back("fog"); }
-                else { weathers.push_back("rain"); weathers.push_back("heat"); }
+                else { weathers.push_back("rain"); weathers.push_back("heatwave"); }
             }
             if (thread_safe_rand() % 100 < 1) weathers.push_back("aether_storm");
             region.weather = weathers[thread_safe_rand() % weathers.size()];
@@ -5099,18 +4152,6 @@ void checkGlobalEvents() {
     // Еженедельные глобальные события
     if ((thread_safe_rand() % 100) < 2) {
         addNews(locStr("engine.news.magic_currents_changed"), "global", 3, "misc");
-    }
-    
-    // Еженедельные слухи (чтобы вкладка "Слухи" не пустовала)
-    if ((thread_safe_rand() % 100) < 50) {
-        std::vector<std::string> rumors = {
-            "Слухи: В далеких землях видели странные огни в небе.",
-            "Слухи: Торговцы жалуются на участившиеся нападения бандитов.",
-            "Слухи: Говорят, старые руины снова начали излучать магию.",
-            "Слухи: В столице зреет заговор против правителя.",
-            "Слухи: Наемники требуют повышения платы за охрану караванов."
-        };
-        addNews(rumors[thread_safe_rand() % rumors.size()], "global", 1, "misc");
     }
 }
 
@@ -5173,7 +4214,7 @@ void processDailyBusinesses() {
                 double price = r.markets[focusStr];
                 if (price <= 0) price = (g_db.items.count(focusStr) ? g_db.items.at(focusStr).basePrice : 1);
                 
-                double itemWeight = hasTag(focusStr, "currency") ? 0.01 : 1.0;
+                double itemWeight = (focusStr == getCoreIdByTag("currency")) ? 0.01 : 1.0;
                 double currentVaultWeight = calculateContainerWeight(r.vault_id);
                 int maxCanSell = (r.storage_capacity - currentVaultWeight) / itemWeight;
                 int actualSell = std::min(stock, maxCanSell);
@@ -5348,7 +4389,9 @@ void processLogistics() {
                             
                             std::vector<std::pair<int,int>> caravan_path;
                             if (targetRegion != bus.region_id && !targetRegion.empty()) {
-                                caravan_path = getLandPath(bus.region_id, targetRegion);
+                                if (g_path_cache.count({bus.region_id, targetRegion})) {
+                                    caravan_path = g_path_cache[{bus.region_id, targetRegion}];
+                                }
                                 if (caravan_path.empty()) continue;
                             }
 
@@ -5486,7 +4529,9 @@ void processLogistics() {
                             
                             std::vector<std::pair<int,int>> caravan_path;
                             if (sourceRegion != bus.region_id && !sourceRegion.empty()) {
-                                caravan_path = getLandPath(sourceRegion, bus.region_id);
+                                if (g_path_cache.count({sourceRegion, bus.region_id})) {
+                                    caravan_path = g_path_cache[{sourceRegion, bus.region_id}];
+                                }
                                 if (caravan_path.empty()) continue;
                             }
 
@@ -5629,11 +4674,7 @@ void processPrivateProduction() {
         if (isExtractor) {
             if (g_world.regions.count(bus.region_id)) {
                 Region& r = g_world.regions[bus.region_id];
-                bool can_extract = r.available_raw_resources.count(focusTypeStr);
-                const ItemTemplate* iTpl = g_itemRegistry.getTemplate(focusTypeStr);
-                if (iTpl && (iTpl->hasTag("food") || iTpl->hasTag("raw_food") || iTpl->hasTag("consumable"))) can_extract = true;
-
-                if (can_extract && facTpl && facTpl->extraction_rates.count(focusTypeStr)) {
+                if (r.available_raw_resources.count(focusTypeStr) && facTpl && facTpl->extraction_rates.count(focusTypeStr)) {
                     double curWeight = calculateContainerWeight(bus.local_storage_id);
                     if (curWeight >= g_containers[bus.local_storage_id].max_weight_kg) {
                         bus.addLog(g_world.current_day, locStr("engine.log.storage_full_mining"));
@@ -5642,7 +4683,7 @@ void processPrivateProduction() {
                     double extRate = facTpl->extraction_rates.at(focusTypeStr);
                     int amount = capacity * prodRatio * weatherMod * extRate;
                     if (amount > 0) {
-                        createItem(focusTypeStr, amount, bus.local_storage_id, g_world.current_day, locStr("engine.reason.private_production"));
+                        createItem(focusTypeStr, amount, bus.local_storage_id, g_world.current_day, "Частное производство");
                         addNews(locStr("engine.news.mined", {{"facility", getFacilityName(bus.facility_type)}, {"amount", std::to_string(amount)}, {"good", getGoodName(focusTypeStr)}, {"eff", std::to_string((int)(prodRatio*100))}}), bus.region_id, 1, "business");
                         bus.addLog(g_world.current_day, locStr("engine.log.mined", {{"amount", std::to_string(amount)}, {"good", getGoodName(focusTypeStr)}, {"eff", std::to_string((int)(prodRatio*100))}}));
                     }
@@ -5698,9 +4739,85 @@ void processPrivateProduction() {
     }
 }
 
+
+// Forward declarations for data-architecture helper layer.
+// These helpers are defined later in the file, but production/business systems
+// above that section need their declarations for a single-file C++ build.
+const ProfessionDef* getProfessionData(const NPC& npc);
+std::string getNpcProfessionType(const NPC& npc);
+bool npcHasProfessionType(const NPC& npc, const std::vector<std::string>& types);
+
+bool npcHasProfessionType(const NPC& npc, std::initializer_list<const char*> types);
+bool npcHasProfessionAbility(const NPC& npc, const std::string& ability);
+std::string getNpcToolItemId(const NPC& npc);
+bool regionHasFacility(const Region& region, const std::string& facilityId);
+double getNpcFacilityRaceModifier(const NPC& npc, const std::string& facilityId);
+std::string getLegacyCraftFacilityForProfession(const NPC& npc);
+std::vector<std::string> getFacilityCandidateProducts(const std::string& facilityId);
+bool facilityIsExtractor(const std::string& facilityId);
+const RecipeDef* getPreferredRecipeForFacilityOutput(
+    const std::string& facilityId,
+    const std::string& preferredOutputId,
+    const std::string& requiredOutputTag
+);
+std::string getPreferredFacilityOutputForRegion(
+    const Region& region,
+    const std::string& facilityId,
+    const std::string& preferredTag,
+    const std::vector<std::string>& preferredIds,
+    const std::vector<std::string>& preferredTags
+);
+inline std::string getPreferredFacilityOutputForRegion(
+    const Region& region,
+    const std::string& facilityId,
+    const std::string& preferredTag,
+    const std::vector<std::string>& preferredIds
+) {
+    return getPreferredFacilityOutputForRegion(region, facilityId, preferredTag, preferredIds, {});
+}
+void upsertNpcMarketOffer(
+    Region& region,
+    const std::string& sellerId,
+    const std::string& goodId,
+    int quantity,
+    double priceMultiplier
+);
+inline void upsertNpcMarketOffer(
+    Region& region,
+    const std::string& sellerId,
+    const std::string& goodId,
+    int quantity
+) {
+    upsertNpcMarketOffer(region, sellerId, goodId, quantity, 1.0);
+}
+bool isInnkeeperFoodItem(const std::string& itemId);
+bool isClericSupplyItem(const std::string& itemId);
+
+
+static bool resolveTransportFromItemData(const std::string& prototypeId, std::string& transport_type, double& speed_mult, int& cargo_bonus, bool& water_only) {
+    auto defIt = g_db.items.find(prototypeId);
+    if (defIt == g_db.items.end()) return false;
+
+    const JsonValue& props = defIt->second.properties;
+    if (!props.has("isTransport") || !props["isTransport"].asBool()) return false;
+
+    transport_type = props.has("transport_type") ? props["transport_type"].asString() : prototypeId;
+    speed_mult = props.has("speed_mult") ? props["speed_mult"].asDouble() : 1.0;
+    cargo_bonus = props.has("cargo_bonus") ? props["cargo_bonus"].asInt() : 0;
+    water_only = props.has("water_only") ? props["water_only"].asBool() : false;
+    return true;
+}
+
 void processFarmers() {
     std::vector<NPC*> active_npcs;
-    for (auto& [id, npc] : g_world.npcs) if (npc.isAlive && profIsFoodProducer(npc.economy.profession_type)) active_npcs.push_back(&npc);
+    for (auto& [id, npc] : g_world.npcs) {
+        if (!npc.isAlive) continue;
+        if (npcHasProfessionType(npc, {"farmer", "fisherman"}) ||
+            npcHasProfessionAbility(npc, "hunting") ||
+            npcHasProfessionAbility(npc, "apiculture")) {
+            active_npcs.push_back(&npc);
+        }
+    }
     std::unordered_map<std::string, std::unique_ptr<std::mutex>> r_locks;
     for (const auto& [rid, r] : g_world.regions) r_locks[rid] = std::make_unique<std::mutex>();
 
@@ -5727,57 +4844,69 @@ void processFarmers() {
                 else if (r.current_season == "summer") seasonMod = 1.5;
                 else if (r.current_season == "autumn") seasonMod = 2.0;
                 else if (r.current_season == "winter") seasonMod = 0.2;
-                if (r.weather == "aether_storm") seasonMod = 0.0;
+                if (r.weather == "Эфирный шторм") seasonMod = 0.0;
                 
                 double yield = npc.economy.skillLevel * r.fertility * seasonMod;
-                if (countItemsInContainer(contId, "sickle") > 0) yield *= 1.5;
+                const std::string toolItemId = getNpcToolItemId(npc);
+                if (!toolItemId.empty() && countItemsInContainer(contId, toolItemId) > 0) yield *= 1.5;
                 int amount = std::max(1, (int)yield);
-                
-                auto profIt = g_db.professions.find(npc.profession);
-                std::string toolTag = (profIt != g_db.professions.end()) ? profIt->second.tool_tag : "";
-                
-                if (!toolTag.empty() && countItemsInContainer(contId, getCoreIdByTag("tool", toolTag)) > 0) yield *= 1.5;
-                amount = std::max(1, (int)yield);
 
                 std::vector<std::string> goodsToCheck;
+                if (npcHasProfessionAbility(npc, "hunting") && regionHasFacility(r, "hunting_lodges")) {
+                    const double raceMod = getNpcFacilityRaceModifier(npc, "hunting_lodges");
+                    const int scaledAmount = std::max(1, (int)(amount * raceMod));
+                    const std::string foodOutput = getPreferredFacilityOutputForRegion(r, "hunting_lodges", "food", {"meat"}, {"meat", "raw_food"});
+                    const std::string materialOutput = getPreferredFacilityOutputForRegion(r, "hunting_lodges", "raw_material", {"fur"}, {"animal_product", "raw_material"});
+                    const std::string trophyOutput = getPreferredFacilityOutputForRegion(r, "hunting_lodges", "", {"monster_parts"});
 
-                for (const auto& [fId, fac] : r.facilities) {
-                    if (fac.level <= 0) continue;
-                    const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(fId);
-                    if (!tpl || !tpl->hasTag("extractor")) continue;
-                    if (!toolTag.empty() && tpl->required_tool != toolTag) continue;
-
-                    for (const auto& [res, rate] : tpl->extraction_rates) {
-                        double raceMod = 1.0;
-                        if (tpl->race_modifiers.count(npc.race)) raceMod = tpl->race_modifiers.at(npc.race);
-                        int finalAmount = std::max(1, (int)(amount * rate * raceMod));
-                        
-                        createItem(res, finalAmount, contId, g_world.current_day, "Harvest");
-                        goodsToCheck.push_back(res);
+                    if (!foodOutput.empty()) {
+                        createItem(foodOutput, scaledAmount, contId, g_world.current_day, "Hunt");
+                        goodsToCheck.push_back(foodOutput);
                     }
-                    break;
+                    if (!materialOutput.empty()) {
+                        createItem(materialOutput, std::max(1, scaledAmount / 2), contId, g_world.current_day, "Hunt");
+                        goodsToCheck.push_back(materialOutput);
+                    }
+                    if (!trophyOutput.empty() && trophyOutput != foodOutput && trophyOutput != materialOutput && thread_safe_rand() % 100 < 20) {
+                        createItem(trophyOutput, std::max(1, scaledAmount / 10), contId, g_world.current_day, "Hunt");
+                        goodsToCheck.push_back(trophyOutput);
+                    }
+                } else if (npcHasProfessionAbility(npc, "apiculture") && regionHasFacility(r, "apiaries")) {
+                    const std::string foodOutput = getPreferredFacilityOutputForRegion(r, "apiaries", "", {"honey"}, {"raw_food", "food"});
+                    const std::string materialOutput = getPreferredFacilityOutputForRegion(r, "apiaries", "raw_material", {"wax"}, {"raw_material"});
+                    if (!foodOutput.empty()) {
+                        createItem(foodOutput, amount, contId, g_world.current_day, "Apiary");
+                        goodsToCheck.push_back(foodOutput);
+                    }
+                    if (!materialOutput.empty()) {
+                        createItem(materialOutput, std::max(1, amount / 2), contId, g_world.current_day, "Apiary");
+                        goodsToCheck.push_back(materialOutput);
+                    }
+                } else if (npcHasProfessionAbility(npc, "fishing") && regionHasFacility(r, "fisheries")) {
+                    const std::string fishOutput = getPreferredFacilityOutputForRegion(r, "fisheries", "food", {"fish"}, {"seafood", "raw_food"});
+                    if (!fishOutput.empty()) {
+                        createItem(fishOutput, amount, contId, g_world.current_day, "Fishing");
+                        goodsToCheck.push_back(fishOutput);
+                    }
+                } else if (npcHasProfessionAbility(npc, "farming") && regionHasFacility(r, "farms")) {
+                    const std::string cropOutput = getPreferredFacilityOutputForRegion(r, "farms", "food", {"wheat"}, {"crop", "raw_food"});
+                    const std::string materialOutput = getPreferredFacilityOutputForRegion(r, "farms", "raw_material", {"cotton"}, {"raw_material"});
+                    if (!cropOutput.empty()) {
+                        createItem(cropOutput, amount, contId, g_world.current_day, "Harvest");
+                        goodsToCheck.push_back(cropOutput);
+                    }
+                    if (!materialOutput.empty() && thread_safe_rand() % 100 < 30) {
+                        createItem(materialOutput, std::max(1, amount / 2), contId, g_world.current_day, "Harvest");
+                        goodsToCheck.push_back(materialOutput);
+                    }
                 }
+                std::sort(goodsToCheck.begin(), goodsToCheck.end());
+                goodsToCheck.erase(std::unique(goodsToCheck.begin(), goodsToCheck.end()), goodsToCheck.end());
                 for (const std::string& gt : goodsToCheck) {
                     int stock = countItemsInContainer(contId, gt);
                     if (stock > 10) {
                         std::lock_guard<std::mutex> lock(*r_locks.at(r.id));
-                        bool merged = false;
-                        for (auto& ex_offer : r.market_square) {
-                            if (ex_offer.seller_id == npc.id && ex_offer.good == gt) {
-                                ex_offer.quantity = stock - 5;
-                                merged = true; break;
-                            }
-                        }
-                        if (!merged) {
-                            MarketOffer offer;
-                            offer.id = "offer_" + generateUUID();
-                            offer.seller_id = npc.id;
-                            offer.good = gt;
-                            offer.quantity = stock - 5;
-                            auto it = g_db.items.find(gt);
-                            offer.price = (it != g_db.items.end()) ? it->second.basePrice : 1;
-                            r.market_square.push_back(offer);
-                        }
+                        upsertNpcMarketOffer(r, npc.id, gt, stock - 5);
                     }
                 }
             }
@@ -5788,7 +4917,11 @@ void processFarmers() {
 
 void processGatherers() {
     std::vector<NPC*> active_npcs;
-    for (auto& [id, npc] : g_world.npcs) if (npc.isAlive && profIsGatherer(npc.economy.profession_type)) active_npcs.push_back(&npc);
+    for (auto& [id, npc] : g_world.npcs) {
+        if (npc.isAlive && (npcHasProfessionType(npc, {"gatherer"}) || npcHasProfessionAbility(npc, "research"))) {
+            active_npcs.push_back(&npc);
+        }
+    }
     std::unordered_map<std::string, std::unique_ptr<std::mutex>> r_locks;
     for (const auto& [rid, r] : g_world.regions) r_locks[rid] = std::make_unique<std::mutex>();
 
@@ -5809,44 +4942,17 @@ void processGatherers() {
                 Region& r = g_world.regions[npc.currentLocation];
                 std::string contId = npc.economy.storage_id.empty() ? npc.inventory_id : npc.economy.storage_id;
                 
-                auto profIt = g_db.professions.find(npc.profession);
-                std::string toolTag = (profIt != g_db.professions.end()) ? profIt->second.tool_tag : "";
-
-                for (const auto& [fId, fac] : r.facilities) {
-                    if (fac.level <= 0) continue;
-                    const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(fId);
-                    if (!tpl || !tpl->hasTag("extractor")) continue;
-                    if (!toolTag.empty() && tpl->required_tool != toolTag) continue;
-
+                if (npcHasProfessionAbility(npc, "research") && regionHasFacility(r, "observatories")) {
                     if (thread_safe_rand() % 100 < 20) {
-                        for (const auto& [res, rate] : tpl->extraction_rates) {
-                            int amount = std::max(1, (int)(npc.economy.skillLevel * rate));
-                            createItem(res, amount, contId, g_world.current_day, "Gathering");
-                            
-                            int stock = countItemsInContainer(contId, res);
-                            if (stock > 2) {
-                                std::lock_guard<std::mutex> lock(*r_locks.at(r.id));
-                                bool merged = false;
-                                for (auto& ex_offer : r.market_square) {
-                                    if (ex_offer.seller_id == npc.id && ex_offer.good == res) {
-                                        ex_offer.quantity = (stock - 1);
-                                        merged = true; break;
-                                    }
-                                }
-                                if (!merged) {
-                                    MarketOffer offer;
-                                    offer.id = "offer_" + generateUUID();
-                                    offer.seller_id = npc.id;
-                                    offer.good = res;
-                                    offer.quantity = stock - 1;
-                                    auto it = g_db.items.find(res);
-                                    offer.price = ((it != g_db.items.end()) ? it->second.basePrice : 1) * 1.5;
-                                    r.market_square.push_back(offer);
-                                }
-                            }
+                        const std::string outputId = getPreferredFacilityOutputForRegion(r, "observatories", "", {"ether_dust"});
+                        if (outputId.empty()) continue;
+                        createItem(outputId, 1 + (npc.economy.skillLevel / 3), contId, g_world.current_day, "Observations");
+                        int stock = countItemsInContainer(contId, outputId);
+                        if (stock > 2) {
+                            std::lock_guard<std::mutex> lock(*r_locks.at(r.id));
+                            upsertNpcMarketOffer(r, npc.id, outputId, stock - 1, 1.5);
                         }
                     }
-                    break;
                 }
             }
         }));
@@ -5856,7 +4962,11 @@ void processGatherers() {
 
 void processArtisans() {
     std::vector<NPC*> active_npcs;
-    for (auto& [id, npc] : g_world.npcs) if (npc.isAlive && profIsCrafter(npc.economy.profession_type)) active_npcs.push_back(&npc);
+    for (auto& [id, npc] : g_world.npcs) {
+        if (npc.isAlive && (npcHasProfessionType(npc, {"artisan"}) || npcHasProfessionAbility(npc, "crafting"))) {
+            active_npcs.push_back(&npc);
+        }
+    }
     std::unordered_map<std::string, std::unique_ptr<std::mutex>> r_locks;
     for (const auto& [rid, r] : g_world.regions) r_locks[rid] = std::make_unique<std::mutex>();
 
@@ -5878,13 +4988,12 @@ void processArtisans() {
                 std::string contId = npc.economy.storage_id.empty() ? npc.inventory_id : npc.economy.storage_id;
                 if (contId.empty()) continue;
 
-                auto profIt = g_db.professions.find(npc.profession);
-                std::string toolTag = (profIt != g_db.professions.end()) ? profIt->second.tool_tag : "";
+                std::string reqFacility = getLegacyCraftFacilityForProfession(npc);
+                
+                if (reqFacility.empty() || !r.facilities.count(reqFacility) || r.facilities[reqFacility].level <= 0) continue;
 
-                for (const auto& recipe : g_db.recipes) {
-                    const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(recipe.facility);
-                    if (!tpl || !r.facilities.count(recipe.facility) || r.facilities[recipe.facility].level <= 0) continue;
-                    if (!toolTag.empty() && tpl->required_tool != toolTag) continue;
+                                for (const auto& recipe : g_db.recipes) {
+                    if (recipe.facility != reqFacility) continue;
 
                     bool canCraft = true;
                     int maxCrafts = npc.economy.skillLevel;
@@ -5923,9 +5032,7 @@ void processArtisans() {
                     }
                     
                     if (canCraft && maxCrafts > 0) {
-                        double raceMod = 1.0;
-                        if (tpl && tpl->race_modifiers.count(npc.race)) raceMod = tpl->race_modifiers.at(npc.race);
-                        
+                        double raceMod = getNpcFacilityRaceModifier(npc, recipe.facility);
                         int finalCrafts = std::max(1, (int)(maxCrafts * raceMod));
 
                         for (const auto& in : recipe.inputs) {
@@ -5937,24 +5044,8 @@ void processArtisans() {
                             createItem(outStr, finalCrafts * out.second, contId, g_world.current_day, "Crafting");
                             
                             std::lock_guard<std::mutex> lock(*r_locks.at(r.id));
-                            bool merged = false;
                             int current_stock = countItemsInContainer(contId, outStr);
-                            for (auto& ex_offer : r.market_square) {
-                                if (ex_offer.seller_id == npc.id && ex_offer.good == outStr) {
-                                    ex_offer.quantity = current_stock;
-                                    merged = true; break;
-                                }
-                            }
-                            if (!merged) {
-                                MarketOffer offer;
-                                offer.id = "offer_" + generateUUID();
-                                offer.seller_id = npc.id;
-                                                                offer.good = outStr;
-                                offer.quantity = current_stock;
-                                auto it = g_db.items.find(outStr);
-                                offer.price = ((it != g_db.items.end()) ? it->second.basePrice : 1) * 1.5;
-                                r.market_square.push_back(offer);
-                            }
+                            upsertNpcMarketOffer(r, npc.id, outStr, current_stock, 1.5);
                         }
                         break; 
                     }
@@ -5970,7 +5061,11 @@ void processArtisans() {
 
 void processMages() {
     std::vector<NPC*> active_npcs;
-    for (auto& [id, npc] : g_world.npcs) if (npc.isAlive && profIsMage(npc.economy.profession_type)) active_npcs.push_back(&npc);
+    for (auto& [id, npc] : g_world.npcs) {
+        if (npc.isAlive && (npcHasProfessionType(npc, {"mage"}) || npcHasProfessionAbility(npc, "spellcasting"))) {
+            active_npcs.push_back(&npc);
+        }
+    }
     std::unordered_map<std::string, std::unique_ptr<std::mutex>> r_locks;
     for (const auto& [rid, r] : g_world.regions) r_locks[rid] = std::make_unique<std::mutex>();
 
@@ -5990,87 +5085,63 @@ void processMages() {
                 if (!g_world.regions.count(npc.currentLocation)) continue;
                 Region& r = g_world.regions[npc.currentLocation];
                 std::string contId = npc.economy.storage_id.empty() ? npc.inventory_id : npc.economy.storage_id;
-                if (contId.empty()) continue;
+                if (contId.empty() || !regionHasFacility(r, "alchemists")) continue;
 
-                auto profIt = g_db.professions.find(npc.profession);
-                std::string toolTag = (profIt != g_db.professions.end()) ? profIt->second.tool_tag : "";
+                const RecipeDef* potionRecipe = getPreferredRecipeForFacilityOutput("alchemists", "potions", "");
+                if (!potionRecipe) continue;
+                
+                for (const auto& [inputId, inputQty] : potionRecipe->inputs) {
+                    int available = countItemsInContainer(contId, inputId);
+                    if (available >= inputQty) continue;
 
-                for (const auto& recipe : g_db.recipes) {
-                    const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(recipe.facility);
-                    if (!tpl || !r.facilities.count(recipe.facility) || r.facilities[recipe.facility].level <= 0) continue;
-                    if (!toolTag.empty() && tpl->required_tool != toolTag) continue;
-
-                    bool canCraft = true;
-                    int maxCrafts = npc.economy.skillLevel;
-                    
-                    for (const auto& in : recipe.inputs) {
-                        std::string inStr = in.first;
-                        int avail = countItemsInContainer(contId, inStr);
-                        if (avail < in.second) {
-                            canCraft = false;
-                            double price = r.markets[inStr];
+                    std::lock_guard<std::mutex> lock(*r_locks.at(r.id));
+                    for (auto it = r.market_square.begin(); it != r.market_square.end(); ++it) {
+                        if (it->good == inputId && it->quantity >= inputQty) {
+                            double price = r.markets[inputId];
                             if (price <= 0) {
-                                auto it = g_db.items.find(inStr);
-                                price = (it != g_db.items.end()) ? it->second.basePrice : 1;
+                                auto db_it = g_db.items.find(inputId);
+                                price = (db_it != g_db.items.end()) ? db_it->second.basePrice : 1;
                             }
-                            int cost = in.second * price;
-                            
+                            int cost = inputQty * price;
                             if (npc.economy.savings >= cost) {
-                                std::lock_guard<std::mutex> lock(*r_locks.at(r.id));
-                                for (auto it = r.market_square.begin(); it != r.market_square.end(); ++it) {
-                                    if (it->good == inStr && it->quantity >= in.second) {
-                                        npc.economy.savings -= cost;
-                                        {
-                                            std::lock_guard<std::mutex> npc_lock(g_npc_state_mutex);
-                                            if (g_world.npcs.count(it->seller_id)) g_world.npcs[it->seller_id].economy.savings += cost;
-                                        }
-                                        it->quantity -= in.second;
-                                        createItem(inStr, in.second, contId, g_world.current_day, "Raw material purchase");
-                                        canCraft = true;
-                                        break;
-                                    }
+                                npc.economy.savings -= cost;
+                                {
+                                    std::lock_guard<std::mutex> npc_lock(g_npc_state_mutex);
+                                    if (g_world.npcs.count(it->seller_id)) g_world.npcs[it->seller_id].economy.savings += cost;
                                 }
+                                it->quantity -= inputQty;
+                                createItem(inputId, inputQty, contId, g_world.current_day, "Reagent purchase");
+                                break;
                             }
-                            if (!canCraft) break;
                         }
-                        maxCrafts = std::min(maxCrafts, avail / in.second);
                     }
-                    
-                    if (canCraft && maxCrafts > 0) {
-                        double raceMod = 1.0;
-                        if (tpl && tpl->race_modifiers.count(npc.race)) raceMod = tpl->race_modifiers.at(npc.race);
-                        
-                        int finalCrafts = std::max(1, (int)(maxCrafts * raceMod));
+                }
+                
+                int maxCrafts = npc.economy.skillLevel;
+                for (const auto& [inputId, inputQty] : potionRecipe->inputs) {
+                    int available = countItemsInContainer(contId, inputId);
+                    if (available < inputQty) {
+                        maxCrafts = 0;
+                        break;
+                    }
+                    maxCrafts = std::min(maxCrafts, available / inputQty);
+                }
 
-                        for (const auto& in : recipe.inputs) {
-                            std::string inStr = in.first;
-                            consumeItemsFromContainer(contId, inStr, maxCrafts * in.second);
+                if (maxCrafts > 0) {
+                    const std::string outputId = potionRecipe->outputs.begin()->first;
+                    const int outputQty = potionRecipe->outputs.begin()->second;
+                    if (!outputId.empty()) {
+                        double raceMod = getNpcFacilityRaceModifier(npc, "alchemists");
+                        int finalCrafts = std::max(1, (int)(maxCrafts * raceMod));
+                        
+                        for (const auto& [inputId, inputQty] : potionRecipe->inputs) {
+                            consumeItemsFromContainer(contId, inputId, maxCrafts * inputQty);
                         }
-                        for (const auto& out : recipe.outputs) {
-                            std::string outStr = out.first;
-                            createItem(outStr, finalCrafts * out.second, contId, g_world.current_day, "Crafting");
-                            
-                            std::lock_guard<std::mutex> lock(*r_locks.at(r.id));
-                            bool merged = false;
-                            int current_stock = countItemsInContainer(contId, outStr);
-                            for (auto& ex_offer : r.market_square) {
-                                if (ex_offer.seller_id == npc.id && ex_offer.good == outStr) {
-                                    ex_offer.quantity = current_stock;
-                                    merged = true; break;
-                                }
-                            }
-                            if (!merged) {
-                                MarketOffer offer;
-                                offer.id = "offer_" + generateUUID();
-                                offer.seller_id = npc.id;
-                                offer.good = outStr;
-                                offer.quantity = current_stock;
-                                auto it = g_db.items.find(outStr);
-                                offer.price = ((it != g_db.items.end()) ? it->second.basePrice : 1) * 1.5;
-                                r.market_square.push_back(offer);
-                            }
-                        }
-                        break; 
+                        createItem(outputId, finalCrafts * outputQty, contId, g_world.current_day, "Alchemy");
+                        
+                        std::lock_guard<std::mutex> lock(*r_locks.at(r.id));
+                        int current_stock = countItemsInContainer(contId, outputId);
+                        upsertNpcMarketOffer(r, npc.id, outputId, current_stock, 2.0);
                     }
                 }
             }
@@ -6081,7 +5152,13 @@ void processMages() {
 
 void processServices() {
     std::vector<NPC*> active_npcs;
-    for (auto& [id, npc] : g_world.npcs) if (npc.isAlive && (profIsInnkeeper(npc.economy.profession_type) || profIsCleric(npc.economy.profession_type))) active_npcs.push_back(&npc);
+    for (auto& [id, npc] : g_world.npcs) {
+        if (npc.isAlive && (npcHasProfessionType(npc, {"innkeeper", "cleric"}) ||
+            npcHasProfessionAbility(npc, "hospitality") ||
+            npcHasProfessionAbility(npc, "religious"))) {
+            active_npcs.push_back(&npc);
+        }
+    }
     std::unordered_map<std::string, std::unique_ptr<std::mutex>> r_locks;
     for (const auto& [rid, r] : g_world.regions) r_locks[rid] = std::make_unique<std::mutex>();
 
@@ -6101,7 +5178,7 @@ void processServices() {
                 if (!g_world.regions.count(npc.currentLocation)) continue;
                 Region& r = g_world.regions[npc.currentLocation];
 
-                if (profIsInnkeeper(npc.economy.profession_type)) {
+                if (npcHasProfessionType(npc, {"innkeeper"}) || npcHasProfessionAbility(npc, "hospitality")) {
                     int visitors = 5 + (r.caravans.size() * 2) + (r.population / 1000);
                     int foodNeeded = visitors;
                     int foodBought = 0;
@@ -6111,8 +5188,7 @@ void processServices() {
                         MarketOffer& offer = *it;
                         if (foodBought >= foodNeeded) break;
                         
-                        const ItemTemplate* itemTpl = g_itemRegistry.getTemplate(offer.good);
-                        if (itemTpl && (itemTpl->hasTag("food") || itemTpl->hasTag("consumable"))) {
+                        if (isInnkeeperFoodItem(offer.good)) {
                             int buy_qty = std::min(offer.quantity, foodNeeded - foodBought);
                             int cost = buy_qty * offer.price;
                             
@@ -6136,7 +5212,7 @@ void processServices() {
                     int profit = foodBought * 8;
                     npc.economy.savings += profit;
                     
-                } else if (profIsCleric(npc.economy.profession_type)) {
+                } else if (npcHasProfessionType(npc, {"cleric"}) || npcHasProfessionAbility(npc, "religious")) {
                     int rituals = 2 + (r.population / 2000);
                     int suppliesBought = 0;
                     
@@ -6145,8 +5221,7 @@ void processServices() {
                         MarketOffer& offer = *it;
                         if (suppliesBought >= rituals) break;
                         
-                        const ItemTemplate* itemTpl = g_itemRegistry.getTemplate(offer.good);
-                        if (itemTpl && (itemTpl->hasTag("magic_raw") || itemTpl->hasTag("medical") || itemTpl->hasTag("luxury"))) {
+                        if (isClericSupplyItem(offer.good)) {
                             int buy_qty = std::min(offer.quantity, rituals - suppliesBought);
                             int cost = buy_qty * offer.price;
                             
@@ -6223,15 +5298,13 @@ void processDailyEconomy() {
                     addNews(locStr("engine.news.plague_outbreak", {{"region", region.name}, {"deaths", std::to_string(deaths)}}), rid, 5, "disaster");
                 }
                 
-                std::string wheat_id = getCoreIdByTag("crop", "wheat");
-                std::string wood_id = getCoreIdByTag("wood", "wood");
-                if (!g_bootstrap && (season == "summer" || region.weather == "heat") && (thread_safe_rand() % 1000) < 2) {
-                    int wheatAmount = vaultStocks[wheat_id];
-                    int woodAmount = vaultStocks[wood_id];
-                    int cw = consumeItemsFromContainer(region.vault_id, wheat_id, wheatAmount * 0.8);
-                    vaultStocks[wheat_id] -= cw;
-                    int cwo = consumeItemsFromContainer(region.vault_id, wood_id, woodAmount * 0.7);
-                    vaultStocks[wood_id] -= cwo;
+                if (!g_bootstrap && (season == "summer" || region.weather == "Жара") && (thread_safe_rand() % 1000) < 2) {
+                    int wheatAmount = vaultStocks[getCoreIdByTag("crop")];
+                    int woodAmount = vaultStocks[getCoreIdByTag("wood")];
+                    int cw = consumeItemsFromContainer(region.vault_id, getCoreIdByTag("crop"), wheatAmount * 0.8);
+                    vaultStocks[getCoreIdByTag("crop")] -= cw;
+                    int cwo = consumeItemsFromContainer(region.vault_id, getCoreIdByTag("wood"), woodAmount * 0.7);
+                    vaultStocks[getCoreIdByTag("wood")] -= cwo;
                     addNews(locStr("engine.news.drought_struck", {{"region", region.name}}), rid, 4, "disaster");
                 }
                 
@@ -6246,33 +5319,30 @@ void processDailyEconomy() {
                 double employmentRate = totalWorkforce > 0 ? std::min(1.0, (double)totalJobs / totalWorkforce) : 1.0;
                 int activeWorkers = totalWorkforce * employmentRate;
 
-                std::string weapon_id = getCoreIdByTag("weapon", "weapons");
                 if (!g_bootstrap && employmentRate < 0.15 && (thread_safe_rand() % 100) < 2) {
                     addNews(locStr("engine.news.hunger_riots", {{"region", region.name}}), rid, 4, "disaster");
-                    int weaponsAvailable = vaultStocks[weapon_id];
-                    int cw = consumeItemsFromContainer(region.vault_id, weapon_id, std::min(100, weaponsAvailable));
-                    vaultStocks[weapon_id] -= cw;
-                    for (auto& [fId, fac] : region.facilities) {
-                        const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(fId);
-                        if (tpl && tpl->hasTag("processor")) {
-                            fac.durability -= 30;
-                            if (fac.durability < 0) fac.durability = 0;
-                        }
+                    int weaponsAvailable = vaultStocks[getCoreIdByTag("weapon")];
+                    int cw = consumeItemsFromContainer(region.vault_id, getCoreIdByTag("weapon"), std::min(100, weaponsAvailable));
+                    vaultStocks[getCoreIdByTag("weapon")] -= cw;
+                    if (region.facilities.count("forges")) {
+                        region.facilities["forges"].durability -= 30;
+                        if (region.facilities["forges"].durability < 0) region.facilities["forges"].durability = 0;
                     }
                 }
 
                 int numFacilities = std::max(1, (int)region.facilities.size());
                 int workersPerSector = activeWorkers / numFacilities;
                 
-                double weatherMod = (region.weather == "clear") ? 1.2 : (region.weather == "thunderstorm" || region.weather == "snow" || region.weather == "blizzard" || region.weather == "tropical_rain" || region.weather == "snowfall") ? 0.5 : 1.0;
+                double weatherMod = (region.weather == "Ясно") ? 1.2 : (region.weather == "Гроза" || region.weather == "Снег" || region.weather == "Метель" || region.weather == "Тропический ливень" || region.weather == "Снегопад") ? 0.5 : 1.0;
                 double fert = g_world.homeostasis.fertility;
 
-                std::string bread_id = getCoreIdByTag("consumable", "bread");
-                std::string meat_id = getCoreIdByTag("raw_food", "meat");
-                region.reserveTargets[bread_id] = region.population * 0.005 * 14;
-                region.reserveTargets[meat_id] = region.population * 0.005 * 7;
-                region.reserveTargets[wheat_id] = region.population * 0.005 * 30;
-                region.reserveTargets[weapon_id] = region.population * 0.1;
+                for (const auto& gt : g_db.all_item_ids) {
+                    if (itemHasTag(gt, "food")) {
+                        region.reserveTargets[gt] = static_cast<int>(region.population * 0.005 * getFoodReserveDays(gt));
+                    } else if (itemHasTag(gt, "weapon")) {
+                        region.reserveTargets[gt] = region.population * 0.1;
+                    }
+                }
 
                 auto getProdMod = [&](const std::string& gtStr) -> double {
                     double curPrice = region.markets[gtStr];
@@ -6354,24 +5424,18 @@ void processDailyEconomy() {
                         else if (facTpl->resource_multiplier_type == "mineral") multTypeVal = region.mineral_wealth;
 
                         for (const auto& [res, rate] : facTpl->extraction_rates) {
-                            bool can_extract = region.available_raw_resources.count(res);
-                            const ItemTemplate* itemTpl = g_itemRegistry.getTemplate(res);
-                            if (itemTpl && (itemTpl->hasTag("food") || itemTpl->hasTag("raw_food") || itemTpl->hasTag("consumable"))) can_extract = true;
-
-                            if (can_extract) {
+                            if (region.available_raw_resources.count(res)) {
                                 double modRes = getProdMod(res);
-                                if (itemTpl && itemTpl->hasTag("crop") && g_world.nexusData.count("global_harvest_blessing") && g_world.nexusData["global_harvest_blessing"].asInt() > g_world.current_day) modRes *= 1.15;
-                                if (itemTpl && itemTpl->hasTag("ore") && g_world.nexusData.count("global_gold_rush") && g_world.nexusData["global_gold_rush"].asInt() > g_world.current_day) modRes *= 2.0;
+                                if (res == "wheat" && g_world.nexusData.count("global_harvest_blessing") && g_world.nexusData["global_harvest_blessing"].asInt() > g_world.current_day) modRes *= 1.15;
+                                if (res == "gold_ore" && g_world.nexusData.count("global_gold_rush") && g_world.nexusData["global_gold_rush"].asInt() > g_world.current_day) modRes *= 2.0;
                                 
                                 int amount = workersPerSector * fac.level * rate * wMod * multTypeVal * eff * modRes;
-                                if (itemTpl && (itemTpl->hasTag("food") || itemTpl->hasTag("raw_food") || itemTpl->hasTag("consumable"))) amount *= 2;
                                 
                                 if (amount > 0) {
-                                    bool isCrop = itemTpl && (itemTpl->hasTag("crop") || itemTpl->hasTag("herb") || itemTpl->hasTag("cotton"));
-                                    if (isCrop) {
+                                    if (res == "wheat" || res == "cotton" || res == "herbs") {
                                         region.planned_harvests.push_back({14, res, amount});
                                     } else {
-                                        createItem(res, amount, region.vault_id, g_world.current_day, locStr("engine.reason.private_production"));
+                                        createItem(res, amount, region.vault_id, g_world.current_day, getFacilityName(fId));
                                         vaultStocks[res] += amount;
                                     }
                                 }
@@ -6384,7 +5448,7 @@ void processDailyEconomy() {
                     it->days_left--;
                     if (it->days_left <= 0) {
                         if (it->amount > 0) {
-                            createItem(it->good, it->amount, region.vault_id, g_world.current_day, locStr("engine.reason.harvest"));
+                            createItem(it->good, it->amount, region.vault_id, g_world.current_day, "Сбор урожая");
                             vaultStocks[it->good] += it->amount;
                         }
                         it = region.planned_harvests.erase(it);
@@ -6400,12 +5464,11 @@ void processDailyEconomy() {
                         if (fac.durability < 20) fac.level = std::max(0, (int)(fac.level * 0.5));
                         
                         if (fac.durability < 50) {
-                            std::string boards_id = getCoreIdByTag("building", "boards");
-                            int woodAvailable = vaultStocks[boards_id];
+                            int woodAvailable = vaultStocks[getCoreIdByTag("building")];
                             if (woodAvailable >= 5) {
                                 fac.durability += 20;
-                                int cw = consumeItemsFromContainer(region.vault_id, boards_id, 5);
-                                vaultStocks[boards_id] -= cw;
+                                int cw = consumeItemsFromContainer(region.vault_id, getCoreIdByTag("building"), 5);
+                                vaultStocks[getCoreIdByTag("building")] -= cw;
                             }
                         }
                     }
@@ -6460,7 +5523,7 @@ void processDailyEconomy() {
                             double weightPerCraft = 0.0;
                             for (const auto& out : recipe.outputs) {
                                 std::string outS = out.first;
-                                double w = hasTag(outS, "currency") ? 0.01 : 1.0;
+                                double w = (outS == getCoreIdByTag("currency")) ? 0.01 : 1.0;
                                 weightPerCraft += w * out.second;
                             }
                             if (weightPerCraft > 0) {
@@ -6476,7 +5539,7 @@ void processDailyEconomy() {
                                 }
                                 for (const auto& out : recipe.outputs) {
                                     std::string outStrFinal = out.first;
-                                    createItem(outStrFinal, maxCrafts * out.second, region.vault_id, g_world.current_day, locStr("engine.reason.production"));
+                                    createItem(outStrFinal, maxCrafts * out.second, region.vault_id, g_world.current_day, "Производство");
                                     vaultStocks[outStrFinal] += maxCrafts * out.second;
                                 }
                             }
@@ -6486,8 +5549,8 @@ void processDailyEconomy() {
                 
                 double baseFoodNeed = region.population * 0.005;
                 double elasticFactor = std::clamp(foodPerCapita / 1.0, 0.4, 1.2);
-                int reserveBread = region.reserveTargets[bread_id];
-                if (vaultStocks[bread_id] < reserveBread) {
+                int reserveFoodTarget = static_cast<int>(region.population * 0.005 * 14);
+                if (getFoodAmount(region.vault_id) < reserveFoodTarget) {
                     elasticFactor *= 0.8;
                 }
                 int foodNeed = (int)(baseFoodNeed * elasticFactor);
@@ -6510,9 +5573,8 @@ void processDailyEconomy() {
                     int taxRevenue = region.moneySupply * 0.02;
                     region.moneySupply -= taxRevenue;
                     if (taxRevenue > 0) {
-                        std::string g_id = getCoreIdByTag("currency", "gold_ingot");
-                        createItem(g_id, taxRevenue, region.vault_id, g_world.current_day, locStr("engine.reason.taxes"));
-                        vaultStocks[g_id] += taxRevenue;
+                        createItem(getCoreIdByTag("currency"), taxRevenue, region.vault_id, g_world.current_day, "Налоги");
+                        vaultStocks[getCoreIdByTag("currency")] += taxRevenue;
                     }
                 }
                 
@@ -6605,26 +5667,12 @@ void processDailyEconomy() {
                         npc.economy.savings += wage;
                     }
                     
-                    std::string chosenFood = getCoreIdByTag("food", "bread");
-                    int foodPrice = r.markets.count(chosenFood) ? (int)r.markets[chosenFood] : 5;
-                    int foodAvailable = countItemsInContainer(r.vault_id, chosenFood);
-                    
-                    if (foodAvailable <= 0) {
-                        auto edibleItems = g_itemRegistry.findTemplatesWithTag("food");
-                        for (const auto* item : edibleItems) {
-                            int avail = countItemsInContainer(r.vault_id, item->id);
-                            if (avail > 0) {
-                                chosenFood = item->id;
-                                foodPrice = r.markets.count(chosenFood) ? (int)r.markets[chosenFood] : item->basePrice;
-                                foodAvailable = avail;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (npc.economy.savings >= foodPrice && foodAvailable > 0) {
+                    std::string marketFoodId = getPreferredAvailableFoodId(r.vault_id);
+                    int foodPrice = (!marketFoodId.empty() && r.markets.count(marketFoodId)) ? (int)r.markets[marketFoodId] : 5;
+                    int availableFood = marketFoodId.empty() ? 0 : countItemsInContainer(r.vault_id, marketFoodId);
+                    if (!marketFoodId.empty() && npc.economy.savings >= foodPrice && availableFood > 0) {
                         npc.economy.savings -= foodPrice;
-                        consumeItemsFromContainer(r.vault_id, chosenFood, 1);
+                        consumeItemsFromContainer(r.vault_id, marketFoodId, 1);
                         {
                             std::lock_guard<std::mutex> lock(g_npc_state_mutex);
                             r.moneySupply += foodPrice;
@@ -6674,19 +5722,7 @@ void processMarkets() {
                         baseDemand = r.population * 0.01;
                     }
                     
-                    const ItemTemplate* tpl = g_itemRegistry.getTemplate(gt);
-                    if (tpl) {
-                        if (r.current_season == "winter") {
-                            if (tpl->hasTag("food") || tpl->hasTag("raw_food") || tpl->hasTag("crop")) baseDemand *= 2.0;
-                            if (tpl->hasTag("wood") || tpl->hasTag("fur") || tpl->hasTag("warm_clothes")) baseDemand *= 1.5;
-                        } else if (r.current_season == "autumn") {
-                            if (tpl->hasTag("food") || tpl->hasTag("raw_food") || tpl->hasTag("crop")) baseDemand *= 0.5;
-                        } else if (r.current_season == "spring") {
-                            if (tpl->hasTag("tool")) baseDemand *= 2.0;
-                        } else if (r.current_season == "summer") {
-                            if (tpl->hasTag("clothes") || tpl->hasTag("luxury") || tpl->hasTag("medical")) baseDemand *= 1.5;
-                        }
-                    }
+                    baseDemand *= getSeasonalDemandMultiplier(gt, r.current_season);
                     
                     demand[gt] = std::max(1, (int)baseDemand); 
                 }
@@ -6717,7 +5753,7 @@ void processMarkets() {
                     }
                     
                     if (edibleItems.empty()) {
-                        std::string f_id = getCoreIdByTag("food", "bread");
+                        std::string f_id = getCoreIdByTag("food");
                         totalFoodInInv = countItemsInContainer(contId, f_id);
                         if (npc.needs.hunger < 50 || totalFoodInInv < npc.economy.reserve_food) shoppingList.push_back(f_id);
                     } else {
@@ -6733,24 +5769,23 @@ void processMarkets() {
                     {
                         auto profIt = g_db.professions.find(npc.profession);
                         if (profIt != g_db.professions.end() && !profIt->second.tool_tag.empty() && thread_safe_rand() % 100 < profIt->second.tool_chance) {
-                            std::string toolId = getCoreIdByTag("tool", profIt->second.tool_tag);
+                            std::string toolId = getCoreIdByTag("tool");
                             if (!toolId.empty()) shoppingList.push_back(toolId);
                         }
                     }
                     
                     if (npc.economy.savings > npc.economy.reserve_gold + 500) {
-                        if (thread_safe_rand() % 100 < 15) shoppingList.push_back(getCoreIdByTag("luxury", "jewelry"));
+                        if (thread_safe_rand() % 100 < 15) shoppingList.push_back(getCoreIdByTag("luxury"));
                     }
                     
-                    if (profIsMercenary(npc.economy.profession_type) || profIsMage(npc.economy.profession_type)) {
-                        if (npc.economy.savings > npc.economy.reserve_gold + 200 && thread_safe_rand() % 100 < 10) shoppingList.push_back(getCoreIdByTag("medical", "potions"));
-                        if (npc.economy.savings > npc.economy.reserve_gold + 500 && thread_safe_rand() % 100 < 2) shoppingList.push_back(getCoreIdByTag("weapon", "weapons"));
-                        if (npc.economy.savings > npc.economy.reserve_gold + 500 && thread_safe_rand() % 100 < 2) shoppingList.push_back(getCoreIdByTag("armor", "armor"));
+                    if (npc.economy.profession_type == "mercenary" || npc.economy.profession_type == "mage") {
+                        if (npc.economy.savings > npc.economy.reserve_gold + 200 && thread_safe_rand() % 100 < 10) shoppingList.push_back(getCoreIdByTag("medical"));
+                        if (npc.economy.savings > npc.economy.reserve_gold + 500 && thread_safe_rand() % 100 < 2) shoppingList.push_back(getCoreIdByTag("weapon"));
+                        if (npc.economy.savings > npc.economy.reserve_gold + 500 && thread_safe_rand() % 100 < 2) shoppingList.push_back(getCoreIdByTag("armor"));
                     }
                     
-                    if (profIsMerchant(npc.economy.profession_type)) {
-                        std::string wagon_id = getCoreIdByTag("vehicle", "wagon");
-                    if (npc.economy.savings > npc.economy.reserve_gold + 1000 && countItemsInContainer(contId, wagon_id) < 5) shoppingList.push_back(wagon_id);
+                    if (npc.economy.profession_type == "merchant") {
+                        if (npc.economy.savings > npc.economy.reserve_gold + 1000 && countItemsInContainer(contId, getCoreIdByTag("vehicle")) < 5) shoppingList.push_back(getCoreIdByTag("vehicle"));
                     }
                     
                     for (const std::string& neededGood : shoppingList) {
@@ -6893,26 +5928,25 @@ void processDailyMilitary() {
                 int totalPopulation = 0;
                 int regionCount = 0;
                 
-                std::string w_id = getCoreIdByTag("weapon", "weapons");
                 for (const auto& rId : f.regions) {
                     if (g_world.regions.count(rId)) {
                         const Region& r = g_world.regions[rId];
-                        globalWeapons += vaultStocks[rId][w_id];
-                        globalFood += getFoodAmount(g_world.regions[rId].vault_id);
+                        globalWeapons += getTaggedAmountFromStocks(vaultStocks[rId], "weapon");
+                        globalFood += getTaggedAmountFromStocks(vaultStocks[rId], "food");
                         totalPopulation += r.population;
                         regionCount++;
                     }
                 }
                 
                 std::string capitalRegionId = f.regions.empty() ? "" : f.regions[0];
-                std::string g_id = getCoreIdByTag("currency", "gold_ingot");
                 if (!capitalRegionId.empty() && g_world.regions.count(capitalRegionId)) {
                     int passiveIncome = regionCount * 500;
                     if (f.warType == DiplomaticState::PEACE) {
                         passiveIncome = regionCount * 1500;
                     }
                     if (passiveIncome > 0) {
-                        createItem(g_id, passiveIncome, g_world.regions[capitalRegionId].vault_id, g_world.current_day, locStr("engine.reason.passive_income"));
+                        std::string g_id = getCoreIdByTag("currency");
+                        createItem(g_id, passiveIncome, g_world.regions[capitalRegionId].vault_id, g_world.current_day, "Passive income");
                         vaultStocks[capitalRegionId][g_id] += passiveIncome;
                     }
                 }
@@ -6920,7 +5954,6 @@ void processDailyMilitary() {
                 int armyUpkeep = f.armies.size() * 500;
                 int stateUpkeep = regionCount * 100;
                 int luxuryUpkeep = 200;
-                
                 if (f.warType >= DiplomaticState::LIMITED_WAR) {
                     for (const auto& rId : f.regions) {
                         if (g_world.regions.count(rId)) {
@@ -6928,6 +5961,7 @@ void processDailyMilitary() {
                             if (r.stability >= 40) {
                                 int recruits = r.population * 0.01;
                                 r.population = std::max(0, r.population - recruits);
+                                std::string w_id = getCoreIdByTag("weapon");
                                 int wAvail = vaultStocks[rId][w_id];
                                 int wTaken = wAvail * 0.005;
                                 if (wTaken > 0) {
@@ -6938,6 +5972,7 @@ void processDailyMilitary() {
                         }
                     }
                 }
+                
 
                 int goldToRemove = armyUpkeep + stateUpkeep + luxuryUpkeep;
                 
@@ -6945,6 +5980,7 @@ void processDailyMilitary() {
                     if (goldToRemove <= 0) break;
                     if (g_world.regions.count(rId)) {
                         const Region& r = g_world.regions[rId];
+                        std::string g_id = getCoreIdByTag("currency");
                         int regionGold = vaultStocks[rId][g_id];
                         int toRemove = std::min(regionGold, goldToRemove);
                         if (toRemove > 0) {
@@ -6957,7 +5993,9 @@ void processDailyMilitary() {
                 
                 if (!capitalRegionId.empty() && g_world.regions.count(capitalRegionId)) {
                     Region& cap = g_world.regions[capitalRegionId];
-                    std::string l_id = getCoreIdByTag("luxury", "jewelry");
+                    std::string g_id = getCoreIdByTag("currency");
+                    std::string w_id = getCoreIdByTag("weapon");
+                    std::string l_id = getCoreIdByTag("luxury");
                     int goldAvailable = vaultStocks[capitalRegionId][g_id];
                     
                     if (goldAvailable > 500) {
@@ -6970,7 +6008,7 @@ void processDailyMilitary() {
                         if (wToBuy > 0 && cap.moneySupply >= 0) {
                             consumeItemsFromContainer(cap.vault_id, g_id, wToBuy * wPrice);
                             cap.moneySupply += wToBuy * wPrice;
-                            createItem(w_id, wToBuy, cap.vault_id, g_world.current_day, locStr("engine.reason.state_purchase"));
+                            createItem(w_id, wToBuy, cap.vault_id, g_world.current_day, "State purchase");
                             vaultStocks[capitalRegionId][w_id] += wToBuy;
                             goldAvailable -= wToBuy * wPrice;
                         }
@@ -6993,6 +6031,7 @@ void processDailyMilitary() {
                         if (goldToRemove <= 0) break;
                         if (g_world.regions.count(rId)) {
                             const Region& r = g_world.regions[rId];
+                            std::string w_id = getCoreIdByTag("weapon");
                             int weaponsAvailable = vaultStocks[rId][w_id];
                             int toRemove = std::min(weaponsAvailable, goldToRemove / 10);
                             if (toRemove > 0) {
@@ -7016,11 +6055,11 @@ void processDailyMilitary() {
                         if (mutinousArmy.morale < 20) {
                             for (const auto& rId : f.regions) {
                                 if (g_world.regions.count(rId)) {
-                                    int weaponsAvailable = vaultStocks[rId][w_id];
+                                    int weaponsAvailable = vaultStocks[rId][getCoreIdByTag("weapon")];
                                     int toRemove = std::min(weaponsAvailable, goldToRemove / 10);
                                     if (toRemove > 0) {
-                                        consumeItemsFromContainer(g_world.regions[rId].vault_id, w_id, toRemove);
-                                        vaultStocks[rId][w_id] -= toRemove;
+                                        consumeItemsFromContainer(g_world.regions[rId].vault_id, getCoreIdByTag("weapon"), toRemove);
+                                        vaultStocks[rId][getCoreIdByTag("weapon")] -= toRemove;
                                         goldToRemove -= toRemove * 10;
                                         if (goldToRemove <= 0) break;
                                     }
@@ -7064,7 +6103,7 @@ void processDailyMilitary() {
             fl.owner_id = fid;
             fl.ship_ids = available_warships;
             for (auto& [nid, npc] : g_world.npcs) {
-                if (npc.isAlive && npc.factionId == fid && profIsSeafarer(npc.economy.profession_type)) {
+                if (npc.isAlive && npc.factionId == fid && npcHasProfessionType(npc, {"admiral", "sailor"})) {
                     fl.admiral_id = nid; break;
                 }
             }
@@ -7148,33 +6187,15 @@ void processDailyMilitary() {
 
             if (!a.supply_chest_id.empty() && g_containers.count(a.supply_chest_id)) {
                 int dailyNeed = std::max(1, (int)(a.size * 0.02)); 
-                int consumed = 0; 
-                
-                std::vector<const ItemTemplate*> edibleItems = g_itemRegistry.findTemplatesWithTag("food");
-                for (const auto* item : edibleItems) {
-                    if (consumed >= dailyNeed) break;
-                    int avail = countItemsInContainer(a.supply_chest_id, item->id);
-                    if (avail > 0) {
-                        int taken = consumeItemsFromContainer(a.supply_chest_id, item->id, std::min(dailyNeed - consumed, avail));
-                        consumed += taken;
-                    }
-                }
+                int consumed = consumeCategory(a.supply_chest_id, "food", dailyNeed, "army_supply_priority");
                 
                 if (consumed < dailyNeed && !a.location.empty() && g_world.regions.count(a.location)) {
                     Region& r = g_world.regions[a.location];
                     if (r.factionId != fid && r.threat_level < 100) {
                         int forageAmount = std::min(dailyNeed - consumed, (int)(r.population * 0.01));
                         if (forageAmount > 0) {
-                            int foraged = 0;
-                            for (const auto* item : edibleItems) {
-                                if (foraged >= forageAmount) break;
-                                int rAvail = countItemsInContainer(r.vault_id, item->id);
-                                if (rAvail > 0) {
-                                    int taken = consumeItemsFromContainer(r.vault_id, item->id, std::min(forageAmount - foraged, rAvail));
-                                    foraged += taken;
-                                }
-                            }
-                            consumed += foraged;
+                            int fTaken = consumeFood(r.vault_id, forageAmount);
+                            consumed += fTaken;
                             r.threat_level = std::min(100, r.threat_level + 2);
                         }
                     }
@@ -7222,7 +6243,8 @@ void processDailyMilitary() {
                     if (path_status[nIdx] == 1) speed /= 3.0;
 
                     uint8_t b_id = g_world.map.grid[nIdx].biome_id;
-                    bool is_water = hasBiomeTag(b_id, "water");
+                    std::string b_str = getBiomeStringId(b_id);
+                    bool is_water = (b_str == "ocean" || b_str == "shallow_water" || b_str == "lake" || b_str == "river");
                     bool has_bridge = g_world.map.grid[nIdx].bridge_flag;
                     
                     if (is_water && !has_bridge) {
@@ -7257,13 +6279,11 @@ void processDailyMilitary() {
                                 if (!already_building) {
                                     std::string capId = faction.regions.empty() ? "" : faction.regions[0];
                                     if (!capId.empty() && g_world.regions.count(capId)) {
-                                        std::string boards_id = getCoreIdByTag("building", "boards");
-                                        std::string cloth_id = getCoreIdByTag("cloth", "cloth");
-                                        int boards = countItemsInContainer(g_world.regions[capId].vault_id, boards_id);
-                                        int cloth = countItemsInContainer(g_world.regions[capId].vault_id, cloth_id);
+                                        int boards = countItemsInContainer(g_world.regions[capId].vault_id, getCoreIdByTag("building"));
+                                        int cloth = countItemsInContainer(g_world.regions[capId].vault_id, getCoreIdByTag("cloth"));
                                         if (boards >= 500 && cloth >= 50) {
-                                            consumeItemsFromContainer(g_world.regions[capId].vault_id, boards_id, 500);
-                                            consumeItemsFromContainer(g_world.regions[capId].vault_id, cloth_id, 50);
+                                            consumeItemsFromContainer(g_world.regions[capId].vault_id, getCoreIdByTag("building"), 500);
+                                            consumeItemsFromContainer(g_world.regions[capId].vault_id, getCoreIdByTag("cloth"), 50);
                                             ShipBuildOrder order;
                                             order.id = "build_" + generateUUID();
                                             order.type = ShipType::TRANSPORT;
@@ -7354,7 +6374,7 @@ void processDailyMilitary() {
                 auto assignGeneral = [&](Army& army, const std::string& fId) {
                     if (army.general_id.empty()) {
                         for (auto& [nid, npc] : g_world.npcs) {
-                            if (npc.isAlive && npc.factionId == fId && (npc.type == "ruler" || profIsMilitaryCommander(npc.economy.profession_type))) {
+                            if (npc.isAlive && npc.factionId == fId && (npc.type == "ruler" || npcHasProfessionType(npc, {"general", "commander"}))) {
                                 army.general_id = nid; break;
                             }
                         }
@@ -7463,15 +6483,13 @@ void processDailyMilitary() {
                             }
                         }
 
-                        std::string b_id = getCoreIdByTag("food", "bread");
-                        std::string w_id = getCoreIdByTag("weapon", "weapons");
-                        int cityBread = vaultStocks[targetLoc][b_id];
+                        int cityBread = vaultStocks[targetLoc][getCoreIdByTag("food")];
                         if (cityBread > 0) {
                             int forage = std::min((int)(a.size * 0.2), cityBread / 10);
-                            consumeItemsFromContainer(targetRegion.vault_id, b_id, forage);
-                            vaultStocks[targetLoc][b_id] -= forage;
+                            consumeItemsFromContainer(targetRegion.vault_id, getCoreIdByTag("food"), forage);
+                            vaultStocks[targetLoc][getCoreIdByTag("food")] -= forage;
                             if (!a.supply_chest_id.empty()) {
-                                createItem(b_id, forage, a.supply_chest_id, g_world.current_day, "Фуражировка");
+                                createItem(getCoreIdByTag("food"), forage, a.supply_chest_id, g_world.current_day, "Фуражировка");
                             }
                         }
                         
@@ -7479,27 +6497,24 @@ void processDailyMilitary() {
                             std::string enemyCapital = g_world.factions[targetRegion.factionId].regions.empty() ? "" : g_world.factions[targetRegion.factionId].regions[0];
                             if (targetLoc == enemyCapital) {
                                 targetRegion.population = std::max(0, (int)(targetRegion.population * 0.98));
-                                int w = vaultStocks[targetLoc][w_id];
-                                int f1 = vaultStocks[targetLoc][b_id];
+                                int w = vaultStocks[targetLoc][getCoreIdByTag("weapon")];
+                                int f1 = vaultStocks[targetLoc][getCoreIdByTag("food")];
                                 int wLost = w * 0.05; int f1Lost = f1 * 0.05;
-                                consumeItemsFromContainer(targetRegion.vault_id, w_id, wLost);
-                                consumeItemsFromContainer(targetRegion.vault_id, b_id, f1Lost);
-                                vaultStocks[targetLoc][w_id] -= wLost;
-                                vaultStocks[targetLoc][b_id] -= f1Lost;
+                                consumeItemsFromContainer(targetRegion.vault_id, getCoreIdByTag("weapon"), wLost);
+                                consumeItemsFromContainer(targetRegion.vault_id, getCoreIdByTag("food"), f1Lost);
+                                vaultStocks[targetLoc][getCoreIdByTag("weapon")] -= wLost;
+                                vaultStocks[targetLoc][getCoreIdByTag("food")] -= f1Lost;
                             } else {
                                 targetRegion.population = std::max(0, targetRegion.population - (thread_safe_rand() % 200));
                             }
-                            int cityBread = vaultStocks[targetLoc][b_id];
+                            int cityBread = vaultStocks[targetLoc]["bread"];
                             if (cityBread > 0) {
-                                int c = consumeItemsFromContainer(targetRegion.vault_id, b_id, cityBread * 0.2);
-                                vaultStocks[targetLoc][b_id] -= c;
+                                int c = consumeItemsFromContainer(targetRegion.vault_id, getCoreIdByTag("food"), cityBread * 0.2);
+                                vaultStocks[targetLoc][getCoreIdByTag("food")] -= c;
                             }
-                            for (auto& [fId, fac] : targetRegion.facilities) {
-                                const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(fId);
-                                if (tpl && tpl->hasTag("extractor")) {
-                                    fac.durability -= 10;
-                                    if (fac.durability < 0) fac.durability = 0;
-                                }
+                            if (targetRegion.facilities.count("farms")) {
+                                targetRegion.facilities["farms"].durability -= 10;
+                                if (targetRegion.facilities["farms"].durability < 0) targetRegion.facilities["farms"].durability = 0;
                             }
                         }
                     } else if (a.siegeDays == 0) {
@@ -7598,7 +6613,7 @@ void processDailyMilitary() {
 
                     int returnedWeapons = faction.armies[i].size * 0.8;
                     if (returnedWeapons > 0) {
-                        std::string w_id = getCoreIdByTag("weapon", "weapons");
+                        std::string w_id = getCoreIdByTag("weapon");
                         createItem(w_id, returnedWeapons, homeRegion.vault_id, g_world.current_day, "Army return");
                         vaultStocks[homeRegionId][w_id] += returnedWeapons;
                     }
@@ -7827,8 +6842,8 @@ void processMonthlyBusinesses() {
         if (!g_world.regions.count(npc.currentLocation)) continue;
         
         Region& r = g_world.regions[npc.currentLocation];
-        int monthly_payroll = 10 * r.average_wage;
-        if (npc.economy.savings < 500 + (monthly_payroll * 2)) continue;
+        int monthly_payroll = 100 * r.average_wage;
+        if (npc.economy.savings < 200 + (monthly_payroll * 2)) continue;
         
         if ((rand() % 100) < 10) {
             std::string best_type = "";
@@ -7886,7 +6901,7 @@ void processMonthlyBusinesses() {
                     b.level = 1;
                     b.cash_balance = monthly_payroll * 2;
                     b.reinvestment_pool = 0;
-                    b.employee_count = std::min(50, (int)(npc.economy.savings / r.average_wage));
+                    b.employee_count = std::min(500, (int)(npc.economy.savings / r.average_wage));
                     b.is_active = true;
                     b.months_loss_streak = 0;
                     b.production_focus = best_focus;
@@ -7930,11 +6945,9 @@ void processMonthlyBusinesses() {
         if (r.threat_level > 50) market_mod -= 0.2;
         int revenue = (int)(wage_cost * market_mod);
         
-        if (facTpl && facTpl->hasTag("entertainment")) {
+        if (bus.facility_type == "brothels" || bus.facility_type == "bathhouses") {
             std::vector<std::string> luxuryGoods;
-            auto luxItems = g_itemRegistry.findTemplatesWithTag("luxury");
-            for (const auto* item : luxItems) luxuryGoods.push_back(item->id);
-            if (luxuryGoods.empty()) luxuryGoods.push_back(getCoreIdByTag("luxury", "jewelry"));
+            luxuryGoods = getCoreIdsByTagList(bus.facility_type == "brothels" ? "brothel_luxury_goods" : "bathhouse_luxury_goods");
 
             int buy_amount = bus.level * 2;
             for (const auto& lg : luxuryGoods) {
@@ -8002,19 +7015,7 @@ void processMonthlyBusinesses() {
             }
             
             if (std::find(bus.owner_ids.begin(), bus.owner_ids.end(), "player") == bus.owner_ids.end()) {
-                std::vector<std::string> possible_products;
-                const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(bus.facility_type);
-                if (tpl && tpl->hasTag("extractor")) {
-                    for (const auto& [res, rate] : tpl->extraction_rates) {
-                        possible_products.push_back(res);
-                    }
-                } else {
-                    for (const auto& rec : g_db.recipes) {
-                        if (rec.facility == bus.facility_type) {
-                            possible_products.push_back(rec.outputs.begin()->first);
-                        }
-                    }
-                }
+                std::vector<std::string> possible_products = getFacilityCandidateProducts(bus.facility_type);
 
                 if (possible_products.size() > 1) {
                     std::string best_focus_new = bus.production_focus;
@@ -8022,7 +7023,7 @@ void processMonthlyBusinesses() {
                     double current_profit_val = -999999.0;
 
                     for (const auto& prod : possible_products) {
-                        bool isExtractor = tpl && tpl->hasTag("extractor");
+                        bool isExtractor = facilityIsExtractor(bus.facility_type);
                         if (isExtractor && !r.available_raw_resources.count(prod)) continue;
 
                         double price = r.markets.count(prod) ? r.markets.at(prod) : 0;
@@ -8088,23 +7089,13 @@ void processTaxation() {
         if (r.isOccupied && r.daysUnderOccupation < 30) continue; // T3: 7.2 No taxes during early occupation
 
         // Лорд забирает 25% пшеницы и мяса
-        // Stage 6: data-driven tax goods from tag_defaults or fallback
-        std::vector<std::string> taxGoods;
-        if (g_db.tag_defaults.count("tax_goods")) {
-            // Comma-separated list in tag_defaults
-            std::istringstream tss(g_db.tag_defaults["tax_goods"]);
-            std::string item;
-            while (std::getline(tss, item, ',')) {
-                if (!item.empty()) taxGoods.push_back(item);
-            }
-        }
-        if (taxGoods.empty()) taxGoods = {"wheat", "meat"}; // fallback
+        std::vector<std::string> taxGoods = getCoreIdsByTagList("tax_goods_list");
         for (const std::string& gt : taxGoods) {
             int stock = countItemsInContainer(contId, gt);
             int tax = stock * 0.25;
             if (tax > 0) {
                 consumeItemsFromContainer(contId, gt, tax);
-                createItem(gt, tax, r.vault_id, g_world.current_day, locStr("engine.reason.land_tax"));
+                createItem(gt, tax, r.vault_id, g_world.current_day, "Земельный налог");
             }
         }
     }
@@ -8124,8 +7115,7 @@ void processTaxation() {
             int taxAmount = r.labor_force * 1;
             if (r.moneySupply >= taxAmount) {
                 r.moneySupply -= taxAmount;
-                std::string g_id = getCoreIdByTag("currency", "gold_ingot");
-                createItem(g_id, taxAmount, capital.vault_id, g_world.current_day, locStr("engine.reason.poll_tax"));
+                createItem(getCoreIdByTag("currency"), taxAmount, capital.vault_id, g_world.current_day, "Подушный налог");
             } else {
                 // Недоимка вызывает рост угрозы (недовольство)
                 r.threat_level = std::min(100, r.threat_level + 10);
@@ -8139,9 +7129,9 @@ void processInfrastructureProjects() {
         std::string capId = f.regions.empty() ? "" : f.regions[0];
         if (capId.empty() || !g_world.regions.count(capId)) continue;
         
-        std::string g_id = getCoreIdByTag("currency", "gold_ingot");
-        std::string w_id = getCoreIdByTag("building", "boards");
-        std::string i_id = getCoreIdByTag("metal_ingot", "iron_ingot");
+        std::string g_id = getCoreIdByTag("currency");
+        std::string w_id = getCoreIdByTag("building");
+        std::string i_id = getCoreIdByTag("metal_ingot");
         int gold = countItemsInContainer(g_world.regions[capId].vault_id, g_id);
         int wood = countItemsInContainer(g_world.regions[capId].vault_id, w_id);
         int iron = countItemsInContainer(g_world.regions[capId].vault_id, i_id);
@@ -8160,7 +7150,8 @@ void processInfrastructureProjects() {
                             int nx = loc.x + dx, ny = loc.y + dy;
                             if (nx >= 0 && nx < g_world.map.width && ny >= 0 && ny < g_world.map.height) {
                                 uint8_t b_id = g_world.map.grid[ny * g_world.map.width + nx].biome_id;
-                                if (hasBiomeTag(b_id, "river")) has_river = true;
+                                std::string b_str = getBiomeStringId(b_id);
+                                if (b_str == "river") has_river = true;
                             }
                         }
                     }
@@ -8176,8 +7167,9 @@ void processInfrastructureProjects() {
                                 if (nx >= 0 && nx < g_world.map.width && ny >= 0 && ny < g_world.map.height) {
                                                                     int idx = ny * g_world.map.width + nx;
                                 uint8_t b_id = g_world.map.grid[idx].biome_id;
-                                if (hasBiomeTag(b_id, "floodplain")) {
-                                    g_world.map.grid[idx].biome_id = getBiomeIdByTag("plains", 0);
+                                std::string b_str = getBiomeStringId(b_id);
+                                if (b_str == "floodplain") {
+                                    g_world.map.grid[idx].biome_id = g_db.biome_string_to_id.count("plains") ? g_db.biome_string_to_id["plains"] : 0;
                                 }
                                 }
                             }
@@ -8233,9 +7225,10 @@ void processInfrastructureProjects() {
                         
                         int initial_idx = path[0].second * g_world.map.width + path[0].first;
                         uint8_t initial_b_id = g_world.map.grid[initial_idx].biome_id;
-                        if (hasBiomeTag(initial_b_id, "water")) {
+                        std::string initial_t = getBiomeStringId(initial_b_id);
+                        if (initial_t == "river" || initial_t == "shallow_water" || initial_t == "ocean" || initial_t == "lake") {
                             current_segment.type = (g_world.map.grid[initial_idx].water_depth >= 3) ? "ferry" : "bridge";
-                        } else if (hasBiomeTag(initial_b_id, "impassable") || hasBiomeTag(initial_b_id, "mountain")) {
+                        } else if (initial_t == "mountains" || initial_t == "hills") {
                             current_segment.type = "tunnel";
                         } else {
                             current_segment.type = "paved";
@@ -8336,9 +7329,9 @@ void processFleets() {
             }
             if (!current_region.empty() && g_world.regions.count(current_region)) {
                 std::string w = g_world.regions[current_region].weather;
-                if (w == "aether_storm" || w == "blizzard") speed *= 0.2;
-                else if (w == "rain" || w == "tropical_rain") speed *= 0.7;
-                else if (w == "fog") speed *= 0.5;
+                if (w == "Эфирный шторм" || w == "Метель") speed *= 0.2;
+                else if (w == "Дождь" || w == "Тропический ливень") speed *= 0.7;
+                else if (w == "Туман") speed *= 0.5;
             }
 
             while (speed > 0 && f.path_index < (int)f.path.size() - 1) {
@@ -8411,8 +7404,8 @@ void processShips() {
         double speed = ship.speed;
         if (g_world.regions.count(ship.destination)) {
             std::string w = g_world.regions[ship.destination].weather;
-            if (w == "aether_storm" || w == "blizzard") speed *= 0.2;
-            else if (w == "rain" || w == "fog" || w == "tropical_rain") speed *= 0.7;
+            if (w == "Эфирный шторм" || w == "Метель") speed *= 0.2;
+            else if (w == "Дождь" || w == "Туман" || w == "Тропический ливень") speed *= 0.7;
         }
         
         while (speed > 0 && ship.path_index < (int)ship.path.size() - 1) {
@@ -8477,7 +7470,7 @@ void processShips() {
                                 moveItem(itemId, destReg.vault_id);
                             } else {
                                 removeItem(itemId, affordable_qty);
-                                createItem(item.prototype_id, affordable_qty, destReg.vault_id, g_world.current_day, locStr("engine.reason.naval_trade"));
+                                createItem(item.prototype_id, affordable_qty, destReg.vault_id, g_world.current_day, "Морская торговля");
                             }
                         }
                     }
@@ -8531,7 +7524,7 @@ void exportGoodsToPortDocks() {
             if (toExport <= 0) continue;
             
             consumeItemsFromContainer(r.vault_id, gtStr, toExport);
-            createItem(gtStr, toExport, port.dock_container_id, g_world.current_day, locStr("engine.reason.port_export"));
+            createItem(gtStr, toExport, port.dock_container_id, g_world.current_day, "Экспорт в порт");
         }
     }
 }
@@ -8598,11 +7591,10 @@ void processNavalTrade() {
                 } else {
                     std::string capId = g_world.factions[ship.owner_id].regions.empty() ? "" : g_world.factions[ship.owner_id].regions[0];
                     if (!capId.empty() && g_world.regions.count(capId)) {
-                        std::string g_id = getCoreIdByTag("currency", "gold_ingot");
-                        int gold = countItemsInContainer(g_world.regions[capId].vault_id, g_id);
+                        int gold = countItemsInContainer(g_world.regions[capId].vault_id, getCoreIdByTag("currency"));
                         int cost = amountToBuy * buyPrice;
                         if (gold >= cost) {
-                            consumeItemsFromContainer(g_world.regions[capId].vault_id, g_id, cost);
+                            consumeItemsFromContainer(g_world.regions[capId].vault_id, getCoreIdByTag("currency"), cost);
                             localReg.moneySupply += cost;
                             canLoad = true;
                         }
@@ -8619,7 +7611,7 @@ void processNavalTrade() {
 
             if (canLoad) {
                 consumeItemsFromContainer(localPort.dock_container_id, bestGood, amountToBuy);
-                createItem(bestGood, amountToBuy, ship.chest_id, g_world.current_day, locStr("engine.reason.ship_loading"));
+                createItem(bestGood, amountToBuy, ship.chest_id, g_world.current_day, "Погрузка на корабль");
                 
                 auto loc1 = g_world.map.locations[current_port];
                 auto loc2 = g_world.map.locations[bestDest];
@@ -8632,7 +7624,7 @@ void processNavalTrade() {
                 } else {
                     // No water path found — unload cargo back to dock
                     consumeItemsFromContainer(ship.chest_id, bestGood, amountToBuy);
-                    createItem(bestGood, amountToBuy, localPort.dock_container_id, g_world.current_day, locStr("engine.reason.ship_unloading"));
+                    createItem(bestGood, amountToBuy, localPort.dock_container_id, g_world.current_day, "Разгрузка (нет пути)");
                 }
             }
         }
@@ -8690,7 +7682,7 @@ void processCouriers() {
                     std::string targetInbox = "";
                     std::string targetRegion = "";
                     for (const auto& [nId, merchant] : g_world.npcs) {
-                        if (profIsMerchant(merchant.economy.profession_type) && !merchant.economy.workplaceId.empty()) {
+                        if (merchant.profession == "Merchant" && !merchant.economy.workplaceId.empty()) {
                             targetInbox = getSubContainer(merchant.economy.workplaceId, "inbox");
                             targetRegion = merchant.homeLocation;
                             if (!targetInbox.empty()) break;
@@ -8716,7 +7708,7 @@ void processCouriers() {
 
 void processMerchantOrders() {
     for (auto& [npcId, merchant] : g_world.npcs) {
-        if (!merchant.isAlive || merchant.economy.profession_type != "merchant" || merchant.economy.workplaceId.empty()) continue;
+        if (!merchant.isAlive || merchant.profession != "Merchant" || merchant.economy.workplaceId.empty()) continue;
 
         if (!merchant.travelDestination.empty()) {
             merchant.travelHoursLeft--;
@@ -8753,8 +7745,7 @@ void processMerchantOrders() {
                                     std::string delivery_cont = od.target_container_id.empty() ? targetReg.vault_id : od.target_container_id;
                                     createItem(od.item_prototype, od.quantity, delivery_cont, g_world.current_day, locStr("engine.reason.order_delivery"));
                                     int payment = od.quantity * od.max_price_per_unit;
-                                    std::string g_id = getCoreIdByTag("currency", "gold_ingot");
-                                    createItem(g_id, payment, safeId, g_world.current_day, locStr("engine.reason.order_payment"));
+                                    createItem(getCoreIdByTag("currency"), payment, safeId, g_world.current_day, locStr("engine.reason.order_payment"));
                                     od.status = "delivered";
                                     item.is_dirty = true;
                                     completed_orders.push_back(itemId);
@@ -8839,8 +7830,8 @@ void processTrekTick() {
     
     if (g_world.regions.count(current_region)) {
         std::string w = g_world.regions[current_region].weather;
-        if (w == "aether_storm" || w == "blizzard") speed *= 0.2;
-        else if (w == "rain" || w == "tropical_rain" || w == "snowfall") speed *= 0.7;
+        if (w == "Эфирный шторм" || w == "Метель") speed *= 0.2;
+        else if (w == "Дождь" || w == "Тропический ливень" || w == "Снегопад") speed *= 0.7;
     }
 
     if (!g_world.player_trek.path.empty() && g_world.player_trek.path_index < (int)g_world.player_trek.path.size() - 1) {
@@ -8882,8 +7873,9 @@ void processTrekTick() {
     if (icx >= 0 && icx < g_world.map.width && icy >= 0 && icy < g_world.map.height) {
         int idx = icy * g_world.map.width + icx;
         uint8_t t = g_world.map.grid[idx].biome_id;
+        std::string b_str = getBiomeStringId(t);
 
-        if (hasBiomeTag(t, "river") && g_world.map.grid[idx].bridge_flag == 0 && g_world.map.grid[idx].road_level == 0) {
+        if (b_str == "river" && g_world.map.grid[idx].bridge_flag == 0 && g_world.map.grid[idx].road_level == 0) {
             std::string rKey = "river_" + std::to_string(icx) + "_" + std::to_string(icy);
             if (g_world.player_trek.seen_object_ids.count(rKey) == 0) {
                 g_world.player_trek.seen_object_ids.insert(rKey);
@@ -8896,7 +7888,7 @@ void processTrekTick() {
             }
         }
         
-        if (hasBiomeTag(t, "ruins") && (thread_safe_rand() % 100) < 5) {
+        if (b_str == "ruins" && (thread_safe_rand() % 100) < 5) {
             std::string rKey = "ruin_flavor_" + std::to_string(icx) + "_" + std::to_string(icy);
             if (g_world.player_trek.seen_object_ids.count(rKey) == 0) {
                 g_world.player_trek.seen_object_ids.insert(rKey);
@@ -8987,7 +7979,10 @@ void processTrekTick() {
                 ev.id = "evt_" + generateUUID();
                 ev.object_type = "disaster";
                 ev.sim_object_id = d.id;
-                std::string dName = g_db.disasters.count(d.type) ? g_db.disasters.at(d.type).name : d.type;
+                std::string dName = d.type;
+                if (d.type == "wildfire") dName = "Лесной пожар";
+                else if (d.type == "aether_storm") dName = "Эфирный шторм";
+                else if (d.type == "monster_invasion") dName = "Орда чудовищ";
                 ev.description = locStr("engine.trek.disaster_zone", {{"disaster", dName}});
                 g_world.player_trek.pending_events.push_back(ev);
                 event_triggered = true;
@@ -9059,10 +8054,7 @@ void globalHomeostasis() {
 
 
 void hourlyTick() {
-    JsonValue mutRes = applyDeferredMutations();
-    if (mutRes.size() > 0) emitJsEvent("mutation_results", mutRes);
     triggerJsHook("onBeforeHourlyTick");
-    g_pluginManager.fireHourlyTick(g_world.current_day, g_world.time.internalHour);
     processConsumption();
     processCaravans();
 
@@ -9097,7 +8089,6 @@ void hourlyTick() {
         }
     }
     triggerJsHook("onAfterHourlyTick");
-    g_pluginManager.fireHourlyTick(g_world.current_day, g_world.time.internalHour);
 }
 
 // Simulate one day
@@ -9160,8 +8151,7 @@ void processRulerDiplomacy() {
 
         std::string capitalRegionId = faction.regions.empty() ? "" : faction.regions[0];
         std::string capitalVault = capitalRegionId.empty() ? "" : g_world.regions[capitalRegionId].vault_id;
-        std::string g_id = getCoreIdByTag("currency", "gold_ingot");
-        int wealth = capitalRegionId.empty() ? 0 : vaultStocks[capitalRegionId][g_id];
+        int wealth = capitalRegionId.empty() ? 0 : vaultStocks[capitalRegionId][getCoreIdByTag("currency")];
 
         int power = availableManpower(faction, vaultStocks);
 
@@ -9287,7 +8277,6 @@ void processRulerDiplomacy() {
                 
                 DiplomaticState newWarType = DiplomaticState::BORDER_CONFLICT;
                 int totalFood = 0, totalWeapons = 0, totalGold = 0;
-                std::string g_id = getCoreIdByTag("currency", "gold_ingot");
                 for (const auto& rid : faction.regions) {
                     if (g_world.regions.count(rid) && !g_world.regions[rid].vault_id.empty() && g_containers.count(g_world.regions[rid].vault_id)) {
                         const Storage& vault = g_containers[g_world.regions[rid].vault_id];
@@ -9297,7 +8286,7 @@ void processRulerDiplomacy() {
                                 std::string cat = g_db.items.count(item.prototype_id) ? g_db.items[item.prototype_id].category : "";
                                 if (cat == "consumable" || cat == "raw_food" || cat == "processed_food") totalFood += item.stack_size;
                                 else if (cat == "weapon") totalWeapons += item.stack_size;
-                                else if (item.prototype_id == g_id) totalGold += item.stack_size;
+                                else if (item.prototype_id == getCoreIdByTag("currency")) totalGold += item.stack_size;
                             }
                         }
                     }
@@ -9361,7 +8350,7 @@ void processRulerDiplomacy() {
                 ruler.currentGoal = "trade_pact -> " + targetF;
                 faction.relations[targetF] += 10;
                 if (!capitalVault.empty()) {
-                    createItem(getCoreIdByTag("currency"), 2000, capitalVault, g_world.current_day, locStr("engine.reason.trade_agreement"));
+                    createItem(getCoreIdByTag("currency"), 2000, capitalVault, g_world.current_day, "Торговое соглашение");
                     vaultStocks[capitalRegionId][getCoreIdByTag("currency")] += 2000;
                 }
                 addNews(locStr("engine.news.diplomacy.trade_agreement", {{"ruler", ruler.name}, {"target", targetFaction.name}}), "global", 2, "misc");
@@ -9392,14 +8381,12 @@ void processRulerDiplomacy() {
             if (v == "war") { atWarWith = k; break; }
         }
 
+        if (!atWarWith.empty()) {
             std::string homeRegionId = "";
-            if (!atWarWith.empty()) {
-                std::string w_id = getCoreIdByTag("weapon", "weapons");
-                for (const auto& rid : faction.regions) {
-                    if (g_world.regions.count(rid)) {
-                        int w = vaultStocks[rid][w_id];
-                        if (w > 10) { homeRegionId = rid; break; }
-                    }
+            for (const auto& rid : faction.regions) {
+                if (g_world.regions.count(rid)) {
+                                        int w = vaultStocks[rid]["weapons"];
+                    if (w > 10) { homeRegionId = rid; break; }
                 }
             }
 
@@ -9418,18 +8405,19 @@ void processRulerDiplomacy() {
                 }
 
                 if (!targetRegionId.empty() && !alreadyAttacking) {
+                    std::vector<std::pair<int,int>> army_path;
+                    if (g_path_cache.count({homeRegionId, targetRegionId})) {
+                        army_path = g_path_cache[{homeRegionId, targetRegionId}];
+                    }
+                    if (army_path.empty()) continue; // Нет наземного пути для атаки
+
                     // Генерал собирает от 40% до 75% доступного резерва, оставляя часть на защиту
                     int armySize = power * (0.40 + (rand() % 35) / 100.0);
                     if (armySize < 50) armySize = power;
                     if (armySize < 50) continue; // Армии меньше 50 человек не формируются
 
-                    std::vector<std::pair<int,int>> army_path = getLandPath(homeRegionId, targetRegionId, armySize);
-                    if (army_path.empty()) continue; // Нет наземного пути для атаки
-
-                                std::string w_id = getCoreIdByTag("weapon", "weapons");
-            std::string f_id = getCoreIdByTag("food", "bread");
-            int weaponsAvailable = vaultStocks[homeRegionId][w_id];
-            int foodAvailable = getFoodAmount(homeRegionId);
+                    int weaponsAvailable = vaultStocks[homeRegionId][getCoreIdByTag("weapon")];
+                    int foodAvailable = getFoodAmount(homeRegion.vault_id);
                     
                     // --- ИНТЕГРАЦИЯ ДЕМОГРАФИИ И АРМИИ ---
                     int maxDraft = homeRegion.population * 0.30; // Лимит призыва увеличен с 3% до 30% (Тотальная мобилизация)
@@ -9454,6 +8442,8 @@ void processRulerDiplomacy() {
                         foodToTake = std::min(calculatedFoodNeed, foodAvailable);
                     }
                     
+                    std::string w_id = getCoreIdByTag("weapon");
+                    std::string f_id = getCoreIdByTag("food");
                     int weaponsToTake = std::min(armySize, weaponsAvailable);
                     
                     int c = consumeItemsFromContainer(homeRegion.vault_id, w_id, weaponsToTake);
@@ -9478,18 +8468,21 @@ void processRulerDiplomacy() {
                     army.siegeDays = -1;
                     army.supply_chest_id = armyChestId;
                     
-                    army.path = army_path;
-                    if (!army.path.empty()) {
-                        army.x = army.path[0].first;
-                        army.y = army.path[0].second;
+                    if (g_path_cache.count({homeRegionId, targetRegionId})) {
+                        army.path = g_path_cache[{homeRegionId, targetRegionId}];
+                        if (!army.path.empty()) {
+                            army.x = army.path[0].first;
+                            army.y = army.path[0].second;
+                        }
                     }
                     
                     faction.armies.push_back(army);
                     std::string targetName = g_world.regions.count(targetRegionId) ? g_world.regions[targetRegionId].name : targetRegionId;
-                    addNews(locStr("engine.news.army_deployed", std::unordered_map<std::string, std::string>{{"faction", faction.name}, {"size", std::to_string(armySize)}, {"origin", homeRegion.name}, {"target", targetName}}), homeRegionId, 4, "war");
+                    addNews(locStr("engine.news.warmy_deployed", {{"faction", faction.name}, {"size", std::to_string(armySize)}, {"origin", homeRegion.name}, {"target", targetName}}), homeRegionId, 4, "war");
                 }
             }
         }
+    }
 }
 
 void checkRulerDeaths() {
@@ -9506,19 +8499,15 @@ void checkRulerDeaths() {
                 int totalFood = getFoodAmount(capReg.vault_id);
                 
                 if (totalFood < 20) {
-                    std::string f_id = getCoreIdByTag("food", "bread");
+                    std::string f_id = getCoreIdByTag("food");
                     double breadPrice = capReg.markets[f_id];
                     if (breadPrice <= 0) breadPrice = 5;
                     
-                    int emergencyAmount = std::max(100, capReg.population / 10);
-                    if (capReg.moneySupply >= breadPrice * emergencyAmount) {
-                        capReg.moneySupply -= breadPrice * emergencyAmount;
-                        createItem(f_id, emergencyAmount, capReg.vault_id, g_world.current_day, "State Purchase");
+                    if (capReg.moneySupply >= breadPrice * 10) {
+                        capReg.moneySupply -= breadPrice * 10;
+                        createItem(f_id, 10, capReg.vault_id, g_world.current_day, "State Purchase");
                         addNews("Ruler supplied", capital, 1, "trade");
                         continue; 
-                    } else {
-                        createItem(f_id, emergencyAmount, capReg.vault_id, g_world.current_day, "Emergency Relief");
-                        continue;
                     }
                 }
             }
@@ -9548,7 +8537,7 @@ void checkRulerDeaths() {
             addNews(locStr("engine.news.no_heir_crisis", {{"ruler", r.name}}), "global", 5, "disaster");
             if (!capital.empty() && g_world.regions.count(capital)) {
                 std::string vault = g_world.regions[capital].vault_id;
-                std::string w_id = getCoreIdByTag("weapon", "weapons");
+                std::string w_id = getCoreIdByTag("weapon");
                 int w = countItemsInContainer(vault, w_id);
                 consumeItemsFromContainer(vault, w_id, w * 0.5);
             }
@@ -9621,7 +8610,7 @@ void processIntrigues() {
                 if (!g_world.factions[intr.targetFactionId].regions.empty()) cap = g_world.factions[intr.targetFactionId].regions[0];
                 if (!cap.empty() && g_world.regions.count(cap)) {
                     std::string vault = g_world.regions[cap].vault_id;
-                    std::string w_id = getCoreIdByTag("weapon", "weapons");
+                    std::string w_id = getCoreIdByTag("weapon");
                     int w = countItemsInContainer(vault, w_id);
                     consumeItemsFromContainer(vault, w_id, w * 0.1);
                     addNews(locStr("engine.news.sabotage", {{"region", g_world.regions[cap].name}, {"target", targetName}, {"initiator", initName}}), cap, 3, "disaster");
@@ -9630,7 +8619,7 @@ void processIntrigues() {
                 for (const auto& rid : g_world.factions[intr.targetFactionId].regions) {
                     if(g_world.regions.count(rid)) {
                         g_world.regions[rid].population *= 0.7;
-                        std::string w_id = getCoreIdByTag("weapon", "weapons");
+                        std::string w_id = getCoreIdByTag("weapon");
                         int w = countItemsInContainer(g_world.regions[rid].vault_id, w_id);
                         consumeItemsFromContainer(g_world.regions[rid].vault_id, w_id, w * 0.4);
                         std::string newsId = addNews(locStr("engine.news.rebellion", {{"region", g_world.regions[rid].name}, {"target", targetName}, {"initiator", initName}}), rid, 5, "war");
@@ -9649,7 +8638,7 @@ void processIntrigues() {
                     std::string initCap = g_world.factions[intr.initiatorFactionId].regions.empty() ? "" : g_world.factions[intr.initiatorFactionId].regions[0];
                     if (!initCap.empty() && g_world.regions.count(initCap)) {
                         g_world.regions[initCap].moneySupply += stolen;
-                        std::string g_id = getCoreIdByTag("currency", "gold_ingot");
+                        std::string g_id = getCoreIdByTag("currency");
                         int goldAmount = stolen;
                         consumeItemsFromContainer(g_world.regions[cap].vault_id, g_id, goldAmount);
                         createItem(g_id, goldAmount, g_world.regions[initCap].vault_id, g_world.current_day, locStr("engine.reason.bribery"));
@@ -9703,11 +8692,11 @@ std::string processGmIntervention(const JsonValue& command) {
                 int weaponCost = (sType == ShipType::WAR_GALLEY || sType == ShipType::WAR_FRIGATE) ? 50 : 0;
                 int goldCost = (sType == ShipType::WAR_GALLEY || sType == ShipType::WAR_FRIGATE) ? 1000 : 0;
 
-                std::string w_id = getCoreIdByTag("building", "boards");
-                std::string i_id = getCoreIdByTag("metal_ingot", "iron_ingot");
-                std::string c_id = getCoreIdByTag("cloth", "cloth");
-                std::string wp_id = getCoreIdByTag("weapon", "weapons");
-                std::string g_id = getCoreIdByTag("currency", "gold_ingot");
+                std::string w_id = getCoreIdByTag("building");
+                std::string i_id = getCoreIdByTag("metal_ingot");
+                std::string c_id = getCoreIdByTag("cloth");
+                std::string wp_id = getCoreIdByTag("weapon");
+                std::string g_id = getCoreIdByTag("currency");
 
                 int woodAvail = countItemsInContainer(vaultToUse, w_id);
                 int ironAvail = countItemsInContainer(vaultToUse, i_id);
@@ -9754,9 +8743,9 @@ std::string processGmIntervention(const JsonValue& command) {
                 int woodCost = 1000;
                 int goldCost = 5000;
 
-                std::string s_id = getCoreIdByTag("stone", "stone");
-                std::string w_id = getCoreIdByTag("building", "boards");
-                std::string g_id = getCoreIdByTag("currency", "gold_ingot");
+                std::string s_id = getCoreIdByTag("stone");
+                std::string w_id = getCoreIdByTag("building");
+                std::string g_id = getCoreIdByTag("currency");
 
                 int stoneAvail = countItemsInContainer(vaultToUse, s_id);
                 int woodAvail = countItemsInContainer(vaultToUse, w_id);
@@ -9808,8 +8797,8 @@ std::string processGmIntervention(const JsonValue& command) {
             int stoneCost = 1000 * port.level;
             int woodCost = 500 * port.level;
             
-            std::string s_id = getCoreIdByTag("stone", "stone");
-            std::string w_id = getCoreIdByTag("building", "boards");
+            std::string s_id = getCoreIdByTag("stone");
+            std::string w_id = getCoreIdByTag("building");
 
             int stoneAvail = countItemsInContainer(vaultToUse, s_id);
             int woodAvail = countItemsInContainer(vaultToUse, w_id);
@@ -9840,8 +8829,7 @@ std::string processGmIntervention(const JsonValue& command) {
 
             int supply = countItemsInContainer(reg.vault_id, goodType);
             std::string capitalRegionId = fac.regions.empty() ? "" : fac.regions[0];
-            std::string g_id = getCoreIdByTag("currency", "gold_ingot");
-            int goldAvailable = capitalRegionId.empty() ? 0 : countItemsInContainer(g_world.regions[capitalRegionId].vault_id, g_id);
+            int goldAvailable = capitalRegionId.empty() ? 0 : countItemsInContainer(g_world.regions[capitalRegionId].vault_id, "gold_ingot");
 
             if (supply < quantity) {
                 feedback = locStr("engine.gm.econ_no_goods", {{"good", goodType}, {"region", reg.name}});
@@ -9849,8 +8837,8 @@ std::string processGmIntervention(const JsonValue& command) {
                 feedback = locStr("engine.gm.econ_no_gold", {{"faction", fac.name}, {"cost", std::to_string(cost)}});
             } else {
                 consumeItemsFromContainer(reg.vault_id, goodType, quantity);
-                consumeItemsFromContainer(g_world.regions[capitalRegionId].vault_id, g_id, cost);
-                createItem(goodType, quantity, g_world.regions[capitalRegionId].vault_id, g_world.current_day, locStr("engine.reason.gm_purchase"));
+                consumeItemsFromContainer(g_world.regions[capitalRegionId].vault_id, "gold_ingot", cost);
+                createItem(goodType, quantity, g_world.regions[capitalRegionId].vault_id, g_world.current_day, "Закупка ГМ");
                 reg.moneySupply += cost;
                 if ((double)quantity / (supply + quantity) > 0.2) {
                     reg.markets[goodType] = price * 1.15;
@@ -9879,10 +8867,9 @@ std::string processGmIntervention(const JsonValue& command) {
                 int revenue = price * quantity;
 
                 consumeItemsFromContainer(g_world.regions[capitalRegionId].vault_id, goodTypeStr, quantity);
-                                createItem(goodTypeStr, quantity, reg.vault_id, g_world.current_day, locStr("engine.reason.gm_sale"));
-                createItem(getCoreIdByTag("currency", "gold_ingot"), revenue, g_world.regions[capitalRegionId].vault_id, g_world.current_day, locStr("engine.reason.gm_revenue"));
+                createItem(goodTypeStr, quantity, reg.vault_id, g_world.current_day, "Продажа ГМ");
                 reg.moneySupply = std::max(0.0, reg.moneySupply - (double)revenue);
-                createItem(getCoreIdByTag("currency", "gold_ingot"), revenue, g_world.regions[capitalRegionId].vault_id, g_world.current_day, "GM Revenue");
+                createItem(getCoreIdByTag("currency"), revenue, g_world.regions[capitalRegionId].vault_id, g_world.current_day, "GM Revenue");
 
                 feedback = locStr("engine.gm.econ_sold", {{"faction", fac.name}, {"qty", std::to_string(quantity)}, {"good", goodTypeStr}, {"region", reg.name}, {"rev", std::to_string(revenue)}});
                 g_world.gmInterventionHistory.push_back(cmd);
@@ -9898,7 +8885,7 @@ std::string processGmIntervention(const JsonValue& command) {
             Faction& fac = g_world.factions[factionId];
             Region& reg = g_world.regions[regionId];
             std::string capitalRegionId = fac.regions.empty() ? "" : fac.regions[0];
-            std::string g_id = getCoreIdByTag("currency", "gold_ingot");
+            std::string g_id = getCoreIdByTag("currency");
             int goldAvailable = capitalRegionId.empty() ? 0 : countItemsInContainer(g_world.regions[capitalRegionId].vault_id, g_id);
 
             if (action == "repair") {
@@ -9933,8 +8920,8 @@ std::string processGmIntervention(const JsonValue& command) {
             int drafts = reg.population * 0.05;
             reg.population -= drafts;
 
-            std::string w_id = getCoreIdByTag("weapon", "weapons");
-            std::string f_id = getCoreIdByTag("food", "bread");
+            std::string w_id = getCoreIdByTag("weapon");
+            std::string f_id = getCoreIdByTag("food");
             int weaponsNeeded = drafts * 0.8;
             int foodNeeded = std::max(1, (int)(drafts * 0.02 * 14)); 
             int weaponsTaken = consumeItemsFromContainer(reg.vault_id, w_id, weaponsNeeded);
@@ -9956,7 +8943,7 @@ std::string processGmIntervention(const JsonValue& command) {
             Faction& fac = g_world.factions[factionId];
             Faction& targetFac = g_world.factions[targetFactionId];
             std::string capitalRegionId = fac.regions.empty() ? "" : fac.regions[0];
-            std::string g_id = getCoreIdByTag("currency", "gold_ingot");
+            std::string g_id = getCoreIdByTag("currency");
             int goldAvailable = capitalRegionId.empty() ? 0 : countItemsInContainer(g_world.regions[capitalRegionId].vault_id, g_id);
 
             if (goldAvailable >= invest) {
@@ -9967,9 +8954,8 @@ std::string processGmIntervention(const JsonValue& command) {
                     std::string targetCapitalId = targetFac.regions.empty() ? "" : targetFac.regions[0];
                     int foodLost = 0;
                     if (!targetCapitalId.empty() && g_world.regions.count(targetCapitalId)) {
-                        std::string food_id = getCoreIdByTag("food");
-                        foodLost = countItemsInContainer(g_world.regions[targetCapitalId].vault_id, food_id) * 0.2;
-                        consumeItemsFromContainer(g_world.regions[targetCapitalId].vault_id, food_id, foodLost);
+                        foodLost = countItemsInContainer(g_world.regions[targetCapitalId].vault_id, getCoreIdByTag("food")) * 0.2;
+                        consumeItemsFromContainer(g_world.regions[targetCapitalId].vault_id, getCoreIdByTag("food"), foodLost);
                     }
                     feedback = locStr("engine.gm.rumor_slander", {{"faction", fac.name}, {"target", targetFac.name}, {"food", std::to_string(foodLost)}});
                 } else {
@@ -9991,7 +8977,7 @@ std::string processGmIntervention(const JsonValue& command) {
             Faction& targetFac = g_world.factions[targetFactionId];
             Region& reg = g_world.regions[regionId];
             std::string capitalRegionId = fac.regions.empty() ? "" : fac.regions[0];
-            std::string g_id = getCoreIdByTag("currency", "gold_ingot");
+            std::string g_id = getCoreIdByTag("currency");
             int goldAvailable = capitalRegionId.empty() ? 0 : countItemsInContainer(g_world.regions[capitalRegionId].vault_id, g_id);
 
             if (goldAvailable >= 3000) {
@@ -10035,7 +9021,7 @@ std::string processGmIntervention(const JsonValue& command) {
             feedback = locStr("engine.gm.inject_cooldown");
         } else if (g_world.regions.count(regionId)) {
             g_world.lastDirectInjectionDay = g_world.current_day;
-            createItem(goodType, quantity, g_world.regions[regionId].vault_id, g_world.current_day, locStr("engine.reason.divine_intervention"));
+            createItem(goodType, quantity, g_world.regions[regionId].vault_id, g_world.current_day, "Божественное вмешательство");
             feedback = locStr("engine.gm.inject_success", {{"qty", std::to_string(quantity)}, {"good", goodType}, {"region", g_world.regions[regionId].name}});
             g_world.gmInterventionHistory.push_back(cmd);
         } else {
@@ -10096,18 +9082,16 @@ std::string processGmIntervention(const JsonValue& command) {
             d.radius = strength;
             d.strength = strength;
             d.affected_regions.push_back(regionId);
-            const DisasterDef& d_def = g_db.disasters.count(type) ? g_db.disasters.at(type) : DisasterDef{"", "", 5, 1, 10, 25, {}};
             d.days_active = strength * 2;
             
-            if (d_def.floods_tiles) {
+            if (type == "flood") {
                 for (int y = std::max(0, d.epicenter_y - d.radius); y <= std::min(g_world.map.height - 1, d.epicenter_y + d.radius); ++y) {
                     for (int x = std::max(0, d.epicenter_x - d.radius); x <= std::min(g_world.map.width - 1, d.epicenter_x + d.radius); ++x) {
                         if (std::hypot(x - d.epicenter_x, y - d.epicenter_y) <= d.radius) {
                             int idx = y * g_world.map.width + x;
                             uint8_t b_id = g_world.map.grid[idx].biome_id;
-                            bool is_affected = d_def.affected_biomes.empty();
-                            for (const auto& ab : d_def.affected_biomes) if (hasBiomeTag(b_id, ab)) is_affected = true;
-                            if (is_affected) {
+                            std::string b_str = getBiomeStringId(b_id);
+                            if (b_str == "riverbank" || b_str == "floodplain" || b_str == "plains") {
                                 g_world.map.grid[idx].is_flooded = true;
                                 d.affected_tiles.push_back({x, y});
                             }
@@ -10115,8 +9099,7 @@ std::string processGmIntervention(const JsonValue& command) {
                     }
                 }
                 g_world.map.generation_tick = g_world.tick;
-            }
-            if (d_def.ruins_roads) {
+            } else if (type == "earthquake") {
                 for (auto& road : g_world.map.roads) {
                     if (road.from == regionId || road.to == regionId) {
                         road.condition = "ruined";
@@ -10218,20 +9201,18 @@ std::string processGmIntervention(const JsonValue& command) {
             } else {
                 int weaponsNeeded = size;
                 int foodNeeded = std::max(1, (int)(size * 0.02 * 14)); 
-                std::string w_id = getCoreIdByTag("weapon", "weapons");
-                std::string f_id = getCoreIdByTag("food", "bread");
-                int weaponsAvail = countItemsInContainer(reg.vault_id, w_id);
-                int breadAvail = countItemsInContainer(reg.vault_id, f_id);
+                int weaponsAvail = countItemsInContainer(reg.vault_id, getCoreIdByTag("weapon"));
+                int breadAvail = countItemsInContainer(reg.vault_id, getCoreIdByTag("food"));
                 
                 if (weaponsAvail < weaponsNeeded) {
                     feedback = locStr("engine.gm.army_no_weap", {{"need", std::to_string(weaponsNeeded)}, {"avail", std::to_string(weaponsAvail)}});
                 } else {
                     reg.population -= size;
-                    consumeItemsFromContainer(reg.vault_id, w_id, weaponsNeeded);
-                    int actualFood = consumeItemsFromContainer(reg.vault_id, f_id, std::min(foodNeeded, breadAvail));
+                    consumeItemsFromContainer(reg.vault_id, getCoreIdByTag("weapon"), weaponsNeeded);
+                    int actualFood = consumeItemsFromContainer(reg.vault_id, getCoreIdByTag("food"), std::min(foodNeeded, breadAvail));
                     
                     std::string armyChestId = createContainer("army_supply_chest", fac.id, 999999, 1000, regionId);
-                    if (actualFood > 0) createItem(f_id, actualFood, armyChestId, g_world.current_day, locStr("engine.reason.army_supplies"));
+                    if (actualFood > 0) createItem(getCoreIdByTag("food"), actualFood, armyChestId, g_world.current_day, "Припасы армии");
                     
                     Army army;
                     army.id = "army_" + generateUUID();
@@ -10275,8 +9256,7 @@ std::string processGmIntervention(const JsonValue& command) {
                         int size = fac.armies[i].size;
                         if (g_world.regions.count(loc)) {
                             g_world.regions[loc].population += size;
-                            std::string w_id = getCoreIdByTag("weapon", "weapons");
-                            createItem(w_id, size, g_world.regions[loc].vault_id, g_world.current_day, locStr("engine.reason.army_disbanded"));
+                            createItem(getCoreIdByTag("weapon"), size, g_world.regions[loc].vault_id, g_world.current_day, "Расформирование армии");
                         }
                         fac.armies.erase(fac.armies.begin() + i);
                         feedback = locStr("engine.gm.army_disbanded", {{"id", armyId}, {"loc", loc}});
@@ -10381,25 +9361,7 @@ std::string processGmIntervention(const JsonValue& command) {
                 int cargo_bonus = 0;
                 bool water_only = false;
 
-                auto it_def = g_db.items.find(item.prototype_id);
-                const ItemTemplate* tpl = g_itemRegistry.getTemplate(item.prototype_id);
-                bool is_transport = false;
-                
-                if (it_def != g_db.items.end() && it_def->second.properties.has("is_transport") && it_def->second.properties["is_transport"].asBool()) {
-                    is_transport = true;
-                    transport_type = item.prototype_id;
-                    speed_mult = it_def->second.properties.has("speed_mult") ? it_def->second.properties["speed_mult"].asDouble() : 1.0;
-                    cargo_bonus = it_def->second.properties.has("cargo_bonus") ? it_def->second.properties["cargo_bonus"].asInt() : 0;
-                    water_only = it_def->second.properties.has("water_only") ? it_def->second.properties["water_only"].asBool() : false;
-                } else if (tpl && tpl->hasTag("vehicle")) {
-                    is_transport = true;
-                    transport_type = item.prototype_id;
-                    speed_mult = 1.5;
-                    cargo_bonus = 20;
-                    water_only = tpl->hasTag("ship");
-                }
-                
-                if (!is_transport) {
+                if (!resolveTransportFromItemData(item.prototype_id, transport_type, speed_mult, cargo_bonus, water_only)) {
                     feedback = "Item is not a transport";
                 }
 
@@ -10436,10 +9398,34 @@ std::string processGmIntervention(const JsonValue& command) {
 
         void processMerchants() {
         static int last_rebuild_day = -999;
+        // Ленивое кэширование: перестраиваем глобальный кэш путей не чаще раза в 14 дней.
+        // Если дорога сломалась, караваны и армии сами найдут обход в реальном времени.
         if (g_path_cache_dirty && (g_world.current_day - last_rebuild_day > 14 || g_path_cache.empty())) {
             last_rebuild_day = g_world.current_day;
-            std::lock_guard<std::mutex> lock(g_path_cache_mutex);
             g_path_cache.clear();
+            std::vector<bool> has_road(g_world.map.width * g_world.map.height, false);
+            std::vector<int> path_status(g_world.map.width * g_world.map.height, 0);
+            for (const auto& road : g_world.map.roads) {
+                if (road.condition == "blocked") {
+                    for (const auto& wp : road.waypoints) path_status[wp.second * g_world.map.width + wp.first] = 2;
+                } else if (road.condition == "ruined") {
+                    for (const auto& wp : road.waypoints) {
+                        path_status[wp.second * g_world.map.width + wp.first] = 1;
+                        has_road[wp.second * g_world.map.width + wp.first] = true;
+                    }
+                } else {
+                    for (const auto& wp : road.waypoints) has_road[wp.second * g_world.map.width + wp.first] = true;
+                }
+            }
+            for (const auto& [r1, reg1] : g_world.regions) {
+                for (const auto& [r2, reg2] : g_world.regions) {
+                    if (r1 != r2 && g_world.map.locations.count(r1) && g_world.map.locations.count(r2)) {
+                        auto loc1 = g_world.map.locations[r1];
+                        auto loc2 = g_world.map.locations[r2];
+                        g_path_cache[{r1, r2}] = findPath(g_world.map, loc1.x, loc1.y, loc2.x, loc2.y, has_road, path_status, MovementType::LAND);
+                    }
+                }
+            }
             g_path_cache_dirty = false;
         }
 
@@ -10496,13 +9482,16 @@ std::string processGmIntervention(const JsonValue& command) {
                     
                     if (profitMargin > maxProfit && profitMargin > localP * 0.3) {
                         task.bestGood = gtStr;
-                        auto path = getLandPath(mLoc, destId);
-                        if (!path.empty()) {
-                            maxProfit = profitMargin;
-                            task.bestDest = destId;
-                            task.bestGood = gtStr;
-                            task.buyPrice = localP;
-                            task.execute = true;
+                        // ИСПОЛЬЗУЕМ КЭШИРОВАННЫЕ МАРШРУТЫ (O(1) вместо O(N^2))
+                        if (g_path_cache.count({mLoc, destId})) {
+                            auto path = g_path_cache.at({mLoc, destId});
+                            if (!path.empty()) {
+                                maxProfit = profitMargin;
+                                task.bestDest = destId;
+                                task.bestGood = gtStr;
+                                task.buyPrice = localP;
+                                task.execute = true;
+                            }
                         }
                     }
                 }
@@ -10521,9 +9510,9 @@ std::string processGmIntervention(const JsonValue& command) {
             int availableGoods = countItemsInContainer(localReg.vault_id, task.bestGood);
             int safePrice = std::max(1, task.buyPrice);
             int maxAffordable = merchant.economy.savings / safePrice;
-            std::string wagon_id = getCoreIdByTag("vehicle", "wagon");
-            int wagonsOwned = countItemsInContainer(merchant.inventory_id, wagon_id);
-            int maxCarryable = (g_db.items[task.bestGood].category == "vehicle") ? (1 + rand() % 3) : (50 + wagonsOwned * 500);
+            const std::string vehicleId = getCoreIdByTag("vehicle");
+            int vehiclesOwned = vehicleId.empty() ? 0 : countItemsInContainer(merchant.inventory_id, vehicleId);
+            int maxCarryable = (g_db.items[task.bestGood].category == "vehicle") ? (1 + rand() % 3) : (50 + vehiclesOwned * 500);
             int amountToBuy = std::min({availableGoods, maxAffordable, maxCarryable});
 
             if (amountToBuy > 0) {
@@ -10540,7 +9529,7 @@ std::string processGmIntervention(const JsonValue& command) {
                 
                 for (auto& [mercId, merc] : g_world.npcs) {
                     if (guardsHired >= maxGuardsWanted) break;
-                    if (merc.isAlive && profIsMercenary(merc.economy.profession_type) && merc.currentLocation == merchant.currentLocation && merc.currentActivity != locStr("engine.npc.guarding_caravan")) {
+                    if (merc.isAlive && merc.economy.profession_type == "mercenary" && merc.currentLocation == merchant.currentLocation && merc.currentActivity != locStr("engine.npc.guarding_caravan")) {
                         merc.currentActivity = locStr("engine.npc.guarding_caravan");
                         merc.travelDestination = task.bestDest;
                         merc.travelHoursLeft = 24 + (rand() % 48);
@@ -10602,7 +9591,7 @@ void processDailyThreat() {
         double unemploymentRate = r.population > 0 ? (r.population - employed) / (double)r.population : 0.0;
         if (unemploymentRate > 0.3) delta += 1 + (int)((unemploymentRate - 0.3) * 5);
 
-        // 2. Голод (Динамический подсчет по тегу)
+        // 2. Голод
         int food = getFoodAmount(r.vault_id);
         double foodPerCapita = food / (double)std::max(1, r.population);
         if (foodPerCapita < 0.8) delta += 5;
@@ -10733,8 +9722,9 @@ void processDailyThreat() {
                     for (int x = std::max(0, blockX - radius); x <= std::min(g_world.map.width - 1, blockX + radius); ++x) {
                         if (std::hypot(x - blockX, y - blockY) <= radius) {
                             uint8_t b_id = g_world.map.grid[y * g_world.map.width + x].biome_id;
-                            if (hasBiomeTag(b_id, "volcano")) {
-                                g_world.map.grid[y * g_world.map.width + x].biome_id = getBiomeIdByTag("plains", 0);
+                            std::string b_str = getBiomeStringId(b_id);
+                            if (b_str == "volcano") {
+                                g_world.map.grid[y * g_world.map.width + x].biome_id = g_db.biome_string_to_id.count("plains") ? g_db.biome_string_to_id["plains"] : 0;
                             }
                         }
                     }
@@ -10782,11 +9772,10 @@ void processDailyThreat() {
             std::string capitalId = g_world.factions[r.factionId].regions.empty() ? "" 
                                     : g_world.factions[r.factionId].regions[0];
             if (!capitalId.empty() && g_world.regions.count(capitalId)) {
-                std::string g_id = getCoreIdByTag("currency", "gold_ingot");
-                int gold = countItemsInContainer(g_world.regions[capitalId].vault_id, g_id);
+                int gold = countItemsInContainer(g_world.regions[capitalId].vault_id, getCoreIdByTag("currency"));
                 int cost = 200 + rand() % 300;
                 if (gold >= cost && r.threat_level > 20) {
-                    consumeItemsFromContainer(g_world.regions[capitalId].vault_id, g_id, cost);
+                    consumeItemsFromContainer(g_world.regions[capitalId].vault_id, getCoreIdByTag("currency"), cost);
                     r.threat_level = std::max(0, r.threat_level - (5 + rand() % 10));
                 }
             }
@@ -10842,39 +9831,15 @@ void processDailyNPCs() {
                             }
                         }
                         
-                        int farmer_jobs = 50;
-                        int artisan_jobs = 0;
-                        for (const auto& [fId, fac] : r.facilities) {
-                            const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(fId);
-                            if (tpl) {
-                                if (tpl->hasTag("extractor")) farmer_jobs += fac.level * 100;
-                                if (tpl->hasTag("processor")) artisan_jobs += fac.level * 50;
-                            }
-                        }
-                        
                         std::map<std::string, int> job_demand;
-                        for (const auto& pid : g_db.profession_ids) {
-                            auto it = g_db.professions.find(pid);
-                            if (it == g_db.professions.end() || pid == "none") continue;
-                            int demand = 0;
-                            if (it->second.demand_pattern.count("base")) demand = (int)(it->second.demand_pattern["base"]);
-                            // Keep existing facility-based calculation for farmer/artisan
-                            if (pid == "farmer") demand = farmer_jobs - current_workers["farmer"];
-                            else if (pid == "artisan") demand = artisan_jobs - current_workers["artisan"];
-                            else if (it->second.demand_pattern.count("per_population")) demand = (int)(r.population * it->second.demand_pattern["per_population"] / 1000.0) - current_workers[pid];
-                            else if (it->second.demand_pattern.count("base_demand")) demand = (int)it->second.demand_pattern["base_demand"] - current_workers[pid];
-                            else demand = 10 - current_workers[pid]; // default fallback
-                            job_demand[pid] = demand;
-                        }
+                        job_demand["farmer"] = ((r.facilities.count("farms") ? r.facilities["farms"].level * 100 : 0) + 50) - current_workers["farmer"];
+                        job_demand["artisan"] = ((r.facilities.count("forges") ? r.facilities["forges"].level * 50 : 0) + (r.facilities.count("weavers") ? r.facilities["weavers"].level * 50 : 0)) - current_workers["artisan"];
+                        job_demand["merchant"] = (r.population / 500) - current_workers["merchant"];
+                        job_demand["mercenary"] = (r.threat_level * 2) - current_workers["mercenary"];
+                        job_demand["cleric"] = (r.population / 1000) - current_workers["cleric"];
+                        job_demand["gatherer"] = 20 - current_workers["gatherer"];
 
                         std::string best_prof = "farmer";
-                        // Data-driven: find first profession with base_race demand
-                        for (const auto& pid : g_db.profession_ids) {
-                            auto it = g_db.professions.find(pid);
-                            if (it != g_db.professions.end() && it->second.demand_pattern.count("base_race") && it->second.demand_pattern["base_race"] > 0) {
-                                best_prof = pid; break;
-                            }
-                        }
                         int max_demand = -1;
                         for (const auto& [prof, demand] : job_demand) {
                             if (demand > max_demand) {
@@ -10884,15 +9849,26 @@ void processDailyNPCs() {
                         }
 
                         npc.economy.profession_type = best_prof;
-                        std::vector<std::string> valid_profs;
-                        for (const auto& [pid, pdef] : g_db.professions) {
-                            if (pdef.profession_type == best_prof) valid_profs.push_back(pid);
+                        if (best_prof == "farmer") {
+                            int r_prof = thread_safe_rand() % 4;
+                            if (r_prof == 0) npc.profession = "Farmer";
+                            else if (r_prof == 1) npc.profession = "Hunter";
+                            else if (r_prof == 2) npc.profession = "Beekeeper";
+                            else npc.profession = "Fisherman";
                         }
-                        if (!valid_profs.empty()) {
-                            npc.profession = valid_profs[thread_safe_rand() % valid_profs.size()];
-                        } else {
-                            npc.profession = best_prof; // Fallback
+                        else if (best_prof == "artisan") {
+                            int r_prof = thread_safe_rand() % 6;
+                            if (r_prof == 0) npc.profession = "Blacksmith";
+                            else if (r_prof == 1) npc.profession = "Weaver";
+                            else if (r_prof == 2) npc.profession = "Baker";
+                            else if (r_prof == 3) npc.profession = "Jeweler";
+                            else if (r_prof == 4) npc.profession = "Alchemist";
+                            else npc.profession = "Tailor";
                         }
+                        else if (best_prof == "gatherer") npc.profession = "Astronomer";
+                        else if (best_prof == "merchant") npc.profession = "Merchant";
+                        else if (best_prof == "mercenary") npc.profession = "Mercenary";
+                        else if (best_prof == "cleric") npc.profession = "Cleric";
                         
                         if (wantsJobChange) {
                             npc.economy.skillLevel = 1; 
@@ -10921,7 +9897,7 @@ void processDailyNPCs() {
                 if (!npc.diseases.empty() || !npc.wounds.empty()) {
                     std::lock_guard<std::mutex> lock(g_npc_state_mutex);
                     for (auto& [docId, doctor] : g_world.npcs) {
-                        if (doctor.isAlive && doctor.currentLocation == npc.currentLocation && profIsMage(doctor.economy.profession_type)) {
+                        if (doctor.isAlive && doctor.currentLocation == npc.currentLocation && doctor.economy.profession_type == "mage") {
                             if (npc.gold >= 15) {
                                 npc.gold -= 15;
                                 doctor.gold += 15;
@@ -11253,7 +10229,7 @@ void processInternalPolitics() {
             r.productionBlockedDays = 5;
             r.population = std::max(0, (int)(r.population * 0.95));
             
-            std::string w_id = getCoreIdByTag("weapon", "weapons");
+            std::string w_id = getCoreIdByTag("weapon");
             int foodLost = getFoodAmount(r.vault_id) * 0.1;
             int weaponsLost = countItemsInContainer(r.vault_id, w_id) * 0.1;
             if (foodLost > 0) consumeFood(r.vault_id, foodLost);
@@ -11274,13 +10250,12 @@ void processInternalPolitics() {
         int capRisk = g_world.nexusData.count(riskKey) ? g_world.nexusData[riskKey].asInt() : 0;
         
         if (capRisk > 3) {
-            std::string g_id = getCoreIdByTag("currency", "gold_ingot");
-            int gold = countItemsInContainer(r.vault_id, g_id);
+            int gold = countItemsInContainer(r.vault_id, getCoreIdByTag("currency"));
             int defLevel = r.custom_props.has("disaster_defense") ? r.custom_props["disaster_defense"].asInt() : 0;
             int cost = (defLevel + 1) * 5000;
             
             if (gold >= cost) {
-                consumeItemsFromContainer(r.vault_id, g_id, cost);
+                consumeItemsFromContainer(r.vault_id, getCoreIdByTag("currency"), cost);
                 r.custom_props.set("disaster_defense", defLevel + 1);
                 addNews(locStr("engine.news.disaster_defense", {{"faction", f.name}, {"level", std::to_string(defLevel+1)}, {"region", r.name}}), rid, 3, "politics");
                 g_world.nexusData[riskKey] = JsonValue(std::max(0, capRisk - 2));
@@ -11476,8 +10451,8 @@ void processMonsterHunts() {
                             a.target_monster_id = "";
                             a.destination = a.location;
                             a.path.clear();
-                            createItem(getCoreIdByTag("magic_raw", "monster_parts"), target->level * 2, g_world.regions[a.location].vault_id, g_world.current_day, locStr("engine.reason.monster_loot"));
-                            createItem(getCoreIdByTag("currency", "gold_ingot"), target->level * 1000, g_world.regions[a.location].vault_id, g_world.current_day, locStr("engine.reason.monster_loot"));
+                            createItem(getCoreIdByTag("magic_raw"), target->level * 2, g_world.regions[a.location].vault_id, g_world.current_day, "Трофеи с монстра");
+                            createItem(getCoreIdByTag("currency"), target->level * 1000, g_world.regions[a.location].vault_id, g_world.current_day, "Трофеи с монстра");
                         } else if (a.size <= 0) {
                             std::string locName2 = g_world.regions.count(a.location) ? g_world.regions[a.location].name : a.location;
                             addNews(locStr("engine.news.army_destroyed_by_monster", {{"faction", f.name}, {"monster", target->name}, {"region", locName2}}), a.location, 5, "disaster");
@@ -11608,7 +10583,7 @@ void processDreadAndMonsters() {
                         g_world.map.generation_tick = g_world.tick;
                     }
                     m.treasure_chest_id = createContainer("monster_lair", "monster", 999999, 100, rid);
-                    createItem(getCoreIdByTag("currency", "gold_ingot"), 5000 + (thread_safe_rand() % 5000), m.treasure_chest_id, g_world.current_day, locStr("engine.reason.lair_treasure"));
+                    createItem(getCoreIdByTag("currency"), 5000 + (thread_safe_rand() % 5000), m.treasure_chest_id, g_world.current_day, "Сокровища логова");
                     g_world.monsters.push_back(m);
                     
                     g_world.nexusData["next_epic_monster_spawn_day"] = JsonValue(g_world.current_day + 30); // Кулдаун снижен с 900 до 30 дней
@@ -11681,10 +10656,9 @@ void processDreadAndMonsters() {
             if (!r.factionId.empty() && g_world.factions.count(r.factionId)) {
                 std::string capId = g_world.factions[r.factionId].regions.empty() ? "" : g_world.factions[r.factionId].regions[0];
                 if (!capId.empty() && g_world.regions.count(capId)) {
-                    std::string g_id = getCoreIdByTag("currency", "gold_ingot");
-                    int gold = countItemsInContainer(g_world.regions[capId].vault_id, g_id);
+                    int gold = countItemsInContainer(g_world.regions[capId].vault_id, "gold_ingot");
                     if (gold >= 5000 && (thread_safe_rand() % 100) < 10) {
-                        consumeItemsFromContainer(g_world.regions[capId].vault_id, g_id, 5000);
+                        consumeItemsFromContainer(g_world.regions[capId].vault_id, getCoreIdByTag("currency"), 5000);
                         int mercDmg = 500 + (thread_safe_rand() % 500);
                         it->health -= mercDmg;
                         addNews(locStr("engine.news.monster_bounty", {{"faction", g_world.factions[r.factionId].name}, {"monster", it->name}}), it->region_id, 4, "war");
@@ -11743,7 +10717,7 @@ void dailyTick() {
     triggerJsHook("onBeforeDailyTick");
     g_world.current_day++;
 
-    g_pluginManager.fireDailyTick(g_world.current_day);
+    g_pluginManager.runDailyHooks();
     
     // Очистка фантомных регионов (багфикс)
     for (auto it = g_world.regions.begin(); it != g_world.regions.end(); ) {
@@ -11820,7 +10794,7 @@ void processNavalCombat() {
     for (const auto& [rid, port] : g_world.port_facilities) {
         if (g_world.regions.count(rid)) {
             Region& r = g_world.regions[rid];
-            int pirate_base_chance = (r.weather == "fog") ? 10 : 2;
+            int pirate_base_chance = (r.weather == "Туман") ? 10 : 2;
             if (r.threat_level > 80 && (thread_safe_rand() % 100) < pirate_base_chance) {
                 auto loc = g_world.map.locations[rid];
                 int bx = loc.x + (rand()%15 - 7);
@@ -11833,7 +10807,7 @@ void processNavalCombat() {
                     std::string baseId = "pirate_base_" + generateUUID();
                     MapLocation pBase;
                     pBase.id = baseId;
-                    pBase.name = locStr("engine.location.pirate_base");
+                    pBase.name = "Пиратская бухта";
                     pBase.x = bx; pBase.y = by;
                     pBase.type = "pirate_base";
                     pBase.faction = "pirates";
@@ -11960,7 +10934,7 @@ void processNavalCombat() {
     
     for (const auto& [lid, loc] : g_world.map.locations) {
         int spawn_chance = 10;
-        if (g_world.regions.count(lid) && g_world.regions[lid].weather == "fog") spawn_chance = 30;
+        if (g_world.regions.count(lid) && g_world.regions[lid].weather == "Туман") spawn_chance = 30;
         if (loc.type == "pirate_base" && (thread_safe_rand() % 100) < spawn_chance) {
             Ship p;
             p.id = "ship_" + generateUUID();
@@ -12031,7 +11005,7 @@ void processNavalCombat() {
                         if (g_world.factions.count(ship.owner_id)) {
                             std::string capId = g_world.factions[ship.owner_id].regions.empty() ? "" : g_world.factions[ship.owner_id].regions[0];
                             if (!capId.empty() && g_world.regions.count(capId)) {
-                                createItem(getCoreIdByTag("currency", "gold_ingot"), 2000, g_world.regions[capId].vault_id, g_world.current_day, locStr("engine.reason.pirate_bounty"));
+                                createItem(getCoreIdByTag("currency"), 2000, g_world.regions[capId].vault_id, g_world.current_day, "Награда за пиратов");
                             }
                         }
                         
@@ -12127,11 +11101,9 @@ void processDisasters() {
             // Hardcoded specific conditions mapped to JSON tags
             if (d_id == "plague" && !(r.population > r.storage_capacity * 1.2 && (!r.custom_props.has("has_well") || !r.custom_props["has_well"].asBool()))) climate_match = false;
             uint8_t b_id = g_world.map.grid[loc.y * g_world.map.width + loc.x].biome_id;
-            if (d_id == "volcano" && !hasBiomeTag(b_id, "volcano")) climate_match = false;
-            if ((d_id == "storm" || d_id == "tsunami" || d_id == "sea_monster")) {
-                std::string seafood_id = getCoreIdByTag("seafood");
-                if (!seafood_id.empty() && !r.available_raw_resources.count(seafood_id)) climate_match = false;
-            }
+            std::string b_str = getBiomeStringId(b_id);
+            if (d_id == "volcano" && b_str != "volcano") climate_match = false;
+            if ((d_id == "storm" || d_id == "tsunami" || d_id == "sea_monster") && !r.available_raw_resources.count("fish")) climate_match = false;
             
             if (climate_match) types.push_back(d_id);
         }
@@ -12154,8 +11126,9 @@ void processDisasters() {
                     if (std::hypot(x - d.epicenter_x, y - d.epicenter_y) <= d.radius) {
                         int idx = y * g_world.map.width + x;
                         uint8_t b_id = g_world.map.grid[idx].biome_id;
+                        std::string b_str = getBiomeStringId(b_id);
                         bool is_affected = d_def.affected_biomes.empty();
-                        for (const auto& ab : d_def.affected_biomes) if (hasBiomeTag(b_id, ab)) is_affected = true;
+                        for (const auto& ab : d_def.affected_biomes) if (b_str == ab) is_affected = true;
                         if (is_affected) {
                             g_world.map.grid[idx].is_flooded = true;
                             d.affected_tiles.push_back({x, y});
@@ -12199,8 +11172,9 @@ void processDisasters() {
                     if (std::hypot(x - d.epicenter_x, y - d.epicenter_y) <= d.radius) {
                         int idx = y * g_world.map.width + x;
                         uint8_t b_id = g_world.map.grid[idx].biome_id;
+                        std::string b_str = getBiomeStringId(b_id);
                         bool is_affected = d_def.affected_biomes.empty();
-                        for (const auto& ab : d_def.affected_biomes) if (hasBiomeTag(b_id, ab)) is_affected = true;
+                        for (const auto& ab : d_def.affected_biomes) if (b_str == ab) is_affected = true;
                         if (is_affected) {
                             g_world.map.grid[idx].biome_id = target_b_id;
                             d.affected_tiles.push_back({x, y});
@@ -12239,8 +11213,7 @@ void processRoadDegradation() {
     for (auto& [fid, f] : g_world.factions) {
         std::string capId = f.regions.empty() ? "" : f.regions[0];
         if (capId.empty() || !g_world.regions.count(capId)) continue;
-        std::string g_id = getCoreIdByTag("currency", "gold_ingot");
-        int gold = countItemsInContainer(g_world.regions[capId].vault_id, g_id);
+        int gold = countItemsInContainer(g_world.regions[capId].vault_id, "gold_ingot");
         
         for (auto& road : g_world.map.roads) {
             bool from_match = g_world.regions.count(road.from) && g_world.regions[road.from].factionId == fid;
@@ -12249,7 +11222,7 @@ void processRoadDegradation() {
                 int cost = (100 - road.integrity) * 10;
                 if (road.type == "sea_route") cost = (100 - road.integrity) * 5;
                 if (gold >= cost) {
-                    consumeItemsFromContainer(g_world.regions[capId].vault_id, g_id, cost);
+                    consumeItemsFromContainer(g_world.regions[capId].vault_id, getCoreIdByTag("currency"), cost);
                     gold -= cost;
                     road.integrity = 100;
                     if (road.condition == "ruined") {
@@ -12284,8 +11257,8 @@ void processFactionTrade() {
         
         int totalFood = 0;
         int totalPop = 0;
-        std::string g_id = getCoreIdByTag("currency", "gold_ingot");
-        std::string f_id = getCoreIdByTag("food", "bread");
+        std::string g_id = getCoreIdByTag("currency");
+        std::string f_id = getCoreIdByTag("food");
         int capitalGold = vaultStocks[capitalId][g_id];
         
         for (const auto& rid : f.regions) {
@@ -12306,15 +11279,16 @@ void processFactionTrade() {
                     if (g_world.regions.count(rid) && g_world.regions[rid].starvation_days > 3) {
                         int sendAmount = std::min(capFood / 2, g_world.regions[rid].population / 2);
                         if (sendAmount > 100) {
-                                                    std::vector<std::pair<int,int>> caravan_path = getLandPath(capitalId, rid);
-                        if (caravan_path.empty()) continue;
+                            std::vector<std::pair<int,int>> caravan_path;
+                            if (g_path_cache.count({capitalId, rid})) caravan_path = g_path_cache[{capitalId, rid}];
+                            if (caravan_path.empty()) continue;
 
                             std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
                             consumeItemsFromContainer(g_world.regions[capitalId].vault_id, f_id, sendAmount);
                             vaultStocks[capitalId][f_id] -= sendAmount;
                             
                             std::string chestId = createContainer("caravan_chest", fid, 999999, 1000, capitalId);
-                            createItem(f_id, sendAmount, chestId, g_world.current_day, locStr("engine.reason.internal_supplies"));
+                            createItem(f_id, sendAmount, chestId, g_world.current_day, "Internal supplies");
                             
                             Caravan caravan;
                             caravan.id = "caravan_" + generateUUID();
@@ -12359,7 +11333,8 @@ void processFactionTrade() {
                 std::string sellerCapId = g_world.factions[bestSellerId].regions[0];
                 int buyAmount = std::min(bestSellerFood / 3, capitalGold / 10);
                 if (buyAmount > 100) {
-                    std::vector<std::pair<int,int>> caravan_path = getLandPath(sellerCapId, capitalId);
+                    std::vector<std::pair<int,int>> caravan_path;
+                    if (g_path_cache.count({sellerCapId, capitalId})) caravan_path = g_path_cache[{sellerCapId, capitalId}];
                     if (caravan_path.empty()) continue;
 
                     int cost = buyAmount * 10;
@@ -12369,10 +11344,10 @@ void processFactionTrade() {
                     
                     consumeItemsFromContainer(g_world.regions[sellerCapId].vault_id, f_id, buyAmount);
                     vaultStocks[sellerCapId][f_id] -= buyAmount;
-                    createItem(g_id, cost, g_world.regions[sellerCapId].vault_id, g_world.current_day, locStr("engine.reason.food_export"));
+                    createItem(g_id, cost, g_world.regions[sellerCapId].vault_id, g_world.current_day, "Food export");
                     
                     std::string chestId = createContainer("caravan_chest", fid, 999999, 1000, sellerCapId);
-                    createItem(f_id, buyAmount, chestId, g_world.current_day, locStr("engine.reason.food_import"));
+                    createItem(f_id, buyAmount, chestId, g_world.current_day, "Food import");
                     
                     Caravan caravan;
                     caravan.id = "caravan_" + generateUUID();
@@ -12402,7 +11377,8 @@ void processFactionTrade() {
                 if (g_world.regions.count(oCapId) && g_world.regions[oCapId].starvation_days > 5) {
                     int aidAmount = std::min(vaultStocks[capitalId][f_id] / 4, g_world.regions[oCapId].population / 2);
                     if (aidAmount > 100) {
-                        std::vector<std::pair<int,int>> caravan_path = getLandPath(capitalId, oCapId);
+                        std::vector<std::pair<int,int>> caravan_path;
+                        if (g_path_cache.count({capitalId, oCapId})) caravan_path = g_path_cache[{capitalId, oCapId}];
                         if (caravan_path.empty()) continue;
 
                         std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
@@ -12410,7 +11386,7 @@ void processFactionTrade() {
                         vaultStocks[capitalId][f_id] -= aidAmount;
                         
                         std::string chestId = createContainer("caravan_chest", fid, 999999, 1000, capitalId);
-                        createItem(f_id, aidAmount, chestId, g_world.current_day, locStr("engine.reason.humanitarian_aid"));
+                        createItem(f_id, aidAmount, chestId, g_world.current_day, "Humanitarian aid");
                         
                         Caravan caravan;
                         caravan.id = "caravan_" + generateUUID();
@@ -12537,21 +11513,12 @@ void generateWorldMapTerrain(WorldMap& map, int seed) {
                     // Shift elevation up for more land area
                     e = e + cfg.continent.elevation_shift;
 
-                    // Edge falloff based on landform
-                    double falloff = 1.0;
-                    if (cfg.landform == "continent") {
-                        double dx = nx - 0.5;
-                        double dy = ny - 0.5;
-                        double dist = std::sqrt(dx * dx + dy * dy) * 2.0;
-                        falloff = 1.0 - std::pow(std::min(dist * cfg.continent.edge_falloff_range, 1.0), cfg.continent.edge_falloff_power);
-                    } else if (cfg.landform == "coastline") {
-                        falloff = std::pow(nx, cfg.continent.edge_falloff_power);
-                    } else if (cfg.landform == "inland") {
-                        falloff = 1.0;
-                    } else if (cfg.landform == "islands") {
-                        double n1 = perlin.fbm(nx * 4.0, ny * 4.0, 2, 0.5, 2.0);
-                        falloff = std::clamp(n1 * 1.5, 0.0, 1.0);
-                    }
+                    // Edge falloff: push map edges below sea level to create continent shape
+                    double dx = nx - 0.5;
+                    double dy = ny - 0.5;
+                    double dist = std::sqrt(dx * dx + dy * dy) * 2.0;
+                    double falloff = 1.0 - std::pow(std::min(dist * cfg.continent.edge_falloff_range, 1.0),
+                                                     cfg.continent.edge_falloff_power);
                     e = e * falloff + (1.0 - falloff) * cfg.continent.edge_ocean_elevation;
 
                     // Add terrain detail (mountains, hills) within the continent
@@ -12972,25 +11939,20 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
     goalX = std::clamp(goalX, 0, w - 1);
     goalY = std::clamp(goalY, 0, h - 1);
     
-    thread_local int search_id = 0;
-    search_id++;
-    if (search_id > 1000000000) search_id = 1;
-
+    // Оптимизация выделения памяти: используем thread_local для предотвращения постоянных аллокаций
     thread_local std::vector<int> g_cost;
     thread_local std::vector<int> parent;
-    thread_local std::vector<int> visited_id;
     if (g_cost.size() != static_cast<size_t>(w * h)) {
         g_cost.resize(w * h);
         parent.resize(w * h);
-        visited_id.resize(w * h, 0);
     }
+    std::fill(g_cost.begin(), g_cost.end(), 1e9);
+    std::fill(parent.begin(), parent.end(), -1);
     
     std::priority_queue<AStarNode, std::vector<AStarNode>, AStarCompare> pq;
 
     int startIdx = startY * w + startX;
-    visited_id[startIdx] = search_id;
     g_cost[startIdx] = 0;
-    parent[startIdx] = -1;
     pq.push({startX, startY, 0, 0});
 
     int dx[] = {0, 1, 0, -1, 1, 1, -1, -1};
@@ -13001,7 +11963,7 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
         pq.pop();
 
         if (curr.x == goalX && curr.y == goalY) break;
-        if (visited_id[curr.y * w + curr.x] == search_id && curr.g > g_cost[curr.y * w + curr.x]) continue;
+        if (curr.g > g_cost[curr.y * w + curr.x]) continue;
 
         for (int i = 0; i < 8; ++i) {
             int nx = curr.x + dx[i];
@@ -13107,12 +12069,6 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
                 cost = std::max(cost, 200);
             }
 
-            if (visited_id[nIdx] != search_id) {
-                g_cost[nIdx] = 1e9;
-                parent[nIdx] = -1;
-                visited_id[nIdx] = search_id;
-            }
-
             if (cost >= 9000) {
                 if (nx == goalX && ny == goalY) cost = 5;
                 else continue;
@@ -13130,7 +12086,7 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
 
     std::vector<std::pair<int,int>> path;
     int currIdx = goalY * w + goalX;
-    if (visited_id[currIdx] != search_id || parent[currIdx] == -1) return path;
+    if (parent[currIdx] == -1) return path;
 
     while (currIdx != startIdx) {
         path.push_back({currIdx % w, currIdx / w});
@@ -13139,37 +12095,6 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
     path.push_back({startX, startY});
     std::reverse(path.begin(), path.end());
     return path;
-}
-
-std::vector<std::pair<int,int>> getLandPath(const std::string& from, const std::string& to, int entity_size) {
-    if (from == to || from.empty() || to.empty()) return {};
-    {
-        std::lock_guard<std::mutex> lock(g_path_cache_mutex);
-        if (g_path_cache.count({from, to})) return g_path_cache.at({from, to});
-    }
-    std::vector<bool> has_road(g_world.map.width * g_world.map.height, false);
-    std::vector<int> path_status(g_world.map.width * g_world.map.height, 0);
-    for (const auto& road : g_world.map.roads) {
-        if (road.condition == "blocked") {
-            for (const auto& wp : road.waypoints) path_status[wp.second * g_world.map.width + wp.first] = 2;
-        } else if (road.condition == "ruined") {
-            for (const auto& wp : road.waypoints) {
-                path_status[wp.second * g_world.map.width + wp.first] = 1;
-                has_road[wp.second * g_world.map.width + wp.first] = true;
-            }
-        } else {
-            for (const auto& wp : road.waypoints) has_road[wp.second * g_world.map.width + wp.first] = true;
-        }
-    }
-    if (g_world.map.locations.count(from) && g_world.map.locations.count(to)) {
-        auto loc1 = g_world.map.locations.at(from);
-        auto loc2 = g_world.map.locations.at(to);
-        auto path = findPath(g_world.map, loc1.x, loc1.y, loc2.x, loc2.y, has_road, path_status, MovementType::LAND, entity_size);
-        std::lock_guard<std::mutex> lock(g_path_cache_mutex);
-        g_path_cache[{from, to}] = path;
-        return path;
-    }
-    return {};
 }
 
 void placeRegionsOnMap(WorldMap& map, const World& w) {
@@ -13297,12 +12222,7 @@ void placeRegionsOnMap(WorldMap& map, const World& w) {
             if (!r.base_type.empty()) {
                 loc.type = r.base_type;
             } else {
-                // Stage 3c: configurable city threshold from world_config
-                int cityThreshold = 5000;
-                if (g_db.world_config.location_size_thresholds.count("city")) {
-                    cityThreshold = g_db.world_config.location_size_thresholds["city"];
-                }
-                loc.type = (r.population > cityThreshold) ? "city" : (r.population > 0 ? "village" : "ruins");
+                loc.type = (r.population > 5000) ? "city" : (r.population > 0 ? "village" : "ruins");
             }
             
             if (require_water && r.population > 0 && loc.type == "village") loc.type = "ruins"; // Legacy override
@@ -13661,30 +12581,23 @@ void generateCityLayout(Region& r, World& w) {
     };
 
     // 4. Экономический ребаланс и расстановка (Data-Driven)
-
-    std::string t_house = g_db.city_gen_rules.residential_type;
-    std::string t_tavern = g_db.city_gen_rules.tavern_type;
-    std::string t_market = g_db.city_gen_rules.market_type;
-    std::string t_temple = g_db.city_gen_rules.temple_type;
-    std::string t_office = g_db.city_gen_rules.office_type;
-
     int merchantCount = 0;
     for (const auto& [nId, npc] : w.npcs) {
-        if (npc.homeLocation == r.id && profIsMerchant(npc.economy.profession_type) && !npc.economy.workplaceId.empty()) {
+        if (npc.homeLocation == r.id && npc.economy.profession_type == "merchant" && !npc.economy.workplaceId.empty()) {
             merchantCount++;
-            placeBuilding(t_office, getFacName(t_office, "Shop") + " '" + npc.name + "'", npc.economy.workplaceId, centerSpots, midSpots);
+            placeBuilding("office", getFacName("office", "Shop") + " '" + npc.name + "'", npc.economy.workplaceId, centerSpots, midSpots);
         }
     }
     
-    if (merchantCount >= 2) placeBuilding(t_market, getFacName(t_market, "Market"), "", centerSpots, midSpots);
-    if (r.population > 5000 && g_facilityRegistry.getTemplate(t_temple)) placeBuilding(t_temple, getFacName(t_temple, "Temple"), "", centerSpots, midSpots);
+    if (merchantCount >= 2) placeBuilding("market", getFacName("market", "Market"), "", centerSpots, midSpots);
+    if (r.population > 5000 && g_facilityRegistry.getTemplate("temple")) placeBuilding("temple", getFacName("temple", "Temple"), "", centerSpots, midSpots);
     
     for (const auto& [fId, fac] : r.facilities) {
         if (fac.level > 0) {
             const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(fId);
             if (!tpl) continue;
             
-            if (tpl->hasTag("service") && fId != t_market && fId != t_temple && fId != t_office && fId != t_tavern) {
+            if (tpl->hasTag("service") && fId != "market" && fId != "temple" && fId != "office" && fId != "tavern") {
                 int count = std::min(2, fac.level);
                 for(int i=0; i<count; ++i) placeBuilding(fId, getFacName(fId, getFacilityName(fId)), fId, centerSpots, midSpots);
             } else if (tpl->hasTag("processor") || tpl->hasTag("extractor")) {
@@ -13700,26 +12613,520 @@ void generateCityLayout(Region& r, World& w) {
     
     int taverns = std::max(1, maxHouses / 15);
     taverns = std::min(taverns, 5);
-    for(int i=0; i<taverns; ++i) placeBuilding(t_tavern, getFacName(t_tavern, "Tavern"), "", midSpots, centerSpots);
+    for(int i=0; i<taverns; ++i) placeBuilding("tavern", getFacName("tavern", "Tavern"), "", midSpots, centerSpots);
     
     for(int i=0; i<maxHouses; ++i) {
-        placeBuilding(t_house, getFacName(t_house, "Residential"), "", midSpots, edgeSpots);
+        placeBuilding("house", getFacName("house", "Residential"), "", midSpots, edgeSpots);
     }
+}
+
+double scoreItemCandidate(const std::string& itemId,
+                          const std::string& requiredTag,
+                          const std::vector<std::string>& preferredIds = {},
+                          const std::vector<std::string>& preferredTags = {},
+                          const std::string& priorityProperty = "") {
+    if (!requiredTag.empty() && !itemHasTag(itemId, requiredTag)) return -1e9;
+
+    double score = 0.0;
+    for (size_t i = 0; i < preferredIds.size(); ++i) {
+        if (preferredIds[i] == itemId) {
+            score += 500.0 - static_cast<double>(i * 20);
+            break;
+        }
+    }
+    for (size_t i = 0; i < preferredTags.size(); ++i) {
+        if (itemHasTag(itemId, preferredTags[i])) {
+            score += 120.0 - static_cast<double>(i * 10);
+        }
+    }
+    if (!priorityProperty.empty()) {
+        score += getItemNumericProperty(itemId, priorityProperty, 0.0) * 10.0;
+    }
+    if (requiredTag == "food") {
+        score += getFoodPriority(itemId, priorityProperty.empty() ? "reserve_priority" : priorityProperty);
+    }
+
+    const auto itemIt = g_db.items.find(itemId);
+    if (itemIt != g_db.items.end()) {
+        score -= static_cast<double>(itemIt->second.basePrice) * 0.05;
+    }
+
+    return score;
+}
+
+std::string chooseBestItemCandidate(const std::vector<std::string>& candidates,
+                                    const std::string& requiredTag,
+                                    const std::vector<std::string>& preferredIds = {},
+                                    const std::vector<std::string>& preferredTags = {},
+                                    const std::string& priorityProperty = "") {
+    std::string bestId;
+    double bestScore = -1e9;
+
+    for (const auto& itemId : candidates) {
+        double score = scoreItemCandidate(itemId, requiredTag, preferredIds, preferredTags, priorityProperty);
+        if (score > bestScore || (std::abs(score - bestScore) < 0.001 && itemId < bestId)) {
+            bestScore = score;
+            bestId = itemId;
+        }
+    }
+
+    return bestScore <= -1e8 ? "" : bestId;
+}
+
+std::string getPreferredGlobalItemByTag(const std::string& requiredTag,
+                                        const std::vector<std::string>& preferredIds = {},
+                                        const std::vector<std::string>& preferredTags = {},
+                                        const std::string& priorityProperty = "") {
+    std::vector<std::string> candidates;
+    candidates.reserve(g_db.all_item_ids.size());
+    for (const auto& itemId : g_db.all_item_ids) {
+        if (itemHasTag(itemId, requiredTag)) candidates.push_back(itemId);
+    }
+    return chooseBestItemCandidate(candidates, requiredTag, preferredIds, preferredTags, priorityProperty);
+}
+
+std::string getPreferredRegionalItemByTag(const std::set<std::string>& availableResources,
+                                          const std::string& requiredTag,
+                                          const std::vector<std::string>& preferredIds = {},
+                                          const std::vector<std::string>& preferredTags = {},
+                                          const std::string& priorityProperty = "") {
+    std::vector<std::string> candidates;
+    for (const auto& itemId : availableResources) {
+        if (itemHasTag(itemId, requiredTag)) candidates.push_back(itemId);
+    }
+    return chooseBestItemCandidate(candidates, requiredTag, preferredIds, preferredTags, priorityProperty);
+}
+
+bool itemIdLooksLikeOre(const std::string& itemId) {
+    return itemId.find("ore") != std::string::npos;
+}
+
+std::string getPreferredRegionalOreId(const std::set<std::string>& availableResources) {
+    std::vector<std::string> candidates;
+    for (const auto& itemId : availableResources) {
+        if (itemIdLooksLikeOre(itemId) || itemHasTag(itemId, "metal_ingot")) candidates.push_back(itemId);
+    }
+    if (!candidates.empty()) {
+        std::sort(candidates.begin(), candidates.end());
+        return candidates.front();
+    }
+    return "";
+}
+
+std::vector<std::string> getFacilityOutputIds(const FacilityTemplate& tpl) {
+    std::vector<std::string> outputs;
+    outputs.reserve(tpl.extraction_rates.size());
+    for (const auto& [itemId, rate] : tpl.extraction_rates) {
+        if (g_db.items.count(itemId)) outputs.push_back(itemId);
+    }
+    std::sort(outputs.begin(), outputs.end());
+    return outputs;
+}
+
+void addFacilityOutputsToResourceSet(std::set<std::string>& resources,
+                                     const std::string& facilityId,
+                                     int minOutputs,
+                                     int maxOutputs,
+                                     const std::vector<std::string>& preferredIds = {}) {
+    const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(facilityId);
+    if (!tpl) return;
+
+    std::vector<std::string> outputs = getFacilityOutputIds(*tpl);
+    if (outputs.empty()) return;
+
+    std::stable_sort(outputs.begin(), outputs.end(), [&](const std::string& left, const std::string& right) {
+        auto leftIt = std::find(preferredIds.begin(), preferredIds.end(), left);
+        auto rightIt = std::find(preferredIds.begin(), preferredIds.end(), right);
+        const bool leftPreferred = leftIt != preferredIds.end();
+        const bool rightPreferred = rightIt != preferredIds.end();
+        if (leftPreferred != rightPreferred) return leftPreferred;
+        if (leftPreferred && rightPreferred) return leftIt < rightIt;
+        return left < right;
+    });
+
+    int desiredCount = minOutputs;
+    if (maxOutputs > minOutputs) desiredCount += thread_safe_rand() % (maxOutputs - minOutputs + 1);
+    desiredCount = std::min(desiredCount, static_cast<int>(outputs.size()));
+
+    for (int i = 0; i < desiredCount; ++i) {
+        resources.insert(outputs[i]);
+    }
+}
+
+std::set<std::string> inferRegionRawResourcesLegacy(const Region& region) {
+    std::set<std::string> resources;
+
+    // Legacy migration path: placement profiles remain implicit until world data
+    // provides explicit resource descriptors per location/biome.
+    if (region.placement_type == "mountain") {
+        addFacilityOutputsToResourceSet(resources, "mines", 2, 3, {"iron_ore", "gold_ore", "stone"});
+        addFacilityOutputsToResourceSet(resources, "observatories", 1, 1, {"ether_dust"});
+        if ((thread_safe_rand() % 100) < 20) addFacilityOutputsToResourceSet(resources, "hunting_lodges", 1, 1, {"monster_parts"});
+    } else if (region.placement_type == "forest") {
+        addFacilityOutputsToResourceSet(resources, "lumbermills", 1, 1, {"wood"});
+        addFacilityOutputsToResourceSet(resources, "apiaries", 1, 2, {"honey", "wax"});
+        addFacilityOutputsToResourceSet(resources, "hunting_lodges", 1, 2, {"fur", "meat", "monster_parts"});
+        if ((thread_safe_rand() % 100) < 50) addFacilityOutputsToResourceSet(resources, "farms", 1, 1, {"herbs"});
+    } else if (region.placement_type == "desert") {
+        addFacilityOutputsToResourceSet(resources, "mines", 1, 2, {"iron_ore"});
+        addFacilityOutputsToResourceSet(resources, "observatories", 1, 1, {"ether_dust"});
+        if ((thread_safe_rand() % 100) < 20) addFacilityOutputsToResourceSet(resources, "hunting_lodges", 1, 1, {"monster_parts"});
+    } else if (region.placement_type == "coast" || region.placement_type == "water") {
+        addFacilityOutputsToResourceSet(resources, "fisheries", 1, 1, {"fish"});
+        addFacilityOutputsToResourceSet(resources, "hunting_lodges", 1, 1, {"fur", "monster_parts"});
+    } else {
+        addFacilityOutputsToResourceSet(resources, "farms", 1, 3, {"wheat", "cotton"});
+        addFacilityOutputsToResourceSet(resources, "apiaries", 1, 2, {"honey", "wax"});
+    }
+
+    return resources;
+}
+
+void seedRegionInitialSupplies(Region& region) {
+    const std::string stapleFoodId = getCoreIdByTag("food");
+    const std::string currencyId = getCoreIdByTag("currency");
+
+    for (const auto& itemId : g_db.all_item_ids) {
+        int baseAmount = 0;
+
+        if (region.available_raw_resources.count(itemId)) {
+            baseAmount = (region.population * 0.3) + (thread_safe_rand() % 200);
+        } else if (!stapleFoodId.empty() && itemId == stapleFoodId) {
+            baseAmount = region.population * 0.2;
+        } else if (!currencyId.empty() && itemId == currencyId) {
+            baseAmount = 5000 + (thread_safe_rand() % 5000);
+        }
+
+        if (baseAmount > 0) {
+            createItem(itemId, baseAmount, region.vault_id, 0, "Initial supplies");
+        }
+        region.markets[itemId] = g_db.items[itemId].basePrice;
+    }
+}
+
+bool recipeUsesRegionResources(const RecipeDef& recipe, const Region& region) {
+    for (const auto& [inputId, qty] : recipe.inputs) {
+        if (region.available_raw_resources.count(inputId)) return true;
+    }
+    return false;
+}
+
+bool facilityHasMatchingRegionalOutput(const FacilityTemplate& tpl, const Region& region) {
+    for (const auto& [itemId, rate] : tpl.extraction_rates) {
+        if (region.available_raw_resources.count(itemId)) return true;
+    }
+    return false;
+}
+
+int calculateInitialFacilityLevel(const Region& region, const std::string& ownerRace, const FacilityTemplate& tpl) {
+    int level = 0;
+
+    if (tpl.hasTag("extractor")) {
+        int matchedOutputs = 0;
+        for (const auto& [itemId, rate] : tpl.extraction_rates) {
+            if (region.available_raw_resources.count(itemId)) matchedOutputs++;
+        }
+        if (matchedOutputs <= 0) return 0;
+
+        level = 1 + (thread_safe_rand() % (matchedOutputs + 2));
+        if (tpl.hasTag("food")) level += 1;
+    } else if (tpl.hasTag("processor")) {
+        int matchedRecipes = 0;
+        for (const auto& recipe : g_db.recipes) {
+            if (recipe.facility == tpl.id && recipeUsesRegionResources(recipe, region)) matchedRecipes++;
+        }
+        if (matchedRecipes <= 0) return 0;
+        level = 1 + (thread_safe_rand() % std::min(4, matchedRecipes + 1));
+    } else if (tpl.hasTag("service")) {
+        level = (region.population >= 1000) ? (thread_safe_rand() % 3) : (thread_safe_rand() % 2);
+    } else if (tpl.hasTag("storage")) {
+        level = 1;
+    }
+
+    if (level <= 0) return 0;
+
+    double regionalMultiplier = 1.0;
+    if (tpl.resource_multiplier_type == "fertility") regionalMultiplier += std::max(0.0, region.fertility - 1.0);
+    if (tpl.resource_multiplier_type == "mineral") regionalMultiplier += std::max(0.0, region.mineral_wealth - 1.0);
+
+    double raceMultiplier = 1.0;
+    auto raceIt = tpl.race_modifiers.find(ownerRace);
+    if (raceIt != tpl.race_modifiers.end()) raceMultiplier = std::max(0.0, raceIt->second);
+
+    level = std::max(0, static_cast<int>(std::round(level * regionalMultiplier * raceMultiplier)));
+    return std::min(level, 20);
+}
+
+void seedRegionFacilities(Region& region, const std::string& ownerRace) {
+    std::vector<std::string> facilityIds;
+    facilityIds.reserve(g_facilityRegistry.getAll().size());
+    for (const auto& [facilityId, tpl] : g_facilityRegistry.getAll()) {
+        facilityIds.push_back(facilityId);
+    }
+    std::sort(facilityIds.begin(), facilityIds.end());
+
+    for (const auto& facilityId : facilityIds) {
+        const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(facilityId);
+        if (!tpl) continue;
+
+        int level = calculateInitialFacilityLevel(region, ownerRace, *tpl);
+        if (level <= 0) continue;
+
+        Facility facility;
+        facility.level = level;
+        facility.durability = 100;
+        region.facilities[facilityId] = facility;
+    }
+}
+
+void applyNearWaterRegionBootstrap(Region& region, const std::string& regionId) {
+    const std::string seafoodId = getPreferredGlobalItemByTag("food", {"fish"}, {"seafood", "raw_food"});
+    const std::string cropId = getPreferredGlobalItemByTag("food", {"wheat"}, {"crop", "grain"});
+
+    if (!seafoodId.empty()) region.available_raw_resources.insert(seafoodId);
+    if (!cropId.empty()) region.available_raw_resources.insert(cropId);
+    region.fertility += 0.5;
+
+    if (!region.factionId.empty()) {
+        PortFacility port;
+        port.type = PortType::TRADE;
+        port.dock_container_id = createContainer("port_dock", region.factionId, 999999, 1000, regionId);
+        port.has_shipyard = (thread_safe_rand() % 100 < 40);
+        g_world.port_facilities[regionId] = port;
+    }
+}
+
+std::vector<std::string> getMonopolyFacilityCandidates(const Region& region) {
+    std::vector<std::string> candidates;
+    for (const auto& [facilityId, facility] : region.facilities) {
+        if (facility.level <= 0) continue;
+        const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(facilityId);
+        if (!tpl || !tpl->hasTag("extractor")) continue;
+        if (!facilityHasMatchingRegionalOutput(*tpl, region)) continue;
+        candidates.push_back(facilityId);
+    }
+    std::sort(candidates.begin(), candidates.end());
+    return candidates;
+}
+
+std::string chooseMonopolyProductionFocus(const std::string& facilityId, const Region& region) {
+    const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(facilityId);
+    if (!tpl) return "";
+
+    std::vector<std::string> outputs;
+    for (const auto& [itemId, rate] : tpl->extraction_rates) {
+        if (region.available_raw_resources.count(itemId)) outputs.push_back(itemId);
+    }
+    return chooseBestItemCandidate(outputs, "", {}, {"food", "raw_material"});
+}
+
+void addBootstrapStarterResources(Region& region) {
+    if (region.vault_id.empty()) return;
+
+    const std::string stapleFoodId = getPreferredGlobalItemByTag("food", {"bread", "smoked_meat", "meat"}, {"processed_food", "bakery_product", "raw_food"}, "reserve_priority");
+    const std::string preservedFoodId = getPreferredGlobalItemByTag("food", {"smoked_meat", "bread", "fish"}, {"preserved_food", "processed_food", "raw_food"}, "army_supply_priority");
+    const std::string constructionId = getPreferredRegionalItemByTag(region.available_raw_resources, "raw_material", {"wood", "stone"}, {"construction_material", "raw_material"});
+    const std::string oreId = getPreferredRegionalOreId(region.available_raw_resources);
+    const std::string currencyId = getCoreIdByTag("currency");
+    const std::string weaponId = getCoreIdByTag("weapon");
+
+    if (!stapleFoodId.empty()) createItem(stapleFoodId, region.population * 0.15, region.vault_id, 0, "Bootstrap");
+    if (!preservedFoodId.empty() && preservedFoodId != stapleFoodId) createItem(preservedFoodId, region.population * 0.05, region.vault_id, 0, "Bootstrap");
+    if (!constructionId.empty()) createItem(constructionId, 200 + thread_safe_rand() % 200, region.vault_id, 0, "Bootstrap");
+    if (!oreId.empty()) createItem(oreId, 100 + thread_safe_rand() % 200, region.vault_id, 0, "Bootstrap");
+    if (!currencyId.empty()) createItem(currencyId, 500 + thread_safe_rand() % 500, region.vault_id, 0, "Bootstrap");
+    if (!weaponId.empty()) createItem(weaponId, 50 + thread_safe_rand() % 50, region.vault_id, 0, "Bootstrap");
+}
+
+std::string inferLegacyPlacementTypeFromRegionName(const std::string& regionName) {
+    std::string lowerName = regionName;
+    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), [](unsigned char c){ return std::tolower(c); });
+
+    if (lowerName.find("РіРѕСЂ") != std::string::npos || lowerName.find("РїРёРє") != std::string::npos ||
+        lowerName.find("С€Р°С…С‚") != std::string::npos || lowerName.find("mountain") != std::string::npos ||
+        lowerName.find("citadel") != std::string::npos || lowerName.find("С†РёС‚Р°РґРµР»СЊ") != std::string::npos) {
+        return "mountain";
+    }
+    if (lowerName.find("Р»РµСЃ") != std::string::npos || lowerName.find("СЂРѕС‰") != std::string::npos ||
+        lowerName.find("forest") != std::string::npos || lowerName.find("wood") != std::string::npos) {
+        return "forest";
+    }
+    if (lowerName.find("РїСѓСЃС‚С‹РЅ") != std::string::npos || lowerName.find("РїРµСЃРє") != std::string::npos ||
+        lowerName.find("desert") != std::string::npos || lowerName.find("sand") != std::string::npos ||
+        lowerName.find("РїРµРїРµР»") != std::string::npos || lowerName.find("ash") != std::string::npos) {
+        return "desert";
+    }
+    if (lowerName.find("РјРѕСЂРµ") != std::string::npos || lowerName.find("РѕР·РµСЂ") != std::string::npos ||
+        lowerName.find("РіР°РІР°РЅСЊ") != std::string::npos || lowerName.find("РїРѕСЂС‚") != std::string::npos ||
+        lowerName.find("sea") != std::string::npos || lowerName.find("haven") != std::string::npos) {
+        return "coast";
+    }
+    return "plains";
+}
+
+bool facilityIsExtractor(const std::string& facilityId) {
+    const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(facilityId);
+    return tpl && tpl->hasTag("extractor");
+}
+
+std::vector<std::string> getFacilityCandidateProducts(const std::string& facilityId) {
+    std::vector<std::string> outputs;
+
+    const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(facilityId);
+    if (tpl && tpl->hasTag("extractor")) {
+        outputs = getFacilityOutputIds(*tpl);
+    } else {
+        for (const auto& rec : g_db.recipes) {
+            if (rec.facility != facilityId) continue;
+            for (const auto& [outId, qty] : rec.outputs) {
+                outputs.push_back(outId);
+            }
+        }
+        std::sort(outputs.begin(), outputs.end());
+        outputs.erase(std::unique(outputs.begin(), outputs.end()), outputs.end());
+    }
+
+    return outputs;
+}
+
+const ProfessionDef* getProfessionData(const NPC& npc) {
+    auto it = g_db.professions.find(npc.profession);
+    if (it != g_db.professions.end()) return &it->second;
+
+    for (const auto& [id, prof] : g_db.professions) {
+        if (prof.name == npc.profession) return &prof;
+    }
+    return nullptr;
+}
+
+std::string getNpcProfessionType(const NPC& npc) {
+    const ProfessionDef* prof = getProfessionData(npc);
+    if (prof && !prof->profession_type.empty()) return prof->profession_type;
+    return npc.economy.profession_type;
+}
+
+bool npcHasProfessionType(const NPC& npc, const std::vector<std::string>& types) {
+    const std::string professionType = getNpcProfessionType(npc);
+    return std::find(types.begin(), types.end(), professionType) != types.end();
+}
+
+
+bool npcHasProfessionType(const NPC& npc, std::initializer_list<const char*> types) {
+    const std::string professionType = getNpcProfessionType(npc);
+    for (const char* type : types) {
+        if (type && professionType == type) return true;
+    }
+    return false;
+}
+
+bool npcHasProfessionAbility(const NPC& npc, const std::string& ability) {
+    const ProfessionDef* prof = getProfessionData(npc);
+    if (!prof) return false;
+    return std::find(prof->special_abilities.begin(), prof->special_abilities.end(), ability) != prof->special_abilities.end();
+}
+
+std::string getNpcToolItemId(const NPC& npc) {
+    const ProfessionDef* prof = getProfessionData(npc);
+    if (prof && !prof->tool_tag.empty()) return prof->tool_tag;
+    return "";
+}
+
+bool regionHasFacility(const Region& region, const std::string& facilityId) {
+    return region.facilities.count(facilityId) && region.facilities.at(facilityId).level > 0;
+}
+
+double getNpcFacilityRaceModifier(const NPC& npc, const std::string& facilityId) {
+    const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(facilityId);
+    if (tpl) {
+        auto it = tpl->race_modifiers.find(npc.race);
+        if (it != tpl->race_modifiers.end()) return it->second;
+    }
+
+    // Legacy migration path until race affinities are fully data-driven.
+    if (npc.race == "orc" && facilityId == "hunting_lodges") return 1.5;
+    if (npc.race == "dwarf" && (facilityId == "forges" || facilityId == "smelters")) return 1.3;
+    if (npc.race == "elf" && (facilityId == "alchemists" || facilityId == "jewelers")) return 1.2;
+    return 1.0;
+}
+
+std::string getPreferredFacilityOutputForRegion(const Region& region,
+                                                const std::string& facilityId,
+                                                const std::string& requiredTag = "",
+                                                const std::vector<std::string>& preferredIds = {},
+                                                const std::vector<std::string>& preferredTags = {}) {
+    std::vector<std::string> outputs = getFacilityCandidateProducts(facilityId);
+    if (facilityIsExtractor(facilityId)) {
+        outputs.erase(std::remove_if(outputs.begin(), outputs.end(), [&](const std::string& itemId) {
+            return !region.available_raw_resources.count(itemId);
+        }), outputs.end());
+    }
+    return chooseBestItemCandidate(outputs, requiredTag, preferredIds, preferredTags);
+}
+
+void upsertNpcMarketOffer(Region& region, const std::string& sellerId, const std::string& itemId, int quantity, double priceMult = 1.0) {
+    if (quantity <= 0) return;
+
+    for (auto& ex_offer : region.market_square) {
+        if (ex_offer.seller_id == sellerId && ex_offer.good == itemId) {
+            ex_offer.quantity = quantity;
+            return;
+        }
+    }
+
+    MarketOffer offer;
+    offer.id = "offer_" + generateUUID();
+    offer.seller_id = sellerId;
+    offer.good = itemId;
+    offer.quantity = quantity;
+    auto it = g_db.items.find(itemId);
+    offer.price = ((it != g_db.items.end()) ? it->second.basePrice : 1) * priceMult;
+    region.market_square.push_back(offer);
+}
+
+std::string getLegacyCraftFacilityForProfession(const NPC& npc) {
+    if (npc.profession == "blacksmith" || npc.profession == "Blacksmith") return "forges";
+    if (npc.profession == "weaver" || npc.profession == "Weaver") return "weavers";
+    if (npc.profession == "baker" || npc.profession == "Baker") return "bakeries";
+    if (npc.profession == "jeweler" || npc.profession == "Jeweler") return "jewelers";
+    if (npc.profession == "alchemist" || npc.profession == "Alchemist") return "alchemists";
+    if (npc.profession == "tailor" || npc.profession == "Tailor") return "tailors";
+    return "";
+}
+
+const RecipeDef* getPreferredRecipeForFacilityOutput(const std::string& facilityId,
+                                                     const std::string& preferredOutputId = "",
+                                                     const std::string& requiredOutputTag = "") {
+    const RecipeDef* fallback = nullptr;
+    for (const auto& rec : g_db.recipes) {
+        if (rec.facility != facilityId || rec.outputs.empty()) continue;
+        if (!preferredOutputId.empty() && rec.outputs.count(preferredOutputId)) return &rec;
+        if (!requiredOutputTag.empty()) {
+            for (const auto& [outId, qty] : rec.outputs) {
+                if (itemHasTag(outId, requiredOutputTag)) return &rec;
+            }
+        }
+        if (!fallback) fallback = &rec;
+    }
+    return fallback;
+}
+
+bool isInnkeeperFoodItem(const std::string& itemId) {
+    if (itemHasTag(itemId, "food")) return true;
+    auto it = g_db.items.find(itemId);
+    return it != g_db.items.end() && it->second.category == "consumable";
+}
+
+bool isClericSupplyItem(const std::string& itemId) {
+    static const std::vector<std::string> preferredIds = {"wax", "herbs"};
+    return std::find(preferredIds.begin(), preferredIds.end(), itemId) != preferredIds.end();
 }
 
 
 // Build initial world
-void buildWorld(const std::string& playerId, const std::string& era, int initialAgents, const JsonValue& globalLocs, int startDay, const JsonValue& customGrid = JsonValue::array()) {
+void buildWorld(const std::string& playerId, const std::string& era, int initialAgents, const JsonValue& globalLocs, int startDay) {
     g_playerId = playerId;
     g_world = World();
-    g_world.era = era;
-    // Stage 13: data-driven default era — use first era from world_config if available
-    if (g_world.era.empty()) {
-        if (g_db.world_config.location_size_thresholds.count("default_era")) {
-            // Check for era in world_config (future extension point)
-        }
-        g_world.era = "rebirth"; // fallback
-    }
+    g_world.era = era.empty() ? "rebirth" : era;
     g_world.current_day = startDay;
     
     // Очистка реестров от предыдущих сессий (Fix Memory Leak)
@@ -13748,14 +13155,7 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
     }
     
     if (discovered_factions.empty()) {
-        if (g_db.faction_relations.faction_biome_preference.size() >= 2) {
-            auto it = g_db.faction_relations.faction_biome_preference.begin();
-            discovered_factions.insert(it->first);
-            ++it;
-            discovered_factions.insert(it->first);
-        } else {
-            discovered_factions = {"faction_alpha", "faction_beta"};
-        }
+        discovered_factions = {"faction_alpha", "faction_beta"};
     }
     
     std::vector<std::string> fKeys;
@@ -13814,18 +13214,24 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
         }
 
         // Эвристика определения руин/аномалий (Фолбэк, если типа нет)
-        // Stage 3b: Data-driven fallback — use type from location JSON data, fallback to "village"
-        if (r.base_type.empty()) r.base_type = "village";
+        if (r.base_type.empty()) {
+            std::string lowerName = r.name;
+            std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), [](unsigned char c){ return std::tolower(c); });
+            std::string lowerId = key;
+            std::transform(lowerId.begin(), lowerId.end(), lowerId.begin(), [](unsigned char c){ return std::tolower(c); });
+
+            if (lowerName.find("руин") != std::string::npos || lowerId.find("ruin") != std::string::npos) r.base_type = "ruins";
+            else if (lowerName.find("аномал") != std::string::npos || lowerId.find("anomaly") != std::string::npos || lowerId.find("scar") != std::string::npos || lowerId.find("void") != std::string::npos) r.base_type = "anomaly";
+            else if (lowerName.find("форт") != std::string::npos || lowerId.find("fort") != std::string::npos) r.base_type = "fort";
+            else if (lowerName.find("лагерь") != std::string::npos || lowerId.find("camp") != std::string::npos) r.base_type = "camp";
+            else if (lowerName.find("обсерват") != std::string::npos || lowerId.find("obs") != std::string::npos) r.base_type = "observatory";
+        }
 
         bool is_ruin = (r.base_type == "ruins" || r.base_type == "anomaly");
 
         std::string ownerId = "";
-        // Stage 13: data-driven default race
         std::string ownerRace = "human";
-        for (const auto& rid : g_db.race_ids) {
-            auto rit = g_db.races.find(rid);
-            if (rit != g_db.races.end() && rit->second.base_race) { ownerRace = rid; break; }
-        }
+
         if (is_ruin) {
             r.factionId = "";
             r.population = 0;
@@ -13862,92 +13268,20 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
             r.labor_force = 0;
         }
         r.climate = "temperate";
-        // Stage 3a: set biome from map grid data
-        if (g_world.map.locations.count(key)) {
-            int tx = g_world.map.locations[key].x;
-            int ty = g_world.map.locations[key].y;
-            if (tx >= 0 && tx < g_world.map.width && ty >= 0 && ty < g_world.map.height) {
-                uint8_t b_id = g_world.map.grid[ty * g_world.map.width + tx].biome_id;
-                r.biome = getBiomeStringId(b_id);
-            }
-        }
-        r.weather = "clear";
+        r.weather = "Ясно";
 
         r.vault_id = createContainer(is_ruin ? "ruins_stash" : "faction_vault", is_ruin ? "none" : ownerId, 999999, 1000, key);
         r.storage_capacity = is_ruin ? 50000 : 100000 + (r.population * 10);
         r.threat_level = is_ruin ? 80 + (rand() % 21) : 10 + (rand() % 20);
 
-        std::string bread_id_init = getCoreIdByTag("consumable", "bread");
-        std::string gold_id_init = getCoreIdByTag("currency", "gold_ingot");
-        for (const auto& gt : g_db.all_item_ids) {
-            int baseAmount = 0;
-
-            if (r.available_raw_resources.count(gt)) {
-                baseAmount = (r.population * 0.3) + (rand() % 200);
-            } else if (gt == bread_id_init) {
-                baseAmount = r.population * 0.2;
-            } else if (gt == gold_id_init) {
-                baseAmount = 5000 + (rand() % 5000);
-            }
-
-            if (baseAmount > 0) {
-                createItem(gt, baseAmount, r.vault_id, 0, locStr("engine.reason.initial_supplies"));
-            }
-            r.markets[gt] = g_db.items[gt].basePrice;
-        }
-
         if (!is_ruin) {
-            for (const auto& [fId, facTpl] : g_facilityRegistry.getAll()) {
-                int level = 0;
-                if (facTpl.hasTag("extractor")) {
-                    level = (rand() % 4) + 1;
-                    if (facTpl.hasTag("mine") && g_db.races.count(ownerRace) && g_db.races[ownerRace].stat_modifiers.count("mining")) level += g_db.races[ownerRace].stat_modifiers.at("mining") * 5;
-                    if (facTpl.hasTag("farm") && g_db.races.count(ownerRace) && g_db.races[ownerRace].stat_modifiers.count("farming")) level += g_db.races[ownerRace].stat_modifiers.at("farming") * 5;
-                } else if (facTpl.hasTag("processor")) {
-                    level = (rand() % 3) + 1;
-                    if (facTpl.hasTag("forge") && g_db.races.count(ownerRace) && g_db.races[ownerRace].stat_modifiers.count("smithing")) level += g_db.races[ownerRace].stat_modifiers.at("smithing") * 5;
-                } else if (facTpl.hasTag("service")) {
-                    level = (rand() % 2);
-                    if (facTpl.hasTag("bank") && g_db.faction_relations.faction_biome_preference.count(ownerId)) level = 3;
-                }
-                if (level > 0) {
-                    r.facilities[fId] = {level, 100};
-                }
-            }
+            r.available_raw_resources = inferRegionRawResourcesLegacy(r);
+            seedRegionFacilities(r, ownerRace);
+            seedRegionInitialSupplies(r);
         }
 
-        bool isNatureAffinity = false;
-        if (g_db.races.count(ownerRace) && g_db.races[ownerRace].stat_modifiers.count("nature") && g_db.races[ownerRace].stat_modifiers.at("nature") > 0) isNatureAffinity = true;
-        r.animals.herbivores = isNatureAffinity ? 10000 : 500 + (rand() % 2000);
-        r.animals.carnivores = isNatureAffinity ? 1000 : 50 + (rand() % 200);
-
-        r.available_raw_resources.clear();
-        
-        // Data-driven resource allocation
-        std::vector<std::string> possible_resources;
-        for (const auto& [fId, facTpl] : g_facilityRegistry.getAll()) {
-            if (facTpl.hasTag("extractor")) {
-                for (const auto& [res, rate] : facTpl.extraction_rates) {
-                    possible_resources.push_back(res);
-                }
-            }
-        }
-        
-        std::sort(possible_resources.begin(), possible_resources.end());
-        possible_resources.erase(std::unique(possible_resources.begin(), possible_resources.end()), possible_resources.end());
-        
-        if (!possible_resources.empty()) {
-            for (const std::string& res : possible_resources) {
-                const ItemTemplate* itemTpl = g_itemRegistry.getTemplate(res);
-                if (itemTpl && (itemTpl->hasTag("food") || itemTpl->hasTag("raw_food") || itemTpl->hasTag("consumable"))) {
-                    r.available_raw_resources.insert(res);
-                } else {
-                    if (rand() % 100 < 60) { // 60% chance to have a specific raw material
-                        r.available_raw_resources.insert(res);
-                    }
-                }
-            }
-        }
+        r.animals.herbivores = (ownerRace == "elf") ? 10000 : 500 + (rand() % 2000);
+        r.animals.carnivores = (ownerRace == "elf") ? 1000 : 50 + (rand() % 200);
 
         g_world.regions[key] = r;
         if (!is_ruin && !ownerId.empty()) {
@@ -13955,37 +13289,6 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
         }
     }
 
-                for (auto& [rid, r] : g_world.regions) {
-                if (g_world.map.locations.count(rid)) {
-                    auto loc = g_world.map.locations[rid];
-                    bool near_water = false;
-                    for (int dy = -1; dy <= 1; dy++) {
-                        for (int dx = -1; dx <= 1; dx++) {
-                            int nx = loc.x + dx;
-                            int ny = loc.y + dy;
-                            if (nx >= 0 && nx < g_world.map.width && ny >= 0 && ny < g_world.map.height) {
-                                uint8_t t = g_world.map.grid[ny * g_world.map.width + nx].biome_id;
-                                const BiomeDef* biome_n = getBiomeById(t);
-                                if (biome_n && biome_n->is_water) {
-                                    near_water = true;
-                                }
-                            }
-                        }
-                    }
-                    if (near_water) {
-                r.available_raw_resources.insert(getCoreIdByTag("seafood", "fish"));
-                r.available_raw_resources.insert(getCoreIdByTag("crop", "wheat"));
-                r.fertility += 0.5;
-                
-                PortFacility port;
-                port.type = PortType::TRADE;
-                port.dock_container_id = createContainer("port_dock", r.factionId, 999999, 1000, rid);
-                port.has_shipyard = (rand() % 100 < 40);
-                g_world.port_facilities[rid] = port;
-            }
-        }
-    }
-    
     // --- Балансировка начальных условий (Асимметрия) ---
     // Случайные войны удалены, так как теперь работает адаптивный политический гомеостаз.
     if (locKeys.size() >= 2) {
@@ -14015,12 +13318,7 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
 
         // Data-driven: resolve race from faction or pick random
         std::string homeFaction = g_world.regions.count(homeReg) ? g_world.regions[homeReg].factionId : "";
-        // Stage 13: data-driven default race
-        npc.race = "human";
-        for (const auto& rid : g_db.race_ids) {
-            auto rit = g_db.races.find(rid);
-            if (rit != g_db.races.end() && rit->second.base_race) { npc.race = rid; break; }
-        }
+        npc.race = "human"; // default
         auto ftrIt = g_db.faction_to_race.find(homeFaction);
         if (ftrIt != g_db.faction_to_race.end()) npc.race = ftrIt->second;
         else if (!g_db.race_ids.empty()) npc.race = g_db.race_ids[rand() % g_db.race_ids.size()];
@@ -14085,7 +13383,7 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
         npc.gold = rand() % 100;
         npc.inventory_id = createContainer("npc_inventory", npc.id, 100, 20, npc.homeLocation, npc.id);
         
-        if (profIsMerchant(npc.economy.profession_type)) {
+        if (npc.economy.profession_type == "merchant") {
             std::string officeId = createContainer("merchant_office", npc.id, 999999, 1000, npc.homeLocation);
             createContainer("inbox", npc.id, 999999, 1000, npc.homeLocation, "", officeId);
             createContainer("outbox", npc.id, 999999, 1000, npc.homeLocation, "", officeId);
@@ -14131,12 +13429,9 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
         if (faction.regions.empty() || faction.rulerId.empty()) continue;
         std::string capital = faction.regions[0];
         
-        std::vector<std::string> monopolyTypes;
-        for (const auto& [fId, facTpl] : g_facilityRegistry.getAll()) {
-            if (facTpl.hasTag("extractor")) monopolyTypes.push_back(fId);
-        }
+        if (!g_world.regions.count(capital)) continue;
+        std::vector<std::string> monopolyTypes = getMonopolyFacilityCandidates(g_world.regions[capital]);
         if (monopolyTypes.empty()) continue;
-        
         int numMonopolies = 2 + (rand() % 5); // Лимит монополий лордов увеличен
         
         for (int i = 0; i < numMonopolies; i++) {
@@ -14155,14 +13450,9 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
             b.local_storage_id = createContainer("business_storage", faction.rulerId, 999999, 1000, capital);
             
             // Определяем фокус производства и гарантируем наличие ресурса в регионе
-            const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(facType);
-            if (tpl && !tpl->extraction_rates.empty()) {
-                b.production_focus = tpl->extraction_rates.begin()->first;
-                g_world.regions[capital].available_raw_resources.insert(b.production_focus);
-            } else {
-                b.production_focus = getCoreIdByTag("ore", "iron_ore");
-                g_world.regions[capital].available_raw_resources.insert(b.production_focus);
-            }
+            b.production_focus = chooseMonopolyProductionFocus(facType, g_world.regions[capital]);
+            if (b.production_focus.empty()) continue;
+            g_world.regions[capital].available_raw_resources.insert(b.production_focus);
             
             LogisticRule autoSell;
             autoSell.id = "log_" + generateUUID();
@@ -14186,12 +13476,12 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
     // Assign Clerks to Merchant Offices
     std::map<std::string, std::vector<std::string>> regionOffices;
     for (const auto& [nid, n] : g_world.npcs) {
-        if (profIsMerchant(n.economy.profession_type) && !n.economy.workplaceId.empty()) {
+        if (n.profession == "Торговец" && !n.economy.workplaceId.empty()) {
             regionOffices[n.homeLocation].push_back(n.economy.workplaceId);
         }
     }
     for (auto& [nid, n] : g_world.npcs) {
-        if (n.economy.profession_type == "clerk" && regionOffices.count(n.homeLocation) && !regionOffices[n.homeLocation].empty()) {
+        if (n.profession == "Клерк" && regionOffices.count(n.homeLocation) && !regionOffices[n.homeLocation].empty()) {
             n.economy.workplaceId = regionOffices[n.homeLocation][rand() % regionOffices[n.homeLocation].size()];
             n.economy.isEmployed = true;
         }
@@ -14211,19 +13501,36 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
     // Generate Global World Map
     g_world.map.width = g_db.world_config.map_width;
     g_world.map.height = g_db.world_config.map_height;
-    
-    if (customGrid.type == JsonValue::ARRAY && customGrid.size() > 0) {
-        g_world.map.grid.resize(g_world.map.width * g_world.map.height);
-        for (size_t i = 0; i < customGrid.size() && i < g_world.map.grid.size(); ++i) {
-            g_world.map.grid[i].biome_id = customGrid[i].asInt();
-        }
-    } else {
-        generateWorldMapTerrain(g_world.map, rand());
-    }
+    generateWorldMapTerrain(g_world.map, rand());
     placeRegionsOnMap(g_world.map, g_world);
     generateRoads(g_world.map, g_world);
 
     generateSeaRoutes(g_world.map, g_world);
+
+    for (auto& [rid, region] : g_world.regions) {
+        if (g_world.map.locations.count(rid) == 0) continue;
+
+        auto loc = g_world.map.locations[rid];
+        bool near_water = false;
+        for (int dy = -1; dy <= 1 && !near_water; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                int nx = loc.x + dx;
+                int ny = loc.y + dy;
+                if (nx < 0 || nx >= g_world.map.width || ny < 0 || ny >= g_world.map.height) continue;
+
+                uint8_t biomeId = g_world.map.grid[ny * g_world.map.width + nx].biome_id;
+                const BiomeDef* biome = getBiomeById(biomeId);
+                if (biome && biome->is_water) {
+                    near_water = true;
+                    break;
+                }
+            }
+        }
+
+        if (near_water) {
+            applyNearWaterRegionBootstrap(region, rid);
+        }
+    }
 
     for (const auto& [rid, port] : g_world.port_facilities) {
         if (g_world.regions.count(rid)) {
@@ -14268,7 +13575,7 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
 
 
     // Initial news
-    addNews("World created. Era " + g_world.era + " begins.", "global", 3, "misc");
+    addNews("World created. Era " + g_world.era + " begins.", "Global", 3, "misc");
 }
 
 void bootstrapWorld(int days, int targetStartDay) {
@@ -14278,13 +13585,7 @@ void bootstrapWorld(int days, int targetStartDay) {
     
     // 1. Initial resources
     for (auto& [rid, r] : g_world.regions) {
-        if (r.vault_id.empty()) continue;
-        createItem(getCoreIdByTag("consumable", "bread"), r.population * 0.15, r.vault_id, 0, locStr("engine.reason.bootstrap"));
-        createItem(getCoreIdByTag("raw_food", "meat"), r.population * 0.05, r.vault_id, 0, locStr("engine.reason.bootstrap"));
-        createItem(getCoreIdByTag("wood", "wood"), 200 + thread_safe_rand() % 200, r.vault_id, 0, locStr("engine.reason.bootstrap"));
-        createItem(getCoreIdByTag("ore", "iron_ore"), 100 + thread_safe_rand() % 200, r.vault_id, 0, locStr("engine.reason.bootstrap"));
-        createItem(getCoreIdByTag("currency", "gold_ingot"), 500 + thread_safe_rand() % 500, r.vault_id, 0, locStr("engine.reason.bootstrap"));
-        createItem(getCoreIdByTag("weapon", "weapons"), 50 + thread_safe_rand() % 50, r.vault_id, 0, locStr("engine.reason.bootstrap"));
+        addBootstrapStarterResources(r);
     }
 
     // 2. Initial caravans
@@ -14297,7 +13598,8 @@ void bootstrapWorld(int days, int targetStartDay) {
             std::string origin = capitals[i];
             std::string dest = capitals[(i + 1) % capitals.size()];
             
-            std::vector<std::pair<int,int>> caravan_path = getLandPath(origin, dest);
+            std::vector<std::pair<int,int>> caravan_path;
+            if (g_path_cache.count({origin, dest})) caravan_path = g_path_cache[{origin, dest}];
             if (caravan_path.empty()) continue;
 
             std::string chestId = createContainer("caravan_chest", "bootstrap", 999999, 1000, origin);
@@ -14317,8 +13619,10 @@ void bootstrapWorld(int days, int targetStartDay) {
             c.wagons = 2;
             c.guards = 5;
             c.hoursLeft = 24 + thread_safe_rand() % 49;
-            c.path = caravan_path;
-            if (!c.path.empty()) { c.x = c.path[0].first; c.y = c.path[0].second; }
+            if (g_path_cache.count({origin, dest})) {
+                c.path = g_path_cache[{origin, dest}];
+                if (!c.path.empty()) { c.x = c.path[0].first; c.y = c.path[0].second; }
+            }
             g_world.regions[origin].caravans.push_back(c);
         }
     }
@@ -14510,10 +13814,6 @@ int main() {
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
 #endif
-
-    // Signal readiness to Electron/Python clients
-    std::cout << "{\"status\":\"ready\",\"message\":\"Engine ready for commands\"}" << std::endl;
-
     std::string line;
     
     while (std::getline(std::cin, line)) {
@@ -14559,7 +13859,7 @@ int main() {
                     active_mods.push_back(command["active_mods"][i].asString());
                 }
             }
-            g_pluginManager.loadPlugins(mods_dir, active_mods);
+            g_pluginManager.loadPlugins(mods_dir, active_mods, &g_world, &g_db, &g_itemRegistry, &g_facilityRegistry);
             response.set("status", "ok");
             response.set("message", "Nexus Engine initialized");
             response.set("version", "1.0.0");
@@ -14574,117 +13874,6 @@ int main() {
             }
             response.set("status", "ok");
             response.set("message", "Hooks registered");
-        }
-        else if (cmd == "applyModChanges") {
-            // JS mods can send deferred mutations through this command
-            if (command.has("mutations") && command["mutations"].type == JsonValue::ARRAY) {
-                std::lock_guard<std::mutex> lock(g_deferred_mutex);
-                for (size_t i = 0; i < command["mutations"].size(); i++) {
-                    JsonValue m = command["mutations"][i];
-                    DeferredMutation dm;
-                    dm.transaction_id = m.has("transaction_id") ? m["transaction_id"].asString() : "";
-                    std::string mtype = m.has("type") ? m["type"].asString() : "";
-                    if (mtype == "setStability") {
-                        dm.type = DeferredMutation::SET_STABILITY;
-                        dm.target_id = m.has("region_id") ? m["region_id"].asString() : "";
-                        dm.int_value = m.has("value") ? m["value"].asInt() : 0;
-                        g_deferred_mutations.push_back(dm);
-                    } else if (mtype == "modifyPopulation") {
-                        dm.type = DeferredMutation::MODIFY_POPULATION;
-                        dm.target_id = m.has("region_id") ? m["region_id"].asString() : "";
-                        dm.int_value = m.has("delta") ? m["delta"].asInt() : 0;
-                        g_deferred_mutations.push_back(dm);
-                    } else if (mtype == "multiplyAllPrices") {
-                        dm.type = DeferredMutation::MULTIPLY_ALL_PRICES;
-                        dm.double_value = m.has("factor") ? m["factor"].asDouble() : 1.0;
-                        g_deferred_mutations.push_back(dm);
-                    } else if (mtype == "multiplyItemPrice") {
-                        dm.type = DeferredMutation::MULTIPLY_ITEM_PRICE;
-                        dm.target_id = m.has("item_id") ? m["item_id"].asString() : "";
-                        dm.double_value = m.has("factor") ? m["factor"].asDouble() : 1.0;
-                        g_deferred_mutations.push_back(dm);
-                    } else if (mtype == "setGlobalString") {
-                        dm.type = DeferredMutation::SET_GLOBAL_STRING;
-                        dm.target_id = m.has("key") ? m["key"].asString() : "";
-                        dm.string_value = m.has("value") ? m["value"].asString() : "";
-                        g_deferred_mutations.push_back(dm);
-                    } else if (mtype == "spawnItem") {
-                        dm.type = DeferredMutation::SPAWN_ITEM;
-                        dm.target_id = m.has("item_id") ? m["item_id"].asString() : "";
-                        dm.int_value = m.has("quantity") ? m["quantity"].asInt() : 1;
-                        dm.string_value = m.has("container_id") ? m["container_id"].asString() : "";
-                        g_deferred_mutations.push_back(dm);
-                    } else if (mtype == "triggerDisaster") {
-                        dm.type = DeferredMutation::TRIGGER_DISASTER;
-                        dm.target_id = m.has("disaster_type") ? m["disaster_type"].asString() : "";
-                        dm.string_value = m.has("region_id") ? m["region_id"].asString() : "";
-                        dm.int_value = m.has("severity") ? m["severity"].asInt() : 5;
-                        g_deferred_mutations.push_back(dm);
-                    } else if (mtype == "spawnMonster") {
-                        dm.type = DeferredMutation::SPAWN_MONSTER;
-                        dm.target_id = m.has("monster_type") ? m["monster_type"].asString() : "";
-                        dm.string_value = m.has("region_id") ? m["region_id"].asString() : "";
-                        g_deferred_mutations.push_back(dm);
-                    } else if (mtype == "setTileRoadLevel") {
-                        dm.type = DeferredMutation::SET_TILE_ROAD_LEVEL;
-                        dm.int_value = m.has("x") ? m["x"].asInt() : 0;
-                        dm.int_value2 = m.has("y") ? m["y"].asInt() : 0;
-                        dm.int_value3 = m.has("level") ? m["level"].asInt() : 0;
-                        g_deferred_mutations.push_back(dm);
-                    } else if (mtype == "setTileWaterDepth") {
-                        dm.type = DeferredMutation::SET_TILE_WATER_DEPTH;
-                        dm.int_value = m.has("x") ? m["x"].asInt() : 0;
-                        dm.int_value2 = m.has("y") ? m["y"].asInt() : 0;
-                        dm.int_value3 = m.has("depth") ? m["depth"].asInt() : 0;
-                        g_deferred_mutations.push_back(dm);
-                    } else if (mtype == "setTileFlooded") {
-                        dm.type = DeferredMutation::SET_TILE_FLOODED;
-                        dm.int_value = m.has("x") ? m["x"].asInt() : 0;
-                        dm.int_value2 = m.has("y") ? m["y"].asInt() : 0;
-                        dm.int_value3 = m.has("isFlooded") && m["isFlooded"].asBool() ? 1 : 0;
-                        g_deferred_mutations.push_back(dm);
-                    } else if (mtype == "addLocation") {
-                        dm.type = DeferredMutation::ADD_LOCATION;
-                        dm.target_id = m.has("id") ? m["id"].asString() : "";
-                        dm.string_value = m.has("name") ? m["name"].asString() : "";
-                        dm.string_value2 = m.has("locType") ? m["locType"].asString() : "village";
-                        dm.string_value3 = m.has("faction") ? m["faction"].asString() : "";
-                        dm.int_value = m.has("x") ? m["x"].asInt() : 0;
-                        dm.int_value2 = m.has("y") ? m["y"].asInt() : 0;
-                        g_deferred_mutations.push_back(dm);
-                    } else if (mtype == "updateWorldConfig") {
-                        dm.type = DeferredMutation::UPDATE_WORLD_CONFIG;
-                        dm.string_value = m.has("config") ? m["config"].toString() : "{}";
-                        g_deferred_mutations.push_back(dm);
-                    } else if (mtype == "updateBiomeDef") {
-                        dm.type = DeferredMutation::UPDATE_BIOME_DEF;
-                        dm.target_id = m.has("biomeId") ? m["biomeId"].asString() : "";
-                        dm.string_value = m.has("def") ? m["def"].toString() : "{}";
-                        g_deferred_mutations.push_back(dm);
-                    } else if (mtype == "regenerateMap") {
-                        dm.type = DeferredMutation::REGENERATE_MAP;
-                        dm.int_value = m.has("seed") ? m["seed"].asInt() : 0;
-                        g_deferred_mutations.push_back(dm);
-
-                    } else if (mtype == "removeLocation") {
-                        dm.type = DeferredMutation::REMOVE_LOCATION;
-                        dm.target_id = m.has("id") ? m["id"].asString() : "";
-                        g_deferred_mutations.push_back(dm);
-
-                                            } else if (mtype == "addNews") {
-                            dm.type = DeferredMutation::ADD_NEWS;
-                            dm.target_id = m.has("text") ? m["text"].asString() : "";
-                            dm.string_value = m.has("location") ? m["location"].asString() : "global";
-                            dm.int_value = m.has("importance") ? m["importance"].asInt() : 1;
-                            dm.string_value2 = m.has("category") ? m["category"].asString() : "misc";
-                            g_deferred_mutations.push_back(dm);
-                        }
-                }
-                JsonValue resultsArr = applyDeferredMutations();
-                response.set("status", "ok");
-                response.set("message", "Mod changes applied immediately");
-                response.set("results", resultsArr);
-            }
         }
 
         else if (cmd == "loadDatabase") {
@@ -14728,6 +13917,36 @@ int main() {
                 def.shelfLife = v.has("shelfLife") ? v["shelfLife"].asInt() : 999999;
 
                 g_db.items[k] = def;
+            }
+
+            // Load data-driven canonical ids and canonical id lists by semantic tag.
+            g_db.tag_defaults.clear();
+            g_db.tag_default_lists.clear();
+            if (command.has("tag_defaults") && command["tag_defaults"].type == JsonValue::OBJECT) {
+                for (const auto& [tag, value] : command["tag_defaults"].obj_val) {
+                    if (value.type == JsonValue::STRING) {
+                        const std::string itemId = value.asString();
+                        g_db.tag_defaults[tag] = itemId;
+
+                        if (g_db.items.find(itemId) == g_db.items.end()) {
+                            std::cerr << "DATA ERROR: tag_defaults['" << tag << "'] points to missing item id '" << itemId << "'" << std::endl;
+                        }
+                    } else if (value.type == JsonValue::ARRAY) {
+                        std::vector<std::string> ids;
+                        for (size_t i = 0; i < value.size(); ++i) {
+                            if (value[i].type != JsonValue::STRING) continue;
+                            const std::string itemId = value[i].asString();
+                            ids.push_back(itemId);
+
+                            if (g_db.items.find(itemId) == g_db.items.end()) {
+                                std::cerr << "DATA ERROR: tag_defaults['" << tag << "'] contains missing item id '" << itemId << "'" << std::endl;
+                            }
+                        }
+                        g_db.tag_default_lists[tag] = ids;
+                    }
+                }
+            } else {
+                std::cerr << "DATA WARNING: runtime database does not contain required object tag_defaults" << std::endl;
             }
 
             JsonValue recipes = command["recipes"];
@@ -14798,11 +14017,6 @@ int main() {
                         b.min_moisture = rules.has("min_moist") ? rules["min_moist"].asDouble() : 0.0;
                         b.max_moisture = rules.has("max_moist") ? rules["max_moist"].asDouble() : 1.0;
                     }
-                    // Stage 3a: Load biome resources
-                    if (biomesArr[i].has("resources") && biomesArr[i]["resources"].type == JsonValue::ARRAY) {
-                        for (size_t j = 0; j < biomesArr[i]["resources"].size(); j++)
-                            b.resources.push_back(biomesArr[i]["resources"][j].asString());
-                    }
                     g_db.biomes.push_back(b);
                     g_db.biome_string_to_id[b.string_id] = b.numeric_id;
                     g_db.biome_numeric_to_index[b.numeric_id] = g_db.biomes.size() - 1;
@@ -14828,12 +14042,6 @@ int main() {
                 if (cg.has("squares")) {
                     for (size_t i = 0; i < cg["squares"].size(); i++) g_db.city_gen_rules.square_names.push_back(cg["squares"][i].asString());
                 }
-
-                if (cg.has("residential_type")) g_db.city_gen_rules.residential_type = cg["residential_type"].asString();
-                if (cg.has("tavern_type")) g_db.city_gen_rules.tavern_type = cg["tavern_type"].asString();
-                if (cg.has("market_type")) g_db.city_gen_rules.market_type = cg["market_type"].asString();
-                if (cg.has("temple_type")) g_db.city_gen_rules.temple_type = cg["temple_type"].asString();
-                if (cg.has("office_type")) g_db.city_gen_rules.office_type = cg["office_type"].asString();
             }
 
             // Parse Monsters
@@ -14933,18 +14141,6 @@ int main() {
                     p.profession_type = profArr[i].has("profession_type") ? profArr[i]["profession_type"].asString() : "farmer";
                     p.tool_tag = profArr[i].has("tool_tag") ? profArr[i]["tool_tag"].asString() : "";
                     p.tool_chance = profArr[i].has("tool_chance") ? profArr[i]["tool_chance"].asInt() : 0;
-                    // Stage 2: new data-driven fields
-                    p.production_type = profArr[i].has("production_type") ? profArr[i]["production_type"].asString() : "";
-                    p.job_multiplier = profArr[i].has("job_multiplier") ? (float)profArr[i]["job_multiplier"].asDouble() : 1.0f;
-                    p.display_name_i18n_key = profArr[i].has("display_name_i18n_key") ? profArr[i]["display_name_i18n_key"].asString() : "";
-                    if (profArr[i].has("demand_pattern") && profArr[i]["demand_pattern"].type == JsonValue::OBJECT) {
-                        for (const auto& [dk, dv] : profArr[i]["demand_pattern"].obj_val)
-                            p.demand_pattern[dk] = (float)dv.asDouble();
-                    }
-                    if (profArr[i].has("special_abilities") && profArr[i]["special_abilities"].type == JsonValue::ARRAY) {
-                        for (size_t j = 0; j < profArr[i]["special_abilities"].size(); j++)
-                            p.special_abilities.push_back(profArr[i]["special_abilities"][j].asString());
-                    }
                     g_db.professions[p.string_id] = p;
                     g_db.profession_ids.push_back(p.string_id);
                 }
@@ -15066,55 +14262,6 @@ int main() {
                     if (vc.has("min_radius")) g_db.world_config.volcanoes.min_radius = vc["min_radius"].asInt();
                     if (vc.has("max_radius")) g_db.world_config.volcanoes.max_radius = vc["max_radius"].asInt();
                 }
-                // Stage 3c: location_size_thresholds from world_config
-                if (wc.has("location_size_thresholds") && wc["location_size_thresholds"].type == JsonValue::OBJECT) {
-                    for (const auto& [tk, tv] : wc["location_size_thresholds"].obj_val)
-                        g_db.world_config.location_size_thresholds[tk] = tv.asInt();
-                }
-            }
-
-            // Stage 1b: Load tag_defaults
-            if (command.has("tag_defaults") && command["tag_defaults"].type == JsonValue::OBJECT) {
-                for (const auto& [tk, tv] : command["tag_defaults"].obj_val) {
-                    g_db.tag_defaults[tk] = tv.asString();
-                }
-            }
-
-            // Stage 8b: Load container_types
-            g_db.container_types.clear();
-            if (command.has("container_types") && command["container_types"].type == JsonValue::OBJECT) {
-                for (const auto& [ck, cv] : command["container_types"].obj_val) {
-                    ContainerTypeDef ct;
-                    ct.is_locked = cv.has("is_locked") ? cv["is_locked"].asBool() : false;
-                    ct.decay_on_empty = cv.has("decay_on_empty") ? cv["decay_on_empty"].asBool() : false;
-                    ct.category = cv.has("category") ? cv["category"].asString() : "";
-                    ct.special_logic = cv.has("special_logic") ? cv["special_logic"].asString() : "";
-                    ct.health = cv.has("health") ? cv["health"].asInt() : 200;
-                    ct.lock_difficulty = cv.has("lock_difficulty") ? cv["lock_difficulty"].asInt() : 10;
-                    ct.flammable = cv.has("flammable") ? cv["flammable"].asBool() : true;
-                    ct.capacity = cv.has("capacity") ? cv["capacity"].asInt() : 100;
-                    ct.max_weight = cv.has("max_weight") ? cv["max_weight"].asInt() : 999999;
-                    ct.spell_required = cv.has("spell_required") ? cv["spell_required"].asString() : "";
-                    g_db.container_types[ck] = ct;
-                }
-            }
-
-            // Stage 5b: Load diplomacy types, casus_belli, ship_types
-            // (These are loaded as string IDs for data-driven comparisons alongside existing enums)
-            g_db.diplo_state_ids.clear();
-            if (command.has("diplomacy_states") && command["diplomacy_states"].type == JsonValue::ARRAY) {
-                for (size_t i = 0; i < command["diplomacy_states"].size(); i++)
-                    g_db.diplo_state_ids.push_back(command["diplomacy_states"][i].asString());
-            }
-            g_db.casus_belli_ids.clear();
-            if (command.has("casus_belli") && command["casus_belli"].type == JsonValue::ARRAY) {
-                for (size_t i = 0; i < command["casus_belli"].size(); i++)
-                    g_db.casus_belli_ids.push_back(command["casus_belli"][i].asString());
-            }
-            g_db.ship_type_ids.clear();
-            if (command.has("ship_types") && command["ship_types"].type == JsonValue::ARRAY) {
-                for (size_t i = 0; i < command["ship_types"].size(); i++)
-                    g_db.ship_type_ids.push_back(command["ship_types"][i].asString());
             }
 
             response.set("status", "ok");
@@ -15122,13 +14269,12 @@ int main() {
         }
         else if (cmd == "buildWorld") {
             std::string playerId = command["player_id"].asString();
-            std::string era = command.has("era") ? command["era"].asString() : ""; // Stage 13: let buildWorld decide default
+            std::string era = command.has("era") ? command["era"].asString() : "rebirth";
             int initialAgents = command.has("initial_agents") ? command["initial_agents"].asInt() : 100;
             JsonValue globalLocs = command.has("global_locations") ? command["global_locations"] : JsonValue::object();
             int startDay = command.has("start_day") ? command["start_day"].asInt() : 0;
-            JsonValue customGrid = command.has("custom_grid") ? command["custom_grid"] : JsonValue::array();
             
-            buildWorld(playerId, era, initialAgents, globalLocs, startDay, customGrid);
+            buildWorld(playerId, era, initialAgents, globalLocs, startDay);
             
             response.set("status", "ok");
             response.set("tick", g_world.tick);
@@ -15198,6 +14344,15 @@ response.set("world", g_world.toJson());
                         //    (от nexusWriteSyncFile)
                         // 2) Плоский: { "tick": ..., "regions": {...}, "map": {...}, ... }
                         //    (от прямого экспорта World.toJson)
+                        nlohmann::json worldData;
+                        if (worldJson.contains("world") && worldJson["world"].is_object()) {
+                            worldData = worldJson["world"];
+                        } else {
+                            worldData = worldJson;
+                        }
+
+                        g_world = World::fromJson(JsonValue(worldData));
+
                         // Optionally load items and containers from separate keys
                         if (worldJson.contains("items") && worldJson["items"].is_array()) {
                             g_items.clear();
@@ -15215,15 +14370,6 @@ response.set("world", g_world.toJson());
                                 g_containers[worldJson["containers"][i][0].get<std::string>()] = cont;
                             }
                         }
-
-                        nlohmann::json worldData;
-                        if (worldJson.contains("world") && worldJson["world"].is_object()) {
-                            worldData = std::move(worldJson["world"]);
-                        } else {
-                            worldData = std::move(worldJson);
-                        }
-
-                        g_world = World::fromJson(JsonValue(worldData));
                         rebuildContainerIndices();
                         g_deleted_items.clear();
                         g_deleted_containers.clear();
@@ -15629,27 +14775,9 @@ response.set("world", g_world.toJson());
                         std::string transport_type = "none";
                         double speed_mult = 1.0;
                         int cargo_bonus = 0;
-
-                        auto it_def = g_db.items.find(item.prototype_id);
-                        const ItemTemplate* tpl = g_itemRegistry.getTemplate(item.prototype_id);
-                        bool is_transport = false;
                         bool water_only = false;
-                        
-                        if (it_def != g_db.items.end() && it_def->second.properties.has("is_transport") && it_def->second.properties["is_transport"].asBool()) {
-                            is_transport = true;
-                            transport_type = item.prototype_id;
-                            speed_mult = it_def->second.properties.has("speed_mult") ? it_def->second.properties["speed_mult"].asDouble() : 1.0;
-                            cargo_bonus = it_def->second.properties.has("cargo_bonus") ? it_def->second.properties["cargo_bonus"].asInt() : 0;
-                            water_only = it_def->second.properties.has("water_only") ? it_def->second.properties["water_only"].asBool() : false;
-                        } else if (tpl && tpl->hasTag("vehicle")) {
-                            is_transport = true;
-                            transport_type = item.prototype_id;
-                            speed_mult = 1.5;
-                            cargo_bonus = 20;
-                            water_only = tpl->hasTag("ship");
-                        }
-                        
-                        if (!is_transport) {
+
+                        if (!resolveTransportFromItemData(item.prototype_id, transport_type, speed_mult, cargo_bonus, water_only)) {
                             feedback = "Item is not a transport";
                         }
 
@@ -15670,6 +14798,7 @@ response.set("world", g_world.toJson());
                 g_world.player_trek.transport_type = "none";
                 g_world.player_trek.transport_speed_mult = 1.0;
                 g_world.player_trek.transport_cargo_bonus = 0;
+                g_world.player_trek.transport_water_only = false;
                 feedback = "Transport dismounted";
                 success = true;
             }
@@ -15679,6 +14808,7 @@ response.set("world", g_world.toJson());
                 info.set("transport_type", g_world.player_trek.transport_type);
                 info.set("speed_multiplier", g_world.player_trek.transport_speed_mult);
                 info.set("cargo_bonus", g_world.player_trek.transport_cargo_bonus);
+                info.set("water_only", g_world.player_trek.transport_water_only);
                 response.set("info", info);
                 success = true;
             }

@@ -154,6 +154,8 @@ class GameBuilderApp(ctk.CTk):
         
         if not os.path.exists(source_file):
             raise Exception(f"Исходный код движка не найден: {source_file}")
+        if not os.path.exists(item_system_file):
+            raise Exception(f"Исходный код item system не найден: {item_system_file}")
             
         exe_name = "meterea_engine.exe" if os.name == 'nt' else "meterea_engine"
         output_file = os.path.join(engine_dir, exe_name)
@@ -178,25 +180,6 @@ class GameBuilderApp(ctk.CTk):
             error_msg = f"Ошибка компиляции C++ движка!\nКод: {e.returncode}\nВывод:\n{e.stderr}"
             print(error_msg)
             raise Exception(error_msg)
-
-    def compile_modkit(self):
-        """Компилирует ModKit.py в standalone .exe с помощью PyInstaller"""
-        try:
-            print("[Builder] Компиляция ModKit.py через PyInstaller...")
-            # --noconfirm: перезаписывать старый билд
-            # --onefile: собрать в один exe
-            # --windowed: без консоли
-            # --distpath tools: положить готовый exe в папку tools/
-            cmd = ["pyinstaller", "--noconfirm", "--onefile", "--windowed", "--distpath", "tools", "ModKit.py"]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            print("[Builder] ModKit.exe успешно скомпилирован в папку tools/")
-        except FileNotFoundError:
-            raise Exception("PyInstaller не найден! Убедитесь, что зависимости установлены: pip install -r requirements.txt")
-        except subprocess.CalledProcessError as e:
-            error_msg = f"Ошибка компиляции ModKit (PyQt6)!\nКод: {e.returncode}\nВывод:\n{e.stderr}"
-            print(error_msg)
-            raise Exception(error_msg)
-
 
     def start_build(self):
         version = self.entry_version.get().strip()
@@ -230,11 +213,6 @@ class GameBuilderApp(ctk.CTk):
             self.after(0, lambda: self.status_label.configure(text="🔨 Компиляция C++ ядра (Nexus Engine)...", text_color="#3498db"))
             self.after(0, lambda: self.progress_bar.set(0.4))
             self.compile_engine()
-
-            self.after(0, lambda: self.status_label.configure(text="🛠 Компиляция ModKit (PyQt6)...", text_color="#9b59b6"))
-            self.after(0, lambda: self.progress_bar.set(0.5))
-            self.compile_modkit()
-
 
             self.after(0, lambda: self.status_label.configure(text="🏗️ Сборка пошла (может занять 2-5 минут)...", text_color="#f1c40f"))
             self.after(0, lambda: self.progress_bar.set(0.6))

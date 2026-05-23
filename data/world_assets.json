@@ -1,0 +1,11 @@
+{
+  "default_world_id": "world_metera",
+  "lore_template": "assets/lor/{worldId}/{langCode}/lor.txt",
+  "locations_template": "assets/lor/{worldId}/{langCode}/{fileName}",
+  "localized_assets": {
+    "items_reference_default": "assets/promts/items_reference.json",
+    "items_reference_template": "assets/promts/items_reference_{lang}.json",
+    "predefined_effects_default": "assets/res/predefined_effects.json",
+    "predefined_effects_template": "assets/res/predefined_effects_{lang}.json"
+  }
+}

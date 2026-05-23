@@ -17,7 +17,3 @@ customtkinter>=5.0.0
 
 # --- Testing (engine tests) ---
 # pytest>=7.0.0  # Uncomment if you need the test runner
-
-# --- ModKit (PyQt6 & Compilation) ---
-PyQt6>=6.5.0
-pyinstaller>=6.0.0

@@ -66,4 +66,13 @@ deploy_key*
 pssh.py
 pssh_sh.sh
 ssh-paramiko.sh
-project_scan.txt
+
+
+
+# Project scans / local dumps
+*_scan_full.txt
+project_scan*.txt
+scan_full*.txt
+Текстовый документ.txt
+**/Текстовый документ.txt
+debug_dumps/

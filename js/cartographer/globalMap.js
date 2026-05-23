@@ -75,25 +75,12 @@ window.Cartographer = {
      */
     init: function() {
         this.mapCanvas = document.getElementById('visual-map');
-        this.minimapCanvas = document.getElementById('minimap-canvas');
         this.mapTooltipElement = document.getElementById('map-tooltip');
         if (this.mapCanvas) {
             this.mapContext = this.mapCanvas.getContext('2d');
         }
-        if (this.minimapCanvas) {
-            this.minimapContext = this.minimapCanvas.getContext('2d');
-        }
         this.setupMapControls();
         this.setupFilters();
-        this.setupMinimapControls();
-    },
-
-    setupMinimapControls: function() {
-        if (!this.minimapCanvas) return;
-        this.minimapCanvas.addEventListener('click', () => {
-            const openMapBtn = document.getElementById('open-map-modal-btn');
-            if (openMapBtn) openMapBtn.click();
-        });
     },
 
     /**
@@ -718,16 +705,6 @@ window.Cartographer = {
             }
         }
 
-        // --- ТЕКСТУРА ПОВЕРХНОСТИ (ШУМ) ---
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
-        for(let y=0; y<map.height; y+=2) {
-            for(let x=0; x<map.width; x+=2) {
-                if (Math.random() > 0.5) {
-                    ctx.fillRect(x * this.TILE_SIZE, y * this.TILE_SIZE, this.TILE_SIZE, this.TILE_SIZE);
-                }
-            }
-        }
-
         // Векторные реки удалены, так как они создавали визуальный мусор.
         // Теперь реки отрисовываются как обычные тайлы в Pass 1.
 
@@ -1025,439 +1002,431 @@ window.Cartographer = {
         }
     },
 
-        render: function() {
-        this.animationFrameId = null;
+    render: function() {
+        this.animationFrameId = null; // Сбрасываем — RAF сработал
 
+        // Проверка видимости карты — не рендерим, если модалка скрыта
         const mapModal = document.getElementById('global-map-modal');
-        const isModalOpen = mapModal && mapModal.style.display !== 'none';
-        
-        const mapPanel = document.querySelector('.map-panel');
-        const isMinimapVisible = mapPanel && mapPanel.classList.contains('expanded') && this.minimapCanvas;
-
-        if (!isModalOpen && !isMinimapVisible) {
-            return; // Nothing to render
+        if (mapModal && mapModal.style.display === 'none') {
+            return; // Карта скрыта — не тратим ресурсы
         }
 
-        if (typeof World === 'undefined' || !World || !World.map) return;
-        const map = World.map;
-
-        // Update background cache if needed
-        if (!this.bgCacheCanvas || this.lastGenerationTick !== map.generation_tick) {
-            this.updateBackgroundCache(map);
-            if (this.currentFilter !== 'none') this.updateFilterCache(map);
+        if (!this._needsRender && !this.mapState.isFollowingPlayer && !(typeof player !== 'undefined' && player.travel && player.travel.active)) {
+            // Ничего не изменилось и нет активных анимаций — останавливаемся
+            return;
         }
+        this._needsRender = false;
 
-        // --- 1. RENDER MAIN MAP (If Open) ---
-        if (isModalOpen && this.mapContext && this.mapCanvas) {
-            this._renderViewport(this.mapContext, this.mapCanvas, false);
-        }
+        if (!this.mapContext || !this.mapCanvas || typeof player === 'undefined' || !player) return;
 
-        // --- 2. RENDER MINIMAP (If Visible) ---
-        if (isMinimapVisible && this.minimapContext && this.minimapCanvas) {
-            this._renderViewport(this.minimapContext, this.minimapCanvas, true);
-        }
-
-        // Re-schedule animation if active travel or following player
-        if (this.mapState.isFollowingPlayer || (typeof player !== 'undefined' && player.travel && player.travel.active)) {
-            this.animationFrameId = requestAnimationFrame(() => this.render());
-        }
-    },
-
-    _renderViewport: function(ctx, canvas, isMinimap) {
-        const width = canvas.width;
-        const height = canvas.height;
-        if (width === 0 || height === 0) return;
+        const ctx = this.mapContext;
+        const width = this.mapCanvas.width;
+        const height = this.mapCanvas.height;
+        if (width === 0) return;
 
         ctx.fillStyle = '#0a0a0a';
         ctx.fillRect(0, 0, width, height);
 
-        const map = World.map;
-        ctx.imageSmoothingEnabled = false;
+        if (typeof World !== 'undefined' && World && World.map) {
+            const map = World.map;
+            
+            if (!this.bgCacheCanvas || this.lastGenerationTick !== map.generation_tick) {
+                this.updateBackgroundCache(map);
+                if (this.currentFilter !== 'none') this.updateFilterCache(map);
+            }
 
-        let zoom = this.mapState.zoom;
-        let offsetX = this.mapState.offsetX;
-        let offsetY = this.mapState.offsetY;
+            ctx.imageSmoothingEnabled = false;
+            const scaledWidth = map.width * this.TILE_SIZE * this.mapState.zoom;
+            const scaledHeight = map.height * this.TILE_SIZE * this.mapState.zoom;
+            
+            const intOffsetX = Math.floor(this.mapState.offsetX);
+            const intOffsetY = Math.floor(this.mapState.offsetY);
+            ctx.drawImage(this.bgCacheCanvas, intOffsetX, intOffsetY, Math.floor(scaledWidth), Math.floor(scaledHeight));
 
-        let currX = 128, currY = 128;
-        let isTraveling = typeof player !== 'undefined' && player.travel && player.travel.active;
-        
-        if (isTraveling && player.travel.currentX !== undefined) {
-            currX = player.travel.currentX;
-            currY = player.travel.currentY;
-        } else if (map.locations) {
-            let targetId = null;
-            if (player.currentSublocation) {
-                let currentId = player.currentSublocation;
-                let maxDepth = 20;
-                while (currentId && maxDepth > 0) {
-                    const sub = (player.subLocations && player.subLocations[currentId]) || 
-                                (World && World.subLocations && World.subLocations[currentId]);
-                    if (sub && sub.parentId) {
-                        currentId = sub.parentId;
-                        if (map.locations && map.locations[currentId]) {
-                            targetId = currentId;
-                            break;
+            if (this.currentFilter !== 'none' && this.filterCacheCanvas) {
+                ctx.drawImage(this.filterCacheCanvas, intOffsetX, intOffsetY, Math.floor(scaledWidth), Math.floor(scaledHeight));
+            }
+
+            const transform = (worldX, worldY) => ({
+                x: Math.floor((Number(worldX) * this.TILE_SIZE * this.mapState.zoom) + this.mapState.offsetX),
+                y: Math.floor((Number(worldY) * this.TILE_SIZE * this.mapState.zoom) + this.mapState.offsetY)
+            });
+
+            if (typeof player !== 'undefined' && player) {
+                let currX = 0, currY = 0;
+                let isTraveling = player.travel && player.travel.active;
+                
+                if (isTraveling && player.travel.currentX !== undefined) {
+                    currX = player.travel.currentX;
+                    currY = player.travel.currentY;
+                } else if (map.locations) {
+                    let targetId = null;
+                    // Т3 ФИКС: Рекурсивный поиск родительского региона для глубоких под-под-локаций
+                    if (player.currentSublocation) {
+                        let currentId = player.currentSublocation;
+                        let maxDepth = 20; // Защита от бесконечного цикла
+                        while (currentId && maxDepth > 0) {
+                            const sub = (player.subLocations && player.subLocations[currentId]) || 
+                                        (World && World.subLocations && World.subLocations[currentId]);
+                            if (sub && sub.parentId) {
+                                currentId = sub.parentId;
+                                if (map.locations && map.locations[currentId]) {
+                                    targetId = currentId;
+                                    break;
+                                }
+                            } else {
+                                if (map.locations && map.locations[currentId]) {
+                                    targetId = currentId;
+                                }
+                                break;
+                            }
+                            maxDepth--;
                         }
-                    } else {
-                        if (map.locations && map.locations[currentId]) {
-                            targetId = currentId;
-                        }
-                        break;
                     }
-                    maxDepth--;
+
+                    if (targetId && map.locations[targetId]) {
+                        currX = map.locations[targetId].x;
+                        currY = map.locations[targetId].y;
+                    } else {
+                        // Старый фолбэк по имени
+                        const currentLocName = (player.location || "").toLowerCase().trim();
+                        let playerPoint = Object.values(map.locations).find(p => p.name.toLowerCase().trim().includes(currentLocName) || currentLocName.includes(p.name.toLowerCase().trim()));
+                        if (playerPoint) {
+                            currX = playerPoint.x;
+                            currY = playerPoint.y;
+                        }
+                    }
+                }
+
+                const currPos = transform(currX + 0.5, currY + 0.5);
+
+                if (isTraveling && World && World.player_trek && World.player_trek.path) {
+                    ctx.save();
+                    ctx.setLineDash([8 * this.mapState.zoom, 8 * this.mapState.zoom]);
+                    ctx.strokeStyle = 'rgba(241, 196, 15, 0.9)';
+                    ctx.lineWidth = Math.max(2, 3 * this.mapState.zoom);
+                    ctx.beginPath();
+                    for (let i = 0; i < World.player_trek.path.length; i++) {
+                        const pt = transform(World.player_trek.path[i][0] + 0.5, World.player_trek.path[i][1] + 0.5);
+                        if (i === 0) ctx.moveTo(pt.x, pt.y);
+                        else ctx.lineTo(pt.x, pt.y);
+                    }
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                this.drawMapMarker(ctx, currPos, 'default', true);
+
+                if (this.mapState.isFollowingPlayer) {
+                    const targetOffsetX = (width / 2) - ((currX + 0.5) * this.TILE_SIZE * this.mapState.zoom);
+                    const targetOffsetY = (height / 2) - ((currY + 0.5) * this.TILE_SIZE * this.mapState.zoom);
+                    const dx = targetOffsetX - this.mapState.offsetX;
+                    const dy = targetOffsetY - this.mapState.offsetY;
+                    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+                        // Достаточно близко — прекращаем следование
+                        this.mapState.offsetX = targetOffsetX;
+                        this.mapState.offsetY = targetOffsetY;
+                        this.mapState.isFollowingPlayer = false;
+                    } else {
+                        this.mapState.offsetX += dx * 0.1;
+                        this.mapState.offsetY += dy * 0.1;
+                    }
                 }
             }
 
-            if (targetId && map.locations[targetId]) {
-                currX = map.locations[targetId].x;
-                currY = map.locations[targetId].y;
-            } else {
-                const currentLocName = (player.location || "").toLowerCase().trim();
-                let playerPoint = Object.values(map.locations).find(p => p.name.toLowerCase().trim().includes(currentLocName) || currentLocName.includes(p.name.toLowerCase().trim()));
-                if (playerPoint) {
-                    currX = playerPoint.x;
-                    currY = playerPoint.y;
-                }
-            }
-        }
+            if (map.disasters && map.disasters.length > 0) {
+                const time = Date.now();
+                map.disasters.forEach(dis => {
+                    const px = transform(dis.epicenter_x + 0.5, dis.epicenter_y + 0.5);
+                    const radiusPx = dis.radius * this.TILE_SIZE * this.mapState.zoom;
 
-        if (isMinimap) {
-            zoom = 1.6;
-            offsetX = (width / 2) - ((currX + 0.5) * this.TILE_SIZE * zoom);
-            offsetY = (height / 2) - ((currY + 0.5) * this.TILE_SIZE * zoom);
-        } else if (this.mapState.isFollowingPlayer) {
-            const targetOffsetX = (width / 2) - ((currX + 0.5) * this.TILE_SIZE * zoom);
-            const targetOffsetY = (height / 2) - ((currY + 0.5) * this.TILE_SIZE * zoom);
-            const dx = targetOffsetX - offsetX;
-            const dy = targetOffsetY - offsetY;
-            if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
-                offsetX = targetOffsetX;
-                offsetY = targetOffsetY;
-                this.mapState.isFollowingPlayer = false;
-            } else {
-                offsetX += dx * 0.1;
-                offsetY += dy * 0.1;
-                this.mapState.offsetX = offsetX;
-                this.mapState.offsetY = offsetY;
-            }
-        }
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'screen';
+                    
+                    let pulse = (Math.sin(time / 300) + 1) / 2;
+                    let color1, color2;
+                    
+                    if (dis.type === 'flood') {
+                        color1 = `rgba(41, 128, 185, ${0.3 + pulse * 0.2})`;
+                        color2 = `rgba(41, 128, 185, 0)`;
+                    } else if (dis.type === 'wildfire' || dis.type === 'volcano') {
+                        color1 = `rgba(231, 76, 60, ${0.4 + pulse * 0.3})`;
+                        color2 = `rgba(211, 84, 0, 0)`;
+                    } else if (dis.type === 'earthquake') {
+                        color1 = `rgba(139, 69, 19, ${0.3 + pulse * 0.2})`;
+                        color2 = `rgba(139, 69, 19, 0)`;
+                        px.x += (Math.random() - 0.5) * 4;
+                        px.y += (Math.random() - 0.5) * 4;
+                    } else if (dis.type === 'plague') {
+                        color1 = `rgba(142, 68, 173, ${0.3 + pulse * 0.2})`;
+                        color2 = `rgba(46, 204, 113, 0)`;
+                    } else if (dis.type === 'aether_storm') {
+                        color1 = `rgba(155, 89, 182, ${0.4 + pulse * 0.3})`;
+                        color2 = `rgba(142, 68, 173, 0)`;
+                    } else if (dis.type === 'drought') {
+                        color1 = `rgba(243, 156, 18, ${0.3 + pulse * 0.2})`;
+                        color2 = `rgba(230, 126, 34, 0)`;
+                    } else if (dis.type === 'monster_invasion') {
+                        color1 = `rgba(192, 57, 43, ${0.3 + pulse * 0.2})`;
+                        color2 = `rgba(0, 0, 0, 0)`;
+                    } else {
+                        color1 = `rgba(255, 255, 255, ${0.2 + pulse * 0.2})`;
+                        color2 = `rgba(255, 255, 255, 0)`;
+                    }
 
-        const scaledWidth = map.width * this.TILE_SIZE * zoom;
-        const scaledHeight = map.height * this.TILE_SIZE * zoom;
-        
-        ctx.drawImage(this.bgCacheCanvas, Math.floor(offsetX), Math.floor(offsetY), Math.floor(scaledWidth), Math.floor(scaledHeight));
-
-        if (this.currentFilter !== 'none' && this.filterCacheCanvas) {
-            ctx.drawImage(this.filterCacheCanvas, Math.floor(offsetX), Math.floor(offsetY), Math.floor(scaledWidth), Math.floor(scaledHeight));
-        }
-
-        // --- NEW: Grid Overlay ---
-        if (!isMinimap) {
-            ctx.save();
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
-            ctx.lineWidth = 1;
-            const gridSize = this.TILE_SIZE * zoom;
-            const startX = offsetX % gridSize;
-            const startY = offsetY % gridSize;
-            ctx.beginPath();
-            for(let x = startX; x < width; x += gridSize) { ctx.moveTo(x, 0); ctx.lineTo(x, height); }
-            for(let y = startY; y < height; y += gridSize) { ctx.moveTo(0, y); ctx.lineTo(width, y); }
-            ctx.stroke();
-            ctx.restore();
-        }
-
-        // --- NEW: Clouds (Atmosphere) ---
-        if (!isMinimap) {
-            const time = Date.now() * 0.00002;
-            for(let i=0; i<20; i++) {
-                let worldX = (Math.sin(i * 12.3) * 0.5 + 0.5) * map.width * this.TILE_SIZE;
-                let worldY = (Math.cos(i * 34.5) * 0.5 + 0.5) * map.height * this.TILE_SIZE;
-                worldX = (worldX + time * 1000 * (i%3+1)) % (map.width * this.TILE_SIZE);
-                
-                let screenX = worldX * zoom + offsetX;
-                let screenY = worldY * zoom + offsetY;
-                let r = (100 + (i % 5) * 60) * zoom;
-                
-                if (screenX + r > 0 && screenX - r < width && screenY + r > 0 && screenY - r < height) {
-                    let grad = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, r);
-                    grad.addColorStop(0, 'rgba(10, 15, 20, 0.5)');
-                    grad.addColorStop(1, 'rgba(10, 15, 20, 0)');
+                    const grad = ctx.createRadialGradient(px.x, px.y, 0, px.x, px.y, radiusPx);
+                    grad.addColorStop(0, color1);
+                    grad.addColorStop(1, color2);
+                    
                     ctx.fillStyle = grad;
                     ctx.beginPath();
-                    ctx.arc(screenX, screenY, r, 0, Math.PI*2);
+                    ctx.arc(px.x, px.y, radiusPx, 0, Math.PI * 2);
                     ctx.fill();
-                }
+                    
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.font = `${16 * this.mapState.zoom}px Arial`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    let icon = '⚠️';
+                    if (dis.type === 'flood') icon = '🌊';
+                    if (dis.type === 'wildfire') icon = '🔥';
+                    if (dis.type === 'earthquake') icon = '💥';
+                    if (dis.type === 'volcano') icon = '🌋';
+                    if (dis.type === 'plague') icon = '☣️';
+                    if (dis.type === 'aether_storm') icon = '🌀';
+                    if (dis.type === 'drought') icon = '☀️';
+                    if (dis.type === 'monster_invasion') icon = '👹';
+                    
+                    ctx.fillText(icon, px.x, px.y);
+                    ctx.restore();
+                });
             }
-        }
 
-        const transform = (worldX, worldY) => ({
-            x: Math.floor((Number(worldX) * this.TILE_SIZE * zoom) + offsetX),
-            y: Math.floor((Number(worldY) * this.TILE_SIZE * zoom) + offsetY)
-        });
 
-        if (isTraveling && World && World.player_trek && World.player_trek.path) {
-            ctx.save();
-            ctx.setLineDash([8 * zoom, 8 * zoom]);
-            ctx.strokeStyle = 'rgba(241, 196, 15, 0.9)';
-            ctx.lineWidth = Math.max(2, 3 * zoom);
-            ctx.beginPath();
-            for (let i = 0; i < World.player_trek.path.length; i++) {
-                const pt = transform(World.player_trek.path[i][0] + 0.5, World.player_trek.path[i][1] + 0.5);
-                if (i === 0) ctx.moveTo(pt.x, pt.y);
-                else ctx.lineTo(pt.x, pt.y);
-            }
-            ctx.stroke();
-            ctx.restore();
-        }
-
-        const currPos = transform(currX + 0.5, currY + 0.5);
-        this.drawMapMarker(ctx, currPos, 'default', true);
-
-        if (World.regions) {
-            Object.values(World.regions).forEach(r => {
-                if (r.caravans) {
-                    r.caravans.forEach(c => {
-                        if (c.x !== undefined && c.y !== undefined) {
-                            const pos = transform(c.x + 0.5, c.y + 0.5);
-                            if (pos.x < -10 || pos.x > width + 10 || pos.y < -10 || pos.y > height + 10) return;
-                            ctx.fillStyle = '#f1c40f';
-                            ctx.beginPath();
-                            ctx.arc(pos.x, pos.y, 3 * zoom, 0, 2 * Math.PI);
-                            ctx.fill();
-                            ctx.strokeStyle = '#000';
-                            ctx.lineWidth = 1;
-                            ctx.stroke();
-                        }
-                    });
-                }
-            });
-        }
-
-        if (World.factions) {
-            Object.values(World.factions).forEach(f => {
-                if (f.armies) {
-                    f.armies.forEach(a => {
-                        if (a.siegeDays > 0 || (a.current_phase && a.current_phase !== "march")) {
-                            const end = map.locations[a.destination];
-                            if (end) {
-                                const pos = transform(end.x + 0.5, end.y + 0.5);
-                                if (pos.x < -10 || pos.x > width + 10 || pos.y < -10 || pos.y > height + 10) return;
-                                ctx.fillStyle = '#e74c3c';
-                                ctx.beginPath();
-                                ctx.arc(pos.x + 8 * zoom, pos.y - 8 * zoom, 4 * zoom, 0, 2 * Math.PI);
-                                ctx.fill();
-                                ctx.strokeStyle = '#fff';
-                                ctx.lineWidth = 1;
-                                ctx.stroke();
-                            }
-                        } else if (a.x !== undefined && a.y !== undefined) {
-                            const pos = transform(a.x + 0.5, a.y + 0.5);
-                            if (pos.x < -10 || pos.x > width + 10 || pos.y < -10 || pos.y > height + 10) return;
-                            ctx.fillStyle = '#e74c3c';
-                            ctx.beginPath();
-                            ctx.arc(pos.x, pos.y, 3 * zoom, 0, 2 * Math.PI);
-                            ctx.fill();
-                            ctx.strokeStyle = '#000';
-                            ctx.lineWidth = 1;
-                            ctx.stroke();
-                        }
-                    });
-                }
-            });
-        }
-
-        if (World.port_facilities) {
-            Object.keys(World.port_facilities).forEach(rid => {
-                if (map.locations[rid]) {
-                    const loc = map.locations[rid];
-                    const port = World.port_facilities[rid];
+            if (map.locations) {
+                Object.values(map.locations).forEach(loc => {
                     const pos = transform(loc.x + 0.5, loc.y + 0.5);
-                    if (pos.x < -10 || pos.x > width + 10 || pos.y < -10 || pos.y > height + 10) return;
-                    ctx.font = `${12 * zoom}px Arial`;
-                    let icons = "⚓";
-                    if (port.has_shipyard) icons += " 🛧️";
-                    if (port.is_blockaded) icons += " 🚫";
-                    ctx.fillText(icons, pos.x + 12 * zoom, pos.y - 12 * zoom);
-                }
-            });
-        }
-        if (World.ships) {
-            World.ships.forEach(ship => {
-                const pos = transform(ship.x + 0.5, ship.y + 0.5);
-                if (pos.x < -10 || pos.x > width + 10 || pos.y < -10 || pos.y > height + 10) return;
-                ctx.font = `${14 * zoom}px Arial`;
-                let icon = "⛵";
-                if (ship.type === "WAR_GALLEY" || ship.type === "WAR_FRIGATE") icon = "🛥️";
-                if (ship.type === "PIRATE") icon = "🏴‍☠️";
-                if (ship.type === "SEA_MONSTER") icon = "🦑";
-                ctx.fillText(icon, pos.x, pos.y);
-            });
-        }
+                    if (pos.x < -50 || pos.x > width + 50 || pos.y < -50 || pos.y > height + 50) return;
 
-        if (World.fleets) {
-            World.fleets.forEach(fleet => {
-                const pos = transform(fleet.x + 0.5, fleet.y + 0.5);
-                if (pos.x < -10 || pos.x > width + 10 || pos.y < -10 || pos.y > height + 10) return;
-                ctx.font = `${18 * zoom}px Arial`;
-                ctx.fillText("⚓🛡️", pos.x, pos.y - 10 * zoom);
-            });
-        }
-
-        // --- MODIFIED: Monsters (Dark Fantasy Style) ---
-        if (World.monsters) {
-            World.monsters.forEach(m => {
-                if (m.health <= 0 || !m.is_visible_on_map) return;
-                const pos = transform(m.lair_x + 0.5, m.lair_y + 0.5);
-                if (pos.x < -20 || pos.x > width + 20 || pos.y < -20 || pos.y > height + 20) return;
-
-                ctx.save();
-                const pulse = (Math.sin(Date.now() / 200) + 1) / 2;
-                const size = 6 * zoom + (pulse * 2 * zoom);
-                
-                // Aura
-                ctx.globalCompositeOperation = 'screen';
-                const grad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, size * 4);
-                let auraColor = m.type === 'DRAGON' ? `rgba(231, 76, 60, ${0.4 + pulse * 0.3})` : 
-                               (m.type === 'KRAKEN' ? `rgba(142, 68, 173, ${0.4 + pulse * 0.3})` : `rgba(192, 57, 43, ${0.4 + pulse * 0.3})`);
-                grad.addColorStop(0, auraColor);
-                grad.addColorStop(1, 'rgba(0,0,0,0)');
-                ctx.fillStyle = grad;
-                ctx.beginPath();
-                ctx.arc(pos.x, pos.y, size * 4, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.globalCompositeOperation = 'source-over';
-
-                // Core Shape
-                ctx.translate(pos.x, pos.y);
-                ctx.rotate(Date.now() / 1500 * (m.type === 'KRAKEN' ? -0.5 : 0.5));
-                
-                ctx.fillStyle = '#0a0a0a';
-                ctx.strokeStyle = m.type === 'DRAGON' ? '#e74c3c' : (m.type === 'KRAKEN' ? '#9b59b6' : '#c0392b');
-                ctx.lineWidth = 2 * zoom;
-
-                ctx.beginPath();
-                if (m.type === 'DRAGON') {
-                    ctx.moveTo(0, -size * 1.5);
-                    ctx.lineTo(size * 0.8, 0);
-                    ctx.lineTo(0, size * 1.5);
-                    ctx.lineTo(-size * 0.8, 0);
-                } else if (m.type === 'KRAKEN') {
-                    for(let i=0; i<8; i++) {
-                        let angle = (i / 8) * Math.PI * 2;
-                        let r = i % 2 === 0 ? size * 1.2 : size * 0.5;
-                        ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
-                    }
-                } else {
-                    ctx.moveTo(0, -size * 1.2);
-                    ctx.lineTo(size, size);
-                    ctx.lineTo(-size, size);
-                }
-                ctx.closePath();
-                ctx.fill();
-                ctx.stroke();
-                
-                // Inner Eye
-                ctx.fillStyle = m.type === 'KRAKEN' ? '#e74c3c' : '#f1c40f';
-                ctx.beginPath();
-                ctx.arc(0, 0, size * 0.3, 0, Math.PI * 2);
-                ctx.fill();
-
-                ctx.restore();
-            });
-        }
-
-        if (map.locations) {
-            Object.values(map.locations).forEach(loc => {
-                const pos = transform(loc.x + 0.5, loc.y + 0.5);
-                if (pos.x < -30 || pos.x > width + 30 || pos.y < -30 || pos.y > height + 30) return;
-
-                const isPlayerLocation = player.location && player.location.toLowerCase().trim().includes(loc.name.toLowerCase().trim());
-                this.drawMapMarker(ctx, pos, loc.type, isPlayerLocation, loc.faction);
-                
-                if (!isMinimap) {
-                    const fontSize = Math.max(8, Math.min(14, 10 * zoom));
+                    const isPlayerLocation = player.location && player.location.toLowerCase().trim().includes(loc.name.toLowerCase().trim());
+                    this.drawMapMarker(ctx, pos, loc.type, isPlayerLocation, loc.faction);
+                    const fontSize = Math.max(8, Math.min(14, 10 * this.mapState.zoom));
                     ctx.font = (isPlayerLocation ? 'bold ' : '') + fontSize + "px 'MedievalSharp', cursive";
                     ctx.fillStyle = '#ecf0f1';
                     ctx.strokeStyle = '#000';
                     ctx.lineWidth = 2;
                     ctx.textAlign = 'center';
-                    ctx.strokeText(loc.name.split('(')[0].trim(), pos.x, pos.y + 15 * zoom);
-                    ctx.fillText(loc.name.split('(')[0].trim(), pos.x, pos.y + 15 * zoom);
+                    ctx.strokeText(loc.name.split('(')[0].trim(), pos.x, pos.y + 15 * this.mapState.zoom);
+                    ctx.fillText(loc.name.split('(')[0].trim(), pos.x, pos.y + 15 * this.mapState.zoom);
+                });
+            }
+
+                        if (typeof World !== 'undefined' && World) {
+                // Отрисовка караванов (Желтые маркеры)
+                if (World.regions) {
+                    Object.values(World.regions).forEach(r => {
+                        if (r.caravans) {
+                            r.caravans.forEach(c => {
+                                if (c.x !== undefined && c.y !== undefined) {
+                                    const pos = transform(c.x + 0.5, c.y + 0.5);
+                                    if (pos.x < -50 || pos.x > width + 50 || pos.y < -50 || pos.y > height + 50) return;
+                                    ctx.fillStyle = '#f1c40f';
+                                    ctx.beginPath();
+                                    ctx.arc(pos.x, pos.y, 3 * this.mapState.zoom, 0, 2 * Math.PI);
+                                    ctx.fill();
+                                    ctx.strokeStyle = '#000';
+                                    ctx.lineWidth = 1;
+                                    ctx.stroke();
+                                }
+                            });
+                        }
+                    });
                 }
-            });
-        }
-
-        if (player.mapMarkers) {
-            Object.values(player.mapMarkers).forEach(marker => {
-                const pos = transform(marker.x + 0.5, marker.y + 0.5);
-                if (pos.x < -30 || pos.x > width + 30 || pos.y < -30 || pos.y > height + 30) return;
-
-                this.drawMapMarker(ctx, pos, 'default', false);
-                if (!isMinimap) {
-                    const fontSize = Math.max(8, Math.min(14, 10 * zoom));
-                    ctx.font = fontSize + "px 'MedievalSharp', cursive";
-                    ctx.fillStyle = '#f1c40f';
-                    ctx.strokeStyle = '#000';
-                    ctx.lineWidth = 2;
-                    ctx.textAlign = 'center';
-                    ctx.strokeText(marker.name, pos.x, pos.y + 15 * zoom);
-                    ctx.fillText(marker.name, pos.x, pos.y + 15 * zoom);
+                // Отрисовка армий (Красные маркеры)
+                if (World.factions) {
+                    Object.values(World.factions).forEach(f => {
+                        if (f.armies) {
+                            f.armies.forEach(a => {
+                                if (a.siegeDays > 0 || (a.current_phase && a.current_phase !== "march")) {
+                                    // Армия ведет бой или осаду - рисуем статичный маркер над городом
+                                    const end = map.locations[a.destination];
+                                    if (end) {
+                                        const pos = transform(end.x + 0.5, end.y + 0.5);
+                                        if (pos.x < -50 || pos.x > width + 50 || pos.y < -50 || pos.y > height + 50) return;
+                                        ctx.fillStyle = '#e74c3c';
+                                        ctx.beginPath();
+                                        ctx.arc(pos.x + 8 * this.mapState.zoom, pos.y - 8 * this.mapState.zoom, 4 * this.mapState.zoom, 0, 2 * Math.PI);
+                                        ctx.fill();
+                                        ctx.strokeStyle = '#fff';
+                                        ctx.lineWidth = 1;
+                                        ctx.stroke();
+                                    }
+                                } else if (a.x !== undefined && a.y !== undefined) {
+                                    // Армия в пути (реальные координаты)
+                                    const pos = transform(a.x + 0.5, a.y + 0.5);
+                                    if (pos.x < -50 || pos.x > width + 50 || pos.y < -50 || pos.y > height + 50) return;
+                                    ctx.fillStyle = '#e74c3c';
+                                    ctx.beginPath();
+                                    ctx.arc(pos.x, pos.y, 3 * this.mapState.zoom, 0, 2 * Math.PI);
+                                    ctx.fill();
+                                    ctx.strokeStyle = '#000';
+                                    ctx.lineWidth = 1;
+                                    ctx.stroke();
+                                }
+                            });
+                        }
+                    });
                 }
-            });
-        }
+            };
 
-        if (!isMinimap) {
-            this.drawCompassRose(ctx, width - 40, 40, 20);
-            
-            // --- NEW: Particles ---
-            if (!this.particles) {
-                this.particles = [];
-                for(let i=0; i<60; i++) {
-                    this.particles.push({
-                        x: Math.random(),
-                        y: Math.random(),
-                        size: Math.random() * 1.5 + 0.5,
-                        speedX: (Math.random() - 0.5) * 0.1,
-                        speedY: -Math.random() * 0.3 - 0.1,
-                        life: Math.random()
+
+
+            if (typeof World !== 'undefined' && World) {
+                if (World.port_facilities) {
+                    Object.keys(World.port_facilities).forEach(rid => {
+                        if (map.locations[rid]) {
+                            const loc = map.locations[rid];
+                            const port = World.port_facilities[rid];
+                            const pos = transform(loc.x + 0.5, loc.y + 0.5);
+                            if (pos.x < -50 || pos.x > width + 50 || pos.y < -50 || pos.y > height + 50) return;
+                            ctx.font = `${12 * this.mapState.zoom}px Arial`;
+                            let icons = "⚓";
+                            if (port.has_shipyard) icons += " 🏗️";
+                            if (port.level > 1) icons += " 🗼";
+                            if (port.is_blockaded) icons += " 🚫";
+                            ctx.fillText(icons, pos.x + 12 * this.mapState.zoom, pos.y - 12 * this.mapState.zoom);
+                        }
+                    });
+                }
+                if (World.ships) {
+                    World.ships.forEach(ship => {
+                        const pos = transform(ship.x + 0.5, ship.y + 0.5);
+                        if (pos.x < -50 || pos.x > width + 50 || pos.y < -50 || pos.y > height + 50) return;
+                        ctx.font = `${14 * this.mapState.zoom}px Arial`;
+                        let icon = "⛵";
+                        if (ship.type === "WAR_GALLEY" || ship.type === "WAR_FRIGATE") icon = "⛴️";
+                        if (ship.type === "PIRATE") icon = "🏴‍☠️";
+                        if (ship.type === "SEA_MONSTER") icon = "🦑";
+                        if (ship.type === "TRANSPORT") icon = "🛶";
+                        ctx.fillText(icon, pos.x, pos.y);
+                    });
+                }
+
+                if (World.fleets) {
+                    World.fleets.forEach(fleet => {
+                        const pos = transform(fleet.x + 0.5, fleet.y + 0.5);
+                        if (pos.x < -50 || pos.x > width + 50 || pos.y < -50 || pos.y > height + 50) return;
+                        ctx.font = `${18 * this.mapState.zoom}px Arial`;
+                        ctx.fillText("⚓🛡️", pos.x, pos.y - 10 * this.mapState.zoom);
+                    });
+                }
+
+                if (World.monsters) {
+                    World.monsters.forEach(m => {
+                        if (m.health <= 0 || !m.is_visible_on_map) return;
+                        const pos = transform(m.lair_x + 0.5, m.lair_y + 0.5);
+                        if (pos.x < -50 || pos.x > width + 50 || pos.y < -50 || pos.y > height + 50) return;
+
+                        ctx.save();
+                        ctx.globalCompositeOperation = 'screen';
+                        const radiusPx = 5 * this.TILE_SIZE * this.mapState.zoom;
+                        const pulse = (Math.sin(Date.now() / 300) + 1) / 2;
+                        let color1 = `rgba(142, 68, 173, ${0.4 + pulse * 0.2})`;
+                        if (m.type === 'DRAGON' || m.type === 'FIRE_ELEMENTAL' || m.type === 'BALOR') color1 = `rgba(231, 76, 60, ${0.4 + pulse * 0.2})`;
+                        if (m.type === 'LICH_KING' || m.type === 'VAMPIRE_LORD') color1 = `rgba(44, 62, 80, ${0.6 + pulse * 0.2})`;
+                        if (m.type === 'KRAKEN' || m.type === 'LEVIATHAN') color1 = `rgba(41, 128, 185, ${0.4 + pulse * 0.2})`;
+
+                        const grad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, radiusPx);
+                        grad.addColorStop(0, color1);
+                        grad.addColorStop(1, 'rgba(0,0,0,0)');
+                        ctx.fillStyle = grad;
+                        ctx.beginPath();
+                        ctx.arc(pos.x, pos.y, radiusPx, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+
+                        ctx.font = `${24 * this.mapState.zoom}px Arial`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        let icon = '👹';
+                        if (m.type === 'DRAGON') icon = '🐉';
+                        if (m.type === 'KRAKEN' || m.type === 'LEVIATHAN') icon = '🦑';
+                        if (m.type === 'LICH_KING' || m.type === 'VAMPIRE_LORD') icon = '💀';
+                        if (m.type === 'FIRE_ELEMENTAL') icon = '🔥';
+                        if (m.type === 'BEHOLDER') icon = '👁️';
+                        
+                        ctx.shadowColor = 'black';
+                        ctx.shadowBlur = 5;
+                        ctx.fillText(icon, pos.x, pos.y);
+                        ctx.shadowBlur = 0;
+                        
+                        ctx.font = `bold ${11 * this.mapState.zoom}px Arial`;
+                        ctx.fillStyle = '#e74c3c';
+                        ctx.strokeStyle = '#000';
+                        ctx.lineWidth = 2;
+                        ctx.strokeText(m.name, pos.x, pos.y + 20 * this.mapState.zoom);
+                        ctx.fillText(m.name, pos.x, pos.y + 20 * this.mapState.zoom);
                     });
                 }
             }
-            
-            ctx.fillStyle = 'rgba(212, 175, 55, 0.4)'; // Gold/ash embers
-            this.particles.forEach(p => {
-                p.x += p.speedX / width * 50;
-                p.y += p.speedY / height * 50;
-                p.life -= 0.002;
-                if(p.life <= 0 || p.y < 0) {
-                    p.y = 1;
-                    p.x = Math.random();
-                    p.life = 1;
+
+
+            if (!this.isMapInitialized && map.locations) {
+                let targetId = null;
+                if (player.currentSublocation) {
+                    const sub = (player.subLocations && player.subLocations[player.currentSublocation]) || 
+                                (World && World.subLocations && World.subLocations[player.currentSublocation]);
+                    if (sub && sub.parentId) targetId = sub.parentId;
                 }
-                ctx.beginPath();
-                ctx.arc(p.x * width, p.y * height, p.size, 0, Math.PI*2);
-                ctx.fill();
-            });
 
-            // --- NEW: Vignette ---
-            const vigGrad = ctx.createRadialGradient(width/2, height/2, Math.min(width, height) * 0.4, width/2, height/2, Math.max(width, height) * 0.8);
-            vigGrad.addColorStop(0, 'rgba(0,0,0,0)');
-            vigGrad.addColorStop(1, 'rgba(0,0,0,0.85)');
-            ctx.fillStyle = vigGrad;
-            ctx.fillRect(0, 0, width, height);
-        } else {
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(width / 2, 0); ctx.lineTo(width / 2, height);
-            ctx.moveTo(0, height / 2); ctx.lineTo(width, height / 2);
-            ctx.stroke();
+                let playerPoint = (targetId && map.locations[targetId]) ? map.locations[targetId] : null;
+                
+                if (!playerPoint) {
+                    const currentLocName = (player.location || "").toLowerCase().trim();
+                    playerPoint = Object.values(map.locations).find(p => p.name.toLowerCase().trim().includes(currentLocName) || currentLocName.includes(p.name.toLowerCase().trim()));
+                }
 
-            ctx.strokeStyle = 'rgba(93, 173, 226, 0.25)';
-            ctx.beginPath();
-            ctx.arc(width / 2, height / 2, 40, 0, Math.PI * 2);
-            ctx.stroke();
+                if (!playerPoint && Object.values(map.locations).length > 0) playerPoint = Object.values(map.locations)[0];
+
+                if (playerPoint) {
+                    this.mapState.offsetX = (width / 2) - ((playerPoint.x + 0.5) * this.TILE_SIZE * this.mapState.zoom);
+                    this.mapState.offsetY = (height / 2) - ((playerPoint.y + 0.5) * this.TILE_SIZE * this.mapState.zoom);
+                    this.isMapInitialized = true;
+                    this._needsRender = true;
+                    this.animationFrameId = requestAnimationFrame(() => this.render());
+                    return;
+                }
+            }
         }
+
+        if (player.mapMarkers) {
+            const transform = (worldX, worldY) => ({
+                x: Math.floor((Number(worldX) * this.TILE_SIZE * this.mapState.zoom) + this.mapState.offsetX),
+                y: Math.floor((Number(worldY) * this.TILE_SIZE * this.mapState.zoom) + this.mapState.offsetY)
+            });
+            Object.values(player.mapMarkers).forEach(marker => {
+                const pos = transform(marker.x + 0.5, marker.y + 0.5);
+                if (pos.x < -50 || pos.x > width + 50 || pos.y < -50 || pos.y > height + 50) return;
+
+                this.drawMapMarker(ctx, pos, 'default', false);
+                const fontSize = Math.max(8, Math.min(14, 10 * this.mapState.zoom));
+                ctx.font = fontSize + "px 'MedievalSharp', cursive";
+                ctx.fillStyle = '#f1c40f';
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.textAlign = 'center';
+                ctx.strokeText(marker.name, pos.x, pos.y + 15 * this.mapState.zoom);
+                ctx.fillText(marker.name, pos.x, pos.y + 15 * this.mapState.zoom);
+            });
+        }
+
+        this.drawCompassRose(ctx, width - 30, 30, 15);
+
+        // Запускаем следующий кадр только если нужно (пульсация игрока / follow) или есть запрос
+        if (this.mapState.isFollowingPlayer || (typeof player !== 'undefined' && player.travel && player.travel.active)) {
+            this.animationFrameId = requestAnimationFrame(() => this.render());
+        }
+        // Если ничего не требует постоянной анимации — не планируем следующий кадр
     },
 
     /**

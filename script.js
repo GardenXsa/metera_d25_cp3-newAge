@@ -56,77 +56,6 @@ const GameRNG = {
 };
 
 // ======================================================================
-// --- DATA-DRIVEN HELPER FUNCTIONS ---
-// ======================================================================
-
-function isCurrency(item) {
-    if (!item) return false;
-    const proto = (typeof gamedata !== 'undefined' && gamedata.items) ? gamedata.items[item.prototype_id] : null;
-    return (item.prototype_id === 'gold' || item.prototype_id === 'gold_ingot' || item.custom_props?.aiIdentifier === 'gold' || (proto && proto.tags && proto.tags.includes('currency')));
-}
-
-function isLockpick(item) {
-    if (!item) return false;
-    const proto = (typeof gamedata !== 'undefined' && gamedata.items) ? gamedata.items[item.prototype_id] : null;
-    return item.prototype_id === 'lockpicks_common' || (proto && proto.tags && proto.tags.includes('lockpick'));
-}
-
-function isBuildingMaterial(item) {
-    if (!item) return false;
-    const proto = (typeof gamedata !== 'undefined' && gamedata.items) ? gamedata.items[item.prototype_id] : null;
-    return item.prototype_id === 'wood' || (proto && proto.tags && (proto.tags.includes('wood') || proto.tags.includes('building')));
-}
-
-function getContainerDef(type) {
-    if (typeof gamedata !== 'undefined' && gamedata.container_types && gamedata.container_types[type]) {
-        return gamedata.container_types[type];
-    }
-    return null;
-}
-
-function classHasAbility(classId, ability) {
-    if (window.gamedata?.classes) {
-        const classDef = window.gamedata.classes.find(c => c.id === classId);
-        return classDef?.special_abilities?.includes(ability) || false;
-    }
-    // Fallback
-    return classId === 'mage' && ability === 'spellcasting';
-}
-
-function getTimeOfDay(hour) {
-    if (window.gamedata?.world_config?.time_periods) {
-        for (const period of window.gamedata.world_config.time_periods) {
-            if (period.start_hour > period.end_hour) {
-                if (hour >= period.start_hour || hour < period.end_hour) return t(period.name_i18n_key);
-            } else {
-                if (hour >= period.start_hour && hour < period.end_hour) return t(period.name_i18n_key);
-            }
-        }
-    }
-    // Fallback
-    if (hour >= 22 || hour < 6) return t('time.night') || "Ночь";
-    if (hour >= 6 && hour < 10) return t('time.morning') || "Утро";
-    if (hour >= 18 && hour < 22) return t('time.evening') || "Вечер";
-    return t('time.day') || "День";
-}
-
-function getNewsCategoryDef(categoryId) {
-    if (window.gamedata?.news_categories) {
-        return window.gamedata.news_categories.find(c => c.id === categoryId);
-    }
-    return null;
-}
-
-function getBuildingTypeDef(type) {
-    if (window.gamedata?.building_types && window.gamedata.building_types[type]) {
-        return window.gamedata.building_types[type];
-    }
-    return null;
-}
-
-const FANTASY_MONTHS = window.gamedata?.world_config?.months?.map(m => m.name_i18n_key ? t(m.name_i18n_key) : m.id) || ["Утренней Звезды", "Ледолома", "Ветровея", "Цветеня", "Солнцеворота", "Знойника", "Жатвеня", "Листопада", "Хладника", "Мертвой Луны", "Темного Рубежа", "Конца Года"];
-
-// ======================================================================
 // --- CORE INVENTORY & CONTAINER SYSTEM (T3) ---
 // ======================================================================
 
@@ -205,32 +134,124 @@ async function syncPlayerContainerBindings() {
  * Вызывать перед любой операцией с инвентарём, если есть сомнения.
  * @returns {Promise<void>}
  */
-async function ensurePlayerContainers() {
-    if (!player) return;
-    
-    // Проверяем рюкзак
-    const needsBackpack = !player.container_backpack || !ContainerRegistry.has(player.container_backpack);
-    if (needsBackpack) {
-        console.warn("[Inventory] Рюкзак игрока отсутствует или не в реестре. Пересоздаём...");
-        const backpackDef = getContainerDef('player_backpack');
-        player.container_backpack = await CoreInventorySystemAsync.createContainer("player_backpack", "player", backpackDef?.capacity || 100, backpackDef?.max_weight || 30);
-        // Экстренный fallback, если IPC+fallback оба не сработали
-        if (!player.container_backpack || !ContainerRegistry.has(player.container_backpack)) {
-            player.container_backpack = OldCoreInventorySystem.createContainer("player_backpack", "player", 100, 30);
-            console.error("[Inventory] Экстренное локальное пересоздание рюкзака:", player.container_backpack);
+const SYSTEM_CONTAINER_REGISTRY_PATH = './data/system_containers.json';
+let _systemContainerRegistryPromise = null;
+let _systemContainerRegistry = null;
+
+function getRuntimeDataRegistry(name) {
+    const sources = [
+        window.RuntimeData,
+        window.runtimeData,
+        window.RuntimeDatabase,
+        window.GameData,
+        window.__RUNTIME_DATA__
+    ].filter(Boolean);
+
+    for (const source of sources) {
+        if (source[name]) return source[name];
+        if (source.data && source.data[name]) return source.data[name];
+        if (typeof source.get === 'function') {
+            const value = source.get(name);
+            if (value) return value;
         }
     }
-    
-    // Проверяем контейнер экипировки
+    return null;
+}
+
+async function loadSystemContainerRegistry() {
+    if (_systemContainerRegistry) return _systemContainerRegistry;
+    if (_systemContainerRegistryPromise) return _systemContainerRegistryPromise;
+
+    _systemContainerRegistryPromise = (async () => {
+        const fromRuntime = getRuntimeDataRegistry('system_containers');
+        if (fromRuntime) {
+            _systemContainerRegistry = fromRuntime;
+            return _systemContainerRegistry;
+        }
+
+        if (typeof fetch === 'function') {
+            try {
+                const response = await fetch(SYSTEM_CONTAINER_REGISTRY_PATH);
+                if (response.ok) {
+                    _systemContainerRegistry = await response.json();
+                    return _systemContainerRegistry;
+                }
+            } catch (error) {
+                console.warn('[DataArch] Не удалось загрузить data/system_containers.json:', error.message);
+            }
+        }
+
+        _systemContainerRegistry = { aliases: {}, containers: {} };
+        return _systemContainerRegistry;
+    })();
+
+    return _systemContainerRegistryPromise;
+}
+
+function getLoadedSystemContainerRegistry() {
+    return _systemContainerRegistry || getRuntimeDataRegistry('system_containers') || { aliases: {}, containers: {} };
+}
+
+function resolveSystemContainerKey(aliasOrId) {
+    const registry = getLoadedSystemContainerRegistry();
+    return registry.aliases?.[aliasOrId] || aliasOrId;
+}
+
+async function getSystemContainerConfig(aliasOrId) {
+    const registry = await loadSystemContainerRegistry();
+    const key = registry.aliases?.[aliasOrId] || aliasOrId;
+    const config = registry.containers?.[key] || {};
+    return { id: key, ...config };
+}
+
+function getSystemContainerInstanceId(aliasOrId) {
+    const key = resolveSystemContainerKey(aliasOrId);
+    if (key === 'player_backpack') return player?.container_backpack || null;
+    if (key === 'player_equipment') return player?.container_equipment || null;
+
+    const existing = Array.from(ContainerRegistry.values()).find(c => c.custom_props?.system_id === key);
+    return existing?.id || null;
+}
+
+async function createConfiguredSystemContainer(aliasOrId, fallbackConfig = {}) {
+    const config = { ...fallbackConfig, ...(await getSystemContainerConfig(aliasOrId)) };
+    const type = config.type || config.container_type || config.id || aliasOrId;
+    const ownerId = config.ownerId || config.owner_id || fallbackConfig.ownerId || null;
+    const maxWeight = Number(config.maxWeight ?? config.max_weight_kg ?? config.weight_limit ?? fallbackConfig.maxWeight ?? 0);
+    const maxSlots = Number(config.maxSlots ?? config.max_slots ?? config.capacity ?? fallbackConfig.maxSlots ?? 0);
+    const location = config.locationBinding === 'player'
+        ? resolveActorLocation('player')
+        : (config.location || fallbackConfig.location || null);
+
+    return await CoreInventorySystemAsync.createContainer(type, ownerId, maxWeight, maxSlots, location, {
+        custom_props: { ...(config.custom_props || {}), system_id: config.id || aliasOrId },
+async function ensurePlayerContainers() {
+    if (!player) return;
+
+    const needsBackpack = !player.container_backpack || !ContainerRegistry.has(player.container_backpack);
+    if (needsBackpack) {
+        console.warn("[Inventory] Рюкзак игрока отсутствует или не в реестре. Пересоздаём из data/system_containers.json.");
+        player.container_backpack = await createConfiguredSystemContainer('player_backpack');
+
+        if (!player.container_backpack || !ContainerRegistry.has(player.container_backpack)) {
+            throw new Error("[Inventory] Не удалось создать player_backpack через data/system_containers.json");
+        }
+    }
+
     const needsEquipment = !player.container_equipment || !ContainerRegistry.has(player.container_equipment);
     if (needsEquipment) {
-        console.warn("[Inventory] Контейнер экипировки отсутствует или не в реестре. Пересоздаём...");
-        const equipDef = getContainerDef('player_equipment');
-        player.container_equipment = await CoreInventorySystemAsync.createContainer("player_equipment", "player", equipDef?.capacity || 50, equipDef?.max_weight || 10);
-        // Экстренный fallback
+        console.warn("[Inventory] Контейнер экипировки отсутствует или не в реестре. Пересоздаём из data/system_containers.json.");
+        player.container_equipment = await createConfiguredSystemContainer('player_equipment');
+
         if (!player.container_equipment || !ContainerRegistry.has(player.container_equipment)) {
-            player.container_equipment = OldCoreInventorySystem.createContainer("player_equipment", "player", 50, 10);
-            console.error("[Inventory] Экстренное локальное пересоздание экипировки:", player.container_equipment);
+            throw new Error("[Inventory] Не удалось создать player_equipment через data/system_containers.json");
+        }
+    }
+
+    if (needsBackpack || needsEquipment) {
+        await syncPlayerContainerBindings();
+    }
+}
         }
     }
     
@@ -241,16 +262,16 @@ async function ensurePlayerContainers() {
 
 function resolveSpecialContainerId(containerId) {
     if (!containerId) return containerId;
-    if (containerId === 'player' || containerId === 'player_inventory' || containerId === 'player_backpack') return player?.container_backpack || null;
-    if (containerId === 'player_equipment') return player?.container_equipment || null;
-    if (containerId === 'guard_confiscation_chest') {
-        const existing = Array.from(ContainerRegistry.values()).find(c => c.custom_props?.system_id === 'guard_confiscation_chest');
-        if (existing) return existing.id;
-        // FIX: Don't create containers as a side-effect of resolve.
-        // Return null — caller must use ensureGuardConfiscationChest() explicitly.
-        console.warn('[resolveSpecialContainerId] guard_confiscation_chest not found. Call ensureGuardConfiscationChest() first.');
+
+    const resolvedInstanceId = getSystemContainerInstanceId(containerId);
+    if (resolvedInstanceId) return resolvedInstanceId;
+
+    const resolvedKey = resolveSystemContainerKey(containerId);
+    if (resolvedKey !== containerId) {
+        console.warn(`[resolveSpecialContainerId] system container '${containerId}' not found. Ensure it explicitly before resolving.`);
         return null;
     }
+
     return containerId;
 }
 
@@ -259,20 +280,16 @@ function resolveSpecialContainerId(containerId) {
  * Call this explicitly before resolveSpecialContainerId('guard_confiscation_chest').
  */
 async function ensureGuardConfiscationChest() {
-    const existing = Array.from(ContainerRegistry.values()).find(c => c.custom_props?.system_id === 'guard_confiscation_chest');
-    if (existing) return existing.id;
-    return await CoreInventorySystemAsync.createContainer(
-        'static_chest',
-        'city_guard',
-        9999,
-        999,
-        resolveActorLocation('player'),
-        {
-            custom_props: { system_id: 'guard_confiscation_chest', hidden: true },
-            lock_data: { is_locked: false, difficulty: 0, trap: null },
-            physical_props: { health: 250, flammable: false }
-        }
-    );
+    const existing = getSystemContainerInstanceId('guard_confiscation_chest');
+    if (existing) return existing;
+
+    const createdId = await createConfiguredSystemContainer('guard_confiscation_chest');
+
+    if (!createdId || !ContainerRegistry.has(createdId)) {
+        throw new Error("[Inventory] Не удалось создать guard_confiscation_chest через data/system_containers.json");
+    }
+
+    return createdId;
 }
 
 
@@ -283,8 +300,7 @@ function getGoldAmountInContainer(containerId) {
     const cont = ContainerRegistry.get(resolvedId);
     const physicalGold = getContainerItems(cont).reduce((sum, itemId) => {
         const item = ItemRegistry.get(itemId);
-        if (!item) return sum;
-        return sum + (isCurrency(item) ? item.stack_size : 0);
+        return sum + ((item?.prototype_id === 'gold' || item?.prototype_id === 'gold_ingot' || item?.custom_props?.aiIdentifier === 'gold') ? item.stack_size : 0);
     }, 0);
     const npcAccountGold = World?.npcs?.[cont.owner_id]?.inventory?.gold || 0;
     return physicalGold + npcAccountGold;
@@ -295,8 +311,7 @@ function syncPlayerGoldFromInventory() {
     const backpack = ContainerRegistry.get(player.container_backpack);
     const totalGold = getContainerItems(backpack).reduce((sum, itemId) => {
         const item = ItemRegistry.get(itemId);
-        if (!item) return sum;
-        return sum + (isCurrency(item) ? item.stack_size : 0);
+        return sum + ((item?.prototype_id === 'gold' || item?.prototype_id === 'gold_ingot' || item?.custom_props?.aiIdentifier === 'gold') ? item.stack_size : 0);
     }, 0);
     player.stats.gold = totalGold;
     return totalGold;
@@ -326,20 +341,11 @@ async function addRealItems(containerId, prototypeId, quantity, customProps = {}
 function availableManpower(faction) {
     if (!faction || typeof World === 'undefined' || !World) return 0;
     let total = 0;
-    
-    let foodIds = (typeof ECONOMY_ITEMS !== 'undefined') ? Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('food')) : ['bread', 'meat', 'smoked_meat'];
-    let weaponIds = (typeof ECONOMY_ITEMS !== 'undefined') ? Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('weapon')) : ['weapons'];
-    
     for (let rid of faction.regions || []) {
         const region = World.regions[rid];
         if (!region || !region.vault_id) continue;
-        
-        let weapons = 0;
-        weaponIds.forEach(id => weapons += countRealItems(region.vault_id, id));
-        
-        let food = 0;
-        foodIds.forEach(id => food += countRealItems(region.vault_id, id));
-        
+        const weapons = countRealItems(region.vault_id, 'weapons');
+        const food = countRealItems(region.vault_id, 'bread') + countRealItems(region.vault_id, 'meat') + countRealItems(region.vault_id, 'smoked_meat');
         const population = region.population || 0;
         const possibleSoldiers = Math.min(Math.floor(population * 0.1), weapons);
         if (food < possibleSoldiers * 0.5) continue;
@@ -427,7 +433,7 @@ const OldCoreInventorySystem = {
             owner_id: ownerId,
             location: normalizeContainerLocation(defaultLocation),
             lock_data: { is_locked: false, difficulty: 10, trap: null, ...(extraData.lock_data || {}) },
-            physical_props: { health: 200, flammable: getContainerDef(type)?.category !== 'faction', ...(extraData.physical_props || {}) },
+            physical_props: { health: 200, flammable: type !== 'faction_vault', ...(extraData.physical_props || {}) },
             custom_props: { ...(extraData.custom_props || {}) },
             items: []
         };
@@ -439,8 +445,7 @@ const OldCoreInventorySystem = {
         const resolvedContainerId = resolveSpecialContainerId(containerId);
         const id = "item_" + generateUUID();
         let baseWeight = proto ? (proto.weight || 1) : 1;
-        const protoDef = (typeof gamedata !== 'undefined' && gamedata.items) ? gamedata.items[prototypeId] : null;
-        if (prototypeId === 'gold' || (protoDef && protoDef.tags && protoDef.tags.includes('currency'))) baseWeight = protoDef?.weight || 0.01;
+        if (prototypeId === 'gold') baseWeight = 0.01;
 
         const reservedKeys = new Set(['flags', 'durability', 'slot_index', 'slot', 'state', 'created_at', 'last_moved_at']);
         const mergedCustomProps = {};
@@ -587,7 +592,7 @@ const OldCoreInventorySystem = {
             movingItem.flags.stolen = true;
         }
 
-        if (getContainerDef(sourceContainer.type)?.category === 'faction' && sourceContainer.owner_id !== targetContainer.owner_id) {
+        if (sourceContainer.type === 'faction_vault' && sourceContainer.owner_id !== targetContainer.owner_id) {
             const regionId = resolveContainerLocation(sourceContainer.id)?.region_id;
             if (regionId && typeof World !== 'undefined' && World?.regions?.[regionId]?.resources?.[movingItem.prototype_id]) {
                 const regionResource = World.regions[regionId].resources[movingItem.prototype_id];
@@ -596,7 +601,7 @@ const OldCoreInventorySystem = {
         }
 
         movingItem.last_moved_at = player ? player.stats.turnCount : 0;
-        if (player && (isCurrency(movingItem) || isCurrency(item))) syncPlayerGoldFromInventory();
+        if (player && (movingItem.prototype_id === 'gold' || item.prototype_id === 'gold')) syncPlayerGoldFromInventory();
 
         return { success: true, movedItemId: movingItem.id, createdItemId, targetContainerId: actualTargetId, sourceContainerId: resolvedSourceId };
     },
@@ -625,7 +630,7 @@ const OldCoreInventorySystem = {
     removeItem: function(itemId, quantity) {
         if (!ItemRegistry.has(itemId)) return false;
         const item = ItemRegistry.get(itemId);
-        const shouldSyncGold = isCurrency(item) && item.container_id === player?.container_backpack;
+        const shouldSyncGold = item.prototype_id === 'gold' && item.container_id === player?.container_backpack;
         if (item.stack_size <= quantity) {
             if (item.container_id && ContainerRegistry.has(item.container_id)) {
                 const cont = ContainerRegistry.get(item.container_id);
@@ -664,10 +669,7 @@ const OldCoreInventorySystem = {
         const actorContId = actorId === 'player' ? player.container_backpack : null;
         if (!actorContId) return { success: false, error: "Actor inventory not found" };
         const actorCont = ContainerRegistry.get(actorContId);
-        const lockpickId = getContainerItems(actorCont).find(id => {
-            const item = ItemRegistry.get(id);
-            return isLockpick(item);
-        });
+        const lockpickId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'lockpicks_common');
         if (!lockpickId) return { success: false, error: "No lockpicks" };
         this.removeItem(lockpickId, 1);
         const roll = GameRNG.d20((player.stats.dex - 10)/2);
@@ -699,10 +701,7 @@ const OldCoreInventorySystem = {
         const actorContId = actorId === 'player' ? player.container_backpack : null;
         if (!actorContId) return null;
         const actorCont = ContainerRegistry.get(actorContId);
-        const woodId = getContainerItems(actorCont).find(id => {
-            const item = ItemRegistry.get(id);
-            return isBuildingMaterial(item);
-        });
+        const woodId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'wood');
         const woodItem = woodId ? ItemRegistry.get(woodId) : null;
         if (!woodItem || woodItem.stack_size < 5) return null;
         this.removeItem(woodId, 5);
@@ -936,7 +935,7 @@ const CoreInventorySystemAsync = {
     },
     removeItem: async function(itemId, quantity) {
         const item = ItemRegistry.get(itemId);
-        const shouldSyncGold = isCurrency(item) && item.container_id === player?.container_backpack;
+        const shouldSyncGold = item && (item.prototype_id === 'gold' || item.prototype_id === 'gold_ingot' || item.custom_props?.aiIdentifier === 'gold') && item.container_id === player?.container_backpack;
         const res = await sendInventoryCommand('removeItem', { itemId, quantity });
         if (shouldSyncGold) syncPlayerGoldFromInventory();
         return res.success;
@@ -957,10 +956,7 @@ const CoreInventorySystemAsync = {
         const actorContId = actorId === 'player' ? player.container_backpack : null;
         if (!actorContId) return { success: false, error: "Actor inventory not found" };
         const actorCont = ContainerRegistry.get(actorContId);
-        const lockpickId = getContainerItems(actorCont).find(id => {
-            const item = ItemRegistry.get(id);
-            return isLockpick(item);
-        });
+        const lockpickId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'lockpicks_common');
         if (!lockpickId) return { success: false, error: "No lockpicks" };
         await this.removeItem(lockpickId, 1);
         const roll = GameRNG.d20((player.stats.dex - 10)/2);
@@ -979,10 +975,8 @@ const CoreInventorySystemAsync = {
     confiscateStolen: async function(sourceContainerId, destContainerId) {
         const resolvedSourceId = resolveSpecialContainerId(sourceContainerId);
         let resolvedDestId = resolveSpecialContainerId(destContainerId);
-        if (resolvedDestId === 'guard_confiscation_chest') {
-            const existing = Array.from(ContainerRegistry.values()).find(c => c.custom_props?.system_id === 'guard_confiscation_chest');
-            if (existing) resolvedDestId = existing.id;
-            else resolvedDestId = await this.createContainer('static_chest', 'city_guard', 9999, 999, resolveActorLocation('player'), { custom_props: { system_id: 'guard_confiscation_chest', hidden: true } });
+        if (!resolvedDestId && resolveSystemContainerKey(destContainerId) === 'guard_confiscation_chest') {
+            resolvedDestId = await ensureGuardConfiscationChest();
         }
         const src = ContainerRegistry.get(resolvedSourceId);
         if (!src) return 0;
@@ -998,10 +992,7 @@ const CoreInventorySystemAsync = {
         const actorContId = actorId === 'player' ? player.container_backpack : null;
         if (!actorContId) return null;
         const actorCont = ContainerRegistry.get(actorContId);
-        const woodId = getContainerItems(actorCont).find(id => {
-            const item = ItemRegistry.get(id);
-            return isBuildingMaterial(item);
-        });
+        const woodId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'wood');
         const woodItem = woodId ? ItemRegistry.get(woodId) : null;
         if (!woodItem || woodItem.stack_size < 5) return null;
         await this.removeItem(woodId, 5);
@@ -1078,10 +1069,7 @@ async function equipItemAsync(itemId, targetSlot = null) {
 async function unequipItemAsync(slot) {
     if (!player || !player.container_equipment || !player.container_backpack) return null;
     const eqCont = ContainerRegistry.get(player.container_equipment);
-    const itemId = getContainerItems(eqCont).find(id => {
-        const it = ItemRegistry.get(id);
-        return it && it.slot_index === slot;
-    });
+    const itemId = getContainerItems(eqCont).find(id => ItemRegistry.get(id).slot_index === slot);
     if (!itemId) return t('gameInterface.commandFeedback.slotIsEmpty', { slot: slot });
 
     const itemToUnequip = ItemRegistry.get(itemId);
@@ -1116,8 +1104,10 @@ const TransportSystem = {
     async init() {
         if (!this.registry) {
             try {
-                const response = await fetch('data/transport_registry.json');
-                this.registry = await response.json();
+                if (typeof window.ensureRuntimeDataLoaded === 'function') {
+                    await window.ensureRuntimeDataLoaded();
+                }
+                this.registry = window.TRANSPORT_REGISTRY || {};
                 console.log('[TransportSystem] Registry loaded:', Object.keys(this.registry));
             } catch (error) {
                 console.error('[TransportSystem] Failed to load registry:', error);
@@ -1375,7 +1365,7 @@ const TradeSystemAsync = {
 
         const physicalGoldItems = [...getContainerItems(targetContainer)].filter(itemId => {
             const it = ItemRegistry.get(itemId);
-            return isCurrency(it);
+            return it && (it.prototype_id === 'gold' || it.prototype_id === 'gold_ingot' || it.custom_props?.aiIdentifier === 'gold');
         });
         for (const goldItemId of physicalGoldItems) {
             if (remaining <= 0) break;
@@ -1590,13 +1580,7 @@ async function executeCommand(command, args) {
                     
                     if (existingItemId) {
                         await sendInventoryCommand('updateItemStat', { itemId: existingItemId, stat: 'stack_size', change: quantity });
-                        const fullItem = ItemRegistry.get(existingItemId);
-                        if (!IS_PRE_SIMULATING && !window.isSimulatingTime) {
-                            addLogMessage(JSON.stringify(fullItem), "item-card");
-                            feedback = null;
-                        } else {
-                            feedback = t('gameInterface.commandFeedback.itemQuantityIncreased', { itemName: name, quantity: quantity });
-                        }
+                        feedback = t('gameInterface.commandFeedback.itemQuantityIncreased', { itemName: name, quantity: quantity });
                     } else {
                         // Т3 ФИКС: Проверка веса
                     const currentWeight = CoreInventorySystemAsync.getContainerWeight(targetContId);
@@ -1639,23 +1623,11 @@ async function executeCommand(command, args) {
                             if (!isTransport && (aiId.toLowerCase().includes('horse') || aiId.toLowerCase().includes('cart') || aiId.toLowerCase().includes('wagon'))) {
                                 const validIds = TransportSystem.getAllTransportIds();
                                 console.warn(`[addItem] Suspicious transport-like ID "${aiId}". Valid transport IDs: ${validIds.join(', ')}`);
-                                const createdId = await CoreInventorySystemAsync.createItem(aiId, quantity, targetContId, customProps);
-                                const fullItem = ItemRegistry.get(createdId);
-                                if (!IS_PRE_SIMULATING && !window.isSimulatingTime) {
-                                    addLogMessage(JSON.stringify(fullItem), "item-card");
-                                    feedback = null;
-                                } else {
-                                    feedback = t('gameInterface.commandFeedback.itemAdded', { itemName: name, quantity: quantity }) + ` [WARNING] ID "${aiId}" не является транспортом. Используйте: ${validIds.join(', ')}`;
-                                }
+                                await CoreInventorySystemAsync.createItem(aiId, quantity, targetContId, customProps);
+                                feedback = t('gameInterface.commandFeedback.itemAdded', { itemName: name, quantity: quantity }) + ` [WARNING] ID "${aiId}" не является транспортом. Используйте: ${validIds.join(', ')}`;
                             } else {
-                                const createdId = await CoreInventorySystemAsync.createItem(aiId, quantity, targetContId, customProps);
-                                const fullItem = ItemRegistry.get(createdId);
-                                if (!IS_PRE_SIMULATING && !window.isSimulatingTime) {
-                                    addLogMessage(JSON.stringify(fullItem), "item-card");
-                                    feedback = null;
-                                } else {
-                                    feedback = t('gameInterface.commandFeedback.itemAdded', { itemName: name, quantity: quantity });
-                                }
+                                await CoreInventorySystemAsync.createItem(aiId, quantity, targetContId, customProps);
+                                feedback = t('gameInterface.commandFeedback.itemAdded', { itemName: name, quantity: quantity });
                             }
                         }
                     }
@@ -1922,7 +1894,7 @@ async function executeCommand(command, args) {
             case 'buildContainer':
                 if (args.type) {
                     const contId = await CoreInventorySystemAsync.buildContainer('player', args.type, player.location);
-                    feedback = contId ? `[КРАФТ] Создан контейнер ${contId}. Потрачено 5 ед. материалов.` : `[ERROR] Недостаточно стройматериалов (нужно 5 ед. дерева/пластика).`;
+                    feedback = contId ? `[КРАФТ] Создан контейнер ${contId}. Потрачено 5 дерева.` : `[ERROR] Недостаточно дерева (нужно 5 wood).`;
                     updateInventoryDisplay();
                     updateCharacterSheet();
                 } else {
@@ -2012,18 +1984,12 @@ async function executeCommand(command, args) {
 
                     if (player.container_backpack) {
                         const bp = ContainerRegistry.get(player.container_backpack);
-                        const id = getContainerItems(bp).find(i => {
-                            const it = ItemRegistry.get(i);
-                            return i === searchTerm || (it && it.prototype_id === searchTerm);
-                        });
+                        const id = getContainerItems(bp).find(i => i === searchTerm || ItemRegistry.get(i).prototype_id === searchTerm);
                         if (id) item = ItemRegistry.get(id);
                     }
                     if (!item && player.container_equipment) {
                         const eq = ContainerRegistry.get(player.container_equipment);
-                        const id = getContainerItems(eq).find(i => {
-                            const it = ItemRegistry.get(i);
-                            return i === searchTerm || (it && it.prototype_id === searchTerm);
-                        });
+                        const id = getContainerItems(eq).find(i => i === searchTerm || ItemRegistry.get(i).prototype_id === searchTerm);
                         if (id) {
                             item = ItemRegistry.get(id);
                             isEquipped = true;
@@ -2162,10 +2128,10 @@ const OldTradeSystem = {
         containerIds.forEach(containerId => {
             const cont = ContainerRegistry.get(containerId);
             if (cont) {
-                        getContainerItems(cont).forEach(itemId => {
-            const it = ItemRegistry.get(itemId);
-            if (isCurrency(it)) itemIds.add(itemId);
-        });
+                getContainerItems(cont).forEach(itemId => {
+                    const it = ItemRegistry.get(itemId);
+                    if (it && (it.prototype_id === 'gold' || it.prototype_id === 'gold_ingot' || it.custom_props?.aiIdentifier === 'gold')) itemIds.add(itemId);
+                });
             }
         });
         return {
@@ -2385,7 +2351,7 @@ const OldTradeSystem = {
 
         const physicalGoldItems = [...getContainerItems(targetContainer)].filter(itemId => {
             const it = ItemRegistry.get(itemId);
-            return isCurrency(it);
+            return it && (it.prototype_id === 'gold' || it.prototype_id === 'gold_ingot' || it.custom_props?.aiIdentifier === 'gold');
         });
         for (const goldItemId of physicalGoldItems) {
             if (remaining <= 0) break;
@@ -2420,12 +2386,7 @@ const OldTradeSystem = {
             if (existingGoldId) {
                 ItemRegistry.get(existingGoldId).stack_size += remaining;
             } else {
-                let currencyId = 'gold';
-                if (typeof ECONOMY_ITEMS !== 'undefined') {
-                    const cIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('currency'));
-                    if (cIds.length > 0) currencyId = cIds[0];
-                }
-                const createdGoldId = await CoreInventorySystemAsync.createItem(currencyId, remaining, trade.initiator_container, { name: getItemName(currencyId, player?.era) });
+                const createdGoldId = await CoreInventorySystemAsync.createItem('gold', remaining, trade.initiator_container, { name: getItemName('gold', player?.era) });
                 createdItemIds.push(createdGoldId);
             }
             remaining = 0;
@@ -2899,6 +2860,23 @@ let FACILITY_NAMES = {};
 let TREK_CONFIG = { base_travel_speed: 5, tick_interval_ms: 1000 };
 window.DISABLE_LOCALIZATION = false;
 
+function syncRuntimeRegistries() {
+    ECONOMY_ITEMS = window.ECONOMY_ITEMS || {};
+    CRAFTING_RECIPES = window.CRAFTING_RECIPES || [];
+    FACILITY_NAMES = window.FACILITY_NAMES || {};
+    TREK_CONFIG = window.TREK_CONFIG || { base_travel_speed: 5, tick_interval_ms: 1000 };
+}
+
+function getLocalizedRuntimeAssetPaths(primaryKey, fallbackKey, replacements = {}) {
+    const primary = typeof window.resolveWorldAssetPath === 'function'
+        ? window.resolveWorldAssetPath(primaryKey, replacements)
+        : '';
+    const fallback = typeof window.resolveWorldAssetPath === 'function'
+        ? window.resolveWorldAssetPath(fallbackKey, replacements)
+        : '';
+    return { primary, fallback };
+}
+
 function parseLocString(str, disableLoc = window.DISABLE_LOCALIZATION) {
     if (typeof str !== 'string') return str;
     let result = str;
@@ -3047,13 +3025,9 @@ async function preSimulateWorldHistory(yearsToSimulate) {
             updatePortPanel();
             if (typeof updateHoldingsDisplay === 'function') updateHoldingsDisplay();
             document.dispatchEvent(new Event('PreSimulateComplete'));
-            return true;
+            return;
         } else {
             console.error("[Nexus] Ошибка пре-симуляции:", res);
-            IS_PRE_SIMULATING = false;
-            hideLoadingScreen();
-            showCustomAlert("Критическая ошибка симуляции: " + (res.message || "Таймаут движка"));
-            return false;
         }
     } else {
         console.error("[Nexus] Нативный движок недоступен для пре-симуляции!");
@@ -3061,7 +3035,6 @@ async function preSimulateWorldHistory(yearsToSimulate) {
     
     IS_PRE_SIMULATING = false;
     document.dispatchEvent(new Event('PreSimulateComplete'));
-    return true;
 }
 
 function processMonsterQuests() {
@@ -3294,12 +3267,7 @@ async function runWorldSimulationTick() {
             const capitalRegionId = Object.keys(World.regions).find(rid => World.regions[rid].factionId === fId);
             let gold = 0;
             if (capitalRegionId && World.regions[capitalRegionId]?.vault_id) {
-                let currencyIds = ['gold_ingot'];
-                if (typeof ECONOMY_ITEMS !== 'undefined') {
-                    const cIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('currency'));
-                    if (cIds.length > 0) currencyIds = cIds;
-                }
-                currencyIds.forEach(id => gold += countRealItems(World.regions[capitalRegionId].vault_id, id));
+                gold = countRealItems(World.regions[capitalRegionId].vault_id, 'gold_ingot');
             }
             const manpower = availableManpower(f);
             worldSummary += `Фракция: ${f.name}. Доступная живая сила: ${manpower}. Золото в столице: ${gold}. Армий в походе СЕЙЧАС: ${f.armies.length}.\n`;
@@ -3318,7 +3286,12 @@ async function runWorldSimulationTick() {
             .join("\n");
         worldSummary += `\nХронология системных событий за этот период:\n${recentNews || "Нет свежих данных"}\n`;
 
-        let currentDateStr = `${player.gameTime.day} ${FANTASY_MONTHS[player.gameTime.month - 1]}, ${player.gameTime.year} года`;
+        let mName = "Месяца";
+        if (window.WORLD_CONFIG && window.WORLD_CONFIG.months && window.WORLD_CONFIG.months[player.gameTime.month - 1]) {
+            const m = window.WORLD_CONFIG.months[player.gameTime.month - 1];
+            mName = typeof t === 'function' ? t(m.name_i18n_key, null, m.id) : m.id;
+        }
+        let currentDateStr = `${player.gameTime.day} ${mName}, ${player.gameTime.year} года`;
         
         const prompt = `### ДИРЕКТИВА: ДВИЖОК МИРА (WORLD SIMULATOR) v5.0\nТы — аналитический модуль. Твоя задача: написать историческую сводку ("Вести из Эфира") на основе СЫРЫХ ДАННЫХ.\n\n[СИСТЕМНОЕ ВРЕМЯ]:\n- Текущая дата: ${currentDateStr}\n- Времени прошло с прошлой сводки: ровно ${daysPassed} дней.\n\n${worldSummary}\n\nПРИКАЗЫ (ЛОГИКА И ФАКТЫ):\n1. Внимательно изучи "Хронологию системных событий". Обращай внимание на пометку "[X дн. назад]". Если осада началась 14 дней назад и длилась 4 дня, значит ОНА УЖЕ ЗАВЕРШИЛАСЬ. Не смей писать, что город "продержится еще 4 дня"!\n2. Сверься с "ТЕКУЩИМ СОСТОЯНИЕМ МИРА". Если в списке "Армий в походе СЕЙЧАС" у фракции 0 армий, значит в ДАННЫЙ МОМЕНТ она никого не осаждает и никуда не идет. Все её походы из Хронологии уже завершены, описывай их как прошлые события.\n3. Опиши события в прошедшем времени, как историк, подводящий итоги за ${daysPassed} дней. Оперируй только фактами из сводки, НЕ ВЫДУМЫВАЙ действия армий, если их нет в логах.\n4. Начни текст с четкого обозначения прошедшего времени (Например: "За минувшие ${daysPassed} дней...", "К ${currentDateStr} ситуация...").\n5. Твой ответ ДОЛЖЕН БЫТЬ СТРОГО ВАЛИДНЫМ JSON ОБЪЕКТОМ. Массив actions оставляй ПУСТЫМ [].\nФормат:\n{\n  "narrative": "Твоя точная и логичная хроника событий...",\n  "actions": []\n}`;
         
@@ -3351,10 +3324,6 @@ async function runWorldSimulationTick() {
             }
             
             addLogMessage(res.narrative, "world-event");
-        }
-
-        if (typeof EventBus !== 'undefined') {
-            EventBus.emit('world:tick', World);
         }
 
     } catch (e) { 
@@ -3393,7 +3362,7 @@ let USE_SPRITE_RENDERER = true;
 let currentLocalMapPlots = null;
 let currentLocalMapSize = { width: 0, height: 0 };
 
-let TILE_SPRITE_MAP = { 'void': { x: 0, y: 0 } };
+let TILE_SPRITE_MAP = {};
 let AVAILABLE_TILES_LIST = "";;
 
 function getSpriteCoords(type) {
@@ -3404,42 +3373,34 @@ async function loadTileSet() {
     try {
         const response = await fetch('assets/assets/kenny1bit-tagger/tile_tags.json?t=' + Date.now());
         if (response.ok) {
-            const text = await response.text();
-            try {
-                const data = JSON.parse(text);
-                if (data.mappings) {
-                    TILE_SPRITE_MAP = data.mappings;
-                    AVAILABLE_TILES_LIST = Object.keys(TILE_SPRITE_MAP).join(', ');
-                    console.log(`[TileSet] Загружен маппинг тайлов: ${Object.keys(TILE_SPRITE_MAP).length} шт.`);
-                }
-            } catch (jsonError) {
-                console.error(`[TileSet] КРИТИЧЕСКАЯ ОШИБКА: Файл tile_tags.json поврежден и содержит JS-код вместо JSON. Полученный текст (первые 200 символов):\n"${text.substring(0, 200)}"`, jsonError);
-                if (!TILE_SPRITE_MAP['void']) {
-                    TILE_SPRITE_MAP['void'] = { x: 0, y: 0 };
-                }
+            const data = await response.json();
+            if (data.mappings) {
+                TILE_SPRITE_MAP = data.mappings;
+                AVAILABLE_TILES_LIST = Object.keys(TILE_SPRITE_MAP).join(', ');
+                console.log(`[TileSet] Загружен маппинг тайлов: ${Object.keys(TILE_SPRITE_MAP).length} шт.`);
             }
         } else {
-            console.warn('[TileSet] Не удалось загрузить tileset.json, статус:', response.status);
+            console.warn('[TileSet] Не удалось загрузить tileset.json');
         }
     } catch (e) {
-        console.error('[TileSet] Ошибка сетевого запроса tileset.json:', e);
+        console.error('[TileSet] Ошибка загрузки tileset.json:', e);
     }
 
-            return new Promise((resolve) => {
-            const img = new Image();
-            img.onload = () => {
-                TILESET_IMAGE = img;
-                console.log('[TileSet] Загружен спрайт-лист Kenney 1-Bit');
-                resolve(true);
-            };
-            img.onerror = (err) => {
-                console.error('[TileSet] Ошибка загрузки спрайт-листа, используем fallback CSS', err);
-                USE_SPRITE_RENDERER = false;
-                resolve(false);
-            };
-            img.src = 'assets/assets/kenny1bit-tagger/Tilesheet/colored-transparent.png';
-        });
-    }
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            TILESET_IMAGE = img;
+            console.log('[TileSet] Загружен спрайт-лист Kenney 1-Bit');
+            resolve(true);
+        };
+        img.onerror = (err) => {
+            console.error('[TileSet] Ошибка загрузки спрайт-листа, используем fallback CSS', err);
+            USE_SPRITE_RENDERER = false;
+            resolve(false);
+        };
+        img.src = 'assets/assets/kenny1bit-tagger/Tilesheet/colored-transparent.png';
+    });
+}
 
 function toggleMapRenderer(useSprite) {
     USE_SPRITE_RENDERER = useSprite;
@@ -3466,15 +3427,14 @@ function toggleMapRenderer(useSprite) {
 // --- ПЕРЕМЕННЫЕ КАРТЫ ПЕРЕНЕСЕНЫ В Nexus Cartographer ---
 
 // Глобальные переменные для новой системы экипировки
-const bodySlots = window.gamedata?.equipment_slots || ['head', 'face', 'neck', 'shoulders', 'torso', 'right_hand', 'left_hand', 'legs', 'feet'];
-let equipmentElements = {}; // Будет заполнен в DOMContentLoaded
+let bodySlots = []; // Заполняется динамически из window.EQUIPMENT_SLOTS
+let equipmentElements = {}; // Будет заполнен динамически
 const inventoryTabsContainer = document.querySelector('.inventory-tabs');
 
 // Добавить к остальным глобальным переменным
 let currentInventoryFilter = 'all';
 
 // Словарь типов для локальной карты
-// TODO: Load from data/city_gen.json instead of hardcoding — deduplicate with ProtoSystem/СityGen/js/main.js
 const tileTypeDictionary = {
     d_wall: "Стена темницы", d_wall_moss: "Замшелая стена", d_wall_crack: "Треснувшая стена", d_wall_iron: "Железная перегородка", d_wall_bars: "Тюремная решетка", d_floor: "Пол подземелья", d_floor_blood: "Окровавленный пол", d_floor_grate: "Ржавая решетка в полу", d_door: "Укрепленная дверь", d_door_locked: "Запертая дверь", d_stairs_up: "Лестница наверх", d_stairs_down: "Лестница вниз", d_pillar: "Каменная колонна", d_barrel: "Бочка", d_crate: "Ящик", d_webs: "Паутина", d_spikes: "Ловушка с шипами", d_pit: "Глубокая яма", d_chains: "Цепи на стене", d_skeleton: "Скелет узника",
     c_wall_brick: "Кирпичная стена", c_wall_plank: "Стена из досок", c_wall_rich: "Обои с узором", c_floor_cobble: "Брусчатка", c_floor_wood: "Паркет", c_floor_carpet: "Красный ковер", c_door_front: "Входная дверь", c_door_rich: "Резная дверь", c_bed: "Кровать", c_bookshelf: "Книжный шкаф", c_wardrobe: "Шкаф", c_desk: "Письменный стол", c_chair: "Стул", c_fireplace: "Камин", c_anvil: "Наковальня", c_forge: "Горн", c_fountain: "Фонтан", c_statue: "Статуя героя", c_sign: "Вывеска", c_cart: "Повозка",
@@ -3572,12 +3532,8 @@ let promptVariablesCache = {};
         return;
     }
 
-    const filePath = `assets/promts/epo_DC/${eraId}.txt`;
-    console.log(`[Context] Подгрузка базы данных эпохи: ${filePath}`);
     try {
-        const response = await fetch(`${filePath}?t=${Date.now()}`);
-        if (!response.ok) throw new Error(`Файл ${eraId}.txt не найден`);
-        activeEraSpecialLore = await response.text();
+        activeEraSpecialLore = await loadPromptFromFile(`era_lore.${eraId}`);
         
         // --- ИНТЕГРАЦИЯ МОДОВ (ЭПОХА) ---
         if (window.ModAPI) {
@@ -3653,9 +3609,9 @@ let eroticPreferences = {
 let backgroundChangeTimer = null;
 
 function handleQuickStart() {
-    const races = (window.gamedata?.races) ? Object.keys(window.gamedata.races) : ['human', 'elf', 'dwarf'];
-    const classes = (window.gamedata?.classes) ? window.gamedata.classes.map(c => c.id) : ['warrior', 'mage', 'rogue', 'bard'];
-    const eras = (window.gamedata?.eras) ? window.gamedata.eras.map(e => e.id) : ['rebirth', 'architects', 'sundering', 'silence'];
+    const races = (window.RACES_DATA && window.RACES_DATA.length > 0) ? window.RACES_DATA.map(r => r.id) : ['human'];
+    const classes = (window.CLASSES_DATA && window.CLASSES_DATA.length > 0) ? window.CLASSES_DATA.map(c => c.id) : ['warrior'];
+    const eras = (window.ERAS_DATA && window.ERAS_DATA.length > 0) ? window.ERAS_DATA.map(e => e.id) : ['rebirth'];
     const names = ['Странник', 'Наемник', 'Искатель', 'Тень', 'Вестник', 'Бродяга'];
 
     charRaceSelect.value = races[Math.floor(Math.random() * races.length)];
@@ -3813,9 +3769,11 @@ function updateGmNotesDisplay() {
 
 async function loadNarrators() {
     try {
-        const response = await fetch('data/narrators.json');
-        if (!response.ok) throw new Error('Не удалось загрузить narrators.json');
-        narrators = await response.json();
+        if (typeof window.ensureRuntimeDataLoaded === 'function') {
+            await window.ensureRuntimeDataLoaded();
+        }
+        narrators = Array.isArray(window.NARRATORS_DATA) ? window.NARRATORS_DATA : [];
+        if (narrators.length === 0) throw new Error('Narrators registry is empty');
         console.log("Рассказчики загружены:", narrators);
     } catch (error) {
         console.error("Ошибка загрузки рассказчиков:", error);
@@ -3851,6 +3809,47 @@ function showNarrator(index) {
 }
 
 // --- Функции Управления Экраном Загрузки (НОВОЕ) ---
+
+function populateErasUI(erasData) {
+    if (!charEraSelect || !erasData) return;
+    charEraSelect.innerHTML = '';
+    erasData.forEach((era, index) => {
+        const opt = document.createElement('option');
+        opt.value = era.id;
+        opt.dataset.descriptionKey = era.description_i18n_key || `characterCreation.era${era.id.charAt(0).toUpperCase() + era.id.slice(1)}Desc`;
+        opt.textContent = typeof t === 'function' ? t(era.display_name_i18n_key, null, era.name) : era.name;
+        if (index === 0) opt.selected = true;
+        charEraSelect.appendChild(opt);
+    });
+    updateEraDescription();
+}
+
+function populateRacesUI(racesData) {
+    if (!charRaceSelect || !racesData) return;
+    const currentValue = charRaceSelect.value;
+    charRaceSelect.innerHTML = `<option value="" disabled ${!currentValue ? 'selected' : ''} data-i18n="characterCreation.racePlaceholder">${typeof t === 'function' ? t('characterCreation.racePlaceholder') : '-- Выберите расу --'}</option>`;
+    racesData.forEach(race => {
+        const opt = document.createElement('option');
+        opt.value = race.id;
+        const i18nKey = `characterCreation.race${race.id.charAt(0).toUpperCase() + race.id.slice(1)}`;
+        opt.textContent = typeof t === 'function' ? t(i18nKey, null, race.name) : race.name;
+        if (race.id === currentValue) opt.selected = true;
+        charRaceSelect.appendChild(opt);
+    });
+}
+
+function populateClassesUI(classesData) {
+    if (!charClassSelect || !classesData) return;
+    const currentValue = charClassSelect.value;
+    charClassSelect.innerHTML = `<option value="" disabled ${!currentValue ? 'selected' : ''} data-i18n="characterCreation.classPlaceholder">${typeof t === 'function' ? t('characterCreation.classPlaceholder') : '-- Выберите класс --'}</option>`;
+    classesData.forEach(cls => {
+        const opt = document.createElement('option');
+        opt.value = cls.id;
+        opt.textContent = typeof t === 'function' && cls.display_name_i18n_key ? t(cls.display_name_i18n_key, null, cls.name) : cls.name;
+        if (cls.id === currentValue) opt.selected = true;
+        charClassSelect.appendChild(opt);
+    });
+}
 
 function updateEraDescription() {
     if (!charEraSelect || !eraDescriptionBox) return;
@@ -4160,17 +4159,7 @@ function buildFullPlayerSnapshot() {
             
             worldContextString += `[SYS_VEC | LOC:${r.id} | SEA:${r.current_season} | WTH:${r.weather || "clear"} | FAC:${ownerId} | THR:${r.threat_level} | STAB:${r.stability} | OCC:${r.isOccupied}]\n`;
             
-            let foodId = 'bread';
-            let woodId = 'wood';
-            let oreId = 'iron_ore';
-            let weapId = 'weapons';
-            if (typeof ECONOMY_ITEMS !== 'undefined') {
-                foodId = Object.keys(ECONOMY_ITEMS).find(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('food')) || foodId;
-                woodId = Object.keys(ECONOMY_ITEMS).find(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('wood')) || woodId;
-                oreId = Object.keys(ECONOMY_ITEMS).find(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('ore')) || oreId;
-                weapId = Object.keys(ECONOMY_ITEMS).find(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('weapon')) || weapId;
-            }
-            let prices = `food:${Math.round(r.markets[foodId] || 5)},wood:${Math.round(r.markets[woodId] || 2)},ore:${Math.round(r.markets[oreId] || 3)},weap:${Math.round(r.markets[weapId] || 40)}`;
+            let prices = `food:${Math.round(r.markets.bread || 5)},wood:${Math.round(r.markets.wood || 2)},ore:${Math.round(r.markets.iron_ore || 3)},weap:${Math.round(r.markets.weapons || 40)}`;
             worldContextString += `[ECON_VEC | LOC:${r.id} | PRICES:${prices}]\n`;
             
             if (r.cityLayout && r.cityLayout.length > 0) {
@@ -4243,13 +4232,13 @@ function buildFullPlayerSnapshot() {
             if (!containerLocation || !playerPhysicalLocation) return false;
             return checkDistance(playerPhysicalLocation, containerLocation);
         })
-        .filter(c => getContainerItems(c).length > 0 || getContainerDef(c.type)?.category === 'faction' || c.owner_id === 'player');
+        .filter(c => getContainerItems(c).length > 0 || c.type === 'faction_vault' || c.owner_id === 'player');
         
     filteredContainers.sort((a, b) => {
         if (a.owner_id === 'player' && b.owner_id !== 'player') return -1;
         if (b.owner_id === 'player' && a.owner_id !== 'player') return 1;
-        if (getContainerDef(a.type)?.category === 'faction' && getContainerDef(b.type)?.category !== 'faction') return -1;
-        if (getContainerDef(b.type)?.category === 'faction' && getContainerDef(a.type)?.category !== 'faction') return 1;
+        if (a.type === 'faction_vault' && b.type !== 'faction_vault') return -1;
+        if (b.type === 'faction_vault' && a.type !== 'faction_vault') return 1;
         return 0;
     });
 
@@ -4577,7 +4566,7 @@ function applyEffectAction(entity, effect, action) {
                 if (stat === 'hp') {
                     entity.stats.hp = Math.max(0, Math.min(entity.stats.hp, entity.stats.maxHp));
                 }
-                if (stat === 'mana' && classHasAbility(entity.class, 'spellcasting')) {
+                if (stat === 'mana' && entity.class === 'mage') {
                     entity.stats.mana = Math.max(0, Math.min(entity.stats.mana, entity.stats.maxMana));
                 }
 
@@ -4913,200 +4902,7 @@ function closeAiErrorModal() {
     setTimeout(() => aiErrorModal.style.display = 'none', 300);
 }
 
-const AutocompleteController = {
-    dropdown: null,
-    input: null,
-    suggestions: [],
-    activeIndex: -1,
-
-    init: function() {
-        this.dropdown = document.getElementById('input-autocomplete-dropdown');
-        this.input = document.getElementById('user-input');
-        if (!this.dropdown || !this.input) return;
-
-        this.input.addEventListener('input', (e) => this.onInput(e));
-        this.input.addEventListener('keydown', (e) => this.onKeyDown(e));
-        
-        // Скрытие при клике снаружи
-        document.addEventListener('click', (e) => {
-            if (e.target !== this.input && e.target !== this.dropdown && !this.dropdown.contains(e.target)) {
-                this.hide();
-            }
-        });
-    },
-
-    getCommands: function() {
-        const commands = [
-            { value: '/use ', desc: 'использовать предмет из рюкзака', type: 'Расходник' },
-            { value: '/equip ', desc: 'экипировать предмет в слот', type: 'Экипировка' },
-            { value: '/unequip ', desc: 'снять предмет в рюкзак', type: 'Экипировка' },
-            { value: '/travel ', desc: 'отправиться в путешествие', type: 'Путь' },
-            { value: '/status', desc: 'показать активные статус-эффекты', type: 'Инфо' },
-            { value: '/help', desc: 'открыть справочник помощи', type: 'Инфо' }
-        ];
-        
-        if (window.ModAPI && window.ModAPI.customCommands) {
-            Object.keys(window.ModAPI.customCommands).forEach(cmd => {
-                commands.push({ value: '/' + cmd + ' ', desc: 'кастомная команда из мода', type: 'Мод' });
-            });
-        }
-        return commands;
-    },
-
-    onInput: function(e) {
-        const val = this.input.value;
-        if (!val.startsWith('/')) {
-            this.hide();
-            return;
-        }
-
-        const parts = val.split(' ');
-        const baseCmd = parts[0].toLowerCase();
-
-        if (parts.length === 1) {
-            const list = this.getCommands().filter(c => c.value.toLowerCase().startsWith(baseCmd));
-            this.show(list);
-        } else if (parts.length === 2) {
-            const argQuery = parts[1].toLowerCase();
-            let list = [];
-
-            if (baseCmd === '/use') {
-                const bp = ContainerRegistry.get(player?.container_backpack);
-                if (bp && bp.items) {
-                    const seen = new Set();
-                    bp.items.forEach(id => {
-                        const it = ItemRegistry.get(id);
-                        if (it && !seen.has(it.prototype_id)) {
-                            const name = it.custom_props?.name || it.prototype_id;
-                            if (name.toLowerCase().includes(argQuery) || it.prototype_id.toLowerCase().includes(argQuery)) {
-                                list.push({ value: '/use ' + it.prototype_id, desc: name, type: 'Расходник' });
-                                seen.add(it.prototype_id);
-                            }
-                        }
-                    });
-                }
-            } else if (baseCmd === '/equip') {
-                const bp = ContainerRegistry.get(player?.container_backpack);
-                if (bp && bp.items) {
-                    const seen = new Set();
-                    bp.items.forEach(id => {
-                        const it = ItemRegistry.get(id);
-                        if (it && it.custom_props?.slot && !seen.has(it.prototype_id)) {
-                            const name = it.custom_props?.name || it.prototype_id;
-                            if (name.toLowerCase().includes(argQuery) || it.prototype_id.toLowerCase().includes(argQuery)) {
-                                list.push({ value: '/equip ' + it.prototype_id, desc: name + ' (' + it.custom_props.slot + ')', type: 'Снаряжение' });
-                                seen.add(it.prototype_id);
-                            }
-                        }
-                    });
-                }
-            } else if (baseCmd === '/unequip') {
-                const eq = ContainerRegistry.get(player?.container_equipment);
-                if (eq && eq.items) {
-                    eq.items.forEach(id => {
-                        const it = ItemRegistry.get(id);
-                        if (it && it.slot_index) {
-                            const name = it.custom_props?.name || it.prototype_id;
-                            if (it.slot_index.toLowerCase().includes(argQuery) || name.toLowerCase().includes(argQuery)) {
-                                list.push({ value: '/unequip ' + it.slot_index, desc: name, type: 'Слот' });
-                            }
-                        }
-                    });
-                }
-            } else if (baseCmd === '/travel') {
-                const locs = [
-                    ...(typeof globalLocations === 'object' ? Object.keys(globalLocations) : []),
-                    ...(player?.mapMarkers ? Object.keys(player.mapMarkers) : [])
-                ].filter(id => id !== 'startLocation');
-                
-                const seen = new Set();
-                locs.forEach(id => {
-                    if (seen.has(id)) return;
-                    seen.add(id);
-                    const name = globalLocations[id]?.name || player.mapMarkers[id]?.name || id;
-                    if (name.toLowerCase().includes(argQuery) || id.toLowerCase().includes(argQuery)) {
-                        list.push({ value: '/travel ' + id, desc: name, type: 'Локация' });
-                    }
-                });
-            }
-
-            this.show(list);
-        } else {
-            this.hide();
-        }
-    },
-
-    show: function(list) {
-        this.suggestions = list.slice(0, 10); 
-        if (this.suggestions.length === 0) {
-            this.hide();
-            return;
-        }
-
-        this.dropdown.innerHTML = '';
-        this.suggestions.forEach((item, idx) => {
-            const el = document.createElement('div');
-            el.className = 'autocomplete-item';
-            if (idx === this.activeIndex) el.classList.add('active');
-            
-            el.innerHTML = '<div style="display:flex; flex-direction:column;">' +
-                '<span style="font-weight:bold;">' + escapeHTML(item.value) + '</span>' +
-                '<span class="item-desc">' + escapeHTML(item.desc) + '</span>' +
-                '</div>' +
-                '<span class="item-type-tag">' + escapeHTML(item.type) + '</span>';
-
-            el.addEventListener('click', () => {
-                this.selectItem(item.value);
-            });
-
-            this.dropdown.appendChild(el); 
-        });
-
-        this.dropdown.style.display = 'flex';
-    },
-
-    hide: function() {
-        if (this.dropdown) {
-            this.dropdown.style.display = 'none';
-        }
-        this.suggestions = [];
-        this.activeIndex = -1;
-    },
-
-    selectItem: function(val) {
-        this.input.value = val;
-        this.hide();
-        this.input.focus();
-    },
-
-    onKeyDown: function(e) {
-        if (this.dropdown.style.display === 'none' || this.suggestions.length === 0) return;
-
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            this.activeIndex = (this.activeIndex + 1) % this.suggestions.length;
-            this.show(this.suggestions);
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            this.activeIndex = (this.activeIndex - 1 + this.suggestions.length) % this.suggestions.length;
-            this.show(this.suggestions);
-        } else if (e.key === 'Enter') {
-            if (this.activeIndex >= 0 && this.activeIndex < this.suggestions.length) {
-                e.preventDefault();
-                this.selectItem(this.suggestions[this.activeIndex].value);
-            }
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            this.hide();
-        }
-    }
-};
-
-
-    document.addEventListener('DOMContentLoaded', () => {
-    // Инициализация контроллера автокомплита
-    AutocompleteController.init();
-
+document.addEventListener('DOMContentLoaded', () => {
     if (aiErrorDetailsToggle) {
         aiErrorDetailsToggle.addEventListener('click', () => {
             if (aiErrorDetailsContent.style.display === 'none') {
@@ -5578,12 +5374,17 @@ async function loadItemsReference() {
     }
 
     const isDefault = currentLanguage === DEFAULT_LANGUAGE;
-    const filePath = isDefault ? `assets/promts/items_reference.json` : `assets/promts/items_reference_${currentLanguage}.json`;
+    const { primary, fallback } = getLocalizedRuntimeAssetPaths(
+        isDefault ? 'items_reference_default' : 'items_reference_template',
+        'items_reference_default',
+        { lang: currentLanguage }
+    );
+    const filePath = primary || fallback;
     console.log(`Попытка загрузить справочник предметов из: ${filePath}`);
     try {
         let response = await fetch(`${filePath}?t=${Date.now()}`);
         if (!response.ok && !isDefault) {
-            response = await fetch(`assets/promts/items_reference.json?t=${Date.now()}`);
+            response = await fetch(`${fallback}?t=${Date.now()}`);
         }
         if (!response.ok) throw new Error(`HTTP ошибка! статус: ${response.status}`);
         
@@ -5889,23 +5690,8 @@ function updateDynamicUIText() {
     if (manualTitleSpan) manualTitleSpan.innerHTML = t('loadGame.manualSavesTitle', { max: `<span id="max-manual-saves">${MAX_MANUAL_SAVES}</span>` });
     if (autoTitleSpan) autoTitleSpan.innerHTML = t('loadGame.autoSavesTitle', { max: `<span id="max-auto-saves">${MAX_AUTO_SAVES}</span>` });
 
-    const racePlaceholder = document.querySelector('#char-race-select option[value=""]');
-    if (racePlaceholder) racePlaceholder.textContent = t('characterCreation.racePlaceholder');
-    document.querySelectorAll('#char-race-select option[value]').forEach(opt => {
-        if (opt.value) {
-            const key = `characterCreation.race${opt.value.charAt(0).toUpperCase() + opt.value.slice(1)}`;
-            opt.textContent = t(key, null, opt.value);
-        }
-    });
-
-    const classPlaceholder = document.querySelector('#char-class-select option[value=""]');
-    if (classPlaceholder) classPlaceholder.textContent = t('characterCreation.classPlaceholder');
-    document.querySelectorAll('#char-class-select option[value]').forEach(opt => {
-        if (opt.value) {
-            const key = `characterCreation.class${opt.value.charAt(0).toUpperCase() + opt.value.slice(1)}`;
-            opt.textContent = t(key, null, opt.value);
-        }
-    });
+    if (typeof populateRacesUI === 'function' && window.RACES_DATA) populateRacesUI(window.RACES_DATA);
+    if (typeof populateClassesUI === 'function' && window.CLASSES_DATA) populateClassesUI(window.CLASSES_DATA);
 
     if (player && gameInterface && gameInterface.classList.contains('active-screen')) {
         if (gameTitle) gameTitle.textContent = t('appName') + ` | ${player.name}`;
@@ -6080,6 +5866,9 @@ async function initializeApp() {
         await loadTileSet();
 
     const results = await Promise.allSettled([
+        (typeof window.ensureRuntimeDataLoaded === 'function'
+            ? window.ensureRuntimeDataLoaded().then(() => syncRuntimeRegistries())
+            : Promise.resolve()),
         loadLore(DEFAULT_WORLD_ID, currentLanguage),
         loadGlobalLocations(DEFAULT_WORLD_ID, currentLanguage),
         loadSkillsReference(DEFAULT_WORLD_ID, currentLanguage),
@@ -6087,11 +5876,7 @@ async function initializeApp() {
         loadItemsReference(),
         loadCombatSystemRules(),
         loadPredefinedEffects(),
-        loadPromptFromFile('assets/promts/auto_tester_prompt.txt').then(t => autoTesterPromptTemplate = t),
-        fetch('data/economy_items.json?t=' + Date.now()).then(r => r.json()).then(d => ECONOMY_ITEMS = d),
-        fetch('data/economy_recipes.json?t=' + Date.now()).then(r => r.json()).then(d => CRAFTING_RECIPES = d),
-        fetch('data/facility_names.json?t=' + Date.now()).then(r => r.json()).then(d => FACILITY_NAMES = d),
-        fetch('data/trek_config.json?t=' + Date.now()).then(r => r.json()).then(d => TREK_CONFIG = d).catch(e => console.warn("Trek config missing, using defaults"))
+        loadPromptFromFile('auto_tester').then(t => autoTesterPromptTemplate = t)
     ]);
 
     const failedLoads = results.filter(result => result.status === 'rejected');
@@ -6131,9 +5916,7 @@ async function initializeApp() {
     setActiveScreen('main-menu');
     setupEventListeners();
 
-    bodySlots.forEach(slot => {
-        equipmentElements[slot] = document.getElementById(`equipment-slot-${slot}`);
-    });
+    // equipmentElements теперь заполняется динамически в populateEquipmentUI()
 
     startBackgroundChanger();
     updateDynamicUIText();
@@ -6174,19 +5957,10 @@ function initSettingsUI() {
         Object.values(settingsGroups).forEach(group => {
             if (group) group.style.display = 'none';
         });
-        if (window.ModAPI && window.ModAPI.customAiProviders) {
-            Object.keys(window.ModAPI.customAiProviders).forEach(id => {
-                const grp = document.getElementById(`${id}-settings-group`);
-                if (grp) grp.style.display = 'none';
-            });
-        }
 
         // 2. Показываем нужную группу
         if (settingsGroups[provider]) {
             settingsGroups[provider].style.display = 'block';
-        } else if (window.ModAPI && window.ModAPI.customAiProviders && window.ModAPI.customAiProviders[provider]) {
-            const grp = document.getElementById(`${provider}-settings-group`);
-            if (grp) grp.style.display = 'block';
         }
 
         // 3. Загружаем и устанавливаем ID модели для выбранного провайдера
@@ -6199,14 +5973,6 @@ function initSettingsUI() {
             case 'omniroute': modelId = omnirouteModelId; break;
             case 'local': modelId = localModelId; break; // Для LM Studio это тоже ID
             case 'dummy': modelId = 'dummy-test-model'; break;
-            default:
-                if (window.ModAPI && window.ModAPI.customAiProviders && window.ModAPI.customAiProviders[provider]) {
-                    const customConfig = window.ModAPI.customAiProviders[provider];
-                    if (customConfig.onSwitchView) {
-                        modelId = customConfig.onSwitchView() || '';
-                    }
-                }
-                break;
         }
         if (modelIdInput) modelIdInput.value = modelId;
 
@@ -6403,7 +6169,6 @@ const musicSlider = document.getElementById('music-volume-slider');
 function getFriendlyApiErrorMessage(status, rawText) {
     // Хардкодный словарь на случай сбоя системы локализации (t())
     const fallbacks = {
-        0: "Сервер недоступен (Сбой сети). Если вы используете локальную модель (LM Studio) или прокси (OmniRoute), убедитесь, что сервер запущен.",
         400: "Неверный запрос. Возможно, контекст слишком велик или модель не поддерживает выбранные параметры.",
         401: "Ошибка авторизации. Проверьте правильность API ключа.",
         402: "Недостаточно средств на балансе провайдера. Пополните счёт или смените модель.",
@@ -6434,25 +6199,6 @@ async function pingProvider() {
     resultDiv.style.display = 'block';
     resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin" style="color: #f39c12;"></i> Пинг провайдера...';
     btn.disabled = true;
-
-    if (window.ModAPI && window.ModAPI.customAiProviders && window.ModAPI.customAiProviders[provider]) {
-        const customProvider = window.ModAPI.customAiProviders[provider];
-        if (customProvider.pingHandler) {
-            try {
-                const res = await customProvider.pingHandler();
-                if (res && res.ok) {
-                    resultDiv.innerHTML = `<span style="color: #2ecc71;"><i class="fas fa-check"></i> ${res.message || 'Соединение установлено!'}</span>`;
-                } else {
-                    resultDiv.innerHTML = `<span style="color: #e74c3c;"><i class="fas fa-times"></i> ${res?.message || 'Ошибка соединения'}</span>`;
-                }
-            } catch (e) {
-                resultDiv.innerHTML = `<span style="color: #e74c3c;"><i class="fas fa-times"></i> Ошибка: ${e.message}</span>`;
-            } finally {
-                btn.disabled = false;
-            }
-            return;
-        }
-    }
 
     let url = ''; let headers = {}; let key = '';
     try {
@@ -6499,11 +6245,11 @@ async function pingProvider() {
                 return;
         }
 
-        const response = await window.electronAPI.proxyFetch(url, { method: 'GET', headers: headers });
+        const response = await fetch(url, { method: 'GET', headers: headers });
         if (response.ok) {
             resultDiv.innerHTML = `<span style="color: #2ecc71;"><i class="fas fa-check"></i> Соединение установлено! Ключ валиден.</span>`;
         } else {
-            const errText = response.text;
+            const errText = await response.text();
             let shortMsg = t(`apiErrors.${response.status}`, null, `Ошибка ${response.status}`);
             resultDiv.innerHTML = `<span style="color: #e74c3c;" title="${errText.replace(/"/g, '&quot;')}"><i class="fas fa-times"></i> ${shortMsg} (Код: ${response.status})</span>`;
         }
@@ -6523,26 +6269,6 @@ async function fetchModels() {
     const originalIcon = btn.innerHTML;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
     btn.disabled = true;
-
-    if (window.ModAPI && window.ModAPI.customAiProviders && window.ModAPI.customAiProviders[provider]) {
-        const customProvider = window.ModAPI.customAiProviders[provider];
-        if (customProvider.modelsHandler) {
-            try {
-                const models = await customProvider.modelsHandler();
-                if (models && models.length > 0) {
-                    showModelSelector(models);
-                } else {
-                    if (typeof showCustomAlert === 'function') showCustomAlert("Список моделей пуст.");
-                }
-            } catch (e) {
-                if (typeof showCustomAlert === 'function') showCustomAlert("Ошибка получения списка моделей: " + e.message);
-            } finally {
-                btn.innerHTML = originalIcon;
-                btn.disabled = false;
-            }
-            return;
-        }
-    }
 
     let url = ''; let headers = {}; let key = ''; let isGemini = false;
     try {
@@ -6588,9 +6314,9 @@ async function fetchModels() {
                 return;
         }
 
-        const response = await window.electronAPI.proxyFetch(url, { method: 'GET', headers: headers });
+        const response = await fetch(url, { method: 'GET', headers: headers });
         if (response.ok) {
-            const data = JSON.parse(response.text);
+            const data = await response.json();
             let models = [];
             
             if (isGemini && data.models) {
@@ -6657,7 +6383,7 @@ async function fetchModels() {
                 if (typeof showCustomAlert === 'function') showCustomAlert("Связь есть, но список моделей пуст.");
             }
         } else {
-            const errText = response.text;
+            const errText = await response.text();
             if (typeof showCustomAlert === 'function') showCustomAlert(getFriendlyApiErrorMessage(response.status, errText));
         }
     } catch (e) {
@@ -6673,7 +6399,6 @@ async function fetchModels() {
 function getFriendlyApiErrorMessage(status, rawText) {
     // Хардкодный словарь на случай сбоя системы локализации (t())
     const fallbacks = {
-        0: "Сервер недоступен (Сбой сети). Если вы используете локальную модель (LM Studio) или прокси (OmniRoute), убедитесь, что сервер запущен.",
         400: "Неверный запрос. Возможно, контекст слишком велик или модель не поддерживает выбранные параметры.",
         401: "Ошибка авторизации. Проверьте правильность API ключа.",
         402: "Недостаточно средств на балансе провайдера. Пополните счёт или смените модель.",
@@ -6756,10 +6481,10 @@ async function testApiConnection() {
                 return;
         }
 
-        const response = await window.electronAPI.proxyFetch(url, { method: 'GET', headers: headers });
+        const response = await fetch(url, { method: 'GET', headers: headers });
 
         if (response.ok) {
-            const data = JSON.parse(response.text);
+            const data = await response.json();
             resultDiv.innerHTML = `<span style="color: #2ecc71;"><i class="fas fa-check"></i> Успешно! Загрузка списка...</span>`;
             
             let models = [];
@@ -6832,7 +6557,7 @@ async function testApiConnection() {
             }
 
         } else {
-            const errText = response.text;
+            const errText = await response.text();
             let shortMsg = t(`apiErrors.${response.status}`, null, `Ошибка ${response.status}`);
             resultDiv.innerHTML = `<span style="color: #e74c3c;" title="${errText.replace(/"/g, '&quot;')}"><i class="fas fa-times"></i> ${shortMsg} (Код: ${response.status})</span>`;
             console.error("Ping error:", errText);
@@ -7070,14 +6795,6 @@ function saveSettings() {
             localModelId = modelId;
             localStorage.setItem('localModelId', localModelId);
             break;
-        default:
-            if (window.ModAPI && window.ModAPI.customAiProviders && window.ModAPI.customAiProviders[provider]) {
-                const customConfig = window.ModAPI.customAiProviders[provider];
-                if (customConfig.onSave) {
-                    customConfig.onSave(modelId);
-                }
-            }
-            break;
     }
 
     // Сохраняем ключи и URL
@@ -7175,14 +6892,8 @@ function saveSettings() {
 }
 
 async function loadEnvironmentCommandsGuide(worldId, langCode) {
-    const filePath = `assets/promts/environment_commands_guide.txt`;
-    console.log(`Попытка загрузить руководство по командам окружения из: ${filePath}`);
     try {
-        const response = await fetch(`${filePath}?t=${Date.now()}`); // ИСПРАВЛЕНИЕ: Добавлен cache-buster
-        if (!response.ok) {
-            throw new Error(`HTTP ошибка! статус: ${response.status}. Не удалось загрузить ${response.url}`);
-        }
-        environmentCommandsGuideData = await response.text();
+        environmentCommandsGuideData = await loadPromptFromFile('environment_commands_guide');
         console.log(`Руководство по командам окружения для '${worldId}' (язык: ${langCode}) успешно загружено.`);
     } catch (error) {
         console.error(`Не удалось загрузить руководство по командам окружения для '${worldId}' (язык: ${langCode}):`, error);
@@ -7192,14 +6903,8 @@ async function loadEnvironmentCommandsGuide(worldId, langCode) {
 
 
 async function loadSkillsReference() {
-    const filePath = `assets/promts/skills_reference_prompt.txt`; // Путь к файлу
-    console.log(`Попытка загрузить справочник умений из: ${filePath}`);
     try {
-        const response = await fetch(filePath);
-        if (!response.ok) {
-            throw new Error(`HTTP ошибка! статус: ${response.status}. Не удалось загрузить ${response.url}`);
-        }
-        skillsReferenceData = await response.text();
+        skillsReferenceData = await loadPromptFromFile('skills_reference');
         console.log(`Справочник умений успешно загружен.`);
     } catch (error) {
         console.error(`Не удалось загрузить справочник умений:`, error);
@@ -7226,7 +6931,9 @@ async function loadLore(worldId, langCode) {
         return;
     }
 
-    const filePath = `assets/lor/${worldId}/${langCode}/lor.txt`;
+    const filePath = typeof window.resolveWorldAssetPath === 'function'
+        ? window.resolveWorldAssetPath('lore_template', { worldId, langCode })
+        : `assets/lor/${worldId}/${langCode}/lor.txt`;
     console.log(`Попытка загрузить лор из: ${filePath}`);
 
     try {
@@ -7272,9 +6979,12 @@ async function loadGlobalLocations(worldId, langCode, eraId = 'rebirth') {
         return;
     }
 
-    const eraObj = window.gamedata?.eras?.find(e => e.id === eraId);
-    const fileName = eraObj?.default_location_file || (eraId === 'rebirth' ? 'locations_expanded.json' : `locations_${eraId}.json`);
-    const filePath = `assets/lor/${worldId}/${langCode}/${fileName}`;
+    const locationInfo = (typeof window.resolveEraLocationInfo === 'function')
+        ? window.resolveEraLocationInfo(eraId)
+        : { fileName: eraId === 'rebirth' ? 'locations_expanded.json' : `locations_${eraId}.json` };
+    const filePath = typeof window.resolveWorldAssetPath === 'function'
+        ? window.resolveWorldAssetPath('locations_template', { worldId, langCode, fileName: locationInfo.fileName })
+        : `assets/lor/${worldId}/${langCode}/${locationInfo.fileName}`;
     console.log(`Попытка загрузить локации из: ${filePath}`);
 
     try {
@@ -7443,11 +7153,6 @@ function setupEventListeners() {
                     if (isExpanded) {
                         content.style.maxHeight = content.scrollHeight + "px";
                         setTimeout(() => { if (panel.classList.contains('expanded')) content.style.maxHeight = 'none'; }, 400);
-                        
-                        // Запуск рендера миникарты при раскрытии панели Карта
-                        if (panel.classList.contains('map-panel')) {
-                            if (window.Cartographer) window.Cartographer.requestRender();
-                        }
                     } else {
                         content.style.maxHeight = content.scrollHeight + "px";
                         requestAnimationFrame(() => { content.style.maxHeight = '0'; });
@@ -7698,26 +7403,7 @@ function setupEventListeners() {
         });
     }
 
-    // --- Обработка клика по слоту экипировки для снятия предмета (V2) ---
-    bodySlots.forEach(slot => {
-        const slotElement = document.getElementById(`equipment-slot-${slot}`);
-        if (slotElement) {
-            slotElement.addEventListener('click', async (event) => {
-                if (event.currentTarget.classList.contains('equipped')) {
-                    const slotName = event.currentTarget.dataset.slot;
-                    const feedback = await unequipItem(slotName);
-                    if (feedback) {
-                        addLogMessage(feedback, 'command-feedback');
-                    }
-                }
-            });
-            // Добавляем обработчики для Drag-and-Drop
-            slotElement.addEventListener('dragenter', handleDragEnter);
-            slotElement.addEventListener('dragover', handleDragOver);
-            slotElement.addEventListener('dragleave', handleDragLeave);
-            slotElement.addEventListener('drop', handleDrop);
-        }
-    });
+    // Обработка слотов экипировки теперь происходит динамически в populateEquipmentUI()
 }
 
 function handleDragStart(event, itemData) {
@@ -8078,7 +7764,7 @@ async function finalizeCharacterCreation() {
             },
             currentCombat: { isActive: false, participants: [] },
             gameTime: { 
-                year: (window.gamedata?.eras) ? (window.gamedata.eras.find(e => e.id === selectedEra)?.start_year || 1042) : (selectedEra === 'architects' ? 850 : (selectedEra === 'sundering' ? 1 : (selectedEra === 'silence' ? 215 : 1042))), 
+                year: (window.ERAS_DATA && window.ERAS_DATA.find(e => e.id === selectedEra)?.start_year) || 1042, 
                 month: Math.floor(Math.random() * 12) + 1, 
                 day: Math.floor(Math.random() * 28) + 1, 
                 hour: 8, minute: 0, totalPulses: 0 
@@ -8124,7 +7810,7 @@ gmNotes: { "Main_Plot": "Начало пути. Игрок появляется 
         tempPlayer.stats.hp = tempPlayer.stats.maxHp;
         tempPlayer.inventoryCapacity = 10 + Math.floor((tempPlayer.stats.str - 10) / 2);
 
-        if (classHasAbility(tempPlayer.class, 'spellcasting')) {
+        if (tempPlayer.class === 'mage') {
             tempPlayer.stats.maxMana = calculateMaxMana(tempPlayer.stats.int, tempPlayer.stats.level);
             tempPlayer.stats.mana = tempPlayer.stats.maxMana;
         } else {
@@ -8209,17 +7895,15 @@ async function finalizeWorldSetupAndStart() {
     if (preloadedWorldData) {
         console.log("Используется предзагруженный мир.");
         setWorld(preloadedWorldData);
-        
-        // Восстанавливаем реестры из сохраненного мира
-        if (preloadedWorldData.savedItems) {
-            preloadedWorldData.savedItems.forEach(([k, v]) => ItemRegistry.set(k, v));
+        // Инициализируем движок, но НЕ синхронизируем мир сейчас —
+        // World JSON слишком большой (1.5МБ+), syncState таймаутится.
+        // Синхронизация будет выполнена позже, после создания контейнеров.
+        if (window.electronAPI && window.electronAPI.nexusInit) {
+            const initRes = await window.electronAPI.nexusInit(true);
+            if (initRes.status !== 'ok') {
+                console.warn('[Nexus] Init failed for preloaded world:', initRes.message);
+            }
         }
-        if (preloadedWorldData.savedContainers) {
-            preloadedWorldData.savedContainers.forEach(([k, v]) => setContainer(k, v));
-        }
-        
-        // Инициализируем движок И ЗАГРУЖАЕМ БАЗУ ДАННЫХ (isLoadMode = true)
-        await initWorldSimulator(initialAgents, absoluteStartDay, true);
     } else {
         setWorld(await initWorldSimulator(initialAgents, absoluteStartDay));
         if (!World) {
@@ -8245,8 +7929,7 @@ async function finalizeWorldSetupAndStart() {
         }
 
         if (enableWorldSim) {
-            const simSuccess = await preSimulateWorldHistory(yearsToSimulate);
-            if (!simSuccess) return; // Прерываем запуск, если симуляция упала по таймауту
+            await preSimulateWorldHistory(yearsToSimulate);
             const loadingText = document.getElementById('loading-text');
             if (loadingText) loadingText.textContent = t('loadingScreen.finalizing', null, 'Завершение...');
         }
@@ -8263,23 +7946,7 @@ async function finalizeWorldSetupAndStart() {
     // Т3 ФИКС: Передаем ответственность за выбор стартовой локации Гейм-Мастеру
     player.location = "Не определена (ГМ ОБЯЗАН выбрать логичную стартовую локацию)";
 
-    player.container_backpack = await CoreInventorySystemAsync.createContainer("player_backpack", "player", 100, 30);
-    player.container_equipment = await CoreInventorySystemAsync.createContainer("player_equipment", "player", 50, 10);
-
-    // Диагностика: убедимся, что контейнеры реально созданы и зарегистрированы
-    if (!player.container_backpack || !ContainerRegistry.has(player.container_backpack)) {
-        console.error('[Inventory] КРИТИЧЕСКАЯ ОШИБКА: рюкзак не создан! container_backpack =', player.container_backpack);
-        // Экстренное пересоздание через локальную реализацию
-        player.container_backpack = OldCoreInventorySystem.createContainer("player_backpack", "player", 100, 30);
-        console.warn('[Inventory] Экстренное пересоздание рюкзака:', player.container_backpack);
-    }
-    if (!player.container_equipment || !ContainerRegistry.has(player.container_equipment)) {
-        console.error('[Inventory] КРИТИЧЕСКАЯ ОШИБКА: экипировка не создана! container_equipment =', player.container_equipment);
-        player.container_equipment = OldCoreInventorySystem.createContainer("player_equipment", "player", 50, 10);
-        console.warn('[Inventory] Экстренное пересоздание экипировки:', player.container_equipment);
-    }
-
-    await syncPlayerContainerBindings();
+    await ensurePlayerContainers();
 
     // Для предзагруженного мира: синхронизация через ФАЙЛ, а не через stdin.
     // syncState через stdin блокирует движок (1.5MB+ JSON → 64KB pipe buffer → timeout).
@@ -8323,12 +7990,7 @@ async function finalizeWorldSetupAndStart() {
     }
 
     const currentWorldLore = worldLore;
-    let initialPromptFile = 'assets/promts/initial_prompt_rebirth.txt';
-    switch (player.era) {
-        case 'architects': initialPromptFile = 'assets/promts/initial_prompt_architects.txt'; break;
-        case 'sundering': initialPromptFile = 'assets/promts/initial_prompt_sundering.txt'; break;
-        case 'silence': initialPromptFile = 'assets/promts/initial_prompt_silence.txt'; break;
-    }
+    let initialPromptFile = `initial_prompt.${player.era}`;
     const allMapPoints = [
         ...Object.keys(globalLocations || {}).map(k => ({ ...globalLocations[k], id: k })),
         ...Object.values(player.mapMarkers || {})
@@ -8510,7 +8172,18 @@ function advanceTime(pulses) {
 function checkTimeTriggers(oldHour, newHour) {
     if (oldHour === newHour) return;
 
-    player.timeOfDay = getTimeOfDay(newHour);
+    let timeOfDay = "День";
+    if (window.WORLD_CONFIG && window.WORLD_CONFIG.time_periods) {
+        for (const tp of window.WORLD_CONFIG.time_periods) {
+            if (tp.start_hour > tp.end_hour) {
+                if (newHour >= tp.start_hour || newHour < tp.end_hour) timeOfDay = typeof t === 'function' ? t(tp.name_i18n_key, null, tp.id) : tp.id;
+            } else {
+                if (newHour >= tp.start_hour && newHour < tp.end_hour) timeOfDay = typeof t === 'function' ? t(tp.name_i18n_key, null, tp.id) : tp.id;
+            }
+        }
+    }
+
+    player.timeOfDay = timeOfDay;
 
     if (oldHour < 22 && newHour >= 22) {
         addLogMessage("На мир опускается ночь. Становится темнее и опаснее.", "system-message");
@@ -8538,7 +8211,11 @@ function updateTimeDisplay() {
         let hh = gt.hour < 10 ? '0' + gt.hour : gt.hour;
         let icon = (gt.hour >= 6 && gt.hour < 20) ? '☀️' : '🌙';
         
-        let mName = FANTASY_MONTHS[gt.month - 1] || "Месяца";
+        let mName = "Месяца";
+        if (window.WORLD_CONFIG && window.WORLD_CONFIG.months && window.WORLD_CONFIG.months[gt.month - 1]) {
+            const m = window.WORLD_CONFIG.months[gt.month - 1];
+            mName = typeof t === 'function' ? t(m.name_i18n_key, null, m.id) : m.id;
+        }
         
         timeInfo.innerHTML = `${icon} ${gt.day} ${mName}, ${gt.year} г. | ${hh}:${mm}`;
     }
@@ -8559,28 +8236,13 @@ function calculateMaxHp(constitution) {
 }
 
 function getStartingInventory(playerClass) {
-    // Data-driven: load from classes.json
-    if (window.gamedata?.classes) {
-        const classDef = window.gamedata.classes.find(c => c.id === playerClass);
-        if (classDef && classDef.starting_items) return classDef.starting_items;
-    }
-    // Fallback hardcoded
-    let startingItemConfig = {};
-    switch (playerClass) {
-        case 'warrior':
-            startingItemConfig = { 'sword_short_common': 1, 'shield_wooden_common': 1, 'potion_heal_small_common': 1 };
-            break;
-        case 'mage':
-            startingItemConfig = { 'staff_simple_common': 1, 'robe_novice_common': 1, 'mana_potion_small_common': 2 };
-            break;
-        case 'rogue':
-            startingItemConfig = { 'dagger_rusty_common': 2, 'leather_armor_light_common': 1, 'lockpicks_common': 1 };
-            break;
-        case 'bard':
-            startingItemConfig = { 'lute_simple_common': 1, 'dagger_rusty_common': 1, 'colorful_clothes_common': 1 };
-            break;
-        default:
-            return {};
+    let startingItemConfig = {}; // itemAiIdentifier: quantity
+    
+    if (window.CLASSES_DATA) {
+        const classDef = window.CLASSES_DATA.find(c => c.id === playerClass);
+        if (classDef && classDef.starting_items) {
+            startingItemConfig = classDef.starting_items;
+        }
     }
 
     const inventory = {};
@@ -8639,7 +8301,7 @@ function levelUp() {
         totalHpGainThisCycle += hpGainThisLevel;
         player.stats.hp = player.stats.maxHp; // Полное восстановление HP при уровне
 
-        if (classHasAbility(player.class, 'spellcasting')) {
+        if (player.class === 'mage') {
             player.stats.maxMana = calculateMaxMana(player.stats.int, player.stats.level);
             player.stats.mana = player.stats.maxMana; // Полное восстановление маны
         }
@@ -8647,27 +8309,18 @@ function levelUp() {
     }
 
     if (levelsGainedThisCycle > 0) {
-        if (!IS_PRE_SIMULATING && !window.isSimulatingTime) {
-            const lvlUpData = {
-                level: player.stats.level,
-                hpGain: totalHpGainThisCycle,
-                points: totalStatPointsGainedThisCycle
-            };
-            addLogMessage(JSON.stringify(lvlUpData), "level-up-card");
-        } else {
-            addLogMessage(t('gameInterface.log.levelUpSummary', {
-                finalLevel: player.stats.level
-            }), "system-message level-up");
+        addLogMessage(t('gameInterface.log.levelUpSummary', {
+            finalLevel: player.stats.level
+        }), "system-message level-up");
 
-            if (totalHpGainThisCycle > 0) {
-                addLogMessage(t('gameInterface.log.levelUpHPSummary', {
-                    totalHpGain: totalHpGainThisCycle
-                }), "system-message level-up");
-            }
-            addLogMessage(t('gameInterface.log.levelUpPointsSummary', {
-                totalStatPoints: totalStatPointsGainedThisCycle
+        if (totalHpGainThisCycle > 0) {
+            addLogMessage(t('gameInterface.log.levelUpHPSummary', {
+                totalHpGain: totalHpGainThisCycle
             }), "system-message level-up");
         }
+        addLogMessage(t('gameInterface.log.levelUpPointsSummary', {
+            totalStatPoints: totalStatPointsGainedThisCycle
+        }), "system-message level-up");
         generateWorldNews(`Герой ${player.name} достиг ${player.stats.level} уровня!`, player.location || "global", 3, 'misc');
         updateCharacterSheet(); // Обновит отображение, включая кнопки "+"
     }
@@ -8691,7 +8344,7 @@ function handleStatIncrease(event) {
     if (statToIncrease === 'str') {
         player.inventoryCapacity = 10 + Math.floor((player.stats.str - 10) / 2);
     }
-    if (statToIncrease === 'int' && classHasAbility(player.class, 'spellcasting')) {
+    if (statToIncrease === 'int' && player.class === 'mage') {
         const oldMaxMana = player.stats.maxMana;
         player.stats.maxMana = calculateMaxMana(player.stats.int, player.stats.level);
         player.stats.mana = Math.min((player.stats.mana || 0) + (player.stats.maxMana - oldMaxMana), player.stats.maxMana);
@@ -8791,17 +8444,28 @@ function updateNexusDisplay() {
 }
 
 async function loadPredefinedEffects() {
-    const isDefault = currentLanguage === DEFAULT_LANGUAGE;
-    const filePath = isDefault ? `assets/res/predefined_effects.json` : `assets/res/predefined_effects_${currentLanguage}.json`;
-    console.log(`Попытка загрузить предопределенные эффекты из: ${filePath}`);
     try {
-        let response = await fetch(`${filePath}?t=${Date.now()}`);
-        if (!response.ok && !isDefault) {
-            response = await fetch(`assets/res/predefined_effects.json?t=${Date.now()}`);
+        if (typeof window.ensureRuntimeDataLoaded === 'function') {
+            await window.ensureRuntimeDataLoaded();
         }
-        if (!response.ok) throw new Error(`HTTP ошибка! статус: ${response.status}`);
-        
-        const effectsArray = await response.json();
+
+        let effectsArray = Array.isArray(window.PREDEFINED_EFFECTS_DATA) ? window.PREDEFINED_EFFECTS_DATA : [];
+        if (effectsArray.length === 0) {
+            const isDefault = currentLanguage === DEFAULT_LANGUAGE;
+            const { primary, fallback } = getLocalizedRuntimeAssetPaths(
+                isDefault ? 'predefined_effects_default' : 'predefined_effects_template',
+                'predefined_effects_default',
+                { lang: currentLanguage }
+            );
+            console.log(`Попытка загрузить предопределенные эффекты из: ${primary || fallback}`);
+            let response = await fetch(`${(primary || fallback)}?t=${Date.now()}`);
+            if (!response.ok && !isDefault) {
+                response = await fetch(`${fallback}?t=${Date.now()}`);
+            }
+            if (!response.ok) throw new Error(`HTTP ошибка! статус: ${response.status}`);
+            effectsArray = await response.json();
+        }
+
         predefinedStatusEffects = effectsArray.reduce((acc, effect) => {
             acc[effect.id] = effect;
             return acc;
@@ -8970,6 +8634,7 @@ async function initializeGameInterface() {
 
     updateCharacterSheet();
     updateNexusDisplay();
+    if (typeof populateEquipmentUI === 'function') populateEquipmentUI();
     updateEquipmentDisplay(); // <--- ДОБАВЛЕН ВЫЗОВ
     updateHoldingsDisplay();
     updateEchoMemoryDisplay();
@@ -9289,7 +8954,7 @@ function updateCharacterSheet() {
     // RPG Health Bar Update
     _updateHpBar(player.stats.hp, effectiveStats.maxHp);
 
-    if (classHasAbility(player.class, 'spellcasting')) {
+    if (player.class === 'mage') {
         document.getElementById('mana-stat-line').style.display = 'flex';
         if (manaDisplay) manaDisplay.textContent = player.stats.mana;
         if (maxManaDisplay) maxManaDisplay.textContent = effectiveStats.maxMana;
@@ -9342,13 +9007,6 @@ function updateCharacterSheet() {
         reputationMarker.style.left = `${percent}%`;
     }
 
-    // Рендер виджетов модов
-    if (window.ModAPI) {
-        ModAPI.renderWidgets('character-top', document.querySelector('[data-region="character-top"]'));
-        ModAPI.renderWidgets('character-bottom', document.querySelector('[data-region="character-bottom"]'));
-    }
-
-
     if (levelInfoDiv) {
         levelInfoDiv.innerHTML = t('gameInterface.characterPanel.levelInfo', {
             level: `<span id="stat-level">${player.stats.level}</span>`,
@@ -9370,12 +9028,6 @@ function updateInventoryDisplay() {
     inventoryList.innerHTML = '';
     const backpack = ContainerRegistry.get(player.container_backpack);
     const allItems = backpack ? getContainerItems(backpack).map(id => ItemRegistry.get(id)).filter(Boolean) : [];
-
-    // Рендер виджетов модов
-    if (window.ModAPI) {
-        ModAPI.renderWidgets('inventory-top', document.querySelector('[data-region="inventory-top"]'));
-    }
-
 
     const countEl = document.getElementById('inventory-count');
     if (countEl) countEl.textContent = allItems.length;
@@ -9817,21 +9469,13 @@ function renderChroniclePage(page) {
             let icon = '<i class="fas fa-newspaper"></i>';
             let catName = t('extraLoc.chronicles.rumor');
             let color = '#aeb6bf';
-            const catDef = getNewsCategoryDef(news.category);
-            if (catDef) {
-                icon = `<i class="${catDef.icon}"></i>`;
-                catName = t(catDef.name_i18n_key);
-                color = catDef.color;
-            } else {
-                // fallback defaults
-                if (news.category === 'war') { icon = '<i class="fas fa-swords"></i>'; catName = t('extraLoc.chronicles.war'); color = '#e74c3c'; }
-                if (news.category === 'disaster') { icon = '<i class="fas fa-volcano"></i>'; catName = t('extraLoc.chronicles.disaster'); color = '#e67e22'; }
-                if (news.category === 'trade') { icon = '<i class="fas fa-coins"></i>'; catName = t('extraLoc.chronicles.economy'); color = '#f1c40f'; }
-                if (news.category === 'business') { icon = '<i class="fas fa-industry"></i>'; catName = t('extraLoc.chronicles.business'); color = '#9b59b6'; }
-                if (news.category === 'market') { icon = '<i class="fas fa-balance-scale"></i>'; catName = t('extraLoc.chronicles.market'); color = '#1abc9c'; }
-                if (news.category === 'logistics') { icon = '<i class="fas fa-box"></i>'; catName = t('extraLoc.chronicles.logistics'); color = '#34495e'; }
-                if (news.category === 'politics') { icon = '<i class="fas fa-landmark"></i>'; catName = t('extraLoc.chronicles.politics', null, 'Политика'); color = '#8e44ad'; }
-            }
+            if (news.category === 'war') { icon = '<i class="fas fa-swords"></i>'; catName = t('extraLoc.chronicles.war'); color = '#e74c3c'; }
+            if (news.category === 'disaster') { icon = '<i class="fas fa-volcano"></i>'; catName = t('extraLoc.chronicles.disaster'); color = '#e67e22'; }
+            if (news.category === 'trade') { icon = '<i class="fas fa-coins"></i>'; catName = t('extraLoc.chronicles.economy'); color = '#f1c40f'; }
+            if (news.category === 'business') { icon = '<i class="fas fa-industry"></i>'; catName = t('extraLoc.chronicles.business'); color = '#9b59b6'; }
+            if (news.category === 'market') { icon = '<i class="fas fa-balance-scale"></i>'; catName = t('extraLoc.chronicles.market'); color = '#1abc9c'; }
+            if (news.category === 'logistics') { icon = '<i class="fas fa-box"></i>'; catName = t('extraLoc.chronicles.logistics'); color = '#34495e'; }
+            if (news.category === 'politics') { icon = '<i class="fas fa-landmark"></i>'; catName = t('extraLoc.chronicles.politics', null, 'Политика'); color = '#8e44ad'; }
 
             let causalHtml = '';
             if (news.causal_link) {
@@ -10082,10 +9726,9 @@ function updateEnvironmentPanel() {
             
             // === ДОБАВЛЕНО: Клик по торговцу открывает рынок ===
             const isMerchant = entity.type === 'npc' && entity.traits &&
-                entity.traits.some(trait => {
-                    const traitDef = (typeof gamedata !== 'undefined' && gamedata.traits) ? gamedata.traits[trait] : null;
-                    return traitDef?.tags?.includes('merchant') || (trait.toLowerCase() === 'merchant' || trait.toLowerCase() === 'торговец' || trait.toLowerCase() === 'купец');
-                });
+                ['merchant', 'trader', 'peddler', 'торговец', 'купец'].some(t =>
+                    entity.traits.some(trait => trait.toLowerCase().includes(t))
+                );
 
             if (isMerchant) {
                 li.style.cursor = 'pointer';
@@ -10213,9 +9856,7 @@ function showEntityTooltip(event) {
 
     let econHtml = '';
     if (data.profession_type && data.profession_type !== 'none') {
-        const profMap = (window.gamedata?.professions) ?
-            Object.fromEntries(Object.entries(window.gamedata.professions).map(([k, v]) => [k, v.display_name_i18n_key ? t(v.display_name_i18n_key) : v.name])) :
-            { 'farmer': 'Крестьянин', 'artisan': 'Ремесленник', 'merchant': 'Купец', 'innkeeper': 'Трактирщик', 'ruler': 'Феодал', 'cleric': 'Священник', 'mage': 'Маг', 'mercenary': 'Наемник' };
+        const profMap = { 'farmer': 'Крестьянин', 'artisan': 'Ремесленник', 'merchant': 'Купец', 'innkeeper': 'Трактирщик', 'ruler': 'Феодал', 'cleric': 'Священник', 'mage': 'Маг', 'mercenary': 'Наемник' };
         econHtml = `<p><strong style="color: #2ecc71;">Роль:</strong> <span style="color: #ecf0f1;">${profMap[data.profession_type] || data.profession_type}</span> | <strong style="color: #f1c40f;">Капитал:</strong> ${data.savings} з.</p>`;
     }
 
@@ -10687,6 +10328,16 @@ function updateEnvironmentVisibility() {
 
 async function loadPromptFromFile(filePath) {
     try {
+        if (typeof window.ensureRuntimeDataLoaded === 'function' && !window.RUNTIME_DATABASE) {
+            await window.ensureRuntimeDataLoaded();
+        }
+        if (typeof window.getRuntimePrompt === 'function') {
+            const runtimePrompt = window.getRuntimePrompt(filePath);
+            if (runtimePrompt && typeof runtimePrompt.content === 'string') {
+                console.log(`Промпт успешно получен из runtime registry: ${filePath}`);
+                return runtimePrompt.content;
+            }
+        }
         const response = await fetch(`${filePath}?t=${Date.now()}`); // Cache busting
         if (!response.ok) {
             throw new Error(`HTTP ошибка! статус: ${response.status}, Не удалось загрузить ${response.url}`);
@@ -10741,43 +10392,8 @@ function closeInGameMenu() {
 }
 
 // --- Лог и Ввод ---
-// Казуальные карточки (RichCardRenderer и Toasts) удалены для соответствия хардкорному стилю симуляции.
-
-
 function addLogMessage(message, type = "gm-message", isRestoring = false, imagePrompt = "", savedImageBase64 = null) {
     if (!gameLog) return;
-
-    // --- СТРОГИЙ ТЕКСТОВЫЙ ЛОГ (Замена карточек) ---
-    let cleanHtml = "";
-    let textToSpeak = "";
-    let isCard = false; // Оставляем флаг для совместимости нижележащего кода, но он всегда false
-
-    if (["item-card", "quest-card", "level-up-card", "combat-card"].includes(type)) {
-        try {
-            const data = typeof message === 'string' ? JSON.parse(message) : message;
-            
-            if (type === "item-card") {
-                message = `Предмет получен: ${data.custom_props?.name || data.prototype_id} (${data.custom_props?.rarity || 'Обычный'})`;
-                type = "command-feedback";
-            } else if (type === "quest-card") {
-                const statusStr = data.status === 'completed' ? 'Выполнено' : (data.status === 'failed' ? 'Провалено' : 'Активно');
-                message = `Журнал обновлен: задание «${data.title}» (${statusStr})`;
-                type = "command-feedback";
-            } else if (type === "level-up-card") {
-                message = `Достигнут ${data.level} уровень. Макс. HP: +${data.hpGain}, Очки характеристик: +${data.points}.`;
-                type = "level-up";
-            } else if (type === "combat-card") {
-                message = data.total_damage > 0 
-                    ? `Сражение завершено. Получено урона: ${data.total_damage}.` 
-                    : `Сражение завершено. Урон не получен.`;
-                type = "system-message";
-            }
-        } catch (err) {
-            console.error("Ошибка парсинга системного сообщения:", err, message);
-            type = "system-message";
-        }
-    }
-
     message = parseLocString(message); // Авто-локализация
 
     // --- СИСТЕМА СОХРАНЕНИЯ ЛОГОВ ---
@@ -10799,15 +10415,13 @@ function addLogMessage(message, type = "gm-message", isRestoring = false, imageP
         if (type === 'user-message') category = 'user';
         else if (['system-message', 'command-feedback', 'level-up', 'calc-info'].includes(type)) category = 'system';
         else if (type === 'world-event') category = 'world-event';
-        else if (isCard) category = 'system';
 
-        textToSpeak = isCard ? textToSpeak : message;
+        let textToSpeak = message;
+    let cleanHtml = "";
 
     // Обработка текста (Markdown, RP-теги, Санитайзер)
     try {
-        if (isCard) {
-            // cleanHtml уже готов, ничего не делаем
-        } else if (type === 'world-event') {
+        if (type === 'world-event') {
             let sanitizedText = DOMPurify.sanitize(marked.parse(message));
             cleanHtml = `
                 <div class="world-event-card">
@@ -10855,14 +10469,14 @@ function addLogMessage(message, type = "gm-message", isRestoring = false, imageP
         textToSpeak = "";
     }
 
-                // Группировка системных логов (чтобы не спамить пузырями)
-            let targetBubble = null;
-            if (category === 'system' && !isCard) {
-                const lastWrapper = gameLog.lastElementChild;
-                if (lastWrapper && lastWrapper.classList.contains('wrapper-system')) {
-                    targetBubble = lastWrapper.querySelector('.system-content');
-                }
-            }
+    // Группировка системных логов (чтобы не спамить пузырями)
+    let targetBubble = null;
+    if (category === 'system') {
+        const lastWrapper = gameLog.lastElementChild;
+        if (lastWrapper && lastWrapper.classList.contains('wrapper-system')) {
+            targetBubble = lastWrapper.querySelector('.system-content');
+        }
+    }
 
     let bubbleElement = null;
 
@@ -11095,8 +10709,8 @@ function addLogMessage(message, type = "gm-message", isRestoring = false, imageP
         }
     }
 
-                    pruneGameLog();
-    gameLog.scrollTop = gameLog.scrollHeight;
+    pruneGameLog();
+    gameLog.scrollTo({ top: gameLog.scrollHeight, behavior: 'smooth' });
 }
 
 function processTurnEffects() {
@@ -11133,14 +10747,8 @@ function processTurnEffects() {
 }
 
 async function loadCombatSystemRules() {
-    const filePath = `assets/promts/combat_system_rules.txt`;
-    console.log(`Попытка загрузить правила боевой системы из: ${filePath}`);
     try {
-        const response = await fetch(`${filePath}?t=${Date.now()}`); // ИСПРАВЛЕНИЕ: Добавлен cache-buster
-        if (!response.ok) {
-            throw new Error(`HTTP ошибка! статус: ${response.status}. Не удалось загрузить ${response.url}`);
-        }
-        combatSystemRulesData = await response.text();
+        combatSystemRulesData = await loadPromptFromFile('combat_system_rules');
         console.log(`Правила боевой системы успешно загружены.`);
     } catch (error) {
         console.error(`Не удалось загрузить правила боевой системы:`, error);
@@ -11201,124 +10809,7 @@ function hideLoadingScreen() {
 async function handleUserInput() {
     let text = userInput.value.trim();
 
-    // Скрываем автокомплит при отправке
-    if (typeof AutocompleteController !== 'undefined') {
-        AutocompleteController.hide();
-    }
-
-    // --- ИНТЕРПРЕТАТОР СЛЭШ-КОМАНД (STEP 4) ---
-    if (text.startsWith('/')) {
-        const parts = text.split(' ');
-        const cmd = parts[0].toLowerCase();
-        const arg = parts.slice(1).join(' ').trim();
-        
-        if (cmd === '/equip') {
-            userInput.value = '';
-            if (rollsContainer) rollsContainer.innerHTML = '';
-            const feedback = await executeCommand('equipItem', { aiIdentifier: arg });
-            if (feedback) addLogMessage(feedback, 'command-feedback');
-            return;
-        }
-        else if (cmd === '/unequip') {
-            userInput.value = '';
-            if (rollsContainer) rollsContainer.innerHTML = '';
-            const feedback = await executeCommand('unequipItem', { slot: arg });
-            if (feedback) addLogMessage(feedback, 'command-feedback');
-            return;
-        }
-        else if (cmd === '/use') {
-            userInput.value = '';
-            if (rollsContainer) rollsContainer.innerHTML = '';
-            
-            const backpack = ContainerRegistry.get(player.container_backpack);
-            const itemId = getContainerItems(backpack).find(id => {
-                const it = ItemRegistry.get(id);
-                return it && (it.prototype_id === arg || (it.custom_props?.aiIdentifier || '').toLowerCase() === arg.toLowerCase() || (it.custom_props?.name || '').toLowerCase() === arg.toLowerCase());
-            });
-            
-            if (!itemId) {
-                addLogMessage(`[СИСТЕМА] Предмет '${arg}' не найден в вашем рюкзаке.`, 'command-feedback');
-                return;
-            }
-            
-            const item = ItemRegistry.get(itemId);
-            const proto = item.prototype_id.toLowerCase();
-            
-            // --- DATA-DRIVEN TAG SYSTEM (T3) ---
-            let template = null;
-            if (typeof ECONOMY_ITEMS !== 'undefined' && ECONOMY_ITEMS[item.prototype_id]) {
-                template = ECONOMY_ITEMS[item.prototype_id];
-            } else if (typeof itemsReferenceData !== 'undefined' && Array.isArray(itemsReferenceData)) {
-                template = itemsReferenceData.find(i => i.id === item.prototype_id);
-            }
-            
-            const itemProps = item.custom_props?.properties || template?.properties || {};
-            const tags = item.custom_props?.tags || template?.tags || [];
-            const itemName = item.custom_props?.name || template?.name || proto;
-
-            if (itemProps.heal || itemProps.nutrition) {
-                const healAmount = itemProps.heal || Math.floor(itemProps.nutrition / 2) || 15;
-                await CoreInventorySystemAsync.removeItem(itemId, 1);
-                player.stats.hp = Math.min(player.stats.maxHp, player.stats.hp + healAmount);
-                addLogMessage(`[ИСПОЛЬЗОВАНИЕ] Вы использовали '${itemName}'. Восстановлено ${healAmount} HP. Здоровье: ${player.stats.hp}/${player.stats.maxHp}`, 'level-up');
-                updateCharacterSheet();
-                updateInventoryDisplay();
-                queuePlayerActionForGM(`Player used ${itemName} and healed ${healAmount} HP.`);
-            } else if (itemProps.mana_restore || itemProps.ram_restore) {
-                const manaAmount = itemProps.mana_restore || itemProps.ram_restore || 15;
-                await CoreInventorySystemAsync.removeItem(itemId, 1);
-                player.stats.mana = Math.min(player.stats.maxMana, player.stats.mana + manaAmount);
-                addLogMessage(`[ИСПОЛЬЗОВАНИЕ] Вы использовали '${itemName}'. Восстановлено ${manaAmount} Маны/RAM. Мана: ${player.stats.mana}/${player.stats.maxMana}`, 'level-up');
-                updateCharacterSheet();
-                updateInventoryDisplay();
-                queuePlayerActionForGM(`Player used ${itemName} and restored ${manaAmount} Mana/RAM.`);
-            } else if (proto.includes('potion_heal_small') || proto.includes('лечебн')) {
-                await CoreInventorySystemAsync.removeItem(itemId, 1);
-                player.stats.hp = Math.min(player.stats.maxHp, player.stats.hp + 15);
-                addLogMessage(`[ИСПОЛЬЗОВАНИЕ] Вы выпили малый инъектор лечения (+15 HP). Здоровье: ${player.stats.hp}/${player.stats.maxHp}`, 'level-up');
-                updateCharacterSheet();
-                updateInventoryDisplay();
-                queuePlayerActionForGM("Player used Small Health Potion.");
-            } else if (proto.includes('mana_potion') || proto.includes('маны')) {
-                await CoreInventorySystemAsync.removeItem(itemId, 1);
-                player.stats.mana = Math.min(player.stats.maxMana, player.stats.mana + 15);
-                addLogMessage(`[ИСПОЛЬЗОВАНИЕ] Вы выпили малый инъектор маны (+15 Маны). Мана: ${player.stats.mana}/${player.stats.maxMana}`, 'level-up');
-                updateCharacterSheet();
-                updateInventoryDisplay();
-                queuePlayerActionForGM("Player used Small Mana Potion.");
-            } else {
-                addLogMessage(`[СИСТЕМА] Предмет '${itemName}' невозможно использовать напрямую.`, 'command-feedback');
-            }
-            return;
-        }
-        else if (cmd === '/travel') {
-            userInput.value = '';
-            if (rollsContainer) rollsContainer.innerHTML = '';
-            LivingRoads.start(arg);
-            return;
-        }
-        else if (cmd === '/status') {
-            userInput.value = '';
-            if (rollsContainer) rollsContainer.innerHTML = '';
-            const effects = Object.values(player.statusEffects || {});
-            if (effects.length === 0) {
-                addLogMessage("[СИСТЕМА] У вас нет активных статус-эффектов.", "command-feedback");
-            } else {
-                let msg = "[АКТИВНЫЕ ЭФФЕКТЫ]:\n" + effects.map(e => `- ${e.name} (${e.duration} ходов): ${e.description}`).join('\n');
-                addLogMessage(msg, "command-feedback");
-            }
-            return;
-        }
-        else if (cmd === '/help') {
-            userInput.value = '';
-            if (rollsContainer) rollsContainer.innerHTML = '';
-            setActiveScreen('help-screen');
-            return;
-        }
-    }
-
     // --- АНТИЧИТ: Удаляем вручную вписанные броски ---
-    text = text.replace(/\[ROLL_RESULT:.*?\]/gi, '').trim();
     text = text.replace(/\[ROLL_RESULT:.*?\]/gi, '').trim();
 
 
@@ -11371,19 +10862,8 @@ async function handleUserInput() {
         else if (cmd === 'test') {
             runUnitTests();
         }
-        else if (cmd === 'cmd') {
-            const commandName = args[2];
-            const jsonArgs = args.slice(3).join(' ');
-            try {
-                const parsedArgs = jsonArgs ? JSON.parse(jsonArgs) : {};
-                executeCommand(commandName, parsedArgs);
-                addLogMessage(`[DEV] Вызвана команда ${commandName} с аргументами ${jsonArgs}`, "system-message");
-            } catch (e) {
-                addLogMessage(`[DEV] Ошибка парсинга JSON аргументов: ${e.message}`, "system-message");
-            }
-        }
         else {
-            addLogMessage(`[DEV] Неизвестная команда. Доступно: /dev turn [число], /dev addmem, /dev killall, /dev skip [число], /dev test, /dev cmd [команда] [JSON аргументы]`, "system-message");
+            addLogMessage(`[DEV] Неизвестная команда. Доступно: /dev turn [число], /dev addmem, /dev killall, /dev skip [число], /dev test`, "system-message");
         }
 
         userInput.value = '';
@@ -11547,65 +11027,40 @@ async function handleUserInput() {
         }
     }
 
-            // --- АВТОМАТИЗИРОВАННАЯ БОЕВАЯ СИСТЕМА ---
-        if (player.currentCombat && player.currentCombat.isActive) {
-            // 1. Проверка на авто-завершение боя
-            let hasAliveEnemies = false;
-            let activeEnemies = [];
+    // --- АВТОМАТИЗИРОВАННАЯ БОЕВАЯ СИСТЕМА ---
+    if (player.currentCombat && player.currentCombat.isActive) {
+        // 1. Проверка на авто-завершение боя
+        const activeEnemies = player.currentCombat.participants.filter(id => player.visibleEntities[id]);
 
-            if (player.currentCombat.participants && player.currentCombat.participants.length > 0) {
-                for (const id of player.currentCombat.participants) {
-                    const ent = player.visibleEntities[id] || player.allKnownEntities[id];
-                    if (ent) {
-                        if (ent.stats.hp > 0) {
-                            hasAliveEnemies = true;
-                            activeEnemies.push(id);
-                        }
-                    } else {
-                        // Если ГМ указал ID, которого нет в реестре (опечатка или задержка создания),
-                        // мы не отменяем бой, чтобы не ломать повествование.
-                        hasAliveEnemies = true;
-                        activeEnemies.push(id);
-                    }
-                }
+        if (activeEnemies.length === 0) {
+            player.currentCombat.isActive = false;
+            player.currentCombat.participants = [];
+            finalMessageForGM += "\n\n[SYSTEM: Бой автоматически завершен. Все противники устранены или покинули поле боя. Опиши исход боя и победителя.]";
+            addCalculationMessage("[СИСТЕМА] Бой автоматически завершен.");
+            if (player.travel && player.travel.active && player.travel.paused && player.travel.pauseReason === 'combat') {
+                TravelSystem.resume();
+                finalMessageForGM += " [SYSTEM: ПУТЕШЕСТВИЕ ВОЗОБНОВЛЕНО. Упомяни, что герой продолжает путь.]";
             }
+        } else {
+            // 2. Расчет атак противников через C++ ядро
+            let playerDef = 10 + Math.floor((player.stats.dex - 10) / 2);
+            const { bonuses } = getEffectiveStats();
+            playerDef += (bonuses['res'] || 0);
 
-            if (!hasAliveEnemies) {
-                player.currentCombat.isActive = false;
-                player.currentCombat.participants = [];
-                finalMessageForGM += "\n\n[SYSTEM: Бой автоматически завершен. Все противники устранены. Опиши исход боя и победителя.]";
-                addCalculationMessage("[СИСТЕМА] Бой автоматически завершен (противники мертвы).");
-                if (player.travel && player.travel.active && player.travel.paused && player.travel.pauseReason === 'combat') {
-                    if (typeof LivingRoads !== 'undefined') LivingRoads.resume();
-                    finalMessageForGM += " [SYSTEM: ПУТЕШЕСТВИЕ ВОЗОБНОВЛЕНО. Упомяни, что герой продолжает путь.]";
-                }
-            } else {
-                // 2. Расчет атак противников через C++ ядро
-                let playerDef = 10 + Math.floor((player.stats.dex - 10) / 2);
-                const { bonuses } = getEffectiveStats();
-                playerDef += (bonuses['res'] || 0);
-
-                let enemiesData = activeEnemies; // Просто передаем массив ID
+            let enemiesData = activeEnemies; // Просто передаем массив ID
 
             const combatRes = await sendInventoryCommand('resolveEnemyAttacks', { player_def: playerDef, enemies: enemiesData });
             
             let enemyRollsText = "\n\n[SYSTEM: РЕЗУЛЬТАТЫ АТАК ПРОТИВНИКОВ В ЭТОМ ХОДУ:\n";
             if (combatRes.success && combatRes.combat_log) {
-                if (!IS_PRE_SIMULATING && !window.isSimulatingTime) {
-                    addLogMessage(JSON.stringify(combatRes), "combat-card");
-                } else {
-                    combatRes.combat_log.forEach(logLine => {
-                        enemyRollsText += "- " + logLine + "\n";
-                    });
-                    if (combatRes.total_damage > 0) {
-                        enemyRollsText += `ИТОГО УРОНА ПО ИГРОКУ: ${combatRes.total_damage}. HP игрока снижено.\n`;
-                    } else {
-                        enemyRollsText += "Игрок успешно уклонился/заблокировал все атаки.\n";
-                    }
-                    addLogMessage(enemyRollsText, "system-message");
-                }
+                combatRes.combat_log.forEach(logLine => {
+                    enemyRollsText += "- " + logLine + "\n";
+                });
                 if (combatRes.total_damage > 0) {
                     damagePlayerHP(combatRes.total_damage);
+                    enemyRollsText += `ИТОГО УРОНА ПО ИГРОКУ: ${combatRes.total_damage}. HP игрока снижено.\n`;
+                } else {
+                    enemyRollsText += "Игрок успешно уклонился/заблокировал все атаки.\n";
                 }
             }
             enemyRollsText += "СТРОЖАЙШИЙ ПРИКАЗ: ВРАГИ ЖИВЫ (HP > 0)! ТЫ ОБЯЗАН учесть эти результаты в своем художественном описании! ЗАПРЕЩЕНО завершать бой, выдавать лут или обновлять квесты! Напиши Поэту в logic_summary: 'БОЙ ПРОДОЛЖАЕТСЯ. Опиши ответный удар врагов'.]";
@@ -11663,10 +11118,7 @@ async function handleUserInput() {
         }
     }
 
-        let hasGuards = Object.values(player.visibleEntities).some(e => e.type === 'npc' && (e.profession?.toLowerCase().includes('страж') || (e.traits && e.traits.some(trait => {
-            const traitDef = (typeof gamedata !== 'undefined' && gamedata.traits) ? gamedata.traits[trait] : null;
-            return traitDef?.tags?.includes('guard') || trait === 'Стражник';
-        }))));
+        let hasGuards = Object.values(player.visibleEntities).some(e => e.type === 'npc' && (e.profession?.toLowerCase().includes('страж') || (e.traits && e.traits.includes('Стражник'))));
     if (hasGuards) {
         let bp = ContainerRegistry.get(player.container_backpack);
         let hasStolen = bp && getContainerItems(bp).some(id => ItemRegistry.get(id)?.flags?.stolen);
@@ -11718,14 +11170,6 @@ async function _internalPerformAiFetch(systemInstruction, history, providerModel
     }
     currentApiAbortController = new AbortController();
 
-    // --- КАСТОМНЫЕ ПРОВАЙДЕРЫ МОДОВ ---
-    if (window.ModAPI && window.ModAPI.customAiProviders && window.ModAPI.customAiProviders[currentApiProvider]) {
-        const customProvider = window.ModAPI.customAiProviders[currentApiProvider];
-        if (customProvider.fetchHandler) {
-            return await customProvider.fetchHandler(systemInstruction, history, providerModel, currentInput);
-        }
-    }
-
     // --- ПРОВАЙДЕР-ЗАГЛУШКА (ДЛЯ ТЕСТОВ) ---
     if (currentApiProvider === 'dummy') {
         await new Promise(resolve => setTimeout(resolve, 500)); // Имитация задержки
@@ -11749,29 +11193,11 @@ async function _internalPerformAiFetch(systemInstruction, history, providerModel
                 ]
             });
         } else {
-            let parsedActions = [];
-            try {
-                const jsonStart = currentInput.indexOf('{');
-                const arrayStart = currentInput.indexOf('[');
-                if (arrayStart !== -1 && (jsonStart === -1 || arrayStart < jsonStart)) {
-                    const matchArray = currentInput.substring(arrayStart).match(/\[\s*\{[\s\S]*\}\s*\]/);
-                    if (matchArray) parsedActions = JSON.parse(matchArray[0]);
-                } else if (jsonStart !== -1) {
-                    const matchObj = currentInput.substring(jsonStart).match(/\{[\s\S]*\}/);
-                    if (matchObj) {
-                        const parsedObj = JSON.parse(matchObj[0]);
-                        if (parsedObj.actions) parsedActions = parsedObj.actions;
-                        else parsedActions = [parsedObj];
-                    }
-                }
-            } catch (e) {
-                console.warn("Dummy provider failed to parse JSON from input:", e);
-            }
             return JSON.stringify({
                 "director_notes": "Dummy response.",
                 "time_passed": { "days": 0, "hours": 1, "minutes": 0 },
                 "narrative": "(( ТЕСТОВЫЙ ОТВЕТ ЗАГЛУШКИ. Время продвинуто на 1 час. ))\n\nВаш запрос: *" + currentInput + "*",
-                "actions": parsedActions
+                "actions": []
             });
         }
     }
@@ -11999,12 +11425,11 @@ async function _internalPerformAiFetch(systemInstruction, history, providerModel
         // 3. Отправка запроса
         let response;
         try {
-            // AbortController signal cannot be passed through IPC directly, 
-            // but we can pass the timeout/abort logic if needed. For now, we rely on the proxy.
-            response = await window.electronAPI.proxyFetch(targetUrl, {
+            response = await fetch(targetUrl, {
                 method: 'POST',
                 headers: headers,
-                body: JSON.stringify(requestBody)
+                body: JSON.stringify(requestBody),
+                signal: currentApiAbortController.signal
             });
 
             if (response.status === 429 && currentApiProvider === 'gemini' && geminiApiKeys.length > 1) {
@@ -12023,7 +11448,7 @@ async function _internalPerformAiFetch(systemInstruction, history, providerModel
         }
 
                     if (!response.ok) {
-                const errText = response.text;
+                const errText = await response.text();
                 let retry = false;
 
                 // Авто-отключение неподдерживаемых параметров (временно меняем глобальные флаги)
@@ -12055,7 +11480,7 @@ async function _internalPerformAiFetch(systemInstruction, history, providerModel
                 throw new Error(getFriendlyApiErrorMessage(response.status, errText));
             }
 
-                            const data = JSON.parse(response.text);
+        const data = await response.json();
 
         // 4. Обработка ответа
         if (isGeminiFormat) {
@@ -12731,7 +12156,7 @@ async function prepareUnifiedPrompt() {
         const logicRules = await loadPromptFromFile('assets/promts/logic_rules.txt');
         const narrativeRules = await loadPromptFromFile('assets/promts/narrative_rules.txt');
         let masterInstructions = await loadPromptFromFile('assets/promts/1.txt');
-        let imgInstructionMaster = enableImageGeneration ? '"image_prompt": "ОБЯЗАТЕЛЬНО! Опиши сцену для генератора картинок (на английском). ИСПОЛЬЗУЙ ТОЛЬКО ТЕГИ ЧЕРЕЗ ЗАПЯТУЮ (например: 1boy, night, rain, holding sword, neon lights). В конце ВСЕГДА добавляй: \'masterpiece, best quality, highres, cinematic lighting, dramatic shadows, 2d illustration, anime art style, highly detailed background\'. НЕ пиши связными предложениями!",' : '';
+        let imgInstructionMaster = enableImageGeneration ? '"image_prompt": "ОБЯЗАТЕЛЬНО! Описание ТЕКУЩЕЙ сцены СТРОГО НА АНГЛИЙСКОМ ЯЗЫКЕ для нейросети генерации картинок. Пиши тегами через запятую. Укажи персонажей и детали. Обязательно добавляй в конце: \'Ado music video aesthetic, monochrome anime style with one spot color, dark gothic, creepy vibe, extreme contrast, inverted colors, masterpiece, highly detailed\'.",' : '';
         masterInstructions = masterInstructions.replace(/\{image_prompt_instruction\}/g, imgInstructionMaster)
                                                .replace(/\{debugMode\}/g, DEBUG_MODE ? "true" : "false");
         const rulesAndInstructions = await loadPromptFromFile('assets/promts/rules_and_instructions.txt');
@@ -12767,7 +12192,6 @@ ${itemsRefString}
 ${style}
 
 ЯЗЫК ОТВЕТА (КРИТИЧЕСКИ ВАЖНО): СТРОГО ${responseLanguage.toUpperCase()}! Весь текст в полях "narrative", "director_notes" и "logic_summary" ОБЯЗАН быть на этом языке. Запрещено отвечать на другом языке!
-ЗАПРЕЩЕНО писать системные сообщения (например, [СИСТЕМА], [СТРОИТЕЛЬСТВО], [ОШИБКА]) в поле narrative. Системные сообщения генерируются движком автоматически.
 
 ### ИНСТРУКЦИЯ (ЕДИНЫЙ РЕЖИМ):
 Ты должен одновременно выполнить логические расчеты (изменить статы, выдать лут, провести бой) И написать красивый художественный ответ.
@@ -12916,14 +12340,7 @@ function getFactionCapitalVault(factionId) {
 function getFactionGold(factionId) {
     let vaultId = getFactionCapitalVault(factionId);
     if (!vaultId) return 0;
-    let currencyIds = ['gold_ingot'];
-    if (typeof ECONOMY_ITEMS !== 'undefined') {
-        const cIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('currency'));
-        if (cIds.length > 0) currencyIds = cIds;
-    }
-    let total = 0;
-    currencyIds.forEach(id => total += countRealItems(vaultId, id));
-    return total;
+    return countRealItems(vaultId, 'gold_ingot');
 }
 function getFactionGoodStock(factionId, goodType) {
     let vaultId = getFactionCapitalVault(factionId);
@@ -13470,23 +12887,13 @@ async function executeNonInventoryCommand(command, args) {
                     // --- СИНХРОНИЗАЦИЯ ФИЗИЧЕСКОГО ЗОЛОТА ---
                     if (stat === 'gold') {
                         if (change > 0) {
-                            let currencyId = 'gold';
-                            if (typeof ECONOMY_ITEMS !== 'undefined') {
-                                const cIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('currency'));
-                                if (cIds.length > 0) currencyId = cIds[0];
-                            }
-                            const addRes = await executeCommand('addItem', { aiIdentifier: currencyId, name: getItemName(currencyId, player.era), quantity: change });
+                            const addRes = await executeCommand('addItem', { aiIdentifier: 'gold', name: 'Золото', quantity: change });
                             if (addRes && addRes.includes("[ОШИБКА")) {
                                 feedback = addRes; // Пробрасываем ошибку перегруза
                                 break;
                             }
                         } else if (change < 0) {
-                            let currencyId = 'gold';
-                            if (typeof ECONOMY_ITEMS !== 'undefined') {
-                                const cIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('currency'));
-                                if (cIds.length > 0) currencyId = cIds[0];
-                            }
-                            await executeCommand('removeItem', { aiIdentifier: currencyId, quantity: Math.abs(change) });
+                            await executeCommand('removeItem', { aiIdentifier: 'gold', quantity: Math.abs(change) });
                         }
                         feedback = t('gameInterface.commandFeedback.goldChanged', { change: change > 0 ? `+${change}` : change, gold: player.stats.gold });
                         break;
@@ -13550,19 +12957,14 @@ async function executeNonInventoryCommand(command, args) {
                     if (stat === 'gold') {
                         let currentGold = syncPlayerGoldFromInventory();
                         let diff = value - currentGold;
-                        let currencyId = 'gold';
-                        if (typeof ECONOMY_ITEMS !== 'undefined') {
-                            const cIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('currency'));
-                            if (cIds.length > 0) currencyId = cIds[0];
-                        }
                         if (diff > 0) {
-                            const addRes = await executeCommand('addItem', { aiIdentifier: currencyId, name: getItemName(currencyId, player.era), quantity: diff });
+                            const addRes = await executeCommand('addItem', { aiIdentifier: 'gold', name: 'Золото', quantity: diff });
                             if (addRes && addRes.includes("[ОШИБКА")) {
                                 feedback = addRes;
                                 break;
                             }
                         }
-                        else if (diff < 0) await executeCommand('removeItem', { aiIdentifier: currencyId, quantity: Math.abs(diff) });
+                        else if (diff < 0) await executeCommand('removeItem', { aiIdentifier: 'gold', quantity: Math.abs(diff) });
                         feedback = `Золото установлено на ${value}.`;
                         break;
                     }
@@ -13725,7 +13127,7 @@ async function executeNonInventoryCommand(command, args) {
                     const existingQuest = Object.values(player.quests).find(q => q.aiIdentifier?.toLowerCase() === args.aiIdentifier.toLowerCase() && q.status === 'active');
                     if (!existingQuest) {
                         const newId = nextInternalQuestId++;
-                        const questData = {
+                        player.quests[newId] = {
                             id: newId,
                             aiIdentifier: args.aiIdentifier,
                             title: args.title,
@@ -13735,13 +13137,7 @@ async function executeNonInventoryCommand(command, args) {
                             issuer: args.issuer || t('quests.unknown'),
                             status: 'active'
                         };
-                        player.quests[newId] = questData;
-                        if (!IS_PRE_SIMULATING && !window.isSimulatingTime) {
-                            addLogMessage(JSON.stringify(questData), "quest-card");
-                            feedback = null;
-                        } else {
-                            feedback = t('gameInterface.commandFeedback.questAdded', { description: args.title });
-                        }
+                        feedback = t('gameInterface.commandFeedback.questAdded', { description: args.title });
                         updateQuestList();
                         executeCommand('echoMemory', { text: `[Квест] ${args.title}: ${args.objective}` });
                     } else {
@@ -13777,19 +13173,15 @@ async function executeNonInventoryCommand(command, args) {
                         if (['active', 'completed', 'failed'].includes(newStatus)) {
                             if (quest.status !== newStatus) {
                                 quest.status = newStatus;
-                                if (!IS_PRE_SIMULATING && !window.isSimulatingTime) {
-                                    addLogMessage(JSON.stringify(quest), "quest-card");
-                                    feedback = null;
-                                } else {
-                                    const statusLocalized = t(`quests.status${newStatus.charAt(0).toUpperCase() + newStatus.slice(1)}`);
-                                    feedback = t('gameInterface.commandFeedback.questStatusUpdated', { description: quest.title, status: statusLocalized });
-                                }
+                                const statusLocalized = t(`quests.status${newStatus.charAt(0).toUpperCase() + newStatus.slice(1)}`);
                                 if (newStatus === 'completed') {
                                     const xpReward = 50 * (player.stats.level || 1);
                                     player.stats.xp += xpReward;
                                     levelUp();
-                                    if (feedback) feedback += ` Получено ${xpReward} XP.`;
+                                    feedback = t('gameInterface.commandFeedback.questStatusUpdated', { description: quest.title, status: statusLocalized }) + ` Получено ${xpReward} XP.`;
                                     generateWorldNews(`Герой ${player.name} успешно завершил задание: "${quest.title}".`, player.location || "global", 2, 'misc');
+                                } else {
+                                    feedback = t('gameInterface.commandFeedback.questStatusUpdated', { description: quest.title, status: statusLocalized });
                                 }
                             } else {
                                 feedback = t('gameInterface.commandFeedback.questSameStatus', { description: quest.title });
@@ -14598,7 +13990,7 @@ if (player.nexusData && player.nexusData[args.id]) {
                     const itemName = item.custom_props?.name || item.prototype_id;
                     feedback = `[ОБМЕН] Вы передали [${itemName} x${moveQty}] персонажу ${wNpc.name}.`;
                     
-                    if (isCurrency(item)) {
+                    if (item.prototype_id === 'gold' || item.prototype_id === 'gold_ingot' || item.custom_props?.aiIdentifier === 'gold') {
                         syncPlayerGoldFromInventory();
                         animateGoldChange(-moveQty);
                     }
@@ -14836,37 +14228,19 @@ if (player.nexusData && player.nexusData[args.id]) {
                 break;
             case 'overthrowRuler':
                 if (args.factionId && World.factions[args.factionId]) {
+                    // Вместо стабильности - физическое последствие: бунт уничтожает ресурсы столицы
                     const capitalRegionId = Object.keys(World.regions).find(rid => World.regions[rid].factionId === args.factionId);
                     if (capitalRegionId && World.regions[capitalRegionId]?.vault_id) {
                         const capitalVault = World.regions[capitalRegionId].vault_id;
-                        let weaponsLost = 0;
-                        let foodLost = 0;
-                        let weaponIds = ['weapons'];
-                        let foodIds = ['bread', 'meat'];
-                        if (typeof ECONOMY_ITEMS !== 'undefined') {
-                            weaponIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('weapon'));
-                            foodIds = Object.keys(ECONOMY_ITEMS).filter(id => ECONOMY_ITEMS[id].tags && ECONOMY_ITEMS[id].tags.includes('food'));
-                        }
-                        weaponIds.forEach(id => {
-                            let count = countRealItems(capitalVault, id);
-                            if (count > 0) {
-                                let lost = Math.floor(count * 0.3);
-                                weaponsLost += lost;
-                                consumeRealItems(capitalVault, id, lost);
-                            }
-                        });
-                        foodIds.forEach(id => {
-                            let count = countRealItems(capitalVault, id);
-                            if (count > 0) {
-                                let lost = Math.floor(count * 0.5);
-                                foodLost += lost;
-                                consumeRealItems(capitalVault, id, lost);
-                            }
-                        });
+                        const weaponsLost = Math.floor(countRealItems(capitalVault, 'weapons') * 0.3);
+                        const foodLost = Math.floor(countRealItems(capitalVault, 'bread') * 0.5);
+                        consumeRealItems(capitalVault, 'weapons', weaponsLost);
+                        consumeRealItems(capitalVault, 'bread', foodLost);
                         generateWorldNews(`МЯТЕЖ! В землях ${World.factions[args.factionId].name} вспыхнуло восстание! Уничтожено запасов: ${weaponsLost} оружия, ${foodLost} еды.`, "global", 5, 'war');
                     } else {
                         generateWorldNews(`МЯТЕЖ! В землях ${World.factions[args.factionId].name} вспыхнуло восстание!`, "global", 5, 'war');
                     }
+                    generateWorldNews(`МЯТЕЖ! В землях ${World.factions[args.factionId].name} вспыхнуло восстание!`, "global", 5, 'war');
                     feedback = `[Мятеж] Инициирован бунт во фракции '${args.factionId}'.`;
                 }
                 break;
@@ -14977,7 +14351,21 @@ if (player.nexusData && player.nexusData[args.id]) {
                     checkRulerDeaths();
                 } else { feedback = `[ERROR] Правитель '${args.id}' не найден.`; }
                 break;
-            // Already handled above, this is a duplicate block in the original file
+            case 'overthrowRuler':
+                if (args.factionId && World.factions[args.factionId]) {
+                    // Вместо стабильности - физическое последствие: бунт уничтожает ресурсы столицы
+                    const capitalRegionId = Object.keys(World.regions).find(rid => World.regions[rid].factionId === args.factionId);
+                    if (capitalRegionId) {
+                        const capitalVault = World.regions[capitalRegionId].vault_id;
+                        const weaponsLost = Math.floor(countRealItems(capitalVault, 'weapons') * 0.3);
+                        const foodLost = Math.floor(countRealItems(capitalVault, 'bread') * 0.5);
+                        consumeRealItems(capitalVault, 'weapons', weaponsLost);
+                        consumeRealItems(capitalVault, 'bread', foodLost);
+                    }
+                    generateWorldNews(`МЯТЕЖ! В землях ${World.factions[args.factionId].name} вспыхнуло восстание!`, "global", 5, 'war');
+                    feedback = `[Мятеж] Инициирован бунт во фракции '${args.factionId}'. Ресурсы столицы разграблены!`;
+                }
+                break;
             case 'setFactionGoal':
                 if (args.rulerId && World.rulers && World.rulers[args.rulerId]) {
                     World.rulers[args.rulerId].gmOverride = args.goal;
@@ -15335,18 +14723,12 @@ case 'setEntityBinding':
                     let isEquipped = false;
                     if (player.container_backpack) {
                         const bp = ContainerRegistry.get(player.container_backpack);
-                        const id = getContainerItems(bp).find(i => {
-                            const it = ItemRegistry.get(i);
-                            return it && it.prototype_id === args.aiIdentifier;
-                        });
+                        const id = getContainerItems(bp).find(i => ItemRegistry.get(i).prototype_id === args.aiIdentifier);
                         if (id) item = ItemRegistry.get(id);
                     }
                     if (!item && player.container_equipment) {
                         const eq = ContainerRegistry.get(player.container_equipment);
-                        const id = getContainerItems(eq).find(i => {
-                            const it = ItemRegistry.get(i);
-                            return it && it.prototype_id === args.aiIdentifier;
-                        });
+                        const id = getContainerItems(eq).find(i => ItemRegistry.get(i).prototype_id === args.aiIdentifier);
                         if (id) {
                             item = ItemRegistry.get(id);
                             isEquipped = true;
@@ -15689,10 +15071,7 @@ async function handleDrop(event) {
 async function unequipItem(slot) {
     if (!player || !player.container_equipment || !player.container_backpack) return null;
     const eqCont = ContainerRegistry.get(player.container_equipment);
-    const itemId = getContainerItems(eqCont).find(id => {
-        const it = ItemRegistry.get(id);
-        return it && it.slot_index === slot;
-    });
+    const itemId = getContainerItems(eqCont).find(id => ItemRegistry.get(id).slot_index === slot);
     if (!itemId) return t('gameInterface.commandFeedback.slotIsEmpty', { slot: slot });
 
     const itemToUnequip = ItemRegistry.get(itemId);
@@ -15719,6 +15098,51 @@ async function unequipItem(slot) {
 /**
  * Обновляет визуальное отображение всех слотов экипировки.
  */
+function populateEquipmentUI() {
+    const grid = document.getElementById('paper-doll-grid');
+    if (!grid) return;
+    
+    bodySlots = window.EQUIPMENT_SLOTS || ["head", "face", "neck", "shoulders", "torso", "right_hand", "left_hand", "legs", "feet"];
+    grid.innerHTML = '';
+    equipmentElements = {};
+
+    const iconMap = {
+        'head': 'fa-crown', 'face': 'fa-mask', 'neck': 'fa-gem',
+        'shoulders': 'fa-user-shield', 'torso': 'fa-tshirt',
+        'right_hand': 'fa-gavel', 'left_hand': 'fa-shield-alt',
+        'legs': 'fa-socks', 'feet': 'fa-shoe-prints'
+    };
+
+    bodySlots.forEach(slot => {
+        const div = document.createElement('div');
+        div.className = 'equipment-slot-v2';
+        div.id = `equipment-slot-${slot}`;
+        div.dataset.slot = slot;
+        
+        const titleKey = `gameInterface.equipmentPanel.slots.${slot}`;
+        div.title = typeof t === 'function' ? t(titleKey, null, slot) : slot;
+
+        const iconClass = iconMap[slot] || 'fa-cog';
+        div.innerHTML = `<span class="slot-icon-v2"><i class="fas ${iconClass}"></i></span>`;
+        
+        grid.appendChild(div);
+        equipmentElements[slot] = div;
+
+        // Привязываем события Drag-and-Drop и клика
+        div.addEventListener('click', async (event) => {
+            if (event.currentTarget.classList.contains('equipped')) {
+                const slotName = event.currentTarget.dataset.slot;
+                const feedback = await unequipItem(slotName);
+                if (feedback) addLogMessage(feedback, 'command-feedback');
+            }
+        });
+        div.addEventListener('dragenter', handleDragEnter);
+        div.addEventListener('dragover', handleDragOver);
+        div.addEventListener('dragleave', handleDragLeave);
+        div.addEventListener('drop', handleDrop);
+    });
+}
+
 function updateEquipmentDisplay() {
     if (!player || !player.container_equipment) return;
     const eqCont = ContainerRegistry.get(player.container_equipment);
@@ -15816,7 +15240,7 @@ function getEffectiveStats() {
 
 
     effectiveStats.maxHp = calculateMaxHp(effectiveStats.con) + bonuses['hp'];
-    if (classHasAbility(player.class, 'spellcasting')) {
+    if (player.class === 'mage') {
         effectiveStats.maxMana = calculateMaxMana(effectiveStats.int, player.stats.level) + bonuses['mana'];
     }
 
@@ -15996,7 +15420,6 @@ async function exitToMainMenu() {
 
         isMapInitialized = false;
         if (window.Cartographer) window.Cartographer.isMapInitialized = false;
-        window.isSimulatorInitialized = false; // Сброс флага инициализации симулятора
         setActiveScreen('main-menu');
         updateDynamicUIText();
 
@@ -16253,16 +15676,14 @@ async function generateVisionImage(prompt) {
 
     // ====================== Pollinations (без изменений) ======================
     else if (imgProvider === 'pollinations') {
-        // Добавляем негативный промпт прямо в текст (Pollinations парсит его через разделитель)
-        const finalPrompt = prompt + " | negative prompt: 3d, realistic, photo, ugly, bad anatomy, text, watermark, blurry, extra limbs";
         const params = new URLSearchParams({
-            prompt: finalPrompt,
-            model: imgModel || 'flux-anime', // Используем аниме-модель по умолчанию
+            prompt: prompt,
+            model: imgModel || 'flux',
             width: 1024,
             height: 1024,
             seed: Math.floor(Math.random() * 999999),
             nologo: 'true',
-            enhance: 'false' // ОТКЛЮЧАЕМ enhance, чтобы ChatGPT не переписывал наш промпт в мыльное 3D
+            enhance: 'true'
         });
 
         const response = await fetch(`https://image.pollinations.ai/prompt?${params}`);
@@ -16543,7 +15964,7 @@ window.adminAddGold = function () {
 
 window.adminHeal = function () {
     executeCommand('updateStat', { stat: 'hp', change: 9999 });
-    if (classHasAbility(player.class, 'spellcasting')) executeCommand('updateStat', { stat: 'mana', change: 9999 });
+    if (player.class === 'mage') executeCommand('updateStat', { stat: 'mana', change: 9999 });
     populateAdminMenu();
 };
 
@@ -16842,7 +16263,7 @@ async function runDeepSetupPipeline(narratorStyleGuide) {
         // --- STAGE 5 ---
         updateLoader("Этап 5/5: Пролог", "Ожидание Рассказчика...");
                 let p5 = await loadPromptFromFile('assets/promts/deep_setup/stage5_prologue.txt');
-        let imgExample = enableImageGeneration ? '"image_prompt": "1girl, standing in ruins, holding flare, dark sky, masterpiece, anime style...",' : '';
+        let imgExample = enableImageGeneration ? '"image_prompt": "Ado music video aesthetic, monochrome with red accent...",' : '';
 
         window.smartDeepContextStr = "";
         if (typeof World !== 'undefined' && World) {
@@ -17082,12 +16503,6 @@ function updateWorldSimDebugDisplay() {
                         else if (block.type === 'market') ch = '<span style="color:#f1c40f">M</span>';
                         else if (block.type === 'office') ch = '<span style="color:#3498db">O</span>';
                         else if (block.type === 'temple') ch = '<span style="color:#9b59b6">+</span>';
-                        else {
-                            const btDef = getBuildingTypeDef(block.type);
-                            if (btDef) {
-                                ch = `<span style="color:${btDef.color}">${btDef.mini_char}</span>`;
-                            }
-                        }
                         rowStr += ch + ' ';
                     }
                     layoutHtml += rowStr + '<br>';
@@ -17419,7 +16834,7 @@ window.openBusinessModal = async function(bId) {
             let it = ItemRegistry.get(id);
             if (it) {
                 let w = it.custom_props?.weight_per_unit || 1;
-                if (isCurrency(it)) w = 0.01;
+                if (it.prototype_id === 'gold') w = 0.01;
                 currentWeight += w * it.stack_size;
             }
         });
@@ -17964,13 +17379,13 @@ async function performAiPlayerFetch(systemInstruction, history, providerModel, c
         isGeminiFormat = true;
     }
 
-    const response = await window.electronAPI.proxyFetch(targetUrl, { method: 'POST', headers: headers, body: JSON.stringify(requestBody) });
+    const response = await fetch(targetUrl, { method: 'POST', headers: headers, body: JSON.stringify(requestBody) });
     if (!response.ok) {
-        const errText = response.text;
+        const errText = await response.text();
         throw new Error(`AI Player API Error (${response.status}): ${errText}`);
     }
 
-    const data = JSON.parse(response.text);
+    const data = await response.json();
     let resultText = "";
     if (isGeminiFormat) {
         if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
@@ -18050,26 +17465,21 @@ async function runAIPlayerTurn() {
 // ==========================================
 // --- UI OVERHAUL: СИСТЕМА ВКЛАДОК ---
 // ==========================================
-    function initSidebarTabs() { 
-        document.querySelectorAll('.s-tab-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const targetId = e.currentTarget.dataset.target;
-                const sidebar = e.currentTarget.closest('.sidebar');
-                
-                sidebar.querySelectorAll('.s-tab-btn').forEach(b => b.classList.remove('active'));
-                sidebar.querySelectorAll('.s-tab-content').forEach(c => c.classList.remove('active'));
-                
-                e.currentTarget.classList.add('active');
-                const targetContent = document.getElementById(targetId);
-                if (targetContent) targetContent.classList.add('active');
-                
-                // Если открыли вкладку с картой, запуск рендера миникарты
-                if (targetId === 'right-tab-env') {
-                    if (window.Cartographer) window.Cartographer.requestRender();
-                }
-            });
+function initSidebarTabs() {
+    document.querySelectorAll('.s-tab-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const targetId = e.currentTarget.dataset.target;
+            const sidebar = e.currentTarget.closest('.sidebar');
+            
+            sidebar.querySelectorAll('.s-tab-btn').forEach(b => b.classList.remove('active'));
+            sidebar.querySelectorAll('.s-tab-content').forEach(c => c.classList.remove('active'));
+            
+            e.currentTarget.classList.add('active');
+            const targetContent = document.getElementById(targetId);
+            if (targetContent) targetContent.classList.add('active');
         });
-    }
+    });
+}
 
 function restructureUI() {
     if (document.querySelector('.sidebar-tabs')) return;
@@ -18193,40 +17603,31 @@ async function openLoadWorldModal() {
         worldSlotsContainer.appendChild(btn);
     });
 
-            worldSlotsContainer.querySelectorAll('.load-w-btn').forEach(b => {
-            b.onclick = async (e) => {
-                const file = e.target.dataset.file;
-                worldSlotsContainer.innerHTML = '<p style="text-align:center; color:#f1c40f; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Загрузка мира...</p>';
-                const wData = await window.electronAPI.loadWorldState(file);
-                if (wData) {
-                    // Поддержка нового формата (world + items + containers) и старого (только world)
-                    if (wData.world) {
-                        preloadedWorldData = wData.world;
-                        preloadedWorldData.savedItems = wData.items || [];
-                        preloadedWorldData.savedContainers = wData.containers || [];
-                    } else {
-                        preloadedWorldData = wData;
-                        preloadedWorldData.savedItems = [];
-                        preloadedWorldData.savedContainers = [];
-                    }
-                    if (selectedWorldInfo) {
-                        selectedWorldInfo.textContent = `Выбран мир: ${wData.name || file}`;
-                        selectedWorldInfo.style.display = 'block';
-                    }
-                    
-                    if (wData.era && charEraSelect) {
-                        charEraSelect.value = wData.era;
-                        updateEraDescription();
-                    }
-                    
-                    loadWorldModal.classList.remove('visible');
-                    setTimeout(() => loadWorldModal.style.display = 'none', 300);
-                } else {
-                    showCustomAlert("Ошибка при загрузке файла мира.");
-                    openLoadWorldModal();
+    worldSlotsContainer.querySelectorAll('.load-w-btn').forEach(b => {
+        b.onclick = async (e) => {
+            const file = e.target.dataset.file;
+            worldSlotsContainer.innerHTML = '<p style="text-align:center; color:#f1c40f; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Загрузка мира...</p>';
+            const wData = await window.electronAPI.loadWorldState(file);
+            if (wData) {
+                preloadedWorldData = wData;
+                if (selectedWorldInfo) {
+                    selectedWorldInfo.textContent = `Выбран мир: ${wData.name || file}`;
+                    selectedWorldInfo.style.display = 'block';
                 }
-            };
-        });
+                
+                if (wData.era && charEraSelect) {
+                    charEraSelect.value = wData.era;
+                    updateEraDescription();
+                }
+                
+                loadWorldModal.classList.remove('visible');
+                setTimeout(() => loadWorldModal.style.display = 'none', 300);
+            } else {
+                showCustomAlert("Ошибка при загрузке файла мира.");
+                openLoadWorldModal();
+            }
+        };
+    });
 
     worldSlotsContainer.querySelectorAll('.del-w-btn').forEach(b => {
         b.onclick = async (e) => {
@@ -18267,11 +17668,7 @@ function promptSaveWorldModal() {
             saveWorldConfirmBtn.disabled = true;
             saveWorldSkipBtn.disabled = true;
 
-            // Сохраняем не только World, но и реестры предметов и контейнеров, чтобы мир не был пустым
-            const syncItems = Array.from(ItemRegistry.entries());
-            const syncContainers = Array.from(ContainerRegistry.entries());
-            const worldFileData = { name: World.name, era: World.era, world: World, items: syncItems, containers: syncContainers };
-            await window.electronAPI.saveWorldState(filename, worldFileData);
+            await window.electronAPI.saveWorldState(filename, World);
             
             saveWorldConfirmBtn.innerHTML = 'Сохранить';
             saveWorldConfirmBtn.disabled = false;

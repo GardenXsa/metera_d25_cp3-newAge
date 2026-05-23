@@ -1,8 +1,5 @@
-const { app, BrowserWindow, ipcMain, protocol, net, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, shell } = require('electron');
 const path = require('path');
-
-// Отключаем предупреждения безопасности Electron в консоли (т.к. нам нужен unsafe-eval для модов)
-process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';
 const fs = require('fs');
 const http = require('http');
 const { spawn } = require('child_process');
@@ -96,15 +93,6 @@ function startEngine() {
                             wins[0].webContents.send('nexus-hook-request', response.hook, response.world);
                         }
                         continue; // Не резолвим основной промис, ждем hook_response
-                    }
-
-                    // ModKit 3.0: Async mod event from engine (fire-and-forget, non-blocking)
-                    if (response.status === 'mod_event') {
-                        const wins = BrowserWindow.getAllWindows();
-                        if (wins.length > 0) {
-                            wins[0].webContents.send('nexus-mod-event', response);
-                        }
-                        continue;
                     }
 
                     // Realtime update from engine — stream world state to renderer immediately
@@ -274,10 +262,10 @@ async function initEngine(forceRestart = false, activeMods = []) {
     return await sendCommand('init', { mods_dir: MODS_DIR, active_mods: activeMods });
 }
 
-async function buildWorld(playerId, era, initialAgents, globalLocations, startDay, customGrid = null) {
+async function buildWorld(playerId, era, initialAgents, globalLocations, startDay) {
     // buildWorld generates 256x256 terrain (Perlin noise), A* roads, NPCs — heavy computation.
     // 30s default timeout is too short; use 5 minutes like bootstrapWorld.
-    return await sendCommand('buildWorld', { player_id: playerId, era: era, initial_agents: initialAgents, global_locations: globalLocations, start_day: startDay, custom_grid: customGrid }, 300000);
+    return await sendCommand('buildWorld', { player_id: playerId, era: era, initial_agents: initialAgents, global_locations: globalLocations, start_day: startDay }, 300000);
 }
 
 async function bootstrapWorld(days, startDay) {
@@ -369,8 +357,8 @@ ipcMain.handle('nexus-load-database', async (event, databaseString) => {
     return await sendCommand('loadDatabase', dbObj);
 });
 
-ipcMain.handle('nexus-build-world', async (event, playerId, era, initialAgents, globalLocations, startDay, customGrid) => {
-    return await buildWorld(playerId, era, initialAgents, globalLocations, startDay, customGrid);
+ipcMain.handle('nexus-build-world', async (event, playerId, era, initialAgents, globalLocations, startDay) => {
+    return await buildWorld(playerId, era, initialAgents, globalLocations, startDay);
 });
 
 ipcMain.handle('nexus-bootstrap', async (event, days, startDay) => {
@@ -459,9 +447,7 @@ ipcMain.handle('nexus-stop-realtime', async () => {
 const ALLOWED_RAW_COMMANDS = new Set([
     'getWorldMap',
     'getGraphContext',
-    'getFullState',
-    'applyModChanges',
-    'findPath'
+    'getFullState'
 ]);
 
 ipcMain.handle('nexus-send-raw-command', async (event, command, params) => {
@@ -604,7 +590,7 @@ const server = http.createServer((req, res) => {
                 "font-src 'self' http://127.0.0.1:" + PORT + " https://fonts.gstatic.com https://cdnjs.cloudflare.com; " +
                 "img-src 'self' data: http://127.0.0.1:" + PORT + " https:; " +
                 "media-src 'self' http://127.0.0.1:" + PORT + " https:; " +
-                "connect-src 'self' http://127.0.0.1:* http://localhost:* https: http:;"
+                "connect-src 'self' http://127.0.0.1:" + PORT + " https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;"
             );
         }
         res.end(data);
@@ -648,155 +634,10 @@ function createWindow () {
   });
 }
 
-// ============================================================================
-// MODKIT 3.0: VIRTUAL FILE SYSTEM — metera-mod:// protocol
-// ============================================================================
-// Register custom protocol before app.whenReady()
-// metera-mod://cyberpunk_total_conversion/assets/icons/blade.png
-// → maps to MODS_DIR/cyberpunk_total_conversion/assets/icons/blade.png
-
-protocol.registerSchemesAsPrivileged([
-    {
-        scheme: 'metera-mod',
-        privileges: {
-            bypassCSP: true,
-            stream: true,
-            supportFetchAPI: true,
-            standard: false,
-            secure: true
-        }
-    }
-]);
-
-app.whenReady().then(() => {
-    // Register the metera-mod:// protocol handler
-    protocol.handle('metera-mod', (request) => {
-        try {
-            // Parse: metera-mod://mod_id/path/to/file.ext
-            const url = new URL(request.url);
-            const modId = url.hostname;  // First path segment is the mod ID
-            const assetPath = url.pathname;  // Everything after the mod ID
-
-            // Security: Sanitize modId and assetPath to prevent path traversal
-            const safeModId = modId.replace(/[^a-zA-Z0-9_-]/g, '');
-            const safeAssetPath = path.normalize(assetPath).replace(/^(\.\.(\/|\\|$))+/, '');
-
-            const fullPath = path.resolve(path.join(MODS_DIR, safeModId, safeAssetPath));
-
-            // Verify the resolved path stays within MODS_DIR
-            if (!fullPath.startsWith(path.resolve(MODS_DIR))) {
-                return new Response('Forbidden', { status: 403 });
-            }
-
-            // Check file exists
-            if (!fs.existsSync(fullPath)) {
-                return new Response('Not Found', { status: 404 });
-            }
-
-            // Read file data first (needed for MIME sniffing fallback)
-            const data = fs.readFileSync(fullPath);
-
-            // Determine MIME type from extension
-            const ext = path.extname(fullPath).toLowerCase();
-
-            // Comprehensive MIME type detection
-            const mimeTypes = {
-                // Images
-                '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-                '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
-                '.ico': 'image/x-icon', '.bmp': 'image/bmp', '.tiff': 'image/tiff', '.tif': 'image/tiff',
-                '.avif': 'image/avif',
-                // Audio
-                '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
-                '.flac': 'audio/flac', '.aac': 'audio/aac', '.m4a': 'audio/mp4',
-                '.mid': 'audio/midi', '.midi': 'audio/midi',
-                // Video
-                '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogv': 'video/ogg',
-                '.avi': 'video/x-msvideo', '.mov': 'video/quicktime',
-                // Fonts
-                '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf',
-                '.otf': 'font/otf', '.eot': 'application/vnd.ms-fontobject',
-                // 3D models
-                '.gltf': 'model/gltf+json', '.glb': 'model/gltf-binary',
-                '.obj': 'text/plain', '.fbx': 'application/octet-stream',
-                // Documents
-                '.json': 'application/json', '.md': 'text/markdown',
-                '.txt': 'text/plain', '.html': 'text/html', '.css': 'text/css',
-                '.js': 'text/javascript', '.xml': 'text/xml', '.csv': 'text/csv',
-                // Data
-                '.yaml': 'text/yaml', '.yml': 'text/yaml', '.toml': 'text/plain',
-                '.bin': 'application/octet-stream', '.dat': 'application/octet-stream',
-                // Archives (mods might bundle assets)
-                '.zip': 'application/zip',
-            };
-            // Fallback: if extension not in our map, use a heuristic
-            let mimeType = mimeTypes[ext];
-            if (!mimeType) {
-                // Try to sniff from file content for common binary formats
-                if (data && data.length >= 4) {
-                    const header = data.readUInt32BE(0);
-                    // PNG: 89504E47
-                    if (header === 0x89504E47) mimeType = 'image/png';
-                    // JPEG: FFD8FF
-                    else if ((header & 0xFFFFFF00) === 0xFFD8FF00) mimeType = 'image/jpeg';
-                    // GIF: 47494638
-                    else if ((header & 0xFFFFFF00) === 0x47494638) mimeType = 'image/gif';
-                    // WebP: 52494646...57454250
-                    else if (header === 0x52494646 && data.length >= 12 &&
-                             data.readUInt32BE(8) === 0x57454250) mimeType = 'image/webp';
-                    // OGG: 4F676753
-                    else if (header === 0x4F676753) mimeType = 'audio/ogg';
-                    // MP3: ID3 or FFFB
-                    else if ((header & 0xFFFFFF00) === 0x49443300 || (header & 0xFFFE0000) === 0xFFFB0000) mimeType = 'audio/mpeg';
-                    // WOFF2: 774F4632
-                    else if (header === 0x774F4632) mimeType = 'font/woff2';
-                }
-                if (!mimeType) mimeType = 'application/octet-stream';
-            }
-
-            return new Response(data, {
-                headers: { 'Content-Type': mimeType, 'Access-Control-Allow-Origin': '*' }
-            });
-        } catch (e) {
-            console.error('[metera-mod://] Error:', e.message);
-            return new Response('Internal Server Error', { status: 500 });
-        }
-    });
-
-    createWindow();
-});
+app.whenReady().then(createWindow);
 
 // Expose HTTP session token to renderer (needed for fetch calls from game)
 ipcMain.handle('get-http-token', () => HTTP_SESSION_TOKEN);
-
-// Универсальный прокси для обхода CORS
-ipcMain.handle('proxy-fetch', async (event, url, options) => {
-    try {
-        // Фикс для Node 18+: принудительно используем IPv4 для localhost,
-        // так как Node пытается стучаться по IPv6 (::1), а локальные сервера часто слушают только 127.0.0.1
-        if (url && url.includes('localhost')) {
-            url = url.replace('localhost', '127.0.0.1');
-        }
-        // Используем глобальный fetch из Node.js 18+
-        const response = await fetch(url, options);
-        const text = await response.text();
-        return {
-            ok: response.ok,
-            status: response.status,
-            statusText: response.statusText,
-            text: text
-        };
-    } catch (e) {
-        return {
-            ok: false,
-            status: 0,
-            statusText: e.message,
-            text: e.message,
-            isNetworkError: true
-        };
-    }
-});
-
 
 ipcMain.handle('save-settings', async (event, data) => {
     try {

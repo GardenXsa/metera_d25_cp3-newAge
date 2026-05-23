@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-Shared EngineProcess client and utilities for communicating with the
+Shared EngineProcess client and runtime-data helpers for communicating with the
 Metera C++ simulation engine.
 
 This module is the single source of truth for:
   - EngineProcess class (subprocess management + JSON line protocol)
-  - _load_json utility with correct default handling
-  - Common constants
-
-Both run_simulation.py and simulation_test_client.py should import from here:
-    from engine_client import EngineProcess, load_json
+  - load_json utility with correct default handling
+  - runtime database manifest loading
+  - shared era -> location file resolution
 """
 import json
 import os
@@ -70,7 +68,7 @@ class EngineProcess:
         while self.is_running and self.proc:
             try:
                 # Use select to add a timeout so we don't block forever
-                if sys.platform != 'win32' and hasattr(_select, 'select'):
+                if hasattr(_select, 'select'):
                     readable, _, _ = _select.select([self.proc.stdout], [], [], 5.0)
                     if not readable:
                         # No data for 5 seconds — check if process is still alive
@@ -150,6 +148,111 @@ def load_json(path, default=None):
     except Exception as e:
         print(f"[WARN] Failed to load {path}: {e}")
         return default
+
+
+def _resolve_manifest_relative_path(manifest_dir, data_dir, relative_path):
+    if os.path.isabs(relative_path):
+        return relative_path
+
+    workspace_root = os.path.dirname(os.path.normpath(data_dir))
+    normalized = relative_path.replace('/', os.sep)
+
+    if normalized.startswith(f'.{os.sep}'):
+        return os.path.normpath(os.path.join(workspace_root, normalized[2:]))
+
+    return os.path.normpath(os.path.join(manifest_dir, normalized))
+
+
+def _default_value_for_type(default_type):
+    return [] if default_type == 'array' else {}
+
+
+def _hydrate_prompt_pack(prompt_pack, manifest_dir, data_dir):
+    if not isinstance(prompt_pack, dict):
+        return {}
+
+    prompt_pack = json.loads(json.dumps(prompt_pack))
+    entries = prompt_pack.get('entries', {})
+    aliases = prompt_pack.get('aliases', {})
+
+    if not isinstance(entries, dict):
+        entries = {}
+    if not isinstance(aliases, dict):
+        aliases = {}
+
+    for semantic_key, entry in entries.items():
+        if not isinstance(entry, dict):
+            continue
+        prompt_path = entry.get('path')
+        if prompt_path and 'content' not in entry:
+            resolved = _resolve_manifest_relative_path(manifest_dir, data_dir, prompt_path)
+            try:
+                with open(resolved, 'r', encoding='utf-8') as handle:
+                    entry['content'] = handle.read()
+            except OSError as exc:
+                entry['content'] = f'Ошибка: не удалось загрузить prompt "{semantic_key}" из {prompt_path}. {exc}'
+        if prompt_path:
+            aliases[prompt_path] = semantic_key
+
+    prompt_pack['entries'] = entries
+    prompt_pack['aliases'] = aliases
+    return prompt_pack
+
+
+def load_runtime_manifest(data_dir, manifest_path=None):
+    manifest_path = manifest_path or os.path.join(data_dir, 'runtime_manifest.json')
+    return load_json(manifest_path, {"database_files": {}, "era_location_fallback_file": "locations_rebirth.json"})
+
+
+def build_runtime_database(data_dir, manifest_path=None):
+    manifest = load_runtime_manifest(data_dir, manifest_path=manifest_path)
+    manifest_path = manifest_path or os.path.join(data_dir, 'runtime_manifest.json')
+    manifest_dir = os.path.dirname(os.path.abspath(manifest_path))
+    database = {}
+
+    for key, descriptor in (manifest.get('database_files') or {}).items():
+        descriptor = descriptor or {}
+        default_value = _default_value_for_type(descriptor.get('default_type'))
+        path_value = descriptor.get('path')
+        if not path_value:
+            database[key] = default_value
+            continue
+        resolved_path = _resolve_manifest_relative_path(manifest_dir, data_dir, path_value)
+        database[key] = load_json(resolved_path, default_value)
+
+    if 'prompt_pack' in database:
+        database['prompt_pack'] = _hydrate_prompt_pack(database['prompt_pack'], manifest_dir, data_dir)
+
+    database['runtime_manifest'] = manifest
+    return database
+
+
+def resolve_era_location_file(eras, era_id, fallback_file_name):
+    fallback = fallback_file_name or 'locations_rebirth.json'
+    era = None
+    if isinstance(eras, list):
+        era = next((item for item in eras if isinstance(item, dict) and item.get('id') == era_id), None)
+
+    if not era:
+        return {
+            "file_name": fallback,
+            "used_fallback": True,
+            "warning": f'[RuntimeData] Era "{era_id}" is not defined. Falling back to {fallback}.'
+        }
+
+    default_file = era.get('default_location_file')
+    if not default_file:
+        return {
+            "file_name": fallback,
+            "used_fallback": True,
+            "warning": f'[RuntimeData] Era "{era_id}" has no default_location_file. Falling back to {fallback}.'
+        }
+
+    return {
+        "file_name": default_file,
+        "used_fallback": False,
+        "warning": ""
+    }
 
 
 def sync_biome_colors(biomes_data):

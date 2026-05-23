@@ -1,6 +1,6 @@
 [
   {
-    "id": "organic",
+    "id": "human",
     "name": "Органик",
     "base_race": true,
     "faction_preference": ["arasaka", "militech", "nomads"],
@@ -15,7 +15,7 @@
     }
   },
   {
-    "id": "synthetic",
+    "id": "elf",
     "name": "Синтетик",
     "base_race": false,
     "faction_preference": ["arasaka", "voodoo_boys"],
@@ -24,7 +24,7 @@
     "class_stats": { "default": { "str": 10, "dex": 10, "int": 10, "con": 10, "cha": 10, "res": 10 } }
   },
   {
-    "id": "cyborg",
+    "id": "dwarf",
     "name": "Киборг",
     "base_race": false,
     "faction_preference": ["militech", "maelstrom"],

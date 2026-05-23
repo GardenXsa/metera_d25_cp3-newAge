@@ -1,50 +1,22 @@
 /**
- * ModLoader.js (ModKit v3.0)
+ * ModLoader.js (ModKit v2.0)
  * 
  * Универсальная система загрузки модификаций. Поддерживает выполнение 
  * кастомных скриптов (RimWorld-like) и декларативную загрузку данных через хуки.
  */
 
-// Утилита для глубокого слияния объектов with $delete, $replace, $push support.
+// Утилита для глубокого слияния объектов.
 function mergeDeep(target, ...sources) {
     if (!sources.length) return target;
     const source = sources.shift();
 
     if (isObject(target) && isObject(source)) {
         for (const key in source) {
-            // SECURITY: Prevent Prototype Pollution
-            if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
-            const sourceVal = source[key];
-            
-            // $delete sentinel: remove the key from target
-            if (sourceVal === '$delete') {
-                delete target[key];
-                continue;
-            }
-            
-            // $replace sentinel: replace array/value entirely instead of merging
-            if (sourceVal && typeof sourceVal === 'object' && sourceVal.$replace !== undefined) {
-                target[key] = sourceVal.$replace;
-                continue;
-            }
-            
-            // $push sentinel: append items to array
-            if (sourceVal && typeof sourceVal === 'object' && Array.isArray(sourceVal.$push)) {
-                if (Array.isArray(target[key])) {
-                    target[key] = target[key].concat(sourceVal.$push);
-                } else {
-                    target[key] = sourceVal.$push;
-                }
-                continue;
-            }
-            
-            if (isObject(sourceVal)) {
-                if (!target[key] || typeof target[key] !== 'object') {
-                    target[key] = {};
-                }
-                mergeDeep(target[key], sourceVal);
+            if (isObject(source[key])) {
+                if (!target[key]) Object.assign(target, { [key]: {} });
+                mergeDeep(target[key], source[key]);
             } else {
-                target[key] = sourceVal;
+                Object.assign(target, { [key]: source[key] });
             }
         }
     }
@@ -67,28 +39,16 @@ window.ModAPI = {
     textFilters: [],
     saveHandlers: {},
     customTranslations: {},
-    customAiProviders: {},
     initialized: false,
     isTotalConversion: false,
-    apiVersion: '3.0',
+    apiVersion: '2.0',
 
-    // --- Lifecycle tracking: stores originals for rollback ---
+    // --- Lifecycle tracking: stores originals for rollback (Issue #2) ---
     _originalFunctions: {},
     _injectedStyles: [],
-    _widgets: [], // New Widget System
-    _activeTimers: {}, // Track timers per mod to prevent memory leaks
-    _currentLoadingMod: null,
+    _injectedUI: [],
 
-    // --- Hook chain system ---
-    // Each entry: { modId, priority, callback, obj } — obj is stored for safe rollback in unloadMod
-    _hookChains: {},  // { funcName: [{ modId, priority, callback, obj }] }
-
-    // --- IPC mutation batching ---
-    _pendingMutations: [],
-    _pendingTransactions: new Map(),
-    _mutationFlushTimer: null,
-
-    // --- HTML sanitizer ---
+    // --- HTML sanitizer (Issue #5) ---
     _sanitizeHTML: function(html) {
         // Remove script tags
         html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
@@ -103,7 +63,7 @@ window.ModAPI = {
         return html;
     },
 
-    // --- Mod metadata validation ---
+    // --- Mod metadata validation (Issue #6) ---
     _validateModMeta: function(modMeta) {
         const errors = [];
         if (!modMeta.id || typeof modMeta.id !== 'string') errors.push('Missing or invalid "id"');
@@ -122,258 +82,66 @@ window.ModAPI = {
         console.log(`[ModAPI] Зарегистрирована кастомная ГМ команда: ${commandName}`);
     },
 
-    // addPromptInjection without limits
+    // Issue #4: addPromptInjection with validation and length limit
     addPromptInjection: function(text) {
         if (typeof text !== 'string') {
             console.error('[ModAPI] addPromptInjection: аргумент должен быть строкой');
             return;
         }
+        if (text.length > 2000) {
+            console.warn('[ModAPI] addPromptInjection: текст обрезан до 2000 символов');
+            text = text.substring(0, 2000);
+        }
         this.promptInjections.push(text);
         console.log(`[ModAPI] Добавлена инъекция в системный промпт ИИ.`);
     },
 
-    registerAiProvider: function(id, config) {
-        this.customAiProviders[id] = config;
-        console.log(`[ModAPI] Зарегистрирован кастомный ИИ провайдер: ${id}`);
-        if (document.readyState === 'complete' || document.readyState === 'interactive') {
-            this._injectProviderUI(id, config);
-        } else {
-            document.addEventListener('DOMContentLoaded', () => this._injectProviderUI(id, config));
-        }
-    },
-
-    _injectProviderUI: function(id, config) {
-        const select = document.getElementById('api-provider-select');
-        if (select && !select.querySelector(`option[value="${id}"]`)) {
-            const opt = document.createElement('option');
-            opt.value = id;
-            opt.textContent = config.name || id;
-            select.appendChild(opt);
-        }
-        const container = document.getElementById('dynamic-keys-container');
-        if (container && config.settingsHtml && !document.getElementById(`${id}-settings-group`)) {
-            const div = document.createElement('div');
-            div.id = `${id}-settings-group`;
-            div.className = 'provider-settings-group';
-            div.style.display = 'none';
-            div.style.margin = '0';
-            div.style.padding = '0';
-            div.style.border = 'none';
-            div.style.borderTop = '1px solid rgba(93, 123, 151, 0.2)';
-            div.style.paddingTop = '10px';
-            div.innerHTML = this._sanitizeHTML(config.settingsHtml);
-            container.appendChild(div);
-        }
-    },
-
-    // ============================================================================
-    // HOOK CHAIN SYSTEM: replaces broken monkey-patching
-    // ============================================================================
-
-    /**
-     * Register a hook on a function with priority-based chain execution.
-     * Lower priority = runs first (pre-hooks). Higher = runs last (post-hooks).
-     * Default priority = 100.
-     *
-     * Hook callback receives: (originalFn, ...args) → return value
-     * If a hook returns undefined, the next hook in chain gets the previous result.
-     * If a hook returns a value, it replaces the result for the next hook.
-     */
-    hookFunction: function(obj, funcName, modId, hookCallback, priority = 100) {
-        if (!obj || typeof obj !== 'object' || typeof obj[funcName] !== 'function') {
-            console.error(`[ModAPI] hookFunction: ${funcName} is not a function on the provided object`);
-            return;
-        }
-        
-        // Store original if this is the first hook
-        if (!this._originalFunctions[funcName]) {
-            this._originalFunctions[funcName] = obj[funcName];
-        }
-        
-        if (!this._hookChains[funcName]) {
-            this._hookChains[funcName] = [];
-        }
-        
-        // Store obj reference alongside the hook for safe rollback in unhookFunction/unloadMod
-        this._hookChains[funcName].push({ modId, priority, callback: hookCallback, obj });
-        // Sort by priority (lower first = pre-hooks, higher = post-hooks)
-        this._hookChains[funcName].sort((a, b) => a.priority - b.priority);
-        
-        // Rebuild the chained function
-        this._rebuildHookChain(obj, funcName);
-        console.log(`[ModAPI] Hook registered on ${funcName} by mod ${modId} (priority ${priority})`);
-    },
-
-    /**
-     * Unhook a specific mod's hook from a function chain.
-     */
-    unhookFunction: function(obj, funcName, modId) {
-        if (!this._hookChains[funcName]) return;
-        // Recover obj from stored hook entries if caller didn't pass it (unloadMod path)
-        const storedObj = obj || (this._hookChains[funcName][0] && this._hookChains[funcName][0].obj) || null;
-        this._hookChains[funcName] = this._hookChains[funcName].filter(h => h.modId !== modId);
-        if (this._hookChains[funcName].length === 0) {
-            // No more hooks — restore original using stored obj reference
-            if (storedObj && this._originalFunctions[funcName]) {
-                storedObj[funcName] = this._originalFunctions[funcName];
-            }
-            delete this._originalFunctions[funcName];
-            delete this._hookChains[funcName];
-        } else if (storedObj) {
-            this._rebuildHookChain(storedObj, funcName);
-        }
-        console.log(`[ModAPI] Hook removed from ${funcName} for mod ${modId}`);
-    },
-
-    _rebuildHookChain: function(obj, funcName) {
-        const original = this._originalFunctions[funcName];
-        const hooks = this._hookChains[funcName];
-        
-        obj[funcName] = function(...args) {
-            let result;
-            let currentFn = original.bind(this);
-            
-            for (const hook of hooks) {
-                try {
-                    const hookResult = hook.callback(currentFn, ...args);
-                    if (hookResult !== undefined) {
-                        result = hookResult;
-                        // Wrap result for next hook's "original"
-                        currentFn = () => result;
-                    } else {
-                        // Hook didn't modify — pass through original
-                        result = currentFn(...args);
-                    }
-                } catch (e) {
-                    console.error(`[ModAPI] Error in hook chain for ${funcName} (mod ${hook.modId}):`, e);
-                    result = currentFn(...args);
-                }
-            }
-            
-            return result;
-        };
-    },
-
-    // DEPRECATED: patchFunction — now delegates to hookFunction for backward compatibility
+    // Issue #10: Improved error message for patchFunction
+    // Issue #2: Store original function for rollback
     patchFunction: function(obj, funcName, patchCallback) {
-        // Убрано предупреждение console.warn, чтобы не засорять консоль мододелам
         if (!obj || typeof obj !== 'object' || typeof obj[funcName] !== 'function') {
             console.error(`[ModAPI] Ошибка патчинга: первый аргумент должен быть объектом с функцией ${funcName}. Получен тип: ${typeof obj}`);
             return;
         }
-        // Generate a stable modId from funcName for backward compat
-        const compatModId = `_patch_${funcName}`;
-        // Remove any existing compat hook for this funcName
-        this.unhookFunction(obj, funcName, compatModId);
-        // Register as a hook with default priority
-        this.hookFunction(obj, funcName, compatModId, patchCallback, 100);
+        const original = obj[funcName];
+        // Store original for later rollback (Issue #2)
+        this._originalFunctions[funcName] = original;
+        obj[funcName] = function(...args) {
+            return patchCallback(original.bind(this), ...args);
+        };
+        console.log(`[ModAPI] Функция ${funcName} успешно пропатчена (Monkey-patch).`);
     },
 
-    // DEPRECATED: unpatchFunction — now delegates to unhookFunction for backward compatibility
+    // Issue #2: unpatchFunction - restore original function
     unpatchFunction: function(obj, funcName) {
-        const compatModId = `_patch_${funcName}`;
-        this.unhookFunction(obj, funcName, compatModId);
+        if (this._originalFunctions[funcName]) {
+            obj[funcName] = this._originalFunctions[funcName];
+            delete this._originalFunctions[funcName];
+            console.log(`[ModAPI] Функция ${funcName} восстановлена из оригинала.`);
+        } else {
+            console.warn(`[ModAPI] unpatchFunction: оригинал для ${funcName} не найден.`);
+        }
     },
 
-    // ============================================================================
-    // IPC MUTATION BATCHING
-    // ============================================================================
-
-    /**
-     * Queue a mutation for batch delivery to the C++ engine.
-     * Returns a Promise that resolves when the C++ engine confirms the mutation was applied.
-     */
-    queueMutation: function(mutation) {
-        if (!mutation || typeof mutation !== 'object') return Promise.reject(new Error("Invalid mutation"));
-        return new Promise((resolve, reject) => {
-            const txId = typeof generateUUID === 'function' ? generateUUID() : Math.random().toString(36).substring(2);
-            mutation.transaction_id = txId;
-            this._pendingTransactions.set(txId, { resolve, reject });
-            this._pendingMutations.push(mutation);
-            
-            if (!this._mutationFlushTimer) {
-                this._mutationFlushTimer = setTimeout(() => this._flushMutations(), 0);
-            }
-        });
-    },
-
-    /**
-     * Flush all pending mutations to the C++ engine in a single batch.
-     */
-    _flushMutations: async function() {
-        if (this._pendingMutations.length === 0) return;
-        const batch = this._pendingMutations.splice(0);
-        clearTimeout(this._mutationFlushTimer);
-        this._mutationFlushTimer = null;
-        await this.applyModChanges(batch);
-    },
-
-    // ============================================================================
-    // UI / STYLES / HOTKEYS / FILTERS
-    // ============================================================================
-
-    // DEPRECATED: addUI is fragile. Use registerWidget instead.
+    // Issue #5: addUI with HTML sanitization
+    // Issue #2: Track injected UI elements
     addUI: function(htmlString, targetSelector = 'body') {
-        console.warn(`[ModAPI] addUI is DEPRECATED. Use registerWidget() instead. Target: ${targetSelector}`);
         const target = document.querySelector(targetSelector);
         if (target) {
             const sanitizedHTML = this._sanitizeHTML(htmlString);
             target.insertAdjacentHTML('beforeend', sanitizedHTML);
-        }
-    },
-
-    /**
-     * Register a UI widget to a specific region.
-     * @param {string} regionId - e.g., 'character-bottom', 'inventory-top'
-     * @param {string} widgetId - Unique ID for this widget
-     * @param {string|function} content - HTML string OR a render function(containerElement) for React/Vue
-     * @param {function} [onRenderCallback] - Optional callback if content is an HTML string
-     */
-    registerWidget: function(regionId, widgetId, content, onRenderCallback) {
-        this._widgets.push({
-            regionId,
-            widgetId,
-            content: typeof content === 'string' ? this._sanitizeHTML(content) : content,
-            onRender: onRenderCallback,
-            modId: this._currentLoadingMod
-        });
-        console.log(`[ModAPI] Зарегистрирован виджет '${widgetId}' для зоны '${regionId}'`);
-    },
-
-    /**
-     * Render all widgets for a specific region into a container.
-     * Called by the core game UI update functions.
-     */
-    renderWidgets: function(regionId, containerElement) {
-        if (!containerElement) return;
-        containerElement.innerHTML = ''; // Clear previous renders
-        const regionWidgets = this._widgets.filter(w => w.regionId === regionId);
-        for (const widget of regionWidgets) {
-            try {
-                const wrapper = document.createElement('div');
-                wrapper.id = `mod-widget-${widget.widgetId}`;
-                wrapper.className = 'mod-widget-container';
-                wrapper.dataset.modOwner = widget.modId;
-                containerElement.appendChild(wrapper);
-
-                if (typeof widget.content === 'function') {
-                    // Modern framework support (React/Vue) - pass the wrapper directly
-                    widget.content(wrapper);
-                } else {
-                    // Legacy HTML string support
-                    wrapper.innerHTML = widget.content;
-                    if (typeof widget.onRender === 'function') {
-                        widget.onRender(wrapper);
-                    }
-                }
-            } catch (e) {
-                console.error(`[ModAPI] Ошибка рендера виджета '${widget.widgetId}':`, e);
+            // Track the last added element (Issue #2)
+            const addedElement = target.lastElementChild;
+            if (addedElement) {
+                this._injectedUI.push({ element: addedElement, targetSelector });
             }
+        } else {
+            console.error(`[ModAPI] Селектор ${targetSelector} не найден для addUI.`);
         }
     },
 
-    // addStyle accepts id parameter for tracking/removal.
-    // The style is always tagged with the current loading mod's ID for reliable cleanup in unloadMod.
+    // Issue #12: addStyle accepts id parameter for tracking/removal
+    // Issue #2: Track injected style elements
     addStyle: function(idOrCss, cssString) {
         let id, css;
         // Backward compatibility: if only one arg, treat as cssString with auto-generated id
@@ -384,9 +152,6 @@ window.ModAPI = {
             id = idOrCss;
             css = cssString;
         }
-        // Prefix with current loading mod id so unloadMod can find styles regardless of user-supplied id
-        const ownerModId = this._currentLoadingMod || '_unknown';
-        id = `${ownerModId}__${id}`;
 
         // Remove existing style with same id if any
         const existing = document.querySelector(`style[data-mod-style="${id}"]`);
@@ -399,7 +164,7 @@ window.ModAPI = {
         this._injectedStyles.push({ id, element: style });
     },
 
-    // removeStyle by id
+    // Issue #2: removeStyle by id
     removeStyle: function(id) {
         const existing = document.querySelector(`style[data-mod-style="${id}"]`);
         if (existing) existing.remove();
@@ -411,7 +176,7 @@ window.ModAPI = {
         console.log(`[ModAPI] Зарегистрирован хоткей: ${keyCombo}`);
     },
 
-    // unregisterHotkey
+    // Issue #2: unregisterHotkey
     unregisterHotkey: function(keyCombo) {
         delete this.hotkeys[keyCombo.toLowerCase()];
         console.log(`[ModAPI] Удалён хоткей: ${keyCombo}`);
@@ -432,7 +197,7 @@ window.ModAPI = {
         console.log(`[ModAPI] Зарегистрирован глобальный текстовый фильтр.`);
     },
 
-    // Log error instead of silently swallowing in applyTextFilters
+    // Issue #8: Log error instead of silently swallowing in applyTextFilters
     applyTextFilters: function(text) {
         if (!this.textFilters || this.textFilters.length === 0 || typeof text !== 'string') return text;
         let result = text;
@@ -466,7 +231,7 @@ window.ModAPI = {
         console.log(`[ModAPI] Мод ${modId} зарегистрирован в системе сохранений.`);
     },
 
-    // removeSaveHandler
+    // Issue #2: removeSaveHandler
     removeSaveHandler: function(modId) {
         delete this.saveHandlers[modId];
         console.log(`[ModAPI] Удалён обработчик сохранений для мода: ${modId}`);
@@ -493,7 +258,7 @@ window.ModAPI = {
         }
     },
 
-    // addSettingsTab with HTML sanitization
+    // Issue #5: addSettingsTab with HTML sanitization
     addSettingsTab: function(tabId, tabTitle, htmlContent) {
         const tabsContainer = document.querySelector('.settings-tabs');
         const contentContainer = document.querySelector('.settings-content');
@@ -529,7 +294,7 @@ window.ModAPI = {
         this.hooks[eventName].push(callback);
     },
 
-    // unregisterHook
+    // Issue #2: unregisterHook
     unregisterHook: function(eventName, callback) {
         if (this.hooks[eventName]) {
             this.hooks[eventName] = this.hooks[eventName].filter(cb => cb !== callback);
@@ -557,7 +322,7 @@ window.ModAPI = {
         return null;
     },
     
-    // readJson wrapped in try/catch for invalid JSON
+    // Issue #9: readJson wrapped in try/catch for invalid JSON
     readJson: async function(modId, fileName) {
         try {
             const content = await this.readFile(modId, fileName);
@@ -568,92 +333,14 @@ window.ModAPI = {
         }
     },
 
-    // removeCommand
+    // Issue #2: removeCommand
     removeCommand: function(commandName) {
         delete this.customCommands[commandName];
         this.commandDocs = this.commandDocs.filter(d => d.name !== commandName);
         console.log(`[ModAPI] Удалена кастомная ГМ команда: ${commandName}`);
     },
 
-    // ============================================================================
-    // MODKIT 3.0: Virtual File System + Deferred Mutations
-    // ============================================================================
-
-    /**
-     * Resolve a mod asset path to a valid URL for <img>, background-image, <audio>, etc.
-     * Uses the metera-mod:// custom Electron protocol.
-     *
-     * @param {string} modId - The mod's ID (e.g., 'cyberpunk_total_conversion')
-     * @param {string} assetPath - Relative path within the mod folder (e.g., 'assets/icons/blade.png')
-     * @returns {string} A valid URL like 'metera-mod://cyberpunk_total_conversion/assets/icons/blade.png'
-     */
-    resolveAsset: function(modId, assetPath) {
-        if (!modId || typeof modId !== 'string') {
-            console.error('[ModAPI] resolveAsset: modId must be a non-empty string');
-            return '';
-        }
-        if (!assetPath || typeof assetPath !== 'string') {
-            console.error('[ModAPI] resolveAsset: assetPath must be a non-empty string');
-            return '';
-        }
-        // Sanitize: remove leading slashes from assetPath
-        const cleanPath = assetPath.replace(/^\/+/, '');
-        return `metera-mod://${modId}/${cleanPath}`;
-    },
-
-    /**
-     * Send mutations to the C++ engine. Changes are applied immediately.
-     *
-     * @param {Array} mutations - Array of mutation objects
-     */
-    applyModChanges: async function(mutations) {
-        if (!Array.isArray(mutations) || mutations.length === 0) return;
-        if (window.electronAPI && window.electronAPI.nexusSendRawCommand) {
-            try {
-                const res = await window.electronAPI.nexusSendRawCommand('applyModChanges', { mutations });
-                if (res && res.results && Array.isArray(res.results)) {
-                    for (const r of res.results) {
-                        const tx = this._pendingTransactions.get(r.transaction_id);
-                        if (tx) {
-                            if (r.success) tx.resolve(r);
-                            else tx.reject(new Error(r.error || "Unknown mutation error"));
-                            this._pendingTransactions.delete(r.transaction_id);
-                        }
-                    }
-                } else {
-                    console.warn("[ModAPI] Engine did not return mutation results. Resolving optimistically.");
-                    for (const m of mutations) {
-                        const tx = this._pendingTransactions.get(m.transaction_id);
-                        if (tx) {
-                            tx.resolve({ success: true, note: "Optimistic fallback" });
-                            this._pendingTransactions.delete(m.transaction_id);
-                        }
-                    }
-                }
-                return res;
-            } catch (e) {
-                for (const m of mutations) {
-                    const tx = this._pendingTransactions.get(m.transaction_id);
-                    if (tx) {
-                        tx.reject(e);
-                        this._pendingTransactions.delete(m.transaction_id);
-                    }
-                }
-                throw e;
-            }
-        } else {
-            for (const m of mutations) {
-                const tx = this._pendingTransactions.get(m.transaction_id);
-                if (tx) {
-                    tx.resolve({ success: true, note: "Local fallback" });
-                    this._pendingTransactions.delete(m.transaction_id);
-                }
-            }
-        }
-        return null;
-    },
-
-    // unloadMod - full cleanup for a specific mod
+    // Issue #2: unloadMod - full cleanup for a specific mod
     unloadMod: function(modId) {
         const mod = this.mods[modId];
         if (!mod) {
@@ -661,10 +348,9 @@ window.ModAPI = {
             return;
         }
 
-        // Remove injected styles for this mod.
-        // Styles are now prefixed as `{modId}__{userProvidedId}` in addStyle(),
-        // so matching by prefix is reliable regardless of user-supplied id.
-        const modStylePrefix = `${modId}__`;
+        // Remove injected styles for this mod
+        // Styles registered with modId prefix pattern
+        const modStylePrefix = `${modId}_`;
         this._injectedStyles = this._injectedStyles.filter(s => {
             if (s.id && s.id.startsWith(modStylePrefix)) {
                 s.element.remove();
@@ -673,21 +359,14 @@ window.ModAPI = {
             return true;
         });
 
-        // Clear all active timers (setTimeout/setInterval) created by this mod
-        if (this._activeTimers[modId]) {
-            this._activeTimers[modId].forEach(timer => {
-                if (timer.type === 'timeout') clearTimeout(timer.id);
-                if (timer.type === 'interval') clearInterval(timer.id);
-            });
-            delete this._activeTimers[modId];
-        }
-
-
-        // Remove registered widgets for this mod
-        this._widgets = this._widgets.filter(w => w.modId !== modId);
-        // Trigger a UI update to clear removed widgets
-        if (typeof updateCharacterSheet === 'function') updateCharacterSheet();
-        if (typeof updateInventoryDisplay === 'function') updateInventoryDisplay();
+        // Remove injected UI elements for this mod
+        this._injectedUI = this._injectedUI.filter(ui => {
+            if (ui.element && ui.element.dataset && ui.element.dataset.modOwner === modId) {
+                ui.element.remove();
+                return false;
+            }
+            return true;
+        });
 
         // Remove save handler
         this.removeSaveHandler(modId);
@@ -706,710 +385,89 @@ window.ModAPI = {
             }
         }
 
-        // Remove hook chain entries for this mod.
-        // unhookFunction now recovers obj from stored hook entries, so full rollback is safe.
-        for (const funcName of Object.keys(this._hookChains)) {
-            this.unhookFunction(null, funcName, modId);
-        }
-
         // Remove from mods registry
         delete this.mods[modId];
-        
-        // Clean up body classes
-        const classesToRemove = Array.from(document.body.classList).filter(c => c.startsWith('theme-') && c !== 'theme-default');
-        classesToRemove.forEach(c => document.body.classList.remove(c));
 
         console.log(`[ModAPI] Мод ${modId} полностью выгружен.`);
     },
     
-    // ============================================================================
-    // NEW METHODS (T3)
-    // ============================================================================
-
-    setCustomMapGenerator: function(callback) {
-        this._customMapGenerator = callback;
-        console.log(`[ModAPI] Зарегистрирован кастомный генератор карты.`);
-    },
-
-
-    // --- 1. NPC Management ---
-    getNpc: async function(npcId) {
-        if (typeof World !== 'undefined' && World && World.npcs && World.npcs[npcId]) return World.npcs[npcId];
-        if (typeof player !== 'undefined' && player && player.allKnownEntities && player.allKnownEntities[npcId]) return player.allKnownEntities[npcId];
-        return null;
-    },
-    queryNpcs: async function(filter) {
-        if (typeof World === 'undefined' || !World || !World.npcs) return [];
-        return Object.values(World.npcs).filter(npc => {
-            if (filter.race && npc.race !== filter.race) return false;
-            if (filter.class && npc.class !== filter.class) return false;
-            if (filter.region && npc.currentLocation !== filter.region && npc.homeLocation !== filter.region) return false;
-            if (filter.hpMin !== undefined && (npc.stats?.hp || 0) < filter.hpMin) return false;
-            if (filter.faction && npc.factionId !== filter.faction) return false;
-            if (filter.trait && (!npc.traits || !npc.traits.includes(filter.trait))) return false;
-            return true;
-        });
-    },
-    setNpcProperty: async function(npcId, property, value) {
-        const npc = await this.getNpc(npcId);
-        if (!npc) return false;
-        const keys = property.split('.');
-        let current = npc;
-        for (let i = 0; i < keys.length - 1; i++) {
-            if (current[keys[i]] === undefined) current[keys[i]] = {};
-            current = current[keys[i]];
-        }
-        current[keys[keys.length - 1]] = value;
-        await this.queueMutation({ type: 'setNpcProperty', npcId, property, value });
-        return true;
-    },
-    createNpc: async function(template) {
-        const npcId = template.id || 'npc_' + (typeof generateUUID === 'function' ? generateUUID() : Math.random().toString(36).substring(2));
-        if (typeof World !== 'undefined' && World && World.npcs) {
-            World.npcs[npcId] = { id: npcId, aiIdentifier: npcId, type: 'npc', stats: { hp: 10, maxHp: 10 }, ...template };
-        }
-        await this.queueMutation({ type: 'createNpc', npcId, template });
-        return npcId;
-    },
-    removeNpc: async function(npcId) {
-        let removed = false;
-        if (typeof World !== 'undefined' && World && World.npcs && World.npcs[npcId]) {
-            delete World.npcs[npcId];
-            removed = true;
-        }
-        if (typeof player !== 'undefined' && player && player.allKnownEntities && player.allKnownEntities[npcId]) {
-            delete player.allKnownEntities[npcId];
-            removed = true;
-        }
-        if (removed) await this.queueMutation({ type: 'removeNpc', npcId });
-        return removed;
-    },
-    addNpcTrait: async function(npcId, traitId) {
-        const npc = await this.getNpc(npcId);
-        if (!npc) return false;
-        if (!npc.traits) npc.traits = [];
-        if (npc.traits.includes(traitId)) return false;
-        npc.traits.push(traitId);
-        await this.queueMutation({ type: 'addNpcTrait', npcId, traitId });
-        return true;
-    },
-    removeNpcTrait: async function(npcId, traitId) {
-        const npc = await this.getNpc(npcId);
-        if (!npc || !npc.traits || !npc.traits.includes(traitId)) return false;
-        npc.traits = npc.traits.filter(t => t !== traitId);
-        await this.queueMutation({ type: 'removeNpcTrait', npcId, traitId });
-        return true;
-    },
-
-    // --- 2. Region Management ---
-    getRegion: async function(regionId) {
-        if (typeof World !== 'undefined' && World && World.regions && World.regions[regionId]) return World.regions[regionId];
-        return null;
-    },
-    queryRegions: async function(filter) {
-        if (typeof World === 'undefined' || !World || !World.regions) return [];
-        return Object.values(World.regions).filter(r => {
-            if (filter.stabilityMax !== undefined && r.stability > filter.stabilityMax) return false;
-            if (filter.stabilityMin !== undefined && r.stability < filter.stabilityMin) return false;
-            if (filter.biome && r.biome !== filter.biome) return false;
-            if (filter.owner && r.factionId !== filter.owner) return false;
-            return true;
-        });
-    },
-    setRegionProperty: async function(regionId, property, value) {
-        const region = await this.getRegion(regionId);
-        if (!region) return false;
-        region[property] = value;
-        await this.queueMutation({ type: 'setRegionProperty', regionId, property, value });
-        return true;
-    },
-    getRegionMarket: async function(regionId) {
-        const region = await this.getRegion(regionId);
-        if (!region || !region.markets) return { items: {} };
-        const market = { items: {} };
-        for (const [item, price] of Object.entries(region.markets)) {
-            const basePrice = (typeof ECONOMY_ITEMS !== 'undefined' && ECONOMY_ITEMS[item]) ? ECONOMY_ITEMS[item].basePrice : 1;
-            market.items[item] = {
-                base: basePrice,
-                current: price,
-                trend: price > basePrice ? 'up' : (price < basePrice ? 'down' : 'stable')
-            };
-        }
-        return market;
-    },
-    getRegionHistory: async function(regionId, limit = 50) {
-        if (typeof World === 'undefined' || !World || !World.news) return [];
-        const history = World.news.filter(n => n.location === regionId || n.location === 'global');
-        history.sort((a, b) => (b.day || 0) - (a.day || 0));
-        return history.slice(0, limit);
-    },
-
-    // --- 3. Economy & Trade ---
-    getItemData: async function(itemId) {
-        if (typeof ECONOMY_ITEMS !== 'undefined' && ECONOMY_ITEMS[itemId]) return { id: itemId, ...ECONOMY_ITEMS[itemId] };
-        if (typeof itemsReferenceData !== 'undefined' && Array.isArray(itemsReferenceData)) {
-            const item = itemsReferenceData.find(i => i.id === itemId);
-            if (item) return item;
-        }
-        return null;
-    },
-    setItemPriceOverride: async function(itemId, price) {
-        if (!this._priceOverrides) this._priceOverrides = {};
-        this._priceOverrides[itemId] = price;
-        if (!this._economyHooked && typeof EconomySim !== 'undefined') {
-            this.hookFunction(EconomySim, 'calculatePrice', '_ModAPI_Economy', (original, protoId, regionId, isBuying) => {
-                if (this._priceOverrides && this._priceOverrides[protoId] !== undefined) {
-                    let finalPrice = this._priceOverrides[protoId];
-                    let chaMod = (typeof player !== 'undefined' && player) ? (player.stats.cha - 10) * 0.05 : 0;
-                    if (isBuying) finalPrice *= (1.2 - chaMod);
-                    else finalPrice *= (0.8 + chaMod);
-                    return Math.max(1, Math.floor(finalPrice));
-                }
-                return original(protoId, regionId, isBuying);
-            }, 10);
-            this._economyHooked = true;
-        }
-    },
-    createTradeRoute: async function(config) {
-        const routeId = 'route_' + (typeof generateUUID === 'function' ? generateUUID() : Math.random().toString(36).substring(2));
-        const route = { id: routeId, ...config };
-        if (typeof World !== 'undefined' && World && World.regions && World.regions[config.from]) {
-            if (!World.regions[config.from].caravans) World.regions[config.from].caravans = [];
-            World.regions[config.from].caravans.push(route);
-        }
-        await this.queueMutation({ type: 'createTradeRoute', routeId, config });
-        return routeId;
-    },
-    removeTradeRoute: async function(routeId) {
-        let removed = false;
-        if (typeof World !== 'undefined' && World && World.regions) {
-            for (const rId in World.regions) {
-                const region = World.regions[rId];
-                if (region.caravans) {
-                    const idx = region.caravans.findIndex(c => c.id === routeId);
-                    if (idx !== -1) {
-                        region.caravans.splice(idx, 1);
-                        removed = true;
-                    }
-                }
-            }
-        }
-        if (removed) await this.queueMutation({ type: 'removeTradeRoute', routeId });
-        return removed;
-    },
-    getEconomySummary: async function() {
-        const summary = { totalMoney: 0, priceIndex: 1.0, deficits: [], surpluses: [], factionBalance: {} };
-        if (typeof World === 'undefined' || !World || !World.regions) return summary;
-        
-        let totalBase = 0;
-        let totalCurrent = 0;
-        const goodsStats = {};
-
-        for (const rId in World.regions) {
-            const r = World.regions[rId];
-            summary.totalMoney += r.moneySupply || 0;
-            
-            if (!summary.factionBalance[r.factionId]) summary.factionBalance[r.factionId] = 0;
-            summary.factionBalance[r.factionId] += r.moneySupply || 0;
-
-            if (r.markets) {
-                for (const [item, price] of Object.entries(r.markets)) {
-                    const basePrice = (typeof ECONOMY_ITEMS !== 'undefined' && ECONOMY_ITEMS[item]) ? ECONOMY_ITEMS[item].basePrice : 1;
-                    totalBase += basePrice;
-                    totalCurrent += price;
-                    
-                    if (!goodsStats[item]) goodsStats[item] = { stock: 0, demand: 0 };
-                    if (r.vault_id && typeof countRealItems === 'function') {
-                        goodsStats[item].stock += countRealItems(r.vault_id, item);
-                    }
-                    goodsStats[item].demand += (r.population || 0) * 0.01;
-                }
-            }
-        }
-        if (totalBase > 0) summary.priceIndex = totalCurrent / totalBase;
-
-        const deficitArray = [];
-        for (const good in goodsStats) {
-            const ratio = goodsStats[good].demand / (goodsStats[good].stock + 1);
-            deficitArray.push({ good, ratio });
-        }
-        deficitArray.sort((a, b) => b.ratio - a.ratio);
-        summary.deficits = deficitArray.slice(0, 5).map(i => i.good);
-        summary.surpluses = deficitArray.slice(-5).reverse().map(i => i.good);
-
-        return summary;
-    },
-
-    // --- 4. Map & Navigation ---
-    getTile: async function(x, y) {
-        if (typeof World === 'undefined' || !World || !World.map) return null;
-        const map = World.map;
-        if (x < 0 || x >= map.width || y < 0 || y >= map.height) return null;
-        const idx = y * map.width + x;
-        const cell = map.grid ? map.grid[idx] : null;
-        if (!cell) return null;
-        
-        // MapTile format: [biome_id, road_level, bridge_flag, water_depth, is_flooded, road_condition]
-        const biomeId = cell[0];
-        const roadLevel = cell[1];
-        const bridgeFlag = cell[2];
-        const waterDepth = cell[3];
-        const isFlooded = cell[4];
-        const roadCondition = cell[5];
-
-        let regionId = null;
-        if (map.locations) {
-            for (const loc of Object.values(map.locations)) {
-                if (loc.x === x && loc.y === y) {
-                    regionId = loc.id;
-                    break;
-                }
-            }
-        }
-        
-        let hasRoad = false;
-        if (map.roads) {
-            hasRoad = map.roads.some(r => r.waypoints.some(wp => wp[0] === x && wp[1] === y));
-        }
-
-        return { x, y, biomeId, roadLevel, bridgeFlag, waterDepth, isFlooded, roadCondition, regionId, hasRoad, isExplored: true };
-    },
-    setTileBiome: async function(x, y, biomeId) {
-        if (typeof World !== 'undefined' && World && World.map && World.map.grid) {
-            const idx = y * World.map.width + x;
-            if (World.map.grid[idx]) World.map.grid[idx][0] = biomeId;
-        }
-        await this.queueMutation({ type: 'setTileBiome', x, y, biome_id: biomeId });
-    },
-    setTileRoadLevel: async function(x, y, level) {
-        if (typeof World !== 'undefined' && World && World.map && World.map.grid) {
-            const idx = y * World.map.width + x;
-            if (World.map.grid[idx]) World.map.grid[idx][1] = level;
-        }
-        await this.queueMutation({ type: 'setTileRoadLevel', x, y, level });
-    },
-    setTileWaterDepth: async function(x, y, depth) {
-        if (typeof World !== 'undefined' && World && World.map && World.map.grid) {
-            const idx = y * World.map.width + x;
-            if (World.map.grid[idx]) World.map.grid[idx][3] = depth;
-        }
-        await this.queueMutation({ type: 'setTileWaterDepth', x, y, depth });
-    },
-    setTileFlooded: async function(x, y, isFlooded) {
-        if (typeof World !== 'undefined' && World && World.map && World.map.grid) {
-            const idx = y * World.map.width + x;
-            if (World.map.grid[idx]) World.map.grid[idx][4] = isFlooded;
-        }
-        await this.queueMutation({ type: 'setTileFlooded', x, y, isFlooded });
-    },
-    addMapLocation: async function(id, name, x, y, type = 'village', faction = '') {
-        if (typeof World !== 'undefined' && World && World.map && World.map.locations) {
-            World.map.locations[id] = { id, name, x, y, type, faction, no_road: false };
-        }
-        await this.queueMutation({ type: 'addLocation', id, name, x, y, locType: type, faction });
-    },
-    removeMapLocation: async function(id) {
-        if (typeof World !== 'undefined' && World && World.map && World.map.locations) {
-            delete World.map.locations[id];
-        }
-        await this.queueMutation({ type: 'removeLocation', id });
-    },
-    findPath: async function(fromX, fromY, toX, toY, options = {}) {
-        return await this.sendRawToEngine('findPath', { fromX, fromY, toX, toY, options });
-    },
-    revealTile: async function(x, y, radius = 1) {
-        await this.queueMutation({ type: 'revealTile', x, y, radius });
-    },
-
-    updateWorldConfig: async function(configObj) {
-        await this.queueMutation({ type: 'updateWorldConfig', config: configObj });
-    },
-    updateBiomeDef: async function(biomeId, defObj) {
-        await this.queueMutation({ type: 'updateBiomeDef', biomeId, def: defObj });
-    },
-    regenerateMap: async function(seed = Math.floor(Math.random() * 1000000)) {
-        await this.queueMutation({ type: 'regenerateMap', seed });
-    },
-
-
-    // --- 5. Faction & Diplomacy ---
-    getFaction: async function(factionId) {
-        if (typeof World !== 'undefined' && World && World.factions && World.factions[factionId]) return World.factions[factionId];
-        return null;
-    },
-    setFactionProperty: async function(factionId, property, value) {
-        const faction = await this.getFaction(factionId);
-        if (!faction) return false;
-        faction[property] = value;
-        await this.queueMutation({ type: 'setFactionProperty', factionId, property, value });
-        return true;
-    },
-    createFaction: async function(config) {
-        const factionId = config.id || 'faction_' + (typeof generateUUID === 'function' ? generateUUID() : Math.random().toString(36).substring(2));
-        if (typeof World !== 'undefined' && World && World.factions) {
-            World.factions[factionId] = { id: factionId, diplomacy: {}, regions: [], armies: [], ...config };
-        }
-        await this.queueMutation({ type: 'createFaction', factionId, config });
-        return factionId;
-    },
-    getFactionMembers: async function(factionId) {
-        const members = [];
-        if (typeof World === 'undefined' || !World) return members;
-        if (World.npcs) {
-            for (const [id, npc] of Object.entries(World.npcs)) {
-                if (npc.factionId === factionId) members.push(id);
-            }
-        }
-        if (World.rulers) {
-            for (const [id, ruler] of Object.entries(World.rulers)) {
-                if (ruler.factionId === factionId) members.push(id);
-            }
-        }
-        return members;
-    },
-
-    // --- 6. Time & Simulation Control ---
-    getCurrentDate: function() {
-        if (typeof player !== 'undefined' && player && player.gameTime) {
-            return {
-                day: player.gameTime.day,
-                month: player.gameTime.month,
-                year: player.gameTime.year,
-                hour: player.gameTime.hour,
-                minute: player.gameTime.minute,
-                era: player.era,
-                tick: (typeof World !== 'undefined' && World) ? World.tick : 0
-            };
-        }
-        return null;
-    },
-    pauseSimulation: function() {
-        this._simulationPausedByMod = true;
-        if (typeof window !== 'undefined') window.isSimulatingTime = true;
-        console.log('[ModAPI] Simulation paused by mod.');
-    },
-    resumeSimulation: function() {
-        this._simulationPausedByMod = false;
-        if (typeof window !== 'undefined') window.isSimulatingTime = false;
-        console.log('[ModAPI] Simulation resumed by mod.');
-    },
-    setSimulationSpeed: function(speed) {
-        if (typeof TREK_CONFIG !== 'undefined') {
-            const base = 1000;
-            TREK_CONFIG.tick_interval_ms = Math.max(50, Math.floor(base / speed));
-            console.log(`[ModAPI] Simulation speed set to ${speed}x (${TREK_CONFIG.tick_interval_ms}ms per tick)`);
-        }
-    },
-
-    // --- 7. Quest System ---
-    registerQuest: function(questId, config) {
-        if (!this._registeredQuests) this._registeredQuests = {};
-        this._registeredQuests[questId] = config;
-        console.log(`[ModAPI] Quest registered: ${questId}`);
-    },
-    advanceQuest: async function(questId, stageId) {
-        if (!this._registeredQuests || !this._registeredQuests[questId]) return false;
-        if (typeof player === 'undefined' || !player || !player.quests) return false;
-        
-        const questConfig = this._registeredQuests[questId];
-        const stage = questConfig.stages.find(s => s.id === stageId);
-        if (!stage) return false;
-
-        if (!player.quests[questId]) {
-            player.quests[questId] = {
-                id: questId,
-                aiIdentifier: questId,
-                title: questConfig.title,
-                objective: stage.description,
-                description: questConfig.description || '',
-                reward: questConfig.rewards ? JSON.stringify(questConfig.rewards) : 'Unknown',
-                issuer: questConfig.issuer || 'System',
-                status: 'active',
-                currentStage: stageId
-            };
-            if (typeof addLogMessage === 'function') addLogMessage(`Новое задание: ${questConfig.title}`, 'quest-card');
-        } else {
-            player.quests[questId].objective = stage.description;
-            player.quests[questId].currentStage = stageId;
-            if (typeof addLogMessage === 'function') addLogMessage(`Задание обновлено: ${questConfig.title} - ${stage.description}`, 'quest-card');
-        }
-        if (typeof updateQuestList === 'function') updateQuestList();
-        await this.queueMutation({ type: 'advanceQuest', questId, stageId });
-        return true;
-    },
-    completeQuest: async function(questId, result = null) {
-        if (typeof player === 'undefined' || !player || !player.quests || !player.quests[questId]) return;
-        player.quests[questId].status = 'completed';
-        
-        const questConfig = this._registeredQuests ? this._registeredQuests[questId] : null;
-        if (questConfig && questConfig.rewards) {
-            if (questConfig.rewards.gold && typeof executeCommand === 'function') {
-                await executeCommand('updateStat', { stat: 'gold', change: questConfig.rewards.gold });
-            }
-            if (questConfig.rewards.xp && typeof executeCommand === 'function') {
-                await executeCommand('updateStat', { stat: 'xp', change: questConfig.rewards.xp });
-            }
-            if (questConfig.rewards.items && typeof executeCommand === 'function') {
-                for (const item of questConfig.rewards.items) {
-                    await executeCommand('addItem', { aiIdentifier: item, name: item, quantity: 1 });
-                }
-            }
-        }
-        
-        if (typeof addLogMessage === 'function') addLogMessage(`Задание выполнено: ${player.quests[questId].title}`, 'quest-card');
-        if (typeof updateQuestList === 'function') updateQuestList();
-        await this.queueMutation({ type: 'completeQuest', questId, result });
-    },
-    failQuest: async function(questId, reason = null) {
-        if (typeof player === 'undefined' || !player || !player.quests || !player.quests[questId]) return;
-        player.quests[questId].status = 'failed';
-        
-        const questConfig = this._registeredQuests ? this._registeredQuests[questId] : null;
-        if (questConfig && questConfig.onFailure) {
-            if (typeof questConfig.onFailure === 'function') {
-                await questConfig.onFailure(reason);
-            }
-        }
-        
-        if (typeof addLogMessage === 'function') addLogMessage(`Задание провалено: ${player.quests[questId].title}`, 'quest-card');
-        if (typeof updateQuestList === 'function') updateQuestList();
-        await this.queueMutation({ type: 'failQuest', questId, reason });
-    },
-
-    // --- 8. World Events ---
-    registerWorldEvent: function(eventId, config) {
-        if (!this._worldEvents) {
-            this._worldEvents = {};
-            if (typeof EventBus !== 'undefined') {
-                EventBus.on('world:tick', async () => {
-                    if (!this._worldEvents) return;
-                    const currentDay = (typeof World !== 'undefined' && World) ? Math.floor((World.tick || 0) / 24) : 0;
-                    for (const [id, ev] of Object.entries(this._worldEvents)) {
-                        if (ev.frequency && currentDay % ev.frequency === 0) {
-                            if (!ev.condition || ev.condition(typeof World !== 'undefined' ? World : null)) {
-                                if (ev.onTrigger) await ev.onTrigger();
-                            }
-                        }
-                    }
-                });
-            } else {
-                if (typeof runWorldSimulationTick !== 'undefined') {
-                    this.hookFunction(window, 'runWorldSimulationTick', '_ModAPI_WorldEvents', async (original, ...args) => {
-                        await original(...args);
-                        const currentDay = (typeof World !== 'undefined' && World) ? Math.floor((World.tick || 0) / 24) : 0;
-                        for (const [id, ev] of Object.entries(this._worldEvents)) {
-                            if (ev.frequency && currentDay % ev.frequency === 0) {
-                                if (!ev.condition || ev.condition(typeof World !== 'undefined' ? World : null)) {
-                                    if (ev.onTrigger) await ev.onTrigger();
-                                }
-                            }
-                        }
-                    }, 200);
-                }
-            }
-        }
-        this._worldEvents[eventId] = config;
-        console.log(`[ModAPI] World event registered: ${eventId}`);
-    },
-    triggerWorldEvent: async function(eventId, args = null) {
-        if (this._worldEvents && this._worldEvents[eventId] && this._worldEvents[eventId].onTrigger) {
-            await this._worldEvents[eventId].onTrigger(args);
-        }
-    },
-
-    // --- 9. Facility Management ---
-    buildFacility: async function(regionId, type, config = {}) {
-        const facilityId = config.id || 'fac_' + (typeof generateUUID === 'function' ? generateUUID() : Math.random().toString(36).substring(2));
-        if (typeof World !== 'undefined' && World && World.businesses) {
-            World.businesses[facilityId] = {
-                id: facilityId,
-                region_id: regionId,
-                facility_type: type,
-                owner_ids: [config.owner || 'system'],
-                level: config.level || 1,
-                cash_balance: config.cash || 0,
-                employee_count: config.workers || 0,
-                is_active: true,
-                construction_days_left: 0,
-                ...config
-            };
-            if (World.regions && World.regions[regionId]) {
-                if (!World.regions[regionId].cityLayout) World.regions[regionId].cityLayout = [];
-                World.regions[regionId].cityLayout.push({ type: type, linked_id: facilityId, name: config.name || type });
-            }
-        }
-        await this.queueMutation({ type: 'buildFacility', regionId, facilityType: type, facilityId, config });
-        if (typeof updateHoldingsDisplay === 'function') updateHoldingsDisplay();
-        return facilityId;
-    },
-    destroyFacility: async function(facilityId) {
-        let removed = false;
-        if (typeof World !== 'undefined' && World && World.businesses && World.businesses[facilityId]) {
-            const fac = World.businesses[facilityId];
-            if (World.regions && World.regions[fac.region_id] && World.regions[fac.region_id].cityLayout) {
-                World.regions[fac.region_id].cityLayout = World.regions[fac.region_id].cityLayout.filter(b => b.linked_id !== facilityId);
-            }
-            delete World.businesses[facilityId];
-            removed = true;
-        }
-        if (removed) {
-            await this.queueMutation({ type: 'destroyFacility', facilityId });
-            if (typeof updateHoldingsDisplay === 'function') updateHoldingsDisplay();
-        }
-        return removed;
-    },
-    getFacility: async function(facilityId) {
-        if (typeof World !== 'undefined' && World && World.businesses && World.businesses[facilityId]) {
-            return World.businesses[facilityId];
-        }
-        return null;
-    },
-
-    // --- 10. Inter-Mod Communication ---
-    broadcast: function(channel, data) {
-        if (!this._broadcastChannels) this._broadcastChannels = {};
-        if (this._broadcastChannels[channel]) {
-            for (const cb of this._broadcastChannels[channel]) {
-                try { cb(data); } catch(e) { console.error(`[ModAPI] Error in broadcast channel ${channel}:`, e); }
-            }
-        }
-    },
-    onBroadcast: function(channel, callback) {
-        if (!this._broadcastChannels) this._broadcastChannels = {};
-        if (!this._broadcastChannels[channel]) this._broadcastChannels[channel] = [];
-        this._broadcastChannels[channel].push(callback);
-    },
-
-    // --- 11. Audio ---
-    playSound: function(assetUrl, options = {}) {
-        const soundId = 'snd_' + Date.now() + '_' + Math.random().toString(36).substring(2);
-        if (!this._activeSounds) this._activeSounds = {};
-        
-        const audio = new Audio(assetUrl);
-        audio.volume = options.volume !== undefined ? options.volume : 1.0;
-        audio.loop = options.loop || false;
-        
-        if (options.fadeIn) {
-            audio.volume = 0;
-            audio.play().catch(e => console.warn('[ModAPI] playSound autoplay blocked:', e));
-            let vol = 0;
-            const step = (options.volume !== undefined ? options.volume : 1.0) / (options.fadeIn / 50);
-            const fadeInterval = setInterval(() => {
-                vol += step;
-                if (vol >= (options.volume !== undefined ? options.volume : 1.0)) {
-                    audio.volume = options.volume !== undefined ? options.volume : 1.0;
-                    clearInterval(fadeInterval);
-                } else {
-                    audio.volume = vol;
-                }
-            }, 50);
-        } else {
-            audio.play().catch(e => console.warn('[ModAPI] playSound autoplay blocked:', e));
-        }
-        
-        this._activeSounds[soundId] = audio;
-        
-        audio.addEventListener('ended', () => {
-            if (!audio.loop) {
-                delete this._activeSounds[soundId];
-            }
-        });
-        
-        return soundId;
-    },
-    stopSound: function(soundId) {
-        if (this._activeSounds && this._activeSounds[soundId]) {
-            const audio = this._activeSounds[soundId];
-            audio.pause();
-            audio.currentTime = 0;
-            delete this._activeSounds[soundId];
-        }
-    },
-
     mergeDeep: mergeDeep
 };
 
 // ============================================================================
-// SANDBOX: Function constructor pattern for mod isolation
+// SANDBOX: with + Proxy pattern for true mod isolation (Issue #4 FULL)
 // ============================================================================
 //
 // Architecture Overview:
 //
 //   +---------------------------------------------------+
 //   |  Mod code runs inside:                            |
-//   |    new AsyncFunction(...paramNames, code)         |
-//   |    .call(null, ...paramValues)                    |
+//   |    with(sandboxProxy) { <mod code> }              |
 //   |                                                   |
-//   |  The mod code only has access to identifiers      |
-//   |  we explicitly pass as function parameters.       |
-//   |  Blocked globals (fetch, eval, etc.) are passed   |
-//   |  as undefined, shadowing the real global scope.   |
+//   |  Every identifier lookup goes through:            |
+//   |    sandboxProxy.has() → always true               |
+//   |    sandboxProxy.get() → 3-tier resolution:        |
+//   |      1. Whitelisted safe globals → safe value     |
+//   |      2. Blocked globals → undefined + warning     |
+//   |      3. Game globals (window.X) → pass-through    |
 //   |                                                   |
 //   |  window = safeWindowProxy:                        |
-//   |    window.player     -> pass-through              |
-//   |    window.t          -> pass-through              |
-//   |    window.fetch      -> blocked + warning          |
-//   |    window.electronAPI -> blocked + warning          |
+//   |    window.player     → ✅ pass-through            |
+//   |    window.t          → ✅ pass-through            |
+//   |    window.fetch      → ❌ blocked + warning       |
+//   |    window.electronAPI → ❌ blocked + warning       |
 //   |                                                   |
 //   |  document = hardenedDocProxy:                     |
-//   |    document.createElement('div')    -> allowed    |
-//   |    document.createElement('script') -> blocked    |
-//   |    document.defaultView             -> safeWindow |
+//   |    document.createElement('div')    → ✅ allowed  |
+//   |    document.createElement('script') → ❌ blocked  |
+//   |    document.defaultView             → safeWindow  |
 //   +---------------------------------------------------+
 //
 
 /**
- * Deep-freeze an object and all its nested properties recursively.
- * Prevents mods from mutating any ModAPI state.
+ * Properties that are BLOCKED as bare identifiers in the sandbox.
+ * When a mod writes `fetch` or `eval`, the Proxy intercepts it
+ * and returns undefined + logs a warning.
+ *
+ * NOTE: 'window' is NOT here — we provide a safe window proxy instead.
  */
-function deepFreeze(obj) {
-    if (obj === null || typeof obj !== 'object' && typeof obj !== 'function') return obj;
-    if (Object.isFrozen(obj)) return obj;
-    Object.freeze(obj);
-    const keys = Object.getOwnPropertyNames(obj);
-    for (const key of keys) {
-        const val = obj[key];
-        if ((typeof val === 'object' || typeof val === 'function') && val !== null && !Object.isFrozen(val)) {
-            deepFreeze(val);
-        }
-    }
-    return obj;
-}
-
-/**
- * Properties that are BLOCKED on the safe `window` proxy.
- * These are dangerous globals that mods must not access via window.X.
- */
-const WINDOW_BLOCKED_PROPS = new Set([
-    // DOM/Window hierarchy escapes
+const SANDBOX_BLOCKED_GLOBALS = new Set([
     'top', 'parent', 'frames', 'contentWindow',
-    // Storage (to prevent overwriting game saves directly, though ModAPI provides save handlers)
-    'localStorage', 'sessionStorage', 'indexedDB', 'caches',
-    'importScripts',
-    // Node.js / OS level access (CRITICAL TO KEEP BLOCKED)
+    'fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource',
+    'eval', 'Function', 'AsyncFunction', 'GeneratorFunction',
     'require', 'module', 'exports', '__dirname', '__filename',
     'process', 'Buffer',
-    // Electron IPC (CRITICAL TO KEEP BLOCKED - use ModAPI instead)
     'electronAPI',
-    // Browser APIs that can exfiltrate data
+    'localStorage', 'sessionStorage', 'indexedDB', 'caches',
+    'importScripts',
     'Navigator', 'Location', 'History',
     'SharedArrayBuffer', 'Atomics',
     'Proxy', 'Reflect', 'Symbol',
     'alert', 'confirm', 'prompt',
     'open', 'close', 'stop', 'print',
     'postMessage', 'onmessage',
-    // Constructor chain escape prevention
+    // Constructor chain escape prevention:
+    // Without these, a mod can do: ({}).constructor.constructor('return fetch')()
     'constructor', '__proto__', 'prototype',
-    // Global constructors that can be abused to escape sandbox
+    // Global constructors that can be abused to escape sandbox:
     'Object', 'Array', 'String', 'Number', 'Boolean', 'RegExp', 'Date',
     'Map', 'Set', 'WeakMap', 'WeakSet', 'Promise', 'Error',
     'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError',
     'Int8Array', 'Uint8Array', 'Float32Array', 'Float64Array',
     'ArrayBuffer', 'DataView',
-    // window-specific redirects
-    'window',    // window.window -> return safe proxy (not real window)
-    'self',      // window.self  -> return safe proxy
-    'globalThis',// window.globalThis -> return safe proxy
+]);
+
+/**
+ * Properties that are BLOCKED on the safe `window` proxy.
+ * This is a superset of SANDBOX_BLOCKED_GLOBALS plus:
+ * - `window` / `self` / `globalThis` (return the safe proxy, not the real window)
+ * - `crypto` (use ModAPI.readFile for I/O)
+ */
+const WINDOW_BLOCKED_PROPS = new Set([
+    ...SANDBOX_BLOCKED_GLOBALS,
+    'window',    // window.window → return safe proxy (not real window)
+    'self',      // window.self  → return safe proxy
+    'globalThis',// window.globalThis → return safe proxy
     'crypto',
 ]);
 
@@ -1433,14 +491,14 @@ const BLOCKED_CREATE_ELEMENTS = new Set([
  * Instead, we proxy `window` and block only dangerous properties.
  *
  * SECURITY:
- * - window.fetch       -> blocked
- * - window.eval        -> blocked
- * - window.electronAPI -> blocked
- * - window.player      -> pass-through (game global)
- * - window.t           -> pass-through (game global)
- * - window.window      -> returns safe proxy (not real window)
+ * - window.fetch       → ❌ blocked
+ * - window.eval        → ❌ blocked
+ * - window.electronAPI → ❌ blocked
+ * - window.player      → ✅ pass-through (game global)
+ * - window.t           → ✅ pass-through (game global)
+ * - window.window      → returns safe proxy (not real window)
  */
-function createSafeWindowProxy(realWindow, modId) {
+function createSafeWindowProxy(realWindow, modId, safeModAPI) {
     // We need a reference to the proxy itself for self-referencing properties.
     // This is set up after the proxy is created.
     let safeWindowProxy = null;
@@ -1450,6 +508,11 @@ function createSafeWindowProxy(realWindow, modId) {
             // window.window / window.self / window.globalThis → return safe proxy
             if (prop === 'window' || prop === 'self' || prop === 'globalThis') {
                 return safeWindowProxy;
+            }
+
+            // Intercept ModAPI to return the safe wrapper
+            if (prop === 'ModAPI' && safeModAPI) {
+                return safeModAPI;
             }
 
             // Block dangerous properties
@@ -1468,8 +531,18 @@ function createSafeWindowProxy(realWindow, modId) {
                 console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to set window.${prop} — blocked`);
                 return true;
             }
+            // Prevent overwriting ModAPI
+            if (prop === 'ModAPI') {
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to overwrite window.ModAPI — blocked`);
+                return true;
+            }
             // Allow setting game globals (mods may set window.player, etc.)
             realWindow[prop] = value;
+            return true;
+        },
+
+        has(target, prop) {
+            // Return true for everything so `with()` doesn't fall through
             return true;
         },
 
@@ -1552,90 +625,42 @@ function createDocumentProxy(doc, safeWindowProxy, modId) {
 }
 
 /**
- * Executes mod code in a sandboxed environment using the Function constructor pattern.
+ * Creates a full sandbox environment for mod execution using the
+ * `with(proxy) { ... }` pattern.
  *
- * Instead of the deprecated `with(proxy) { ... }` pattern, we use the
- * Function constructor to create a new scope where the mod code only has
- * access to the parameters we explicitly provide. Blocked globals are
- * passed as `undefined` to shadow the real global scope versions.
- *
- * Key security properties:
- * - `window` → safe proxy (blocks fetch, eval, electronAPI, etc.)
- * - `document` → blocks createElement('script'), defaultView, on* handlers
- * - `ModAPI` → deep-frozen (immutable)
- * - Bare `fetch`, `eval`, `require` → undefined (shadowed by parameter)
- * - Game globals → access via `window.player`, `window.t`, etc.
+ * How it works:
+ * - The Proxy's `has` trap returns `true` for ALL property names,
+ *   which prevents the JS engine from falling through to the real global
+ *   scope via the `with` statement.
+ * - The `get` trap implements a 3-tier access policy:
+ *   1. Whitelisted safe globals → return the safe value
+ *   2. Explicitly blocked globals → return undefined + warn
+ *   3. Game globals (on window but not blocked) → pass through
+ *      This allows mods to use `player`, `updateCharacterSheet`, etc.
+ *      Both bare identifiers and `window.X` forms work.
  */
-async function executeModInSandbox(code, modAPI, modId, modMeta) {
-    // Если безопасный режим (Safe Mode) отключен, выполняем код напрямую.
-    // Песочница часто мешает легитимным модам, искажая глобальную область видимости (Proxy).
-    if (!modAPI.safeMode) {
-        try {
-            const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
-            const modFunc = new AsyncFunction('ModAPI', 'modId', 'modMeta', code);
-            await modFunc(modAPI, modId, modMeta);
-        } catch (e) {
-            console.error(`[ModLoader] Ошибка выполнения мода ${modId}:`, e);
-        }
-        return;
-    }
+function createModSandbox(modAPI, modId, modMeta) {
+    // --- Build the safe globals whitelist ---
+    const safeGlobals = Object.create(null);
 
-    // Build safe globals that will be available as function parameters
-    const safeGlobals = {};
+    // Safe ModAPI wrapper (immutable object, but methods can mutate the real ModAPI state)
+    const safeModAPI = {};
+    for (const key in modAPI) {
+        if (typeof modAPI[key] === 'function') {
+            safeModAPI[key] = modAPI[key].bind(modAPI);
+        } else {
+            Object.defineProperty(safeModAPI, key, {
+                get: () => modAPI[key],
+                set: (val) => { modAPI[key] = val; },
+                enumerable: true
+            });
+        }
+    }
+    safeGlobals.ModAPI = Object.freeze(safeModAPI);
 
     // Safe window proxy (must create early — document proxy needs it)
-    const safeWindow = createSafeWindowProxy(window, modId);
+    const safeWindow = createSafeWindowProxy(window, modId, safeGlobals.ModAPI);
     safeGlobals.window = safeWindow;
-
-    // Safe ModAPI facade: exposes only public methods via bound wrappers.
-    // Mods cannot access or mutate internal fields (_hookChains, hooks, mods, etc.)
-    // because the facade object has no direct reference to them.
-    const PUBLIC_MOD_API_METHODS = [
-        'on', 'emit', 'unregisterHook',
-        'addCommand', 'removeCommand',
-        'addPromptInjection',
-        'hookFunction', 'unhookFunction',
-        'patchFunction', 'unpatchFunction',
-        'addStyle', 'removeStyle',
-        'registerWidget', 'renderWidgets',
-        'registerHotkey', 'unregisterHotkey',
-        'addPromptFilter', 'addResponseFilter', 'addTextFilter',
-        'addTranslations', 'setString',
-        'registerSaveData', 'removeSaveHandler',
-        'sendRawToEngine', 'sendToEngine',
-        'notify', 'addSettingsTab',
-        'readFile', 'readJson',
-        'resolveAsset', 'applyModChanges', 'queueMutation',
-        'mergeDeep', 'registerAiProvider',
-        'getNpc', 'queryNpcs', 'setNpcProperty', 'createNpc', 'removeNpc', 'addNpcTrait', 'removeNpcTrait',
-        'getRegion', 'queryRegions', 'setRegionProperty', 'getRegionMarket', 'getRegionHistory',
-        'getItemData', 'setItemPriceOverride', 'createTradeRoute', 'removeTradeRoute', 'getEconomySummary',
-        'getTile', 'findPath', 'revealTile', 'setTileBiome', 'setTileRoadLevel', 'setTileWaterDepth', 'setTileFlooded', 'addMapLocation', 'removeMapLocation',
-        'updateWorldConfig', 'updateBiomeDef', 'regenerateMap', 'setCustomMapGenerator',
-        'getFaction', 'setFactionProperty', 'createFaction', 'getFactionMembers',
-        'getCurrentDate', 'pauseSimulation', 'resumeSimulation', 'setSimulationSpeed',
-        'registerQuest', 'advanceQuest', 'completeQuest', 'failQuest',
-        'registerWorldEvent', 'triggerWorldEvent',
-        'buildFacility', 'destroyFacility', 'getFacility',
-        'broadcast', 'onBroadcast',
-        'playSound', 'stopSound'
-    ];
-    const PUBLIC_MOD_API_PROPS = ['apiVersion', 'isTotalConversion', 'safeMode'];
-    const safeModAPIFacade = {};
-    for (const method of PUBLIC_MOD_API_METHODS) {
-        if (typeof modAPI[method] === 'function') {
-            safeModAPIFacade[method] = modAPI[method].bind(modAPI);
-        }
-    }
-    for (const prop of PUBLIC_MOD_API_PROPS) {
-        Object.defineProperty(safeModAPIFacade, prop, {
-            get: () => modAPI[prop],
-            enumerable: true,
-            configurable: false
-        });
-    }
-    Object.freeze(safeModAPIFacade);
-    safeGlobals.ModAPI = safeModAPIFacade;
 
     // Safe console (with mod tag prefix for debugging)
     safeGlobals.console = Object.freeze({
@@ -1657,7 +682,7 @@ async function executeModInSandbox(code, modAPI, modId, modMeta) {
     safeGlobals.Map = Map;
     safeGlobals.Set = Set;
     safeGlobals.Error = Error;
-    safeGlobals.Regexp = RegExp;
+    safeGlobals.RegExp = RegExp;
     safeGlobals.Date = Date;
     safeGlobals.JSON = JSON;
     safeGlobals.Math = Math;
@@ -1682,34 +707,36 @@ async function executeModInSandbox(code, modAPI, modId, modMeta) {
     safeGlobals.undefined = undefined;
     safeGlobals.NaN = NaN;
     safeGlobals.Infinity = Infinity;
+    safeGlobals.true = true;
+    safeGlobals.false = false;
+    safeGlobals.null = null;
 
     // Performance
     safeGlobals.performance = performance;
 
-    // Network & Execution (Unblocked for modders)
-    safeGlobals.fetch = fetch.bind(window);
-    safeGlobals.XMLHttpRequest = XMLHttpRequest;
-    safeGlobals.WebSocket = WebSocket;
-    safeGlobals.EventSource = EventSource;
-    // eval намеренно не передается как параметр, так как в strict mode 
-    // использование 'eval' в качестве имени аргумента вызывает SyntaxError.
-    // Он будет доступен модам напрямую из глобальной области видимости.
-    safeGlobals.Function = Function;
-
-    // Timers without artificial limits
-    if (!modAPI._activeTimers[modId]) modAPI._activeTimers[modId] = [];
+    // Timers with flood protection (max 50 concurrent per mod)
+    const _maxTimers = 50;
+    let _activeTimers = 0;
     safeGlobals.setTimeout = function(fn, ms, ...args) {
-        const id = setTimeout(() => { try { fn(...args); } catch(e) { console.error(`[Mod:${modId}] Timer callback error:`, e); } }, ms);
-        modAPI._activeTimers[modId].push({id, type: 'timeout'});
+        if (_activeTimers >= _maxTimers) {
+            console.warn(`[ModLoader SANDBOX] Timer limit (${_maxTimers}) reached for mod ${modId}.`);
+            return -1;
+        }
+        _activeTimers++;
+        const id = setTimeout(() => { _activeTimers--; try { fn(...args); } catch(e) { console.error(`[Mod:${modId}] Timer callback error:`, e); } }, ms);
         return id;
     };
     safeGlobals.setInterval = function(fn, ms, ...args) {
+        if (_activeTimers >= _maxTimers) {
+            console.warn(`[ModLoader SANDBOX] Timer limit (${_maxTimers}) reached for mod ${modId}.`);
+            return -1;
+        }
+        _activeTimers++;
         const id = setInterval(() => { try { fn(...args); } catch(e) { console.error(`[Mod:${modId}] Interval callback error:`, e); } }, ms);
-        modAPI._activeTimers[modId].push({id, type: 'interval'});
         return id;
     };
-    safeGlobals.clearTimeout = clearTimeout;
-    safeGlobals.clearInterval = clearInterval;
+    safeGlobals.clearTimeout = function(id) { if (id > 0) { clearTimeout(id); _activeTimers = Math.max(0, _activeTimers - 1); } };
+    safeGlobals.clearInterval = function(id) { if (id > 0) { clearInterval(id); _activeTimers = Math.max(0, _activeTimers - 1); } };
     safeGlobals.requestAnimationFrame = function(fn) {
         return requestAnimationFrame(() => { try { fn(performance.now()); } catch(e) { console.error(`[Mod:${modId}] rAF callback error:`, e); } });
     };
@@ -1719,54 +746,134 @@ async function executeModInSandbox(code, modAPI, modId, modMeta) {
     safeGlobals.modId = modId;
     safeGlobals.modMeta = modMeta;
 
-    // Blocked globals: pass as undefined to shadow the real global scope versions.
-    // This prevents mods from accessing them even though the Function constructor
-    // creates the function in the global scope.
-    const blockedIdentifiers = [
-        // Node.js & Electron (Strictly blocked)
-        'require', 'module', 'exports', '__dirname', '__filename',
-        'process', 'Buffer',
-        'electronAPI',
-        // Storage & Hierarchy
-        'localStorage', 'sessionStorage', 'indexedDB', 'caches',
-        'importScripts',
-        'SharedArrayBuffer', 'Atomics',
-        'Proxy', 'Reflect', 'Symbol',
-        'alert', 'confirm', 'prompt',
-        'open', 'close', 'stop', 'print',
-        'postMessage', 'onmessage',
-        'top', 'parent', 'frames', 'contentWindow',
-        'Navigator', 'Location', 'History',
-        'WeakMap', 'WeakSet',
-        'Int8Array', 'Uint8Array', 'Float32Array', 'Float64Array',
-        'ArrayBuffer', 'DataView',
-        'crypto',
-    ];
-    for (const name of blockedIdentifiers) {
-        if (!(name in safeGlobals)) {
-            safeGlobals[name] = undefined;
+    // --- Create the with-compatible Proxy ---
+    const sandboxProxy = new Proxy(safeGlobals, {
+        /**
+         * The `has` trap is the KEY to the with+Proxy pattern.
+         * By returning `true` for ALL property names, we prevent the JS engine
+         * from ever falling through to the real global scope.
+         * Even for blocked globals like `fetch`, we return `true`
+         * so the engine doesn't find them in the outer scope.
+         */
+        has(target, prop) {
+            return true;
+        },
+
+        /**
+         * The `get` trap implements a 3-tier access policy:
+         *
+         * 1. Whitelisted safe globals (ModAPI, console, Math, etc.)
+         *    → return the safe value
+         *
+         * 2. Explicitly blocked globals (fetch, eval, electronAPI, etc.)
+         *    → return undefined + log warning
+         *
+         * 3. Game globals (player, t, updateCharacterSheet, etc.)
+         *    These are properties on `window` that are NOT in the blocked list.
+         *    → pass through from real window
+         *    This allows mods to use both bare identifiers (`player`)
+         *    and `window.player` forms.
+         */
+        get(target, prop) {
+            // 1. If in our safe globals, return it
+            if (prop in target) {
+                return target[prop];
+            }
+
+            // 2. If explicitly blocked, return undefined + warn
+            if (SANDBOX_BLOCKED_GLOBALS.has(prop)) {
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to access blocked global "${prop}" — returned undefined`);
+                return undefined;
+            }
+
+            // 3. Pass-through: check if it's a game global on window.
+            //    Dangerous window properties are already filtered by step 2
+            //    (fetch, eval, etc. are in both SANDBOX_BLOCKED_GLOBALS
+            //     and WINDOW_BLOCKED_PROPS).
+            //    This allows `player`, `t`, `World`, `updateCharacterSheet`,
+            //    `damagePlayerHP`, etc. to work as bare identifiers.
+            if (prop in window) {
+                return window[prop];
+            }
+
+            // 4. Unknown property — return undefined
+            return undefined;
+        },
+
+        /**
+         * Control writes to the sandbox namespace:
+         * - Block overwriting safe globals (ModAPI, console, etc.)
+         * - Pass through writes to window for game globals
+         * - Allow local variables (var/let/const inside with() block)
+         */
+        set(target, prop, value) {
+            // Block overwriting our safe globals
+            if (prop in target) {
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to overwrite sandbox property "${prop}" — blocked`);
+                return true;
+            }
+            // For game globals, pass through to window
+            if (prop in window) {
+                window[prop] = value;
+                return true;
+            }
+            // Allow local variables in the with() scope
+            target[prop] = value;
+            return true;
+        },
+
+        /**
+         * Prevent deletion of sandbox properties.
+         */
+        deleteProperty(target, prop) {
+            if (prop in target) {
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to delete sandbox property "${prop}" — blocked`);
+                return false;
+            }
+            // Pass through to window for game globals
+            if (prop in window) {
+                delete window[prop];
+                return true;
+            }
+            return true;
         }
-    }
+    });
 
-    // Create parameter names and values arrays for Function constructor
-    const paramNames = Object.keys(safeGlobals);
-    const paramValues = Object.values(safeGlobals);
+    return sandboxProxy;
+}
 
-    // Execute mod code in a new scope — no access to outer closure
-    // The Function constructor creates a function in the global scope,
-    // but since we pass all globals as parameters, the mod can only
-    // access what we provide.
-    const wrappedCode = `"use strict";
-        ${code}
+/**
+ * Executes mod code in a sandboxed environment using the with+Proxy pattern.
+ *
+ * The `with(sandboxProxy) { ... }` block redirects ALL identifier lookups
+ * through the Proxy. Combined with the `has` trap returning `true` for
+ * everything, this prevents mods from accessing the real global scope
+ * through closures — they can only access what the Proxy allows.
+ *
+ * Key security properties:
+ * - `window` → safe proxy (blocks fetch, eval, electronAPI, etc.)
+ * - `document` → blocks createElement('script'), defaultView, on* handlers
+ * - `ModAPI` → deep-frozen (immutable)
+ * - Bare `fetch`, `eval`, `require` → return undefined + warning
+ * - Game globals (player, t, updateCharacterSheet) → pass through from window
+ *
+ * NOTE: Strict mode disables `with`, so we do NOT use "use strict" at the
+ * outermost scope. The sandbox Proxy provides equivalent protection.
+ */
+async function executeModInSandbox(code, modAPI, modId, modMeta) {
+    const sandboxProxy = createModSandbox(modAPI, modId, modMeta);
+
+    // Wrap mod code in with(sandboxProxy) to redirect ALL global lookups
+    const wrappedCode = `
+        with(this) {
+            ${code}
+        }
     `;
 
     const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
-    const modFunc = new AsyncFunction(...paramNames, wrappedCode);
-    await modFunc(...paramValues);
+    const modFunc = new AsyncFunction(wrappedCode);
+    await modFunc.call(sandboxProxy);
 }
-
-
-
 
 class ModLoader {
     topologicalSort(adj) {
@@ -1810,7 +917,7 @@ class ModLoader {
     }
 
     async initMods(activeMods) {
-        // Validate mod metadata before loading
+        // Issue #6: Validate mod metadata before loading
         const validatedMods = [];
         for (const mod of activeMods) {
             const errors = window.ModAPI._validateModMeta(mod);
@@ -1818,7 +925,7 @@ class ModLoader {
                 console.error(`[ModLoader] Мод "${mod.id || 'UNKNOWN'}" не прошёл валидацию. Пропускаю. Ошибки: ${errors.join('; ')}`);
                 continue;
             }
-            // API versioning check - warn but don't block
+            // Issue #7: API versioning check - warn but don't block
             if (mod.apiVersion && mod.apiVersion !== window.ModAPI.apiVersion) {
                 console.warn(`[ModLoader] Мод ${mod.id} использует apiVersion "${mod.apiVersion}", текущая версия "${window.ModAPI.apiVersion}". Возможна несовместимость.`);
             }
@@ -1826,7 +933,7 @@ class ModLoader {
         }
         activeMods = validatedMods;
 
-        // Topological sort for dependency ordering
+        // Issue #11: Topological sort for dependency ordering
         if (activeMods.length > 1) {
             const adj = new Map();
             const modIds = new Set(activeMods.map(m => m.id));
@@ -1846,7 +953,7 @@ class ModLoader {
 
         console.log('[ModLoader] Порядок загрузки модов:', activeMods.map(m => m.id));
 
-        // Check for multiple total_conversion mods
+        // Issue #3: Check for multiple total_conversion mods
         const totalConversionMods = activeMods.filter(m => m.total_conversion === true);
         if (totalConversionMods.length > 1) {
             console.error(`[ModLoader] ОШИБКА: Обнаружено ${totalConversionMods.length} модов тотальной конверсии! Только один может быть активен.`);
@@ -1873,7 +980,6 @@ class ModLoader {
             if (modId === 'base_game') continue;
             
             window.ModAPI.mods[modId] = mod;
-            window.ModAPI._currentLoadingMod = modId;
 
             // 1. Выполнение кастомных скриптов мода (RimWorld-like Assemblies/Scripts)
             if (mod.scripts && Array.isArray(mod.scripts)) {
@@ -1883,9 +989,12 @@ class ModLoader {
                         if (code) {
                             console.log(`[ModLoader] Выполнение скрипта: ${scriptPath} из мода ${modId}`);
 
-                            // Execute mod in sandbox using Function constructor pattern.
-                            // The mod code only has access to parameters we provide.
-                            // Blocked globals are passed as undefined to shadow the real ones.
+                            // Issue #4 FULL: Execute mod in hardened with+Proxy sandbox.
+                            // The with+Proxy pattern intercepts ALL identifier lookups,
+                            // preventing mods from accessing window, fetch, eval, etc.
+                            // even through closures. The Proxy's `has` trap returns true
+                            // for all properties, so the JS engine never falls through
+                            // to the real global scope.
                             await executeModInSandbox(code, window.ModAPI, modId, mod);
                         } else {
                             console.log(`[ModLoader] Скрипт ${scriptPath} пропущен (не найден в папке data/ мода ${modId}). Это нормально, если мод содержит только JSON.`);
@@ -1899,18 +1008,89 @@ class ModLoader {
             // 2. Декларативная загрузка данных (опционально, если мод не использует скрипты)
             if (mod.data && isObject(mod.data)) {
                 window.ModAPI.on('onDatabaseLoad', async (db) => {
-                    const dataTypes = ['items', 'recipes', 'facilities', 'biomes', 'city_gen', 'monsters', 'disasters', 'races', 'professions', 'traits', 'npc_names', 'faction_relations', 'world_config', 'tag_defaults', 'classes', 'eras', 'diplomacy', 'casus_belli', 'ship_types', 'container_types', 'map_markers', 'equipment_slots', 'news_categories', 'building_types'];
-                    for (const type of dataTypes) {
-                        if (mod.data[type]) {
-                            for (const file of mod.data[type]) {
-                                const parsedData = await window.ModAPI.readJson(modId, file);
-                                if (parsedData) {
-                                    if (Array.isArray(db[type])) {
-                                        db[type] = db[type].concat(parsedData);
-                                    } else {
-                                        mergeDeep(db[type], parsedData);
-                                    }
-                                }
+                    const runtimeUtils = window.RuntimeDataUtils;
+                    const keyAliases = {
+                        economy_items: 'items',
+                        economy_recipes: 'recipes',
+                        facility_names: 'facilities'
+                    };
+                    const mergePolicies = {
+                        items: 'deepMerge',
+                        recipes: 'append',
+                        facilities: 'deepMerge',
+                        eras: 'upsertById',
+                        classes: 'upsertById',
+                        biomes: 'upsertById',
+                        city_gen: 'deepMerge',
+                        monsters: 'upsertById',
+                        disasters: 'upsertById',
+                        races: 'upsertById',
+                        professions: 'upsertById',
+                        traits: 'upsertById',
+                        npc_names: 'deepMerge',
+                        faction_relations: 'deepMerge',
+                        world_config: 'deepMerge',
+                        equipment_slots: 'appendUnique',
+                        container_types: 'deepMerge',
+                        ship_types: 'deepMerge',
+                        diplomacy: 'deepMerge',
+                        casus_belli: 'deepMerge',
+                        furniture_catalog: 'deepMerge',
+                        tag_defaults: 'deepMerge',
+                        transport_registry: 'deepMerge',
+                        trek_config: 'deepMerge',
+                        narrators: 'upsertById',
+                        predefined_effects: 'upsertById',
+                        prompt_pack: 'deepMerge',
+                        world_assets: 'deepMerge',
+                        tile_dictionary: 'deepMerge'
+                    };
+                    const replaceOnTotalConversion = new Set([
+                        'items',
+                        'recipes',
+                        'facilities',
+                        'eras',
+                        'classes',
+                        'transport_registry',
+                        'trek_config',
+                        'narrators',
+                        'predefined_effects',
+                        'prompt_pack',
+                        'world_assets',
+                        'tile_dictionary'
+                    ]);
+
+                    for (const [rawKey, fileList] of Object.entries(mod.data)) {
+                        if (!Array.isArray(fileList) || rawKey === 'lore' || rawKey === 'locations') {
+                            continue;
+                        }
+
+                        const targetKey = keyAliases[rawKey] || rawKey;
+                        const mergePolicy = mergePolicies[targetKey] || 'deepMerge';
+
+                        if (mod.total_conversion && replaceOnTotalConversion.has(targetKey) && !mod._runtimeResetKeys?.includes(targetKey)) {
+                            if (!mod._runtimeResetKeys) mod._runtimeResetKeys = [];
+                            db[targetKey] = mergePolicy === 'deepMerge' ? {} : [];
+                            mod._runtimeResetKeys.push(targetKey);
+                        }
+
+                        for (const file of fileList) {
+                            const data = await window.ModAPI.readJson(modId, file);
+                            if (data === null || data === undefined) continue;
+
+                            if (db[targetKey] === undefined) {
+                                db[targetKey] = Array.isArray(data) ? [] : {};
+                            }
+
+                            if (runtimeUtils && typeof runtimeUtils.mergeRuntimeValue === 'function') {
+                                db[targetKey] = runtimeUtils.mergeRuntimeValue(db[targetKey], data, { mergePolicy });
+                            } else if (isObject(data)) {
+                                if (!db[targetKey] || typeof db[targetKey] !== 'object') db[targetKey] = {};
+                                mergeDeep(db[targetKey], data);
+                            } else if (Array.isArray(data)) {
+                                db[targetKey] = (db[targetKey] || []).concat(data);
+                            } else {
+                                db[targetKey] = data;
                             }
                         }
                     }
@@ -1934,7 +1114,6 @@ class ModLoader {
                     }
                 });
             }
-            window.ModAPI._currentLoadingMod = null;
         }
 
         // Регистрация активных хуков в C++ ядре

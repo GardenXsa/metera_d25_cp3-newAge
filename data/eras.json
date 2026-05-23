@@ -4,27 +4,31 @@
     "name": "Возрождение",
     "start_year": 1042,
     "default_location_file": "locations_expanded.json",
-    "display_name_i18n_key": "characterCreation.eras.rebirth"
+    "display_name_i18n_key": "characterCreation.eraRebirth",
+    "description_i18n_key": "characterCreation.eraRebirthDesc"
   },
   {
     "id": "architects",
     "name": "Архитекторы",
     "start_year": 850,
     "default_location_file": "locations_architects.json",
-    "display_name_i18n_key": "characterCreation.eras.architects"
+    "display_name_i18n_key": "characterCreation.eraArchitects",
+    "description_i18n_key": "characterCreation.eraArchitectsDesc"
   },
   {
     "id": "sundering",
     "name": "Раскол",
     "start_year": 1,
     "default_location_file": "locations_sundering.json",
-    "display_name_i18n_key": "characterCreation.eras.sundering"
+    "display_name_i18n_key": "characterCreation.eraSundering",
+    "description_i18n_key": "characterCreation.eraSunderingDesc"
   },
   {
     "id": "silence",
     "name": "Тишина",
     "start_year": 215,
     "default_location_file": "locations_silence.json",
-    "display_name_i18n_key": "characterCreation.eras.silence"
+    "display_name_i18n_key": "characterCreation.eraSilence",
+    "description_i18n_key": "characterCreation.eraSilenceDesc"
   }
 ]

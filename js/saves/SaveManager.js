@@ -418,7 +418,6 @@ async function loadGame(slotType, slotId) {
         console.error(`Ошибка загрузки:`, e);
         hideLoadingScreen();
         alert(t('loadGame.errorLoad', { slotId: slotId, message: e.message }));
-        window.isSimulatorInitialized = false;
         setActiveScreen('main-menu');
     }
 }
