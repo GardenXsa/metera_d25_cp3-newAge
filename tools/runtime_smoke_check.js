@@ -107,12 +107,35 @@ function checkJsSyntax(projectPath) {
   }
 }
 
+
+function runNodeTool(projectPath, label) {
+  if (!fileExists(projectPath)) {
+    addResult(label, 'SKIP', 'File does not exist.');
+    return;
+  }
+  const result = spawnSync(process.execPath, [resolveProjectPath(projectPath)], {
+    cwd: ROOT,
+    encoding: 'utf8'
+  });
+  if (result.status === 0) {
+    addResult(label, 'OK', (result.stdout || '').trim());
+  } else {
+    addResult(label, 'FAIL', (result.stderr || result.stdout || '').trim());
+  }
+}
+
 function checkExpectedFiles() {
   const expected = [
     'docs/AI_PATCHER_WORKLOG.md',
+
+    'docs/DATA_DRIVEN_MIGRATION_PLAN.md',
     'tools/worklog_viewer.html',
     'tools/worklog_viewer_server.js',
     'tools/open_worklog_viewer.bat',
+
+    'tools/validate_runtime_configs.js',
+
+    'tools/validate_data_integrity.js',
     'data/runtime_manifest.json',
     'data/ui_runtime.json',
     'data/electron_runtime.json',
@@ -160,8 +183,13 @@ function main() {
     'js/core/constants.js',
     'js/mods/ModLoaderIntegration.js',
     'tools/worklog_viewer_server.js',
-    'tools/runtime_smoke_check.js'
+    'tools/runtime_smoke_check.js',
+    'tools/validate_runtime_configs.js',
+    'tools/validate_data_integrity.js'
   ].forEach(checkJsSyntax);
+
+  runNodeTool('tools/validate_runtime_configs.js', 'runtime config contracts');
+  runNodeTool('tools/validate_data_integrity.js', 'data integrity links');
 
   printResults();
 }

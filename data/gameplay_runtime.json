@@ -15,6 +15,50 @@
       "minimum": 10
     }
   },
+  "character_creation": {
+    "inventory_capacity": {
+      "base": 10,
+      "strength_baseline": 10,
+      "strength_divisor": 2
+    }
+  },
+  "calendar": {
+    "fallback_start_year": 1042,
+    "months_per_year": 12,
+    "max_initial_day": 28,
+    "days_per_year": 360,
+    "days_per_month": 30,
+    "initial_hour": 8,
+    "initial_minute": 0,
+    "initial_total_pulses": 0
+  },
+  "world_bootstrap": {
+    "minimum_days": 90,
+    "base_days": 90,
+    "population_divisor": 5000
+  },
+  "inventory_engine": {
+    "id_prefixes": {
+      "container": "cont_",
+      "item": "item_"
+    },
+    "actors": {
+      "default": "player",
+      "system": "system"
+    },
+    "ipc_retry": {
+      "max_retries": 3,
+      "delay_ms": 500,
+      "backoff_multiplier": 1
+    }
+  },
+  "inventory_building": {
+    "resource_prototype_id": "wood",
+    "resource_cost": 5,
+    "default_max_weight_kg": 100,
+    "default_max_slots": 20,
+    "default_world_coords": [0, 0, 0]
+  },
   "inventory": {
     "default_item_weight": 1,
     "default_item_durability": 100,
@@ -62,3 +106,4 @@
     "food_per_soldier": 0.5
   }
 }
+

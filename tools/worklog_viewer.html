@@ -74,6 +74,38 @@
     .stat { background: #0c0f14; border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
     .stat b { display: block; font-size: 20px; color: var(--accent); }
     .stat span { color: var(--muted); font-size: 12px; }
+
+    .progress-panel {
+      background: #0c0f14;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      margin-bottom: 14px;
+    }
+    .progress-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 8px; }
+    .progress-title { font-weight: 700; }
+    .progress-percent { color: var(--accent); font-size: 22px; font-weight: 800; }
+    .progress-bar {
+      height: 14px;
+      background: #111827;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 8px 0;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #38bdf8, #86efac);
+      transition: width 220ms ease;
+    }
+    .progress-meta { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .phase-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow: auto; }
+    .phase-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+    .phase-row strong { color: var(--text); font-weight: 600; }
+    .mini-bar { height: 6px; background: #111827; border-radius: 999px; overflow: hidden; grid-column: 1 / -1; }
+    .mini-fill { height: 100%; background: var(--accent); width: 0%; }
+
     .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 14px; }
     .chip { border-radius: 999px; padding: 6px 9px; font-size: 12px; }
     .chip.active { border-color: var(--accent); color: var(--accent); }
@@ -152,6 +184,16 @@
     <aside>
       <input class='search' id='searchInput' placeholder='Поиск по реестру...'>
       <div id='dropzone'>Можно перетащить сюда AI_PATCHER_WORKLOG.md, если авто-загрузка не сработала.</div>
+
+      <div class='progress-panel'>
+        <div class='progress-head'>
+          <div class='progress-title'>Data-driven перенос</div>
+          <div class='progress-percent' id='migrationPercent'>0%</div>
+        </div>
+        <div class='progress-bar'><div class='progress-fill' id='migrationFill'></div></div>
+        <div class='progress-meta' id='migrationMeta'>Загружаю план миграции...</div>
+        <div class='phase-list' id='phaseList'></div>
+      </div>
       <div class='stats'>
         <div class='stat'><b id='patchCount'>0</b><span>патчей</span></div>
         <div class='stat'><b id='successCount'>0</b><span>успешных</span></div>
@@ -174,7 +216,9 @@
   </main>
   <script>
     const DEFAULT_WORKLOG_PATH = '../docs/AI_PATCHER_WORKLOG.md';
+    const DEFAULT_PLAN_PATH = '../docs/DATA_DRIVEN_MIGRATION_PLAN.md';
     let rawMarkdown = '';
+    let rawPlanMarkdown = '';
     let renderedHtml = '';
     let activeFilter = 'all';
     const el = (id) => document.getElementById(id);
@@ -260,6 +304,57 @@
       return html.replace(new RegExp(escaped, 'gi'), (m) => `<mark>${m}</mark>`);
     }
 
+    function extractMigrationProgress(md) {
+      if (!md || !md.trim()) return { total: 0, done: 0, percent: 0, phases: [] };
+      const lines = md.replace(/\r\n/g, '\n').split('\n');
+      const phases = [];
+      let current = null;
+      let total = 0;
+      let done = 0;
+
+      for (const line of lines) {
+        const phaseMatch = line.match(/^##\s+(Phase\s+\d+\s+—\s+.+)$/i);
+        if (phaseMatch) {
+          current = { title: phaseMatch[1].trim(), total: 0, done: 0 };
+          phases.push(current);
+          continue;
+        }
+
+        const taskMatch = line.match(/^\s*-\s+\[([xX ])\]\s+(.+)$/);
+        if (!taskMatch) continue;
+        total += 1;
+        if (current) current.total += 1;
+        if (taskMatch[1].toLowerCase() === 'x') {
+          done += 1;
+          if (current) current.done += 1;
+        }
+      }
+
+      const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+      return { total, done, percent, phases };
+    }
+
+    function updateMigrationProgress(md) {
+      const progress = extractMigrationProgress(md);
+      const percent = Math.max(0, Math.min(100, progress.percent));
+      el('migrationPercent').textContent = percent + '%';
+      el('migrationFill').style.width = percent + '%';
+
+      if (!progress.total) {
+        el('migrationMeta').textContent = 'План миграции не загружен. Открой viewer через tools/open_worklog_viewer.bat.';
+        el('phaseList').innerHTML = '';
+        return;
+      }
+
+      const remaining = Math.max(0, progress.total - progress.done);
+      el('migrationMeta').textContent = `${progress.done}/${progress.total} пунктов закрыто, осталось ${remaining}. Процент примерный: пункты считаются равным весом.`;
+      el('phaseList').innerHTML = progress.phases.map((phase) => {
+        const phasePercent = phase.total > 0 ? Math.round((phase.done / phase.total) * 100) : 0;
+        return `<div class='phase-row'><strong>${escapeHtml(phase.title)}</strong><span>${phase.done}/${phase.total}</span><div class='mini-bar'><div class='mini-fill' style='width:${phasePercent}%'></div></div></div>`;
+      }).join('');
+    }
+
+
     function updateStats(cards, md) {
       el('patchCount').textContent = cards.length;
       el('successCount').textContent = cards.filter(c => c.isSuccess).length;
@@ -286,18 +381,33 @@
       renderedHtml = renderMarkdown(rawMarkdown);
       el('rendered').innerHTML = highlight(renderedHtml, el('searchInput').value);
       updateStats(cards, rawMarkdown);
+      updateMigrationProgress(rawPlanMarkdown);
       renderPatchList(cards);
     }
+
+    async function loadPlanDefault() {
+      try {
+        const response = await fetch(DEFAULT_PLAN_PATH, { cache: 'no-store' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        rawPlanMarkdown = await response.text();
+      } catch (error) {
+        rawPlanMarkdown = '';
+      }
+    }
+
 
     async function loadDefault() {
       try {
         const response = await fetch(DEFAULT_WORKLOG_PATH, { cache: 'no-store' });
         if (!response.ok) throw new Error('HTTP ' + response.status);
         rawMarkdown = await response.text();
-        el('sourceLabel').textContent = 'Открыт: docs/AI_PATCHER_WORKLOG.md';
+        await loadPlanDefault();
+        el('sourceLabel').textContent = 'Открыт: docs/AI_PATCHER_WORKLOG.md + docs/DATA_DRIVEN_MIGRATION_PLAN.md';
         renderAll();
       } catch (error) {
         el('sourceLabel').textContent = 'Авто-загрузка не сработала. Открой .md вручную или запусти tools/open_worklog_viewer.bat.';
+        await loadPlanDefault();
+        renderAll();
       }
     }
 

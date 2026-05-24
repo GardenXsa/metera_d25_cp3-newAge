@@ -408,6 +408,15 @@ tools\run_runtime_smoke_check.bat
 node tools/runtime_smoke_check.js
 ```
 
+
+**Результат:** успешно.
+
+- блок `## Ближайшие следующие шаги` добавлен в `docs/DATA_DRIVEN_MIGRATION_PLAN.md`;
+- правило обновления следующих шагов добавлено в `docs/AI_ASSISTANT_PROJECT_RULES.md`;
+- smoke-check зелёный: `57 checks, 0 failed, 0 warnings`.
+
+**Следующий рабочий блок:** Phase 6 continuation — продолжить перенос `script.js`: container/system container aliases, inventory movement / stacking / loot настройки, fallback messages для inventory/action handlers.
+
 **Риск:** низкий. Инструмент ничего не изменяет в проекте, только читает файлы и запускает синтаксические проверки.
 
 
@@ -521,3 +530,635 @@ node tools/runtime_smoke_check.js
 **Git checkpoint:** после этого этапа рекомендуется сделать commit и push, чтобы GitHub стал актуальной точкой восстановления контекста.
 
 **Следующий шаг:** после применения этого патча стоит сделать commit/push, потому что это важная точка синхронизации правил и инструментов проекта.
+
+
+
+---
+
+### 10. `phase5_data_driven_startup_calendar_bootstrap`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `data/gameplay_runtime.json`
+- `script.js`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Продолжаем маленькую data-driven чистку `script.js` после Git checkpoint `e983e78`.
+
+Вынесены в `data/gameplay_runtime.json`:
+
+- fallback start year `1042`;
+- months per year `12`;
+- max random initial day `28`;
+- days per year `360`;
+- days per month `30`;
+- initial hour/minute/totalPulses;
+- inventory capacity formula: base `10`, strength baseline `10`, divisor `2`;
+- bootstrap formula: minimum days `90`, base days `90`, population divisor `5000`.
+
+**Зачем:**
+
+Эти значения относятся к правилам мира/старта игры, а не к логике интерфейса. Теперь их можно менять через data-файл без переписывания `script.js`.
+
+**Риск:** средний-низкий. Затронут старт новой игры и bootstrap мира, но поведение по умолчанию сохранено теми же fallback-значениями.
+
+**Проверки после применения:**
+
+```bash
+node -e "const fs=require('fs'); JSON.parse(fs.readFileSync('data/gameplay_runtime.json','utf8')); console.log('gameplay runtime JSON OK')"
+node --check script.js
+node tools/runtime_smoke_check.js
+```
+
+
+**Результат:** успешно. JSON валиден, `script.js` синтаксически валиден, smoke-check зелёный: `50 checks, 0 failed, 0 warnings`.
+
+
+
+---
+
+### 11. `add_migration_progress_plan_and_viewer_bar`
+
+**Статус:** применён успешно.
+
+**Добавлено:**
+
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+
+**Изменено:**
+
+- `tools/worklog_viewer.html`
+- `tools/runtime_smoke_check.js`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Добавляем видимый прогресс переноса:
+
+- большой план data-driven миграции по фазам;
+- чеклист задач;
+- прогресс-бар в AI Patcher Worklog Viewer;
+- счётчик закрытых/оставшихся пунктов;
+- фазовый список с мини-прогрессом по каждой фазе.
+
+**Зачем:**
+
+Чтобы перенос не ощущался бесконечным и было видно, где мы находимся: что уже сделано, что ещё осталось, и какой блок идёт сейчас.
+
+**Как считается процент:**
+
+Viewer читает `docs/DATA_DRIVEN_MIGRATION_PLAN.md`, считает Markdown-чекбоксы `- [x]` и `- [ ]`. Процент приблизительный, потому что все пункты равного веса.
+
+**Риск:** низкий. Меняется только документация, viewer и smoke-check expected files. Игровой runtime не затрагивается.
+
+
+**Проверки:**
+
+```bash
+node --check tools/runtime_smoke_check.js
+node tools/runtime_smoke_check.js
+node -e "const fs=require('fs'); const plan=fs.readFileSync('docs/DATA_DRIVEN_MIGRATION_PLAN.md','utf8'); if(!plan.includes('Phase 12')) throw new Error('plan incomplete'); const viewer=fs.readFileSync('tools/worklog_viewer.html','utf8'); if(!viewer.includes('migrationFill')) throw new Error('progress bar missing'); console.log('migration progress plan/viewer OK')"
+```
+
+**Результат:** успешно. Smoke-check зелёный: `51 checks, 0 failed, 0 warnings`. План миграции создан, прогресс-бар найден в viewer.
+
+**Итог:** теперь прогресс переноса виден в `tools/worklog_viewer.html` через чекбоксы из `docs/DATA_DRIVEN_MIGRATION_PLAN.md`.
+
+**Проверки после применения:**
+
+```bash
+node --check tools/runtime_smoke_check.js
+node tools/runtime_smoke_check.js
+node -e "const fs=require('fs'); const plan=fs.readFileSync('docs/DATA_DRIVEN_MIGRATION_PLAN.md','utf8'); if(!plan.includes('Phase 12')) throw new Error('plan incomplete'); const viewer=fs.readFileSync('tools/worklog_viewer.html','utf8'); if(!viewer.includes('migrationFill')) throw new Error('progress bar missing'); console.log('migration progress plan/viewer OK')"
+```
+
+
+
+---
+
+### 12. `lock_worklog_and_migration_plan_tracking_rule`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `docs/AI_ASSISTANT_PROJECT_RULES.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Фиксируем постоянное правило сопровождения проекта:
+
+- `docs/AI_PATCHER_WORKLOG.md` должен обновляться после каждого значимого патча;
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md` должен обновляться после каждого этапа, который влияет на прогресс переноса;
+- прогресс-бар viewer считается источником визуального прогресса, поэтому чекбоксы плана должны быть актуальными.
+
+**Зачем:**
+
+Чтобы пользователь видел реальный прогресс, а ассистент в новых чатах не терялся и не продолжал работу вслепую.
+
+**Риск:** низкий. Это документационное правило, игровой runtime не затрагивается.
+
+
+**Проверки:**
+
+```bash
+node -e "const fs=require('fs'); const rules=fs.readFileSync('docs/AI_ASSISTANT_PROJECT_RULES.md','utf8'); if(!rules.includes('DATA_DRIVEN_MIGRATION_PLAN.md')) throw new Error('migration plan rule missing'); const log=fs.readFileSync('docs/AI_PATCHER_WORKLOG.md','utf8'); if(!log.includes('51 checks, 0 failed, 0 warnings')) throw new Error('progress viewer result missing'); console.log('tracking rule documented OK')"
+node tools/runtime_smoke_check.js
+```
+
+**Результат:** успешно. Smoke-check зелёный: `51 checks, 0 failed, 0 warnings`.
+
+**Проверки после применения:**
+
+```bash
+node -e "const fs=require('fs'); const rules=fs.readFileSync('docs/AI_ASSISTANT_PROJECT_RULES.md','utf8'); if(!rules.includes('DATA_DRIVEN_MIGRATION_PLAN.md')) throw new Error('migration plan rule missing'); const log=fs.readFileSync('docs/AI_PATCHER_WORKLOG.md','utf8'); if(!log.includes('51 checks, 0 failed, 0 warnings')) throw new Error('progress viewer result missing'); console.log('tracking rule documented OK')"
+node tools/runtime_smoke_check.js
+```
+
+
+
+---
+
+### 13. `phase6_data_driven_inventory_runtime_controls`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `data/gameplay_runtime.json`
+- `script.js`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Начинаем Phase 6 маленьким безопасным куском: inventory runtime controls.
+
+В `data/gameplay_runtime.json` вынесены:
+
+- префикс container id: `cont_`;
+- префикс item id: `item_`;
+- default actor id: `player`;
+- system actor id: `system`;
+- IPC retry max retries: `3`;
+- IPC retry delay: `500` ms;
+- backoff multiplier.
+
+В `script.js` добавлены helper-функции:
+
+- `getInventoryEngineRuntimeConfig()`;
+- `getInventoryActorId()`.
+
+**Зачем:**
+
+Эти значения относятся к runtime-настройкам inventory/engine bridge, а не к бизнес-логике. Теперь их можно менять через data-файл без поиска по `script.js`.
+
+**Прогресс:**
+
+В `docs/DATA_DRIVEN_MIGRATION_PLAN.md` добавлены закрытые подпункты Phase 6, чтобы progress bar в Worklog Viewer отражал реальное движение.
+
+**Риск:** средний-низкий. Затронуты создание item/container id и retry логика inventory IPC. Fallback-значения совпадают со старым поведением.
+
+**Проверки:**
+
+```bash
+node -e "const fs=require('fs'); JSON.parse(fs.readFileSync('data/gameplay_runtime.json','utf8')); console.log('gameplay runtime JSON OK')"
+node --check script.js
+node tools/runtime_smoke_check.js
+node -e "const fs=require('fs'); const plan=fs.readFileSync('docs/DATA_DRIVEN_MIGRATION_PLAN.md','utf8'); if(!plan.includes('inventory id prefixes')) throw new Error('phase6 progress missing'); console.log('phase6 migration progress OK')"
+```
+
+
+**Результат:** успешно. JSON валиден, `script.js` синтаксически валиден, smoke-check зелёный: `51 checks, 0 failed, 0 warnings`, migration plan обновлён.
+
+
+
+---
+
+### 14. `phase7_runtime_config_contract_checks_fixed`
+
+**Статус:** применён успешно.
+
+**Добавлено:**
+
+- `tools/validate_runtime_configs.js`
+
+**Изменено:**
+
+- `tools/runtime_smoke_check.js`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Добавляем data-contract validator для новых runtime config файлов:
+
+- `data/ui_runtime.json`;
+- `data/electron_runtime.json`;
+- `data/prompt_runtime.json`;
+- `data/gameplay_runtime.json`.
+
+Validator проверяет базовые типы и границы значений: объекты, строки, массивы строк, числа, boolean, диапазоны volume/topP/port/лимитов.
+
+`tools/runtime_smoke_check.js` теперь запускает этот validator как часть общего smoke-check.
+
+**Зачем:**
+
+Дальше перенос будет затрагивать больше data-файлов. Простого `JSON.parse` уже мало: битый ключ или неверный тип может пройти синтаксис, но сломать runtime. Этот слой ловит такие ошибки раньше.
+
+**Прогресс:**
+
+В `docs/DATA_DRIVEN_MIGRATION_PLAN.md` закрываются пункты Phase 7 по structure checks для четырёх runtime configs и расширению smoke-check до data-contract проверки.
+
+**Риск:** низкий-средний. Runtime игры не меняется, но smoke-check стал строже и теперь ловит ошибки структуры runtime config раньше.
+
+**Проверки:**
+
+```bash
+node --check tools/validate_runtime_configs.js
+node tools/validate_runtime_configs.js
+node --check tools/runtime_smoke_check.js
+node tools/runtime_smoke_check.js
+node -e "const fs=require('fs'); const plan=fs.readFileSync('docs/DATA_DRIVEN_MIGRATION_PLAN.md','utf8'); if(!plan.includes('- [x] Добавить проверку структуры `gameplay_runtime.json`.')) throw new Error('phase7 progress missing'); console.log('phase7 migration progress OK')"
+```
+
+
+**Результат:** успешно.
+
+- `tools/validate_runtime_configs.js` синтаксически валиден;
+- runtime config contracts OK;
+- `tools/runtime_smoke_check.js` синтаксически валиден;
+- общий smoke-check зелёный: `54 checks, 0 failed, 0 warnings`;
+- migration plan обновлён для progress bar.
+
+**Следующий шаг:** продолжить Phase 7: добавить проверки ссылок между data-файлами, дублей ID и отсутствующих prototype ids.
+
+
+
+---
+
+### 15. `phase7_data_integrity_link_checks`
+
+**Статус:** применён успешно после hotfix.
+
+**Добавлено:**
+
+- `tools/validate_data_integrity.js`
+
+**Изменено:**
+
+- `tools/runtime_smoke_check.js`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Добавляем data integrity validator для связей между data-файлами.
+
+Проверяет:
+
+- соответствие `default_type` из `data/runtime_manifest.json` реальному типу JSON-файла;
+- дубли `id` в data-массивах;
+- ссылки `inputs` / `outputs` из `data/economy_recipes.json` на существующие item prototypes из `data/economy_items.json`;
+- ссылки `gameplay_runtime.currency.prototype_ids` на существующие item prototypes;
+- ссылки `gameplay_runtime.faction_manpower.weapon_good_ids` и `food_good_ids` на существующие item prototypes;
+- положительные числовые количества в рецептах.
+
+**Зачем:**
+
+После переноса правил в data-файлы важно ловить не только битый JSON, но и битые связи. Это снижает риск тихих runtime-ошибок при следующих переносах.
+
+**Прогресс:**
+
+В `docs/DATA_DRIVEN_MIGRATION_PLAN.md` закрываются пункты Phase 7:
+
+- проверка ссылок между data-файлами;
+- проверка дублей ID;
+- проверка отсутствующих prototype ids.
+
+**Риск:** низкий-средний. Игровой runtime не меняется, но smoke-check становится ещё строже.
+
+
+**Результат первого запуска:** validator подключился, но smoke-check стал красным: `57 checks, 1 failed, 0 warnings`.
+
+Ошибка:
+
+```text
+gameplay_runtime.currency.prototype_ids: unknown item prototype "gold"
+```
+
+**Причина:** `gold` используется как физическая валюта из `gameplay_runtime.currency.physical_weights`, но не обязан существовать как обычный prototype в `data/economy_items.json`. Проверка была слишком строгой для currency ids.
+
+
+**Итог после hotfix:** проверка связей data-файлов зелёная. Общий smoke-check: `57 checks, 0 failed, 0 warnings`.
+
+**Проверки после применения:**
+
+```bash
+node --check tools/validate_data_integrity.js
+node tools/validate_data_integrity.js
+node --check tools/runtime_smoke_check.js
+node tools/runtime_smoke_check.js
+node -e "const fs=require('fs'); const plan=fs.readFileSync('docs/DATA_DRIVEN_MIGRATION_PLAN.md','utf8'); if(!plan.includes('- [x] Добавить проверку отсутствующих prototype ids.')) throw new Error('phase7 integrity progress missing'); console.log('phase7 data integrity progress OK')"
+```
+
+
+
+---
+
+### 16. `hotfix_currency_integrity_allows_physical_currency`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `tools/validate_data_integrity.js`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Исправляем правило проверки валюты в data integrity validator.
+
+Теперь `gameplay_runtime.currency.prototype_ids` считается валидным, если id найден хотя бы в одном месте:
+
+- как обычный prototype в `data/economy_items.json`;
+- как физическая валюта в `gameplay_runtime.currency.physical_weights` с положительным числовым весом.
+
+При этом ссылки `faction_manpower.weapon_good_ids` и `faction_manpower.food_good_ids` остаются строгими: они должны существовать в `data/economy_items.json`.
+
+**Зачем:**
+
+`gold` сейчас является валидной физической валютой, но не обычным economy item. Validator должен отражать фактическую модель данных, а не ломать smoke-check на корректном currency id.
+
+**Риск:** низкий. Игровой runtime не меняется. Меняется только диагностическое правило validator.
+
+
+**Проверки:**
+
+```bash
+node --check tools/validate_data_integrity.js
+node tools/validate_data_integrity.js
+node tools/runtime_smoke_check.js
+```
+
+**Результат:** успешно.
+
+- `tools/validate_data_integrity.js` синтаксически валиден;
+- `data integrity links OK`;
+- общий smoke-check зелёный: `57 checks, 0 failed, 0 warnings`.
+
+**Следующий шаг:** можно продолжать Phase 7 или перейти к следующему data-driven блоку. Ближайший полезный вариант — добавить более глубокие проверки `economy_items` / `economy_recipes` или вернуться к Phase 6 и выносить следующие `script.js` handlers.
+
+**Проверки после применения:**
+
+```bash
+node --check tools/validate_data_integrity.js
+node tools/validate_data_integrity.js
+node tools/runtime_smoke_check.js
+```
+
+
+
+---
+
+### 17. `add_explicit_next_steps_tracking`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_ASSISTANT_PROJECT_RULES.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Добавляем явный блок `Ближайшие следующие шаги` в migration plan.
+
+**Зачем:**
+
+До этого следующий шаг фиксировался внутри отдельных записей worklog, но не был виден как отдельная текущая навигация проекта. Теперь в плане будет явно указано:
+
+- какая фаза сейчас активна;
+- какая последняя зелёная точка;
+- какой следующий рабочий блок;
+- когда делать следующий Git checkpoint.
+
+**Текущий следующий шаг:**
+
+Вернуться к Phase 6 и продолжить перенос `script.js`:
+
+1. container/system container aliases и правила доступа;
+2. inventory movement / stacking / loot настройки;
+3. fallback messages для inventory/action handlers.
+
+**Риск:** низкий. Меняется только документация и правила сопровождения проекта.
+
+**Проверки:**
+
+```bash
+node -e "const fs=require('fs'); const plan=fs.readFileSync('docs/DATA_DRIVEN_MIGRATION_PLAN.md','utf8'); if(!plan.includes('## Ближайшие следующие шаги')) throw new Error('next steps block missing'); if(!plan.includes('Phase 6 continuation')) throw new Error('current phase not updated'); const rules=fs.readFileSync('docs/AI_ASSISTANT_PROJECT_RULES.md','utf8'); if(!rules.includes('Ближайшие следующие шаги')) throw new Error('next steps rule missing'); console.log('next steps tracking OK')"
+node tools/runtime_smoke_check.js
+```
+
+
+
+---
+
+### 18. `phase6_inventory_handlers_context_audit_runnable`
+
+**Статус:** audit выполнен частично; контекста достаточно для следующего Phase 6 патча.
+
+**Что делаем:**
+
+Собираем точный контекст из `script.js` перед следующим Phase 6 патчем.
+
+**Зачем:**
+
+AI Patcher не запускает команды, если `operations` пустой. Поэтому этот audit имеет безопасную документационную операцию, чтобы команды реально выполнились.
+
+**Ищем:**
+
+- system containers;
+- container aliases;
+- movement / transfer / stacking / loot;
+- access flags;
+- hardcoded fallback/user-facing inventory strings.
+
+**Риск:** низкий. Код runtime не меняется, выполняются только read-only команды анализа.
+
+
+**Результат:**
+
+- команды поиска system containers / movement / stacking / loot / access flags успешно нашли нужные места в `script.js`;
+- команда поиска строк упала из-за PowerShell quoting, runtime не затронут;
+- smoke-check после audit остался зелёным: `57 checks, 0 failed, 0 warnings`.
+
+**Вывод:** следующий безопасный кусок — заменить оставшиеся hardcoded `actorId: 'player'` / `actorId: 'system'` в inventory movement/trade/death flows на уже существующие `getInventoryActorId('default')` и `getInventoryActorId('system')`.
+
+
+
+---
+
+### 19. `phase6_data_driven_inventory_actor_routes`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `script.js`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Продолжаем Phase 6 и вычищаем оставшиеся hardcoded inventory actor ids в movement/trade/death flows.
+
+Заменяем:
+
+- `actorId: 'player'` на `getInventoryActorId('default')`;
+- `actorId: 'system'` на `getInventoryActorId('system')`;
+- проверки `actorId === 'player'` на сравнение с `getInventoryActorId('default')`.
+
+**Зачем:**
+
+`data/gameplay_runtime.json` уже содержит `inventory_engine.actors.default` и `inventory_engine.actors.system`. Код должен использовать этот runtime config последовательно, а не держать новые literal islands в `script.js`.
+
+**Прогресс:**
+
+В `docs/DATA_DRIVEN_MIGRATION_PLAN.md` закрывается Phase 6 подпункт про inventory actor ids. Блок `Ближайшие следующие шаги` обновлён: следующий рабочий кусок — buildContainer recipe/capacity defaults.
+
+**Риск:** средний-низкий. Затронуты inventory movement/trade/death flows, но fallback actor ids совпадают со старым поведением: `player` и `system`.
+
+**Проверки:**
+
+```bash
+node --check script.js
+node tools/runtime_smoke_check.js
+node -e "const fs=require('fs'); const plan=fs.readFileSync('docs/DATA_DRIVEN_MIGRATION_PLAN.md','utf8'); if(!plan.includes('hardcoded inventory actor ids')) throw new Error('actor route progress missing'); console.log('phase6 actor route progress OK')"
+```
+
+
+**Результат:** успешно.
+
+- `script.js` синтаксически валиден;
+- общий smoke-check зелёный: `57 checks, 0 failed, 0 warnings`;
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md` обновлён для progress bar Phase 6.
+
+**Следующий рабочий блок:** вынести `buildContainer` defaults: стоимость дерева, max weight, max slots и default coords.
+
+
+
+---
+
+### 20. `phase6_data_driven_build_container_defaults`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `data/gameplay_runtime.json`
+- `script.js`
+- `tools/validate_runtime_configs.js`
+- `tools/validate_data_integrity.js`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Продолжаем Phase 6 и выносим defaults для `buildContainer` из `script.js` в `data/gameplay_runtime.json`.
+
+Вынесены:
+
+- resource prototype для строительства контейнера: `wood`;
+- resource cost: `5`;
+- default max weight: `100`;
+- default max slots: `20`;
+- default world coords: `[0, 0, 0]`.
+
+В `script.js` добавлены helper-функции:
+
+- `getInventoryBuildingRuntimeConfig()`;
+- `buildConstructedContainerLocation()`.
+
+**Зачем:**
+
+`buildContainer` больше не должен знать, что контейнер строится именно из `wood`, за `5` единиц, с capacity `100/20` и координатами `[0,0,0]`. Это правила gameplay/data слоя.
+
+**Дополнительная защита:**
+
+- `tools/validate_runtime_configs.js` проверяет структуру `inventory_building`;
+- `tools/validate_data_integrity.js` проверяет, что `inventory_building.resource_prototype_id` существует в `data/economy_items.json`.
+
+**Прогресс:**
+
+В `docs/DATA_DRIVEN_MIGRATION_PLAN.md` закрывается Phase 6 подпункт про `buildContainer` defaults. Блок `Ближайшие следующие шаги` обновлён: дальше movement/stacking/loot settings и fallback messages.
+
+**Риск:** средний-низкий. Затронуты sync/async `buildContainer`, но default-значения совпадают со старым поведением.
+
+**Проверки:**
+
+```bash
+node -e "const fs=require('fs'); JSON.parse(fs.readFileSync('data/gameplay_runtime.json','utf8')); console.log('gameplay runtime JSON OK')"
+node --check script.js
+node --check tools/validate_runtime_configs.js
+node --check tools/validate_data_integrity.js
+node tools/validate_runtime_configs.js
+node tools/validate_data_integrity.js
+node tools/runtime_smoke_check.js
+node -e "const fs=require('fs'); const plan=fs.readFileSync('docs/DATA_DRIVEN_MIGRATION_PLAN.md','utf8'); if(!plan.includes('buildContainer` recipe/capacity defaults')) throw new Error('buildContainer progress missing'); console.log('phase6 buildContainer progress OK')"
+```
+
+
+**Результат:** успешно.
+
+- `data/gameplay_runtime.json` валиден;
+- `script.js` синтаксически валиден;
+- `tools/validate_runtime_configs.js` и `tools/validate_data_integrity.js` синтаксически валидны;
+- runtime config contracts OK;
+- data integrity links OK;
+- общий smoke-check зелёный: `57 checks, 0 failed, 0 warnings`;
+- migration plan обновлён для progress bar Phase 6.
+
+**Следующий рабочий блок:** сделать Git checkpoint, затем продолжить Phase 6: inventory movement / stacking / loot settings и fallback messages для inventory/action handlers.
+
+
+
+---
+
+### 21. `git_checkpoint_after_phase6_build_container_defaults`
+
+**Статус:** ожидает выполнения Git checkpoint.
+
+**Что делаем:**
+
+Фиксируем зелёную пачку изменений после `phase6_data_driven_build_container_defaults`.
+
+**Последняя зелёная точка перед checkpoint:**
+
+```text
+Summary: 57 checks, 0 failed, 0 warnings
+```
+
+**В commit должны попасть:**
+
+- `data/gameplay_runtime.json`
+- `docs/AI_ASSISTANT_PROJECT_RULES.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `script.js`
+- `tools/runtime_smoke_check.js`
+- `tools/worklog_viewer.html`
+- `tools/validate_data_integrity.js`
+- `tools/validate_runtime_configs.js`
+
+**Не добавляем автоматически:**
+
+- `.ai_patcher/` — выглядит как служебная папка AI Patcher Pro.
+
+**Риск:** низкий. Код уже прошёл smoke-check; этот патч добавляет запись в worklog и выполняет Git-команды.

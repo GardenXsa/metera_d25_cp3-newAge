@@ -73,7 +73,7 @@ function normalizeContainerLocation(locationData = null) {
 
 function resolveActorLocation(actorId) {
     if (!actorId) return null;
-    if (actorId === 'player' && player) {
+    if (actorId === getInventoryActorId('default') && player) {
         return normalizeContainerLocation({ world_coords: [0, 0, 0], parent_entity: 'player', parent_container: null, region_id: player.location || null });
     }
     if (ContainerRegistry.has(actorId)) {
@@ -347,12 +347,12 @@ const OwnershipService = {
 
         if (cont.type === 'magical_pocket') {
             if (cont.owner_id !== actorId) return false;
-            if (actorId === 'player' && (!player?.statusEffects || !player.statusEffects['spell_magical_pocket'])) return false;
+            if (actorId === getInventoryActorId('default') && (!player?.statusEffects || !player.statusEffects['spell_magical_pocket'])) return false;
             return true;
         }
 
         if (cont.lock_data?.is_locked && !options.allowLocked) return false;
-        if (resolvedId === player?.container_backpack || resolvedId === player?.container_equipment) return actorId === 'player';
+        if (resolvedId === player?.container_backpack || resolvedId === player?.container_equipment) return actorId === getInventoryActorId('default');
         if (cont.location?.parent_entity && cont.location.parent_entity === actorId) return true;
         if (options.ignoreDistance) return true;
 
@@ -404,7 +404,7 @@ function is_sellable(containerId, itemId) {
 
 const OldCoreInventorySystem = {
     createContainer: function(type, ownerId, maxWeight, maxSlots, locationData = null, extraData = {}) {
-        const id = "cont_" + generateUUID();
+        const id = getInventoryEngineRuntimeConfig().id_prefixes.container + generateUUID();
         const defaultLocation = locationData || (
             ownerId === 'player' && (type === 'player_backpack' || type === 'player_equipment')
                 ? { world_coords: [0, 0, 0], parent_entity: 'player', parent_container: null, region_id: player?.location || null }
@@ -427,7 +427,7 @@ const OldCoreInventorySystem = {
     createItem: function(prototypeId, quantity, containerId, customProps = {}) {
         const proto = itemsReferenceData ? itemsReferenceData.find(i => i.id === prototypeId) : null;
         const resolvedContainerId = resolveSpecialContainerId(containerId);
-        const id = "item_" + generateUUID();
+        const id = getInventoryEngineRuntimeConfig().id_prefixes.item + generateUUID();
         const gameplayConfig = getGameplayRuntimeConfig(); let baseWeight = proto ? (proto.weight || toRuntimeNumber(gameplayConfig.inventory.default_item_weight, 1)) : toRuntimeNumber(gameplayConfig.inventory.default_item_weight, 1); if (Object.prototype.hasOwnProperty.call(gameplayConfig.currency.physical_weights, prototypeId)) baseWeight = toRuntimeNumber(gameplayConfig.currency.physical_weights[prototypeId], baseWeight);
 
         const reservedKeys = new Set(['flags', 'durability', 'slot_index', 'slot', 'state', 'created_at', 'last_moved_at']);
@@ -498,7 +498,7 @@ const OldCoreInventorySystem = {
     moveItem: function(itemId, sourceContainerId, targetContainerId, quantity = null, options = {}) {
         if (!ItemRegistry.has(itemId)) return { success: false, error: "Item not found" };
 
-        const actorId = options.actorId || 'player';
+        const actorId = options.actorId || getInventoryActorId('default');
         const resolvedSourceId = resolveSpecialContainerId(sourceContainerId || ItemRegistry.get(itemId)?.container_id);
         const requestedTargetId = resolveSpecialContainerId(targetContainerId);
         let item = ItemRegistry.get(itemId);
@@ -591,7 +591,7 @@ const OldCoreInventorySystem = {
     moveItems: function(sourceContainerId, targetContainerId, items, options = {}) {
         if (!Array.isArray(items) || items.length === 0) return { success: false, error: "No items requested" };
         const resolvedSourceId = resolveSpecialContainerId(sourceContainerId);
-        const resolvedTargetId = resolveSpecialContainerId(targetContainerId) || getOrCreateGroundPile(resolveContainerLocation(resolvedSourceId) || resolveActorLocation(options.actorId || 'player'));
+        const resolvedTargetId = resolveSpecialContainerId(targetContainerId) || getOrCreateGroundPile(resolveContainerLocation(resolvedSourceId) || resolveActorLocation(options.actorId || getInventoryActorId('default')));
         const trackedItemIds = Array.from(new Set(items.map(obj => obj?.id).filter(Boolean)));
         const snapshot = {
             containers: [resolvedSourceId, resolvedTargetId].filter(Boolean).map(containerId => [containerId, ContainerRegistry.has(containerId) ? structuredClone(ContainerRegistry.get(containerId)) : null]),
@@ -634,13 +634,7 @@ const OldCoreInventorySystem = {
 
         const groundPileId = getOrCreateGroundPile(resolveContainerLocation(resolvedContainerId));
         const itemsToMove = [...(cont.items || [])];
-        itemsToMove.forEach(itemId => this.moveItem(itemId, resolvedContainerId, groundPileId, null, {
-            actorId: 'system',
-            ignoreAccess: true,
-            ignoreDistance: true,
-            allowTradeLocked: true,
-            allowLocked: true
-        }));
+        itemsToMove.forEach(itemId => this.moveItem(itemId, resolvedContainerId, groundPileId, null, { actorId: getInventoryActorId('system'), ignoreAccess: true, ignoreDistance: true, allowTradeLocked: true, allowLocked: true }));
         ContainerRegistry.delete(resolvedContainerId);
         return true;
     },
@@ -649,7 +643,7 @@ const OldCoreInventorySystem = {
         const cont = ContainerRegistry.get(resolvedContainerId);
         if (!cont || !cont.lock_data.is_locked) return { success: false, error: "Not locked or not found" };
         if (!OwnershipService.canAccess(actorId, resolvedContainerId, { allowLocked: true })) return { success: false, error: "Too far away from container" };
-        const actorContId = actorId === 'player' ? player.container_backpack : null;
+        const actorContId = actorId === getInventoryActorId('default') ? player.container_backpack : null;
         if (!actorContId) return { success: false, error: "Actor inventory not found" };
         const actorCont = ContainerRegistry.get(actorContId);
         const lockpickId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'lockpicks_common');
@@ -676,7 +670,7 @@ const OldCoreInventorySystem = {
         const stolenItems = getContainerItems(src).filter(id => ItemRegistry.get(id)?.flags?.stolen);
         let count = 0;
         stolenItems.forEach(id => {
-            if (this.moveItem(id, resolvedSourceId, resolvedDestId, null, { actorId: 'system', ignoreAccess: true, ignoreDistance: true }).success) count++;
+            if (this.moveItem(id, resolvedSourceId, resolvedDestId, null, { actorId: getInventoryActorId('system'), ignoreAccess: true, ignoreDistance: true }).success) count++;
         });
         return count;
     },
@@ -684,11 +678,12 @@ const OldCoreInventorySystem = {
         const actorContId = actorId === 'player' ? player.container_backpack : null;
         if (!actorContId) return null;
         const actorCont = ContainerRegistry.get(actorContId);
-        const woodId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'wood');
-        const woodItem = woodId ? ItemRegistry.get(woodId) : null;
-        if (!woodItem || woodItem.stack_size < 5) return null;
-        this.removeItem(woodId, 5);
-        return this.createContainer(type, actorId, 100, 20, { world_coords: [0,0,0], parent_entity: null, parent_container: null, region_id: location });
+        const buildConfig = getInventoryBuildingRuntimeConfig();
+        const resourceId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === buildConfig.resource_prototype_id);
+        const resourceItem = resourceId ? ItemRegistry.get(resourceId) : null;
+        if (!resourceItem || resourceItem.stack_size < buildConfig.resource_cost) return null;
+        this.removeItem(resourceId, buildConfig.resource_cost);
+        return this.createContainer(type, actorId, buildConfig.default_max_weight_kg, buildConfig.default_max_slots, buildConstructedContainerLocation(location, buildConfig));
     }
 };
 
@@ -704,8 +699,7 @@ async function fetchGraphContext(queryIds) {
 
 
 async function sendInventoryCommand(action, args, _retryCount = 0) {
-    const MAX_RETRIES = 3;
-    const RETRY_DELAY_MS = 500;
+    const retryConfig = getInventoryEngineRuntimeConfig().ipc_retry; const MAX_RETRIES = retryConfig.max_retries; const RETRY_DELAY_MS = retryConfig.delay_ms; const RETRY_BACKOFF_MULTIPLIER = retryConfig.backoff_multiplier;
 
     if (!window.electronAPI || !window.electronAPI.nexusInventoryCommand) {
         // FALLBACK: IPC недоступен — используем локальную реализацию (OldCoreInventorySystem)
@@ -733,7 +727,7 @@ async function sendInventoryCommand(action, args, _retryCount = 0) {
             (!res.message && _retryCount === 0)
         );
         if (isEngineNotReady && _retryCount < MAX_RETRIES) {
-            const delay = RETRY_DELAY_MS * (_retryCount + 1);
+            const delay = Math.floor(RETRY_DELAY_MS * (1 + (_retryCount * RETRY_BACKOFF_MULTIPLIER)));
             console.warn(`[Inventory] Engine not ready for '${action}' (attempt ${_retryCount + 1}/${MAX_RETRIES}). Retrying in ${delay}ms...`);
             await new Promise(r => setTimeout(r, delay));
             return await sendInventoryCommand(action, args, _retryCount + 1);
@@ -778,7 +772,7 @@ function executeLocalInventoryCommand(action, args) {
             const res = OldCoreInventorySystem.moveItem(
                 args.itemId, null, args.targetContainerId,
                 args.quantity >= 0 ? args.quantity : null,
-                { actorId: 'player', ignoreAccess: false, ignoreDistance: true }
+                { actorId: getInventoryActorId('default'), ignoreAccess: false, ignoreDistance: true }
             );
             return { status: res.success ? 'ok' : 'error', ...res, feedback: res.error };
         }
@@ -901,7 +895,7 @@ const CoreInventorySystemAsync = {
         });
     },
     moveItem: async function(itemId, sourceContainerId, targetContainerId, quantity = null, options = {}) {
-        const actualTargetId = resolveSpecialContainerId(targetContainerId) || await getOrCreateGroundPileAsync(resolveContainerLocation(sourceContainerId) || resolveActorLocation(options.actorId || 'player'));
+        const actualTargetId = resolveSpecialContainerId(targetContainerId) || await getOrCreateGroundPileAsync(resolveContainerLocation(sourceContainerId) || resolveActorLocation(options.actorId || getInventoryActorId('default')));
         const res = await sendInventoryCommand('moveItem', {
             itemId, targetContainerId: actualTargetId, quantity: quantity !== null ? parseInt(quantity, 10) : -1
         });
@@ -966,7 +960,7 @@ const CoreInventorySystemAsync = {
         const stolenItems = getContainerItems(src).filter(id => ItemRegistry.get(id)?.flags?.stolen);
         let count = 0;
         for (const id of stolenItems) {
-            const res = await this.moveItem(id, resolvedSourceId, resolvedDestId, null, { actorId: 'system', ignoreAccess: true, ignoreDistance: true });
+            const res = await this.moveItem(id, resolvedSourceId, resolvedDestId, null, { actorId: getInventoryActorId('system'), ignoreAccess: true, ignoreDistance: true });
             if (res.success) count++;
         }
         return count;
@@ -975,11 +969,12 @@ const CoreInventorySystemAsync = {
         const actorContId = actorId === 'player' ? player.container_backpack : null;
         if (!actorContId) return null;
         const actorCont = ContainerRegistry.get(actorContId);
-        const woodId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'wood');
-        const woodItem = woodId ? ItemRegistry.get(woodId) : null;
-        if (!woodItem || woodItem.stack_size < 5) return null;
-        await this.removeItem(woodId, 5);
-        return await this.createContainer(type, actorId, 100, 20, { world_coords: [0,0,0], parent_entity: null, parent_container: null, region_id: location });
+        const buildConfig = getInventoryBuildingRuntimeConfig();
+        const resourceId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === buildConfig.resource_prototype_id);
+        const resourceItem = resourceId ? ItemRegistry.get(resourceId) : null;
+        if (!resourceItem || resourceItem.stack_size < buildConfig.resource_cost) return null;
+        await this.removeItem(resourceId, buildConfig.resource_cost);
+        return await this.createContainer(type, actorId, buildConfig.default_max_weight_kg, buildConfig.default_max_slots, buildConstructedContainerLocation(location, buildConfig));
     }
 };
 // DEPRECATED: CoreInventorySystem alias removed.
@@ -1332,7 +1327,7 @@ const TradeSystemAsync = {
     _executeItemTransfers: async function(items, sourceContainerId, targetContainerId, createdItemIds) {
         for (const entry of items) {
             const res = await CoreInventorySystemAsync.moveItem(entry.id, sourceContainerId, targetContainerId, entry.quantity, {
-                actorId: 'system', ignoreAccess: true, ignoreDistance: true, allowTradeLocked: true, allowLocked: true
+                actorId: getInventoryActorId('system'), ignoreAccess: true, ignoreDistance: true, allowTradeLocked: true, allowLocked: true
             });
             if (!res.success) return res;
             if (res.createdItemId) createdItemIds.push(res.createdItemId);
@@ -1355,7 +1350,7 @@ const TradeSystemAsync = {
             const goldItem = ItemRegistry.get(goldItemId);
             const amountToMove = Math.min(goldItem.stack_size, remaining);
             const res = await CoreInventorySystemAsync.moveItem(goldItemId, trade.target_container, trade.initiator_container, amountToMove, {
-                actorId: 'system', ignoreAccess: true, ignoreDistance: true, allowLocked: true
+                actorId: getInventoryActorId('system'), ignoreAccess: true, ignoreDistance: true, allowLocked: true
             });
             if (!res.success) return res;
             if (res.createdItemId) createdItemIds.push(res.createdItemId);
@@ -1762,7 +1757,7 @@ async function executeCommand(command, args) {
             case 'moveItems':
             case 'move_items':
                 if (args.sourceContainerId && Array.isArray(args.items) && args.items.length > 0) {
-                    const res = await CoreInventorySystemAsync.moveItems(args.sourceContainerId, args.targetContainerId || args.target || null, args.items, { actorId: 'player' });
+                    const res = await CoreInventorySystemAsync.moveItems(args.sourceContainerId, args.targetContainerId || args.target || null, args.items, { actorId: getInventoryActorId('default') });
                     feedback = res.success
                         ? `[СИСТЕМА] Перемещено предметов: ${res.movedCount}.`
                         : `[ERROR] Ошибка пакетного перемещения: ${res.error}`;
@@ -2314,7 +2309,7 @@ const OldTradeSystem = {
     _executeItemTransfers: async function(items, sourceContainerId, targetContainerId, createdItemIds) {
         for (const entry of items) {
             const res = await CoreInventorySystemAsync.moveItem(entry.id, sourceContainerId, targetContainerId, entry.quantity, {
-                actorId: 'system',
+                actorId: getInventoryActorId('system'),
                 ignoreAccess: true,
                 ignoreDistance: true,
                 allowTradeLocked: true,
@@ -2341,7 +2336,7 @@ const OldTradeSystem = {
             const goldItem = ItemRegistry.get(goldItemId);
             const amountToMove = Math.min(goldItem.stack_size, remaining);
             const res = await CoreInventorySystemAsync.moveItem(goldItemId, trade.target_container, trade.initiator_container, amountToMove, {
-                actorId: 'system',
+                actorId: getInventoryActorId('system'),
                 ignoreAccess: true,
                 ignoreDistance: true,
                 allowLocked: true
@@ -7746,12 +7741,7 @@ async function finalizeCharacterCreation() {
                 traumaCooldown: 0,
             },
             currentCombat: { isActive: false, participants: [] },
-            gameTime: { 
-                year: (window.ERAS_DATA && window.ERAS_DATA.find(e => e.id === selectedEra)?.start_year) || 1042, 
-                month: Math.floor(Math.random() * 12) + 1, 
-                day: Math.floor(Math.random() * 28) + 1, 
-                hour: 8, minute: 0, totalPulses: 0 
-            },
+            gameTime: buildInitialGameTime(selectedEra),
             timeOfDay: "Утро",
             equipment: {},
             holdings: {},
@@ -7791,7 +7781,7 @@ gmNotes: { "Main_Plot": "Начало пути. Игрок появляется 
 
         tempPlayer.stats.maxHp = calculateMaxHp(tempPlayer.stats.con);
         tempPlayer.stats.hp = tempPlayer.stats.maxHp;
-        tempPlayer.inventoryCapacity = 10 + Math.floor((tempPlayer.stats.str - 10) / 2);
+        tempPlayer.inventoryCapacity = getInitialInventoryCapacity(tempPlayer.stats.str);
 
         if (tempPlayer.class === 'mage') {
             tempPlayer.stats.maxMana = calculateMaxMana(tempPlayer.stats.int, tempPlayer.stats.level);
@@ -7873,7 +7863,7 @@ async function finalizeWorldSetupAndStart() {
     setActiveScreen('game-interface');
     showLoadingScreen('loadingScreen.generatingWorld', 'Генерация мира...');
 
-    const absoluteStartDay = player.gameTime.year * 360 + (player.gameTime.month - 1) * 30 + (player.gameTime.day - 1);
+    const absoluteStartDay = calculateAbsoluteStartDay(player.gameTime);
 
     if (preloadedWorldData) {
         console.log("Используется предзагруженный мир.");
@@ -7897,7 +7887,7 @@ async function finalizeWorldSetupAndStart() {
         // --- BOOTSTRAP PHASE ---
         if (window.electronAPI && window.electronAPI.nexusBootstrap) {
             const totalPop = Object.values(World.regions).reduce((sum, r) => sum + r.population, 0);
-            const bootstrapDays = Math.max(90, 90 + Math.floor(totalPop / 5000));
+            const bootstrapDays = calculateBootstrapDays(totalPop);
             
             const loadingText = document.getElementById('loading-text');
             if (loadingText) loadingText.textContent = `Экономическая балансировка (${bootstrapDays} дн.)...`;
@@ -8206,41 +8196,7 @@ function updateTimeDisplay() {
 
 
 
-function getGameplayRuntimeConfig() {
-  const defaults = {
-    progression: {
-      mana: { base: 50, int_baseline: 10, level_bonus: 5, minimum: 10 },
-      hp: { base: 80, constitution_baseline: 10, constitution_divisor: 2, level_bonus: 10, minimum: 10 }
-    },
-    inventory: {
-      default_item_weight: 1,
-      default_item_durability: 100,
-      access_distance: 10.0,
-      default_lock_difficulty: 10,
-      default_container_health: 200,
-      non_flammable_container_types: ['faction_vault'],
-      system_regions: { magical_pocket: 'astral' }
-    },
-    currency: {
-      prototype_ids: ['gold', 'gold_ingot'],
-      ai_identifiers: ['gold'],
-      physical_weights: { gold: 0.01, gold_ingot: 1 }
-    },
-    economy: {
-      default_base_price: 10,
-      charisma_baseline: 10,
-      charisma_price_step: 0.05,
-      buy_multiplier: 1.2,
-      sell_multiplier: 0.8,
-      min_price: 1
-    },
-    faction_manpower: {
-      weapon_good_ids: ['weapons'],
-      food_good_ids: ['bread', 'meat', 'smoked_meat'],
-      population_soldier_ratio: 0.1,
-      food_per_soldier: 0.5
-    }
-  };
+function getGameplayRuntimeConfig() { const defaults = { progression: { mana: { base: 50, int_baseline: 10, level_bonus: 5, minimum: 10 }, hp: { base: 80, constitution_baseline: 10, constitution_divisor: 2, level_bonus: 10, minimum: 10 } }, character_creation: { inventory_capacity: { base: 10, strength_baseline: 10, strength_divisor: 2 } }, calendar: { fallback_start_year: 1042, months_per_year: 12, max_initial_day: 28, days_per_year: 360, days_per_month: 30, initial_hour: 8, initial_minute: 0, initial_total_pulses: 0 }, world_bootstrap: { minimum_days: 90, base_days: 90, population_divisor: 5000 }, inventory: { default_item_weight: 1, default_item_durability: 100, access_distance: 10.0, default_lock_difficulty: 10, default_container_health: 200, non_flammable_container_types: ['faction_vault'], system_regions: { magical_pocket: 'astral' } }, currency: { prototype_ids: ['gold', 'gold_ingot'], ai_identifiers: ['gold'], physical_weights: { gold: 0.01, gold_ingot: 1 } }, economy: { default_base_price: 10, charisma_baseline: 10, charisma_price_step: 0.05, buy_multiplier: 1.2, sell_multiplier: 0.8, min_price: 1 }, faction_manpower: { weapon_good_ids: ['weapons'], food_good_ids: ['bread', 'meat', 'smoked_meat'], population_soldier_ratio: 0.1, food_per_soldier: 0.5 } };
   const runtime = (typeof window !== 'undefined' && window.GAMEPLAY_RUNTIME_CONFIG && typeof window.GAMEPLAY_RUNTIME_CONFIG === 'object') ? window.GAMEPLAY_RUNTIME_CONFIG : {};
   return {
     ...defaults,
@@ -8278,6 +8234,57 @@ function toRuntimeNumber(value, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+
+function getInventoryEngineRuntimeConfig() {
+  const runtime = getGameplayRuntimeConfig().inventory_engine || {};
+  return {
+    id_prefixes: {
+      container: runtime.id_prefixes?.container || 'cont_',
+      item: runtime.id_prefixes?.item || 'item_'
+    },
+    actors: {
+      default: runtime.actors?.default || 'player',
+      system: runtime.actors?.system || 'system'
+    },
+    ipc_retry: {
+      max_retries: Math.max(0, Math.floor(toRuntimeNumber(runtime.ipc_retry?.max_retries, 3))),
+      delay_ms: Math.max(0, Math.floor(toRuntimeNumber(runtime.ipc_retry?.delay_ms, 500))),
+      backoff_multiplier: Math.max(0, toRuntimeNumber(runtime.ipc_retry?.backoff_multiplier, 1))
+    }
+  };
+}
+
+function getInventoryActorId(kind = 'default') {
+  const actors = getInventoryEngineRuntimeConfig().actors;
+  return actors[kind] || actors.default || 'player';
+}
+
+
+function getInventoryBuildingRuntimeConfig() {
+  const runtime = getGameplayRuntimeConfig().inventory_building || {};
+  const coords = Array.isArray(runtime.default_world_coords) ? runtime.default_world_coords : [0, 0, 0];
+  return {
+    resource_prototype_id: runtime.resource_prototype_id || 'wood',
+    resource_cost: Math.max(1, Math.floor(toRuntimeNumber(runtime.resource_cost, 5))),
+    default_max_weight_kg: Math.max(1, toRuntimeNumber(runtime.default_max_weight_kg, 100)),
+    default_max_slots: Math.max(1, Math.floor(toRuntimeNumber(runtime.default_max_slots, 20))),
+    default_world_coords: [
+      toRuntimeNumber(coords[0], 0),
+      toRuntimeNumber(coords[1], 0),
+      toRuntimeNumber(coords[2], 0)
+    ]
+  };
+}
+
+function buildConstructedContainerLocation(regionId, runtimeConfig = getInventoryBuildingRuntimeConfig()) {
+  return {
+    world_coords: runtimeConfig.default_world_coords,
+    parent_entity: null,
+    parent_container: null,
+    region_id: regionId
+  };
+}
+
 function getCurrencyPrototypeIds() {
   return getGameplayRuntimeConfig().currency.prototype_ids;
 }
@@ -8303,17 +8310,11 @@ function calculateMaxMana(intelligence, level) {
   return Math.max(minimum, baseMana + (intModifier * currentLevel) + (currentLevel * levelBonus));
 }
 
-function calculateMaxHp(constitution) {
-  const hpConfig = getGameplayRuntimeConfig().progression.hp;
-  const currentLevel = player ? toRuntimeNumber(player.stats.level, 1) : 1;
-  const baseHp = toRuntimeNumber(hpConfig.base, 80);
-  const divisor = Math.max(1, toRuntimeNumber(hpConfig.constitution_divisor, 2));
-  const conModifier = Math.floor((toRuntimeNumber(constitution, 10) - toRuntimeNumber(hpConfig.constitution_baseline, 10)) / divisor);
-  const levelBonus = toRuntimeNumber(hpConfig.level_bonus, 10);
-  const minimum = toRuntimeNumber(hpConfig.minimum, 10);
-  return Math.max(minimum, baseHp + (conModifier * currentLevel) + (currentLevel * levelBonus));
-}
-
+function calculateMaxHp(constitution) { const hpConfig = getGameplayRuntimeConfig().progression.hp; const currentLevel = player ? toRuntimeNumber(player.stats.level, 1) : 1; const baseHp = toRuntimeNumber(hpConfig.base, 80); const divisor = Math.max(1, toRuntimeNumber(hpConfig.constitution_divisor, 2)); const conModifier = Math.floor((toRuntimeNumber(constitution, 10) - toRuntimeNumber(hpConfig.constitution_baseline, 10)) / divisor); const levelBonus = toRuntimeNumber(hpConfig.level_bonus, 10); const minimum = toRuntimeNumber(hpConfig.minimum, 10); return Math.max(minimum, baseHp + (conModifier * currentLevel) + (currentLevel * levelBonus)); }
+function getInitialInventoryCapacity(strength) { const capacityConfig = getGameplayRuntimeConfig().character_creation?.inventory_capacity || {}; const base = toRuntimeNumber(capacityConfig.base, 10); const strengthBaseline = toRuntimeNumber(capacityConfig.strength_baseline, 10); const strengthDivisor = Math.max(1, toRuntimeNumber(capacityConfig.strength_divisor, 2)); return base + Math.floor((toRuntimeNumber(strength, strengthBaseline) - strengthBaseline) / strengthDivisor); }
+function buildInitialGameTime(selectedEra) { const calendar = getGameplayRuntimeConfig().calendar || {}; const eraStartYear = window.ERAS_DATA && window.ERAS_DATA.find(e => e.id === selectedEra)?.start_year; return { year: eraStartYear || toRuntimeNumber(calendar.fallback_start_year, 1042), month: Math.floor(Math.random() * Math.max(1, toRuntimeNumber(calendar.months_per_year, 12))) + 1, day: Math.floor(Math.random() * Math.max(1, toRuntimeNumber(calendar.max_initial_day, 28))) + 1, hour: toRuntimeNumber(calendar.initial_hour, 8), minute: toRuntimeNumber(calendar.initial_minute, 0), totalPulses: toRuntimeNumber(calendar.initial_total_pulses, 0) }; }
+function calculateAbsoluteStartDay(gameTime) { const calendar = getGameplayRuntimeConfig().calendar || {}; const daysPerYear = Math.max(1, toRuntimeNumber(calendar.days_per_year, 360)); const daysPerMonth = Math.max(1, toRuntimeNumber(calendar.days_per_month, 30)); return gameTime.year * daysPerYear + (gameTime.month - 1) * daysPerMonth + (gameTime.day - 1); }
+function calculateBootstrapDays(totalPopulation) { const bootstrap = getGameplayRuntimeConfig().world_bootstrap || {}; const minimumDays = Math.max(0, toRuntimeNumber(bootstrap.minimum_days, 90)); const baseDays = Math.max(0, toRuntimeNumber(bootstrap.base_days, 90)); const populationDivisor = Math.max(1, toRuntimeNumber(bootstrap.population_divisor, 5000)); return Math.max(minimumDays, baseDays + Math.floor(toRuntimeNumber(totalPopulation, 0) / populationDivisor)); }
 function getStartingInventory(playerClass) {
     let startingItemConfig = {}; // itemAiIdentifier: quantity
     
@@ -11607,7 +11608,7 @@ async function handlePlayerDeath() {
     const backpack = ContainerRegistry.get(player.container_backpack);
     if (backpack && getContainerItems(backpack).length > 0) {
         const itemsToMove = getContainerItems(backpack).map(id => ({ id: id, quantity: ItemRegistry.get(id).stack_size }));
-        await CoreInventorySystemAsync.moveItems(player.container_backpack, corpseId, itemsToMove, { actorId: 'system', ignoreAccess: true });
+        await CoreInventorySystemAsync.moveItems(player.container_backpack, corpseId, itemsToMove, { actorId: getInventoryActorId('system'), ignoreAccess: true });
     }
     
     const equipment = ContainerRegistry.get(player.container_equipment);
