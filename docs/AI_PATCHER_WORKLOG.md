@@ -1133,7 +1133,7 @@ node -e "const fs=require('fs'); const plan=fs.readFileSync('docs/DATA_DRIVEN_MI
 
 ### 21. `git_checkpoint_after_phase6_build_container_defaults`
 
-**Статус:** ожидает выполнения Git checkpoint.
+**Статус:** выполнен успешно.
 
 **Что делаем:**
 
@@ -1162,3 +1162,373 @@ Summary: 57 checks, 0 failed, 0 warnings
 - `.ai_patcher/` — выглядит как служебная папка AI Patcher Pro.
 
 **Риск:** низкий. Код уже прошёл smoke-check; этот патч добавляет запись в worklog и выполняет Git-команды.
+
+
+**Проверки перед commit:**
+
+```bash
+node tools/runtime_smoke_check.js
+```
+
+**Результат:** успешно. Smoke-check перед commit зелёный: `57 checks, 0 failed, 0 warnings`.
+
+**Git результат:**
+
+```text
+commit: df96baa
+message: chore: extend data-driven runtime validation and inventory config
+push: e983e78..df96baa master -> master
+```
+
+**Финальный git status:** после push осталась только служебная папка `.ai_patcher/`. Её нужно игнорировать, а не коммитить.
+
+
+
+---
+
+### 22. `ignore_ai_patcher_local_state`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `.gitignore`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Добавляем `.ai_patcher/` в `.gitignore`, потому что после успешного checkpoint эта папка осталась единственным untracked элементом.
+
+**Зачем:**
+
+`.ai_patcher/` выглядит как локальное служебное состояние AI Patcher Pro. Его не нужно коммитить в проектный репозиторий.
+
+**Риск:** низкий. Игровой runtime не затрагивается.
+
+**Проверки:**
+
+```bash
+node -e "const fs=require('fs'); const s=fs.readFileSync('.gitignore','utf8'); if(!s.includes('.ai_patcher/')) throw new Error('.ai_patcher ignore missing'); console.log('ai_patcher ignore OK')"
+git status --short
+```
+
+
+**Результат:** успешно.
+
+- `tools/worklog_viewer.html` получил отдельный progress bar текущей фазы;
+- parser `findCurrentPhaseProgress()` найден;
+- smoke-check зелёный: `57 checks, 0 failed, 0 warnings`;
+- текущий `git status` показывает накопленную пачку изменений для checkpoint.
+
+**Текущие незакоммиченные изменения:**
+
+```text
+ M .gitignore
+ M data/gameplay_runtime.json
+ M docs/AI_ASSISTANT_PROJECT_RULES.md
+ M docs/AI_PATCHER_WORKLOG.md
+ M docs/DATA_DRIVEN_MIGRATION_PLAN.md
+ M script.js
+ M tools/validate_runtime_configs.js
+ M tools/worklog_viewer.html
+```
+
+**Следующий шаг:** сделать Git checkpoint, потому что средний Phase 6 subsystem-патч и улучшение viewer уже зелёные.
+
+
+**Результат:** успешно.
+
+- `.ai_patcher/` добавлен в `.gitignore`;
+- checkpoint docs и ignore rule проверены;
+- smoke-check зелёный: `57 checks, 0 failed, 0 warnings`;
+- после применения остались незакоммиченные изменения только в `.gitignore`, `docs/AI_PATCHER_WORKLOG.md`, `docs/DATA_DRIVEN_MIGRATION_PLAN.md`.
+
+**Git status после применения:**
+
+```text
+ M .gitignore
+ M docs/AI_PATCHER_WORKLOG.md
+ M docs/DATA_DRIVEN_MIGRATION_PLAN.md
+```
+
+**Следующий шаг:** продолжить Phase 6: inventory movement / stacking / loot settings. После следующего зелёного куска сделать commit/push, включив `.gitignore` и обновлённые docs.
+
+
+
+---
+
+### 23. `phase6_data_driven_inventory_movement_settings`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `data/gameplay_runtime.json`
+- `script.js`
+- `tools/validate_runtime_configs.js`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Продолжаем Phase 6 и выносим часть inventory movement settings из `script.js` в `data/gameplay_runtime.json`.
+
+Вынесены:
+
+- sentinel полного перемещения стака: `-1`;
+- default item state: `idle`;
+- trade-locked item state: `in_trade`;
+- container type для списания ресурса региона при перемещении из faction vault: `faction_vault`.
+
+В `script.js` добавлены helper-функции:
+
+- `getInventoryMovementRuntimeConfig()`;
+- `isFullStackMoveQuantity()`;
+- `normalizeInventoryMoveQuantity()`;
+- `serializeInventoryMoveQuantity()`.
+
+**Зачем:**
+
+Это убирает очередной слой literal values из movement/trade flow и делает правила перемещения предметов управляемыми через runtime data.
+
+**Дополнительная защита:**
+
+`tools/validate_runtime_configs.js` теперь проверяет структуру `inventory_movement`.
+
+**Прогресс:**
+
+В `docs/DATA_DRIVEN_MIGRATION_PLAN.md` закрывается Phase 6 подпункт про inventory movement settings. Блок `Ближайшие следующие шаги` обновлён: после зелёного результата нужно сделать Git checkpoint, затем продолжать stacking/loot и fallback messages.
+
+**Риск:** средний. Затронуты movement/trade states и sentinel полного перемещения стака, но fallback-значения совпадают со старым поведением.
+
+**Проверки:**
+
+```bash
+node -e "const fs=require('fs'); JSON.parse(fs.readFileSync('data/gameplay_runtime.json','utf8')); console.log('gameplay runtime JSON OK')"
+node --check script.js
+node --check tools/validate_runtime_configs.js
+node tools/validate_runtime_configs.js
+node tools/runtime_smoke_check.js
+node -e "const fs=require('fs'); const plan=fs.readFileSync('docs/DATA_DRIVEN_MIGRATION_PLAN.md','utf8'); if(!plan.includes('inventory movement settings')) throw new Error('movement settings progress missing'); console.log('phase6 movement settings progress OK')"
+```
+
+
+**Результат:** успешно.
+
+- `data/gameplay_runtime.json` валиден;
+- `script.js` синтаксически валиден;
+- `tools/validate_runtime_configs.js` синтаксически валиден;
+- runtime config contracts OK;
+- общий smoke-check зелёный: `57 checks, 0 failed, 0 warnings`;
+- migration plan обновлён для progress bar Phase 6.
+
+**Коррекция стратегии:** пользователь справедливо отметил, что шаги стали слишком маленькими и прогресс почти не ощущается. Дальше переходим с микропатчей на средние subsystem-патчи: один патч должен закрывать несколько связанных переносов внутри одной зоны, но не смешивать разные подсистемы.
+
+
+
+---
+
+### 24. `phase6_medium_inventory_transfer_loot_command_settings`
+
+**Статус:** применён успешно после исправления блоков 13/14.
+
+**Изменено:**
+
+- `data/gameplay_runtime.json`
+- `script.js`
+- `tools/validate_runtime_configs.js`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+
+**Примечание перед проверкой:** первые 21 операции большого патча были найдены успешно, но операции 13 и 14 требовали ручной замены search-блоков. После применения двух исправленных блоков запускаем проверки отдельным verification-патчем.
+
+**Что делаем:**
+
+Переходим с микропатчей на средний subsystem-патч внутри Phase 6.
+
+В `data/gameplay_runtime.json` выносим сразу несколько связанных настроек inventory/action слоя:
+
+- `inventory_movement.stack_size_field`;
+- `inventory_movement.transfer_options` presets;
+- `inventory_commands` aliases;
+- `inventory_loot` defaults;
+- currency physical weight helper usage в местах, где раньше был literal `0.01`.
+
+В `script.js` добавлены helper-функции:
+
+- `getInventoryStackField()`;
+- `getInventoryCommandName()`;
+- `getInventoryTransferOptions()`;
+- `getInventoryLootRuntimeConfig()`;
+- `getPrimaryCurrencyPrototypeId()`;
+- `getCurrencyPhysicalWeight()`.
+
+**Зачем:**
+
+Это заметнее двигает Phase 6: не одна константа, а связанный слой команд, transfer presets, loot defaults и currency weight usage.
+
+**Дополнительная защита:**
+
+`tools/validate_runtime_configs.js` теперь проверяет новые секции `inventory_movement.transfer_options`, `inventory_commands` и `inventory_loot`.
+
+**Прогресс:**
+
+В `docs/DATA_DRIVEN_MIGRATION_PLAN.md` закрывается новый Phase 6 подпункт. Следующий шаг — Git checkpoint после зелёного результата, затем fallback messages / action handler errors.
+
+**Риск:** средний. Затронуты inventory transfer options, command aliases, loot event handling и currency weight helpers. Fallback-значения совпадают со старым поведением.
+
+**Проверки:**
+
+```bash
+node -e "const fs=require('fs'); JSON.parse(fs.readFileSync('data/gameplay_runtime.json','utf8')); console.log('gameplay runtime JSON OK')"
+node --check script.js
+node --check tools/validate_runtime_configs.js
+node tools/validate_runtime_configs.js
+node tools/runtime_smoke_check.js
+node -e "const fs=require('fs'); const plan=fs.readFileSync('docs/DATA_DRIVEN_MIGRATION_PLAN.md','utf8'); if(!plan.includes('transfer option presets')) throw new Error('medium phase6 progress missing'); console.log('phase6 medium transfer/loot/commands progress OK')"
+```
+
+
+**Результат:** успешно.
+
+- `data/gameplay_runtime.json` валиден;
+- `script.js` синтаксически валиден;
+- `tools/validate_runtime_configs.js` синтаксически валиден;
+- runtime config contracts OK;
+- общий smoke-check зелёный: `57 checks, 0 failed, 0 warnings`;
+- исправленные блоки 13/14 присутствуют в `script.js`;
+- migration plan обновлён для progress bar Phase 6.
+
+**Примечание:** большой патч сначала имел 2 неверных search-блока. Пользователь удалил неверные блоки 13/14 в UI AI Patcher Pro и применил исправленный мини-патч только с двумя операциями. Такой workflow признан рабочим.
+
+**Следующий рабочий блок:** сделать Git checkpoint, затем продолжить Phase 6: fallback messages + inventory/action handler errors.
+
+
+
+---
+
+### 25. `allow_command_only_patches_and_corrected_blocks_workflow`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `docs/AI_ASSISTANT_PROJECT_RULES.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+
+**Что делаем:**
+
+Обновляем правила работы с AI Patcher Pro после апдейта патчера.
+
+Изменения правил:
+
+- command-only patches снова разрешены;
+- больше не нужно добавлять фиктивную docs-операцию только ради запуска команд;
+- если большой патч почти весь зелёный, но 1–2 блока неверные, можно дать маленький patch только с исправленными блоками.
+
+**Зачем:**
+
+AI Patcher Pro теперь исправил проблему с command-only patches, а workflow с ручным удалением 1–2 плохих блоков уже доказал пользу на `phase6_medium_inventory_transfer_loot_command_settings`.
+
+**Риск:** низкий. Меняются только правила сопровождения и документация.
+
+
+**Проверки:**
+
+```bash
+node -e "const fs=require('fs'); const rules=fs.readFileSync('docs/AI_ASSISTANT_PROJECT_RULES.md','utf8'); if(!rules.includes('command-only патчи снова разрешены')) throw new Error('command-only rule not updated'); if(!rules.includes('Исправление частично зелёных патчей')) throw new Error('corrected blocks workflow missing'); const log=fs.readFileSync('docs/AI_PATCHER_WORKLOG.md','utf8'); if(!log.includes('### 24. `phase6_medium_inventory_transfer_loot_command_settings`')) throw new Error('entry 24 missing'); if(!log.includes('применён успешно после исправления блоков 13/14')) throw new Error('entry 24 result missing'); console.log('command-only and corrected-block workflow rules OK')"
+node tools/runtime_smoke_check.js
+git status --short
+```
+
+**Результат:** успешно. Правило command-only patches обновлено, workflow corrected blocks зафиксирован, smoke-check зелёный: `57 checks, 0 failed, 0 warnings`.
+
+**Проверки после применения:**
+
+```bash
+node -e "const fs=require('fs'); const rules=fs.readFileSync('docs/AI_ASSISTANT_PROJECT_RULES.md','utf8'); if(!rules.includes('command-only патчи снова разрешены')) throw new Error('command-only rule not updated'); if(!rules.includes('Исправление частично зелёных патчей')) throw new Error('corrected blocks workflow missing'); const log=fs.readFileSync('docs/AI_PATCHER_WORKLOG.md','utf8'); if(!log.includes('### 24. `phase6_medium_inventory_transfer_loot_command_settings`')) throw new Error('entry 24 missing'); if(!log.includes('применён успешно после исправления блоков 13/14')) throw new Error('entry 24 result missing'); console.log('command-only and corrected-block workflow rules OK')"
+node tools/runtime_smoke_check.js
+git status --short
+```
+
+
+
+---
+
+### 26. `improve_worklog_viewer_phase_progress_visibility`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `tools/worklog_viewer.html`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Исправляем UX progress bar в AI Patcher Worklog Viewer.
+
+Проблема: общий progress bar считает все чекбоксы всего большого migration plan равным весом. Из-за этого даже средний Phase 6 патч визуально почти не двигает общий процент.
+
+Добавляем отдельный, более заметный блок:
+
+- общий прогресс всей data-driven миграции с десятыми долями процента;
+- отдельный progress bar текущей фазы;
+- счётчик `done/total` именно для текущей фазы;
+- пояснение, почему общий процент меняется медленно.
+
+**Зачем:**
+
+Пользователь должен видеть реальное движение не только по всей огромной миграции, но и по активной фазе. Это делает прогресс ощутимым без искажения общего процента.
+
+**Риск:** низкий. Игровой runtime не затрагивается, меняется только viewer и documentation.
+
+**Проверки:**
+
+```bash
+node -e "const fs=require('fs'); const viewer=fs.readFileSync('tools/worklog_viewer.html','utf8'); if(!viewer.includes('currentPhaseFill')) throw new Error('current phase progress bar missing'); if(!viewer.includes('findCurrentPhaseProgress')) throw new Error('current phase parser missing'); const log=fs.readFileSync('docs/AI_PATCHER_WORKLOG.md','utf8'); if(!log.includes('### 26. `improve_worklog_viewer_phase_progress_visibility`')) throw new Error('entry 26 missing'); console.log('viewer phase progress visibility OK')"
+node tools/runtime_smoke_check.js
+git status --short
+```
+
+
+
+---
+
+### 27. `git_checkpoint_after_phase6_medium_inventory_and_viewer_progress`
+
+**Статус:** ожидает выполнения Git checkpoint.
+
+**Что делаем:**
+
+Фиксируем зелёную пачку изменений после среднего Phase 6 subsystem-патча и улучшения progress viewer.
+
+**Последняя зелёная точка перед checkpoint:**
+
+```text
+Summary: 57 checks, 0 failed, 0 warnings
+```
+
+**В commit должны попасть:**
+
+- `.gitignore`
+- `data/gameplay_runtime.json`
+- `docs/AI_ASSISTANT_PROJECT_RULES.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `script.js`
+- `tools/validate_runtime_configs.js`
+- `tools/worklog_viewer.html`
+
+**Что за пачка:**
+
+- `.ai_patcher/` добавлен в `.gitignore`;
+- Phase 6 inventory movement/settings перенесены в data-driven runtime;
+- средний Phase 6 patch закрыл transfer presets, command aliases, loot defaults, stack field и currency weight helpers;
+- Worklog Viewer получил отдельный progress bar текущей фазы;
+- правила проекта обновлены под command-only patches и corrected-block workflow.
+
+**Риск:** низкий. Код уже прошёл smoke-check; этот patch только фиксирует checkpoint и запускает Git-команды.

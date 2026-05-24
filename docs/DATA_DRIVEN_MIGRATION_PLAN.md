@@ -8,9 +8,9 @@
 
 **Текущая фаза:** Phase 6 continuation — `script.js`: actions, inventory commands, handlers
 
-**Последняя зелёная точка:** smoke-check `57 checks, 0 failed, 0 warnings` после `phase6_data_driven_build_container_defaults`.
+**Последняя зелёная точка:** smoke-check `57 checks, 0 failed, 0 warnings` после `improve_worklog_viewer_phase_progress_visibility`.
 
-**Git checkpoint:** `e983e78` — `chore: add runtime configs and project worklog tools`.
+**Git checkpoint:** `df96baa` — `chore: extend data-driven runtime validation and inventory config`.
 
 ## Ближайшие следующие шаги
 
@@ -24,9 +24,9 @@ Phase 7 diagnostic layer фактически закрыт: runtime config contr
 
 Вернуться к Phase 6 и продолжить перенос `script.js` маленькими безопасными кусками.
 
-1. Сделать Git checkpoint: сейчас после `e983e78` накопилась новая зелёная пачка tooling/data-driven изменений.
-2. Затем продолжить Phase 6: вынести inventory movement / stacking / loot настройки.
-3. После этого вынести fallback messages для inventory/action handlers.
+1. Сделать Git checkpoint, включив `.gitignore`, обновлённые docs, Phase 6 movement/settings изменения и улучшенный progress viewer.
+2. Затем сделать следующий средний Phase 6 subsystem-патч: fallback messages + inventory/action handler errors.
+3. После этого перейти к следующему крупному блоку Phase 6 или Phase 8, если inventory/action слой достаточно очищен.
 4. После каждого куска запускать `node tools/runtime_smoke_check.js`.
 5. Обновлять `docs/AI_PATCHER_WORKLOG.md` и чекбоксы этого плана.
 
@@ -117,6 +117,10 @@ Phase 7 diagnostic layer фактически закрыт: runtime config contr
 - [x] Заменить оставшиеся hardcoded inventory actor ids в movement/trade/death flows на `getInventoryActorId()`.
 
 - [x] Вынести `buildContainer` recipe/capacity defaults: resource prototype, resource cost, max weight, max slots, default coords.
+
+- [x] Вынести inventory movement settings: full-stack sentinel, default/trade-locked item states, faction-vault resource debit container type.
+
+- [x] Вынести transfer option presets, inventory command aliases, loot defaults, stack stat field и currency physical weight helpers.
 - [ ] Вынести настройки inventory action handlers.
 - [ ] Вынести настройки container/system container aliases.
 - [ ] Вынести правила перемещения/stacking/loot.

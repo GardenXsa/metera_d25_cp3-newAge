@@ -443,7 +443,7 @@ const OldCoreInventorySystem = {
             stack_size: quantity,
             container_id: resolvedContainerId,
             slot_index: customProps.slot_index ?? customProps.slot ?? null,
-            state: customProps.state || "idle",
+            state: customProps.state || getInventoryMovementRuntimeConfig().states.default,
             flags: { quest_item: false, bound_to_owner: null, stolen: false, magical: false, fragile: false, ...(customProps.flags || {}) },
             durability: Number.isFinite(customProps.durability) ? customProps.durability : (proto ? (proto.durability || toRuntimeNumber(getGameplayRuntimeConfig().inventory.default_item_durability, 100)) : toRuntimeNumber(getGameplayRuntimeConfig().inventory.default_item_durability, 100)),
             custom_props: { weight_per_unit: baseWeight, name: customProps.name || proto?.name || prototypeId, ...mergedCustomProps },
@@ -505,7 +505,7 @@ const OldCoreInventorySystem = {
 
         if (!resolvedSourceId || !ContainerRegistry.has(resolvedSourceId)) return { success: false, error: "Source container not found" };
         if (item.container_id !== resolvedSourceId) return { success: false, error: "Item is not in the declared source container" };
-        if (item.state === "in_trade" && !options.allowTradeLocked) return { success: false, error: "Item state locks movement" };
+        if (item.state === getInventoryMovementRuntimeConfig().states.trade_locked && !options.allowTradeLocked) return { success: false, error: "Item state locks movement" };
 
         let actualTargetId = requestedTargetId;
         if (!actualTargetId) {
@@ -525,7 +525,7 @@ const OldCoreInventorySystem = {
 
         const sourceContainer = ContainerRegistry.get(resolvedSourceId);
         const targetContainer = ContainerRegistry.get(actualTargetId);
-        const requestedQuantity = quantity === null ? item.stack_size : parseInt(quantity, 10);
+        const requestedQuantity = normalizeInventoryMoveQuantity(quantity, item.stack_size);
         if (!Number.isFinite(requestedQuantity) || requestedQuantity <= 0) return { success: false, error: "Invalid quantity" };
         if (requestedQuantity > item.stack_size) return { success: false, error: "Not enough quantity in stack" };
         if (item.flags?.bound_to_owner && targetContainer.owner_id !== item.flags.bound_to_owner) return { success: false, error: "Item is soulbound" };
@@ -575,7 +575,7 @@ const OldCoreInventorySystem = {
             movingItem.flags.stolen = true;
         }
 
-        if (sourceContainer.type === 'faction_vault' && sourceContainer.owner_id !== targetContainer.owner_id) {
+        if (sourceContainer.type === getInventoryMovementRuntimeConfig().resource_debit_source_container_type && sourceContainer.owner_id !== targetContainer.owner_id) {
             const regionId = resolveContainerLocation(sourceContainer.id)?.region_id;
             if (regionId && typeof World !== 'undefined' && World?.regions?.[regionId]?.resources?.[movingItem.prototype_id]) {
                 const regionResource = World.regions[regionId].resources[movingItem.prototype_id];
@@ -584,7 +584,7 @@ const OldCoreInventorySystem = {
         }
 
         movingItem.last_moved_at = player ? player.stats.turnCount : 0;
-        if (player && (movingItem.prototype_id === 'gold' || item.prototype_id === 'gold')) syncPlayerGoldFromInventory();
+        if (player && (isGoldLikeItem(movingItem) || isGoldLikeItem(item))) syncPlayerGoldFromInventory();
 
         return { success: true, movedItemId: movingItem.id, createdItemId, targetContainerId: actualTargetId, sourceContainerId: resolvedSourceId };
     },
@@ -634,7 +634,7 @@ const OldCoreInventorySystem = {
 
         const groundPileId = getOrCreateGroundPile(resolveContainerLocation(resolvedContainerId));
         const itemsToMove = [...(cont.items || [])];
-        itemsToMove.forEach(itemId => this.moveItem(itemId, resolvedContainerId, groundPileId, null, { actorId: getInventoryActorId('system'), ignoreAccess: true, ignoreDistance: true, allowTradeLocked: true, allowLocked: true }));
+        itemsToMove.forEach(itemId => this.moveItem(itemId, resolvedContainerId, groundPileId, null, getInventoryTransferOptions('system_full_access')));
         ContainerRegistry.delete(resolvedContainerId);
         return true;
     },
@@ -670,7 +670,7 @@ const OldCoreInventorySystem = {
         const stolenItems = getContainerItems(src).filter(id => ItemRegistry.get(id)?.flags?.stolen);
         let count = 0;
         stolenItems.forEach(id => {
-            if (this.moveItem(id, resolvedSourceId, resolvedDestId, null, { actorId: getInventoryActorId('system'), ignoreAccess: true, ignoreDistance: true }).success) count++;
+            if (this.moveItem(id, resolvedSourceId, resolvedDestId, null, getInventoryTransferOptions('system_ignore_access')).success) count++;
         });
         return count;
     },
@@ -772,7 +772,7 @@ function executeLocalInventoryCommand(action, args) {
             const res = OldCoreInventorySystem.moveItem(
                 args.itemId, null, args.targetContainerId,
                 args.quantity >= 0 ? args.quantity : null,
-                { actorId: getInventoryActorId('default'), ignoreAccess: false, ignoreDistance: true }
+                getInventoryTransferOptions('player_ui')
             );
             return { status: res.success ? 'ok' : 'error', ...res, feedback: res.error };
         }
@@ -896,14 +896,14 @@ const CoreInventorySystemAsync = {
     },
     moveItem: async function(itemId, sourceContainerId, targetContainerId, quantity = null, options = {}) {
         const actualTargetId = resolveSpecialContainerId(targetContainerId) || await getOrCreateGroundPileAsync(resolveContainerLocation(sourceContainerId) || resolveActorLocation(options.actorId || getInventoryActorId('default')));
-        const res = await sendInventoryCommand('moveItem', {
-            itemId, targetContainerId: actualTargetId, quantity: quantity !== null ? parseInt(quantity, 10) : -1
+        const res = await sendInventoryCommand(getInventoryCommandName('move_item'), {
+            itemId, targetContainerId: actualTargetId, quantity: serializeInventoryMoveQuantity(quantity)
         });
         return { success: res.success, movedItemId: res.movedItemId, error: res.feedback };
     },
     moveItems: async function(sourceContainerId, targetContainerId, items, options = {}) {
         const actualTargetId = resolveSpecialContainerId(targetContainerId) || await getOrCreateGroundPileAsync(resolveContainerLocation(sourceContainerId) || resolveActorLocation(options.actorId || 'player'));
-        const res = await sendInventoryCommand('moveItems', {
+        const res = await sendInventoryCommand(getInventoryCommandName('move_items'), {
             sourceContainerId: resolveSpecialContainerId(sourceContainerId),
             targetContainerId: actualTargetId,
             items: items
@@ -913,7 +913,7 @@ const CoreInventorySystemAsync = {
     removeItem: async function(itemId, quantity) {
         const item = ItemRegistry.get(itemId);
         const shouldSyncGold = item && (item.prototype_id === 'gold' || item.prototype_id === 'gold_ingot' || item.custom_props?.aiIdentifier === 'gold') && item.container_id === player?.container_backpack;
-        const res = await sendInventoryCommand('removeItem', { itemId, quantity });
+        const res = await sendInventoryCommand(getInventoryCommandName('remove_item'), { itemId, quantity });
         if (shouldSyncGold) syncPlayerGoldFromInventory();
         return res.success;
     },
@@ -1361,9 +1361,10 @@ const TradeSystemAsync = {
             const merchant = World?.npcs?.[trade.target];
             if (!merchant?.inventory || merchant.inventory.gold < remaining) return { success: false, error: "Merchant account is short on gold" };
             const buyerContainer = ContainerRegistry.get(trade.initiator_container);
-            const existingGoldId = CoreInventorySystemAsync.findItemByPrototype(trade.initiator_container, 'gold');
+            const primaryCurrencyId = getPrimaryCurrencyPrototypeId('gold');
+            const existingGoldId = CoreInventorySystemAsync.findItemByPrototype(trade.initiator_container, primaryCurrencyId);
             const currentWeight = CoreInventorySystemAsync.getContainerWeight(trade.initiator_container);
-            const addedWeight = remaining * 0.01;
+            const addedWeight = remaining * getCurrencyPhysicalWeight(primaryCurrencyId, 0.01);
             if (!existingGoldId && getContainerItems(buyerContainer).length >= buyerContainer.max_slots) {
                 return { success: false, error: "Buyer container has no free slot for gold" };
             }
@@ -1372,7 +1373,7 @@ const TradeSystemAsync = {
             }
 
             merchant.inventory.gold -= remaining;
-            const createdGoldId = await CoreInventorySystemAsync.createItem('gold', remaining, trade.initiator_container, { name: getItemName('gold', player?.era) });
+            const createdGoldId = await CoreInventorySystemAsync.createItem(primaryCurrencyId, remaining, trade.initiator_container, { name: getItemName(primaryCurrencyId, player?.era) });
             createdItemIds.push(createdGoldId);
             remaining = 0;
         }
@@ -1557,7 +1558,7 @@ async function executeCommand(command, args) {
                     });
                     
                     if (existingItemId) {
-                        await sendInventoryCommand('updateItemStat', { itemId: existingItemId, stat: 'stack_size', change: quantity });
+                        await sendInventoryCommand(getInventoryCommandName('update_item_stat'), { itemId: existingItemId, stat: getInventoryStackField(), change: quantity });
                         feedback = t('gameInterface.commandFeedback.itemQuantityIncreased', { itemName: name, quantity: quantity });
                     } else {
                         // Т3 ФИКС: Проверка веса
@@ -2271,14 +2272,14 @@ const OldTradeSystem = {
         if (!this.activeTrades.has(tradeId)) return false;
         const trade = this.activeTrades.get(tradeId);
         const item = ItemRegistry.get(itemId);
-        if (!item || item.state !== "idle") return false;
+        if (!item || item.state !== getInventoryMovementRuntimeConfig().states.default) return false;
         if (item.stack_size < quantity) return false;
         
         const expectedContainer = side === "offer" ? trade.initiator_container : trade.target_container;
         if (item.container_id !== expectedContainer) return false;
         if (!is_sellable(expectedContainer, itemId)) return false;
 
-        item.state = "in_trade";
+        item.state = getInventoryMovementRuntimeConfig().states.trade_locked;
         if (side === "offer") trade.offer_items.push({id: itemId, quantity: quantity});
         else trade.request_items.push({id: itemId, quantity: quantity});
         return true;
@@ -2309,11 +2310,7 @@ const OldTradeSystem = {
     _executeItemTransfers: async function(items, sourceContainerId, targetContainerId, createdItemIds) {
         for (const entry of items) {
             const res = await CoreInventorySystemAsync.moveItem(entry.id, sourceContainerId, targetContainerId, entry.quantity, {
-                actorId: getInventoryActorId('system'),
-                ignoreAccess: true,
-                ignoreDistance: true,
-                allowTradeLocked: true,
-                allowLocked: true
+                ...getInventoryTransferOptions('system_full_access')
             });
             if (!res.success) return res;
             if (res.createdItemId) createdItemIds.push(res.createdItemId);
@@ -2336,9 +2333,7 @@ const OldTradeSystem = {
             const goldItem = ItemRegistry.get(goldItemId);
             const amountToMove = Math.min(goldItem.stack_size, remaining);
             const res = await CoreInventorySystemAsync.moveItem(goldItemId, trade.target_container, trade.initiator_container, amountToMove, {
-                actorId: getInventoryActorId('system'),
-                ignoreAccess: true,
-                ignoreDistance: true,
+                ...getInventoryTransferOptions('system_ignore_access'),
                 allowLocked: true
             });
             if (!res.success) return res;
@@ -8285,6 +8280,86 @@ function buildConstructedContainerLocation(regionId, runtimeConfig = getInventor
   };
 }
 
+
+function getInventoryMovementRuntimeConfig() {
+  const runtime = getGameplayRuntimeConfig().inventory_movement || {};
+  const states = runtime.states || {};
+  return {
+    full_stack_quantity_sentinel: Math.floor(toRuntimeNumber(runtime.full_stack_quantity_sentinel, -1)),
+    states: {
+      default: states.default || 'idle',
+      trade_locked: states.trade_locked || 'in_trade'
+    },
+    resource_debit_source_container_type: runtime.resource_debit_source_container_type || 'faction_vault'
+  };
+}
+
+function isFullStackMoveQuantity(quantity) {
+  return Number(quantity) === getInventoryMovementRuntimeConfig().full_stack_quantity_sentinel;
+}
+
+function normalizeInventoryMoveQuantity(quantity, fallbackStackSize) {
+  if (quantity === null || quantity === undefined || isFullStackMoveQuantity(quantity)) return fallbackStackSize;
+  return parseInt(quantity, 10);
+}
+
+function serializeInventoryMoveQuantity(quantity) {
+  if (quantity === null || quantity === undefined) return getInventoryMovementRuntimeConfig().full_stack_quantity_sentinel;
+  return parseInt(quantity, 10);
+}
+
+
+function getInventoryStackField() {
+  return getInventoryMovementRuntimeConfig().stack_size_field || 'stack_size';
+}
+
+function getInventoryCommandName(key) {
+  const commands = getGameplayRuntimeConfig().inventory_commands || {};
+  const defaults = {
+    add_item: 'addItem',
+    remove_item: 'removeItem',
+    move_item: 'moveItem',
+    move_items: 'moveItems',
+    update_item_stat: 'updateItemStat'
+  };
+  return commands[key] || defaults[key] || key;
+}
+
+function getInventoryTransferOptions(kind) {
+  const movement = getGameplayRuntimeConfig().inventory_movement || {};
+  const presets = movement.transfer_options || {};
+  const defaults = {
+    system_full_access: { actor: 'system', ignoreAccess: true, ignoreDistance: true, allowTradeLocked: true, allowLocked: true },
+    system_ignore_access: { actor: 'system', ignoreAccess: true, ignoreDistance: true },
+    system_ignore_access_only: { actor: 'system', ignoreAccess: true },
+    player_ui: { actor: 'default', ignoreAccess: false, ignoreDistance: true }
+  };
+  const preset = presets[kind] || defaults[kind] || {};
+  const actorKind = preset.actor || 'default';
+  const result = { ...preset, actorId: getInventoryActorId(actorKind) };
+  delete result.actor;
+  return result;
+}
+
+function getInventoryLootRuntimeConfig() {
+  const runtime = getGameplayRuntimeConfig().inventory_loot || {};
+  return {
+    event_type: runtime.event_type || 'loot',
+    default_quantity: Math.max(1, Math.floor(toRuntimeNumber(runtime.default_quantity, 1))),
+    fallback_item_name: runtime.fallback_item_name || 'Loot'
+  };
+}
+
+function getPrimaryCurrencyPrototypeId(fallback = 'gold') {
+  const ids = getGameplayRuntimeConfig().currency?.prototype_ids;
+  return Array.isArray(ids) && ids.length > 0 ? ids[0] : fallback;
+}
+
+function getCurrencyPhysicalWeight(prototypeId, fallback = 0.01) {
+  const weights = getGameplayRuntimeConfig().currency?.physical_weights || {};
+  return toRuntimeNumber(weights[prototypeId], fallback);
+}
+
 function getCurrencyPrototypeIds() {
   return getGameplayRuntimeConfig().currency.prototype_ids;
 }
@@ -8692,7 +8767,7 @@ async function initializeGameInterface() {
             player.currentJourney.isPausedForCheck = true;
             updateCharacterSheet();
             addLogMessage(`(( СИСТЕМА: Путь прерван препятствием. Требуется проверка: ${selectedEvent.stat.toUpperCase()} (Сложность: ${selectedEvent.dc}). Совершите действие или бросок! ))`, "system-message");
-        } else if (selectedEvent.type === 'loot') {
+        } else if (selectedEvent.type === getInventoryLootRuntimeConfig().event_type) {
             if (selectedEvent.itemId) {
                 executeCommand('addItem', { aiIdentifier: selectedEvent.itemId, name: selectedEvent.itemName || "Находка", quantity: selectedEvent.amount || 1 });
             }
@@ -11608,7 +11683,7 @@ async function handlePlayerDeath() {
     const backpack = ContainerRegistry.get(player.container_backpack);
     if (backpack && getContainerItems(backpack).length > 0) {
         const itemsToMove = getContainerItems(backpack).map(id => ({ id: id, quantity: ItemRegistry.get(id).stack_size }));
-        await CoreInventorySystemAsync.moveItems(player.container_backpack, corpseId, itemsToMove, { actorId: getInventoryActorId('system'), ignoreAccess: true });
+        await CoreInventorySystemAsync.moveItems(player.container_backpack, corpseId, itemsToMove, getInventoryTransferOptions('system_ignore_access_only'));
     }
     
     const equipment = ContainerRegistry.get(player.container_equipment);
@@ -13040,7 +13115,7 @@ async function executeNonInventoryCommand(command, args) {
                                 break;
                             }
                         } else if (change < 0) {
-                            await executeCommand('removeItem', { aiIdentifier: 'gold', quantity: Math.abs(change) });
+                            await executeCommand(getInventoryCommandName('remove_item'), { aiIdentifier: getPrimaryCurrencyPrototypeId('gold'), quantity: Math.abs(change) });
                         }
                         feedback = t('gameInterface.commandFeedback.goldChanged', { change: change > 0 ? `+${change}` : change, gold: player.stats.gold });
                         break;
@@ -13111,7 +13186,7 @@ async function executeNonInventoryCommand(command, args) {
                                 break;
                             }
                         }
-                        else if (diff < 0) await executeCommand('removeItem', { aiIdentifier: 'gold', quantity: Math.abs(diff) });
+                        else if (diff < 0) await executeCommand(getInventoryCommandName('remove_item'), { aiIdentifier: getPrimaryCurrencyPrototypeId('gold'), quantity: Math.abs(diff) });
                         feedback = `Золото установлено на ${value}.`;
                         break;
                     }
@@ -14129,7 +14204,7 @@ if (player.nexusData && player.nexusData[args.id]) {
                 }
 
                 const item = ItemRegistry.get(itemKey);
-                const moveQty = quantity === -1 ? item.stack_size : Math.min(quantity, item.stack_size);
+                const moveQty = isFullStackMoveQuantity(quantity) ? item.stack_size : Math.min(quantity, item.stack_size);
 
                 const res = await CoreInventorySystemAsync.moveItem(itemKey, player.container_backpack, wNpc.inventory_id, moveQty);
                 
@@ -16981,7 +17056,7 @@ window.openBusinessModal = async function(bId) {
             let it = ItemRegistry.get(id);
             if (it) {
                 let w = it.custom_props?.weight_per_unit || 1;
-                if (it.prototype_id === 'gold') w = 0.01;
+                if (isGoldLikeItem(it)) w = getCurrencyPhysicalWeight(it.prototype_id, w);
                 currentWeight += w * it.stack_size;
             }
         });

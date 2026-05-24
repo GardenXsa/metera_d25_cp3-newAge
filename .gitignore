@@ -76,3 +76,6 @@ scan_full*.txt
 Текстовый документ.txt
 **/Текстовый документ.txt
 debug_dumps/
+
+# AI Patcher Pro local state
+.ai_patcher/

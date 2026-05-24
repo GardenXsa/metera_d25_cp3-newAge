@@ -216,6 +216,22 @@ function checkGameplayRuntime(config) {
       if (typeof value !== 'number' || !Number.isFinite(value)) errors.push(`inventory_building.default_world_coords[${index}] must be a finite number`);
     });
   }
+
+  checkNumber(config, 'inventory_movement.full_stack_quantity_sentinel');
+  checkString(config, 'inventory_movement.stack_size_field');
+  checkString(config, 'inventory_movement.states.default');
+  checkString(config, 'inventory_movement.states.trade_locked');
+  checkString(config, 'inventory_movement.resource_debit_source_container_type');
+  checkObject(config, 'inventory_movement.transfer_options');
+  ['system_full_access', 'system_ignore_access', 'system_ignore_access_only', 'player_ui'].forEach((key) => {
+    checkObject(config, `inventory_movement.transfer_options.${key}`);
+    checkString(config, `inventory_movement.transfer_options.${key}.actor`);
+  });
+  checkObject(config, 'inventory_commands');
+  ['add_item', 'remove_item', 'move_item', 'move_items', 'update_item_stat'].forEach((key) => checkString(config, `inventory_commands.${key}`));
+  checkString(config, 'inventory_loot.event_type');
+  checkNumber(config, 'inventory_loot.default_quantity', { min: 1 });
+  checkString(config, 'inventory_loot.fallback_item_name');
   checkString(config, 'inventory_engine.id_prefixes.container');
   checkString(config, 'inventory_engine.id_prefixes.item');
   checkString(config, 'inventory_engine.actors.default');

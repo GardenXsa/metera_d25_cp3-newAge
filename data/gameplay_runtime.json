@@ -59,6 +59,50 @@
     "default_max_slots": 20,
     "default_world_coords": [0, 0, 0]
   },
+  "inventory_movement": {
+    "full_stack_quantity_sentinel": -1,
+    "stack_size_field": "stack_size",
+    "states": {
+      "default": "idle",
+      "trade_locked": "in_trade"
+    },
+    "resource_debit_source_container_type": "faction_vault",
+    "transfer_options": {
+      "system_full_access": {
+        "actor": "system",
+        "ignoreAccess": true,
+        "ignoreDistance": true,
+        "allowTradeLocked": true,
+        "allowLocked": true
+      },
+      "system_ignore_access": {
+        "actor": "system",
+        "ignoreAccess": true,
+        "ignoreDistance": true
+      },
+      "system_ignore_access_only": {
+        "actor": "system",
+        "ignoreAccess": true
+      },
+      "player_ui": {
+        "actor": "default",
+        "ignoreAccess": false,
+        "ignoreDistance": true
+      }
+    }
+  },
+  "inventory_commands": {
+    "add_item": "addItem",
+    "remove_item": "removeItem",
+    "move_item": "moveItem",
+    "move_items": "moveItems",
+    "update_item_stat": "updateItemStat"
+  },
+  "inventory_loot": {
+    "event_type": "loot",
+    "default_quantity": 1,
+    "fallback_item_name": "Loot"
+  },
   "inventory": {
     "default_item_weight": 1,
     "default_item_durability": 100,

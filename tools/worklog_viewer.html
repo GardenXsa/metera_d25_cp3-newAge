@@ -101,6 +101,19 @@
     }
     .progress-meta { color: var(--muted); font-size: 12px; line-height: 1.45; }
     .phase-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow: auto; }
+
+    .phase-focus {
+      margin-top: 12px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #111827;
+    }
+    .phase-focus-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 6px; }
+    .phase-focus-title { font-weight: 700; color: var(--text); }
+    .phase-focus-percent { color: #86efac; font-weight: 800; font-size: 18px; }
+    .phase-focus-note { color: var(--muted); font-size: 12px; margin-top: 6px; line-height: 1.4; }
+
     .phase-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
     .phase-row strong { color: var(--text); font-weight: 600; }
     .mini-bar { height: 6px; background: #111827; border-radius: 999px; overflow: hidden; grid-column: 1 / -1; }
@@ -192,6 +205,14 @@
         </div>
         <div class='progress-bar'><div class='progress-fill' id='migrationFill'></div></div>
         <div class='progress-meta' id='migrationMeta'>Загружаю план миграции...</div>
+        <div class='phase-focus' id='currentPhasePanel'>
+          <div class='phase-focus-head'>
+            <div class='phase-focus-title' id='currentPhaseTitle'>Текущая фаза</div>
+            <div class='phase-focus-percent' id='currentPhasePercent'>0%</div>
+          </div>
+          <div class='progress-bar'><div class='progress-fill' id='currentPhaseFill'></div></div>
+          <div class='phase-focus-note' id='currentPhaseMeta'>Загружаю прогресс текущей фазы...</div>
+        </div>
         <div class='phase-list' id='phaseList'></div>
       </div>
       <div class='stats'>
@@ -334,20 +355,51 @@
       return { total, done, percent, phases };
     }
 
+    function findCurrentPhaseProgress(md, phases) {
+      const currentLine = (md || '').split(/\r?\n/).find(line => line.startsWith('**Текущая фаза:**')) || '';
+      const currentTitle = currentLine.replace('**Текущая фаза:**', '').trim();
+      const phaseNumber = (currentTitle.match(/Phase\s+(\d+)/i) || [])[1];
+      const phase = phaseNumber
+        ? phases.find(item => item.title.toLowerCase().includes(`phase ${phaseNumber}`))
+        : null;
+      return { currentTitle, phase };
+    }
+
+
     function updateMigrationProgress(md) {
       const progress = extractMigrationProgress(md);
-      const percent = Math.max(0, Math.min(100, progress.percent));
-      el('migrationPercent').textContent = percent + '%';
+      const percentExact = progress.total > 0 ? (progress.done / progress.total) * 100 : 0;
+      const percent = Math.max(0, Math.min(100, percentExact));
+      el('migrationPercent').textContent = percent.toFixed(1) + '%';
       el('migrationFill').style.width = percent + '%';
 
       if (!progress.total) {
         el('migrationMeta').textContent = 'План миграции не загружен. Открой viewer через tools/open_worklog_viewer.bat.';
+        el('currentPhaseTitle').textContent = 'Текущая фаза';
+        el('currentPhasePercent').textContent = '0%';
+        el('currentPhaseFill').style.width = '0%';
+        el('currentPhaseMeta').textContent = 'Нет данных по текущей фазе.';
         el('phaseList').innerHTML = '';
         return;
       }
 
       const remaining = Math.max(0, progress.total - progress.done);
-      el('migrationMeta').textContent = `${progress.done}/${progress.total} пунктов закрыто, осталось ${remaining}. Процент примерный: пункты считаются равным весом.`;
+      el('migrationMeta').textContent = `${progress.done}/${progress.total} пунктов закрыто, осталось ${remaining}. Общий процент большой миграции меняется медленно, поэтому ниже показан отдельный прогресс текущей фазы.`;
+
+      const current = findCurrentPhaseProgress(md, progress.phases);
+      if (current.phase) {
+        const phasePercent = current.phase.total > 0 ? (current.phase.done / current.phase.total) * 100 : 0;
+        el('currentPhaseTitle').textContent = current.currentTitle || current.phase.title;
+        el('currentPhasePercent').textContent = phasePercent.toFixed(1) + '%';
+        el('currentPhaseFill').style.width = Math.max(0, Math.min(100, phasePercent)) + '%';
+        el('currentPhaseMeta').textContent = `${current.phase.done}/${current.phase.total} пунктов закрыто в текущей фазе. Этот бар должен двигаться заметнее, чем общий.`;
+      } else {
+        el('currentPhaseTitle').textContent = current.currentTitle || 'Текущая фаза';
+        el('currentPhasePercent').textContent = '—';
+        el('currentPhaseFill').style.width = '0%';
+        el('currentPhaseMeta').textContent = 'Не удалось сопоставить текущую фазу с чеклистом ниже.';
+      }
+
       el('phaseList').innerHTML = progress.phases.map((phase) => {
         const phasePercent = phase.total > 0 ? Math.round((phase.done / phase.total) * 100) : 0;
         return `<div class='phase-row'><strong>${escapeHtml(phase.title)}</strong><span>${phase.done}/${phase.total}</span><div class='mini-bar'><div class='mini-fill' style='width:${phasePercent}%'></div></div></div>`;
