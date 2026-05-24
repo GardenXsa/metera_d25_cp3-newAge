@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "progression": {
+    "mana": {
+      "base": 50,
+      "int_baseline": 10,
+      "level_bonus": 5,
+      "minimum": 10
+    },
+    "hp": {
+      "base": 80,
+      "constitution_baseline": 10,
+      "constitution_divisor": 2,
+      "level_bonus": 10,
+      "minimum": 10
+    }
+  },
+  "inventory": {
+    "default_item_weight": 1,
+    "default_item_durability": 100,
+    "access_distance": 10.0,
+    "default_lock_difficulty": 10,
+    "default_container_health": 200,
+    "non_flammable_container_types": [
+      "faction_vault"
+    ],
+    "system_regions": {
+      "magical_pocket": "astral"
+    }
+  },
+  "currency": {
+    "prototype_ids": [
+      "gold",
+      "gold_ingot"
+    ],
+    "ai_identifiers": [
+      "gold"
+    ],
+    "physical_weights": {
+      "gold": 0.01,
+      "gold_ingot": 1
+    }
+  },
+  "economy": {
+    "default_base_price": 10,
+    "charisma_baseline": 10,
+    "charisma_price_step": 0.05,
+    "buy_multiplier": 1.2,
+    "sell_multiplier": 0.8,
+    "min_price": 1
+  },
+  "faction_manpower": {
+    "weapon_good_ids": [
+      "weapons"
+    ],
+    "food_good_ids": [
+      "bread",
+      "meat",
+      "smoked_meat"
+    ],
+    "population_soldier_ratio": 0.1,
+    "food_per_soldier": 0.5
+  }
+}

@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang='ru'>
+<head>
+  <meta charset='utf-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <title>AI Patcher Worklog Viewer</title>
+  <style>
+    :root {
+      --bg: #101216;
+      --panel: #171a21;
+      --panel2: #20242d;
+      --text: #eef2f7;
+      --muted: #9aa4b2;
+      --line: #303745;
+      --accent: #7dd3fc;
+      --ok: #86efac;
+      --warn: #fde68a;
+      --bad: #fca5a5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Segoe UI, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(16, 18, 22, 0.96);
+      border-bottom: 1px solid var(--line);
+      padding: 14px 18px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+    }
+    h1 { margin: 0; font-size: 20px; }
+    .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    button, .file-label {
+      background: var(--panel2);
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 9px 11px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button:hover, .file-label:hover { border-color: var(--accent); }
+    input[type='file'] { display: none; }
+    main { display: grid; grid-template-columns: 320px 1fr; min-height: calc(100vh - 72px); }
+    aside {
+      border-right: 1px solid var(--line);
+      background: var(--panel);
+      padding: 14px;
+      overflow: auto;
+      max-height: calc(100vh - 72px);
+      position: sticky;
+      top: 72px;
+    }
+    .content { padding: 22px; max-width: 1120px; }
+    .search {
+      width: 100%;
+      background: #0c0f14;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+    .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; }
+    .stat { background: #0c0f14; border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+    .stat b { display: block; font-size: 20px; color: var(--accent); }
+    .stat span { color: var(--muted); font-size: 12px; }
+    .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 14px; }
+    .chip { border-radius: 999px; padding: 6px 9px; font-size: 12px; }
+    .chip.active { border-color: var(--accent); color: var(--accent); }
+    .patch-list { display: flex; flex-direction: column; gap: 8px; }
+    .patch-card {
+      padding: 10px;
+      border: 1px solid var(--line);
+      background: #0c0f14;
+      border-radius: 12px;
+      text-decoration: none;
+      color: var(--text);
+      display: block;
+    }
+    .patch-card:hover { border-color: var(--accent); }
+    .patch-card small { color: var(--muted); display: block; margin-top: 5px; line-height: 1.35; }
+    .status-ok { color: var(--ok); }
+    .status-warn { color: var(--warn); }
+    .status-bad { color: var(--bad); }
+    #dropzone {
+      border: 1px dashed var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    #dropzone.drag { border-color: var(--accent); color: var(--accent); }
+    article {
+      line-height: 1.6;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 24px;
+    }
+    article h1, article h2, article h3 {
+      scroll-margin-top: 96px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 6px;
+    }
+    article h1 { font-size: 28px; }
+    article h2 { font-size: 22px; margin-top: 34px; }
+    article h3 { font-size: 18px; margin-top: 28px; }
+    article code { background: #0c0f14; border: 1px solid var(--line); border-radius: 6px; padding: 2px 5px; }
+    pre { overflow: auto; background: #0c0f14; border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+    mark { background: #facc15; color: #111827; border-radius: 3px; padding: 0 2px; }
+    .muted { color: var(--muted); }
+    @media (max-width: 860px) {
+      main { grid-template-columns: 1fr; }
+      aside { position: static; max-height: none; border-right: 0; border-bottom: 1px solid var(--line); }
+      header { grid-template-columns: 1fr; }
+      .toolbar { justify-content: flex-start; }
+    }
+    @media print {
+      header, aside { display: none; }
+      main { display: block; }
+      body { background: white; color: black; }
+      article { border: 0; padding: 0; background: white; }
+      pre, code { border: 1px solid #ccc; background: #f6f6f6; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>AI Patcher Worklog Viewer</h1>
+      <div class='sub' id='sourceLabel'>Загружаю docs/AI_PATCHER_WORKLOG.md...</div>
+    </div>
+    <div class='toolbar'>
+      <label class='file-label'>Открыть .md<input id='fileInput' type='file' accept='.md,.txt,text/markdown,text/plain'></label>
+      <button id='reloadBtn'>Перезагрузить</button>
+      <button id='copyBtn'>Копировать Markdown</button>
+      <button id='printBtn'>Печать / PDF</button>
+    </div>
+  </header>
+  <main>
+    <aside>
+      <input class='search' id='searchInput' placeholder='Поиск по реестру...'>
+      <div id='dropzone'>Можно перетащить сюда AI_PATCHER_WORKLOG.md, если авто-загрузка не сработала.</div>
+      <div class='stats'>
+        <div class='stat'><b id='patchCount'>0</b><span>патчей</span></div>
+        <div class='stat'><b id='successCount'>0</b><span>успешных</span></div>
+        <div class='stat'><b id='riskCount'>0</b><span>рисков</span></div>
+        <div class='stat'><b id='todoCount'>0</b><span>след. шагов</span></div>
+      </div>
+      <div class='chips'>
+        <button class='chip active' data-filter='all'>Все</button>
+        <button class='chip' data-filter='success'>Успешные</button>
+        <button class='chip' data-filter='risk'>С рисками</button>
+        <button class='chip' data-filter='todo'>Следующие шаги</button>
+      </div>
+      <div class='patch-list' id='patchList'></div>
+    </aside>
+    <section class='content'>
+      <article id='rendered'>
+        <p class='muted'>Если реестр не загрузился автоматически, нажми «Открыть .md» и выбери <code>docs/AI_PATCHER_WORKLOG.md</code>.</p>
+      </article>
+    </section>
+  </main>
+  <script>
+    const DEFAULT_WORKLOG_PATH = '../docs/AI_PATCHER_WORKLOG.md';
+    let rawMarkdown = '';
+    let renderedHtml = '';
+    let activeFilter = 'all';
+    const el = (id) => document.getElementById(id);
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>'"]/g, (ch) => {
+        const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
+        return map[ch];
+      });
+    }
+
+    function slugify(text) {
+      return text.toLowerCase().replace(/[`*_#]/g, '').replace(/[^a-zа-яё0-9]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'section';
+    }
+
+    function inlineMarkdown(text) {
+      let safe = escapeHtml(text);
+      safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
+      safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      return safe;
+    }
+
+    function renderMarkdown(md) {
+      const lines = md.replace(/\r\n/g, '\n').split('\n');
+      const out = [];
+      let inCode = false;
+      let codeLines = [];
+      let inList = false;
+      function closeList() { if (inList) { out.push('</ul>'); inList = false; } }
+      for (const line of lines) {
+        if (line.trim().startsWith('```')) {
+          if (!inCode) { closeList(); inCode = true; codeLines = []; }
+          else { out.push('<pre><code>' + escapeHtml(codeLines.join('\n')) + '</code></pre>'); inCode = false; }
+          continue;
+        }
+        if (inCode) { codeLines.push(line); continue; }
+        const heading = line.match(/^(#{1,6})\s+(.+)$/);
+        if (heading) {
+          closeList();
+          const level = heading[1].length;
+          const text = heading[2].trim();
+          const id = slugify(text);
+          out.push(`<h${level} id='${id}'>${inlineMarkdown(text)}</h${level}>`);
+          continue;
+        }
+        const bullet = line.match(/^\s*-\s+(.+)$/);
+        if (bullet) {
+          if (!inList) { out.push('<ul>'); inList = true; }
+          out.push('<li>' + inlineMarkdown(bullet[1]) + '</li>');
+          continue;
+        }
+        if (line.trim() === '---') { closeList(); out.push('<hr>'); continue; }
+        if (line.trim() === '') { closeList(); continue; }
+        closeList();
+        out.push('<p>' + inlineMarkdown(line) + '</p>');
+      }
+      if (inCode) out.push('<pre><code>' + escapeHtml(codeLines.join('\n')) + '</code></pre>');
+      closeList();
+      return out.join('\n');
+    }
+
+    function extractPatchCards(md) {
+      const matches = [...md.matchAll(/^###\s+(.+)$/gm)];
+      return matches.map((match, index) => {
+        const title = match[1].trim();
+        const start = match.index;
+        const end = matches[index + 1] ? matches[index + 1].index : md.length;
+        const block = md.slice(start, end);
+        const statusMatch = block.match(/\*\*Статус:\*\*\s*([^\n]+)/i);
+        const riskMatch = block.match(/\*\*Риск:\*\*\s*([^\n]+)/i);
+        const status = statusMatch ? statusMatch[1].trim() : 'статус не указан';
+        const risk = riskMatch ? riskMatch[1].trim() : '';
+        const isSuccess = /успеш|применён успешно|успешно/i.test(status);
+        const hasRisk = /средн|высок|риск/i.test(risk);
+        return { title, id: slugify(title), status, risk, isSuccess, hasRisk, block };
+      });
+    }
+
+    function highlight(html, query) {
+      const q = query.trim();
+      if (!q) return html;
+      const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return html.replace(new RegExp(escaped, 'gi'), (m) => `<mark>${m}</mark>`);
+    }
+
+    function updateStats(cards, md) {
+      el('patchCount').textContent = cards.length;
+      el('successCount').textContent = cards.filter(c => c.isSuccess).length;
+      el('riskCount').textContent = (md.match(/\*\*Риск:\*\*/g) || []).length;
+      el('todoCount').textContent = (md.match(/Следующ|TODO|нужно|надо/gi) || []).length;
+    }
+
+    function renderPatchList(cards) {
+      const q = el('searchInput').value.trim().toLowerCase();
+      const filtered = cards.filter((card) => {
+        const textOk = !q || card.block.toLowerCase().includes(q) || card.title.toLowerCase().includes(q);
+        const filterOk = activeFilter === 'all' || (activeFilter === 'success' && card.isSuccess) || (activeFilter === 'risk' && card.hasRisk) || (activeFilter === 'todo' && /следующ|todo|нужно|надо/i.test(card.block));
+        return textOk && filterOk;
+      });
+      el('patchList').innerHTML = filtered.map(card => {
+        const statusClass = card.isSuccess ? 'status-ok' : 'status-warn';
+        const riskLine = card.risk ? `<small>Риск: ${escapeHtml(card.risk)}</small>` : '';
+        return `<a class='patch-card' href='#${card.id}'><strong>${inlineMarkdown(card.title)}</strong><small class='${statusClass}'>${escapeHtml(card.status)}</small>${riskLine}</a>`;
+      }).join('') || `<p class='muted'>Ничего не найдено.</p>`;
+    }
+
+    function renderAll() {
+      const cards = extractPatchCards(rawMarkdown);
+      renderedHtml = renderMarkdown(rawMarkdown);
+      el('rendered').innerHTML = highlight(renderedHtml, el('searchInput').value);
+      updateStats(cards, rawMarkdown);
+      renderPatchList(cards);
+    }
+
+    async function loadDefault() {
+      try {
+        const response = await fetch(DEFAULT_WORKLOG_PATH, { cache: 'no-store' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        rawMarkdown = await response.text();
+        el('sourceLabel').textContent = 'Открыт: docs/AI_PATCHER_WORKLOG.md';
+        renderAll();
+      } catch (error) {
+        el('sourceLabel').textContent = 'Авто-загрузка не сработала. Открой .md вручную или запусти tools/open_worklog_viewer.bat.';
+      }
+    }
+
+    function loadFile(file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        rawMarkdown = String(reader.result || '');
+        el('sourceLabel').textContent = 'Открыт вручную: ' + file.name;
+        renderAll();
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+
+    el('fileInput').addEventListener('change', (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (file) loadFile(file);
+    });
+    el('reloadBtn').addEventListener('click', loadDefault);
+    el('printBtn').addEventListener('click', () => window.print());
+    el('copyBtn').addEventListener('click', async () => {
+      if (!rawMarkdown) return;
+      await navigator.clipboard.writeText(rawMarkdown);
+      el('sourceLabel').textContent = 'Markdown скопирован в буфер.';
+    });
+    el('searchInput').addEventListener('input', renderAll);
+    document.querySelectorAll('.chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        activeFilter = chip.dataset.filter;
+        renderAll();
+      });
+    });
+    const dropzone = el('dropzone');
+    ['dragenter', 'dragover'].forEach(name => {
+      dropzone.addEventListener(name, (event) => {
+        event.preventDefault();
+        dropzone.classList.add('drag');
+      });
+    });
+    ['dragleave', 'drop'].forEach(name => {
+      dropzone.addEventListener(name, (event) => {
+        event.preventDefault();
+        dropzone.classList.remove('drag');
+      });
+    });
+    dropzone.addEventListener('drop', (event) => {
+      const file = event.dataTransfer.files && event.dataTransfer.files[0];
+      if (file) loadFile(file);
+    });
+    loadDefault();
+  </script>
+</body>
+</html>

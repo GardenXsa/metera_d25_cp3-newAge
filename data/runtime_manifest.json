@@ -35,7 +35,5 @@
     "prompt_pack": { "path": "./data/prompt_pack.json", "default_type": "object", "merge_policy": "deepMerge" },
     "world_assets": { "path": "./data/world_assets.json", "default_type": "object", "merge_policy": "deepMerge" },
     "tile_dictionary": { "path": "./data/tile_dictionary.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "predefined_effects": { "path": "./assets/res/predefined_effects.json", "default_type": "array", "merge_policy": "upsertById" }
-  },
-  "era_location_fallback_file": "locations_rebirth.json"
+    "predefined_effects": { "path": "./assets/res/predefined_effects.json", "default_type": "array", "merge_policy": "upsertById" }, "ui_runtime": { "path": "./data/ui_runtime.json", "default_type": "object", "merge_policy": "deepMerge" }, "prompt_runtime": { "path": "./data/prompt_runtime.json", "default_type": "object", "merge_policy": "deepMerge" }, "gameplay_runtime": { "path": "./data/gameplay_runtime.json", "default_type": "object", "merge_policy": "deepMerge" } }, "era_location_fallback_file": "locations_rebirth.json"
 }

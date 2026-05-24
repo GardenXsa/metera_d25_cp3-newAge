@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "paths": {
+    "saves_dir": "saves",
+    "mods_dir": "mods",
+    "settings_file": "settings.json",
+    "worlds_dir": "worlds"
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 30007,
+    "session_token_bytes": 32,
+    "session_token_encoding": "hex",
+    "localhost_ips": [
+      "127.0.0.1",
+      "::1",
+      "::ffff:127.0.0.1"
+    ],
+    "local_rate_limit": {
+      "window_ms": 10000,
+      "max_requests": 500
+    },
+    "remote_rate_limit": {
+      "window_ms": 60000,
+      "max_requests": 60
+    },
+    "rate_limit_entry_ttl_ms": 120000,
+    "rate_limit_cleanup_interval_ms": 300000,
+    "safe_json_filename_pattern": "^[a-zA-Z0-9_-]+\\.json$",
+    "sensitive_files": [
+      "settings.json",
+      ".env",
+      ".gitignore",
+      "conversation-",
+      "project_scan.txt"
+    ],
+    "sensitive_path_substrings": [
+      "conversation-"
+    ],
+    "max_static_file_size_bytes": 52428800,
+    "max_append_save_line_bytes": 10485760,
+    "max_read_save_chunk_bytes": 1048576,
+    "world_preview_bytes": 512,
+    "save_preview_bytes": 1024,
+    "mime_types": {
+      ".html": "text/html",
+      ".js": "text/javascript",
+      ".css": "text/css",
+      ".json": "application/json",
+      ".png": "image/png",
+      ".jpg": "image/jpg",
+      ".jpeg": "image/jpeg",
+      ".mp3": "audio/mpeg",
+      ".wav": "audio/wav"
+    },
+    "csp_external_sources": {
+      "script_src": [
+        "https://cdnjs.cloudflare.com",
+        "https://cdn.jsdelivr.net"
+      ],
+      "style_src": [
+        "https://fonts.googleapis.com",
+        "https://cdnjs.cloudflare.com",
+        "https://cdn.jsdelivr.net"
+      ],
+      "font_src": [
+        "https://fonts.gstatic.com",
+        "https://cdnjs.cloudflare.com"
+      ],
+      "connect_src": [
+        "https://cdnjs.cloudflare.com",
+        "https://cdn.jsdelivr.net"
+      ]
+    }
+  },
+  "window": {
+    "width": 1280,
+    "height": 800,
+    "node_integration": false,
+    "context_isolation": true,
+    "disable_web_security_in_development": true,
+    "preload_file": "preload.js",
+    "external_link_protocols": [
+      "http://",
+      "https://"
+    ]
+  },
+  "engine": {
+    "binary_names": {
+      "win32": "meterea_engine.exe",
+      "default": "meterea_engine"
+    },
+    "timeouts_ms": {
+      "default": 30000,
+      "startup": 10000,
+      "timeout_recovery": 5000,
+      "pre_simulate_min": 600000,
+      "pre_simulate_per_tick": 10
+    },
+    "command_timeouts_ms": {
+      "buildWorld": 300000,
+      "bootstrapWorld": 300000,
+      "syncState": 300000,
+      "loadWorldFile": 300000,
+      "hook_response": 60000
+    },
+    "sync_temp_file_name": "__nexus_sync_temp__.json",
+    "realtime_default_interval_ms": 500,
+    "allowed_raw_commands": [
+      "getWorldMap",
+      "getGraphContext",
+      "getFullState"
+    ]
+  },
+  "gemini": {
+    "generation_config": {
+      "maxOutputTokens": 8192,
+      "temperature": 0.8,
+      "topP": 0.95
+    },
+    "default_safety_threshold": "BLOCK_MEDIUM_AND_ABOVE"
+  }
+}

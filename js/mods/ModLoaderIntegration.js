@@ -136,9 +136,7 @@ function applyRuntimeDatabaseGlobals(database) {
     window.TILE_TYPE_DICTIONARY = database.tile_dictionary || {};
     window.TRANSPORT_REGISTRY = database.transport_registry || {};
     window.NARRATORS_DATA = database.narrators || [];
-    window.PREDEFINED_EFFECTS_DATA = database.predefined_effects || [];
-
-    if (Array.isArray(database.biomes)) {
+    window.PREDEFINED_EFFECTS_DATA = database.predefined_effects || []; window.UI_RUNTIME_CONFIG = database.ui_runtime || {}; window.PROMPT_RUNTIME_CONFIG = database.prompt_runtime || {}; window.GAMEPLAY_RUNTIME_CONFIG = database.gameplay_runtime || {}; if (typeof applyRuntimeConstants === 'function') { applyRuntimeConstants(window.UI_RUNTIME_CONFIG); } if (Array.isArray(database.biomes)) {
         window.BIOME_COLORS = database.biomes
             .slice()
             .sort((a, b) => (a.numeric_id ?? 0) - (b.numeric_id ?? 0))

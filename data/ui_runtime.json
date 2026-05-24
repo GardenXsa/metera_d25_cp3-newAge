@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "debug": {
+    "enabled_in_node_env": "development",
+    "fallback": false
+  },
+  "save": {
+    "file_prefix": "meterea_save_",
+    "file_extension": ".json",
+    "storage_key": "textRpgSaves_v3",
+    "max_manual_saves": 5,
+    "max_auto_saves": 20,
+    "autosave_interval_ms": 300000
+  },
+  "memory": {
+    "max_history_pairs": 12,
+    "summary_turn": 29,
+    "prune_turn": 30,
+    "echo_memory_max_items": 20,
+    "echo_memory_max_length": 200
+  },
+  "progression": {
+    "initial_stat_points": 10,
+    "points_per_level": 4
+  },
+  "world": {
+    "default_world_id": "world_metera"
+  },
+  "language": {
+    "storage_key": "textRpgLang_v1",
+    "default": "ru"
+  },
+  "audio": {
+    "sound_folder_path": "assets/sound/",
+    "music_files": [
+      "menu_theme.mp3"
+    ],
+    "default_music_volume": 0.2,
+    "default_sfx_volume": 0.5
+  },
+  "backgrounds": {
+    "files": [
+      "Backgrounds_pixel.jpg",
+      "13.jpg",
+      "12.jpg",
+      "14.jpg",
+      "15.jpg",
+      "background-209.webp",
+      "background-210.webp",
+      "background-big-slime.webp"
+    ],
+    "change_interval_ms": 210000
+  }
+}

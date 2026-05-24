@@ -1,38 +1,135 @@
 // --- Константы и Настройки ---
 // DEBUG_MODE: controlled by environment. In Electron, set via NODE_ENV.
 // Defaults to false for production safety; set to true only in development.
-const DEBUG_MODE = (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development') || false;
+// --- Runtime constants: defaults are fallback only; real values come from data/ui_runtime.json ---
+const RUNTIME_CONSTANT_DEFAULTS = {
+  debug: { enabled_in_node_env: 'development', fallback: false },
+  save: {
+    file_prefix: 'meterea_save_',
+    file_extension: '.json',
+    storage_key: 'textRpgSaves_v3',
+    max_manual_saves: 5,
+    max_auto_saves: 20,
+    autosave_interval_ms: 300000
+  },
+  memory: {
+    max_history_pairs: 12,
+    summary_turn: 29,
+    prune_turn: 30,
+    echo_memory_max_items: 20,
+    echo_memory_max_length: 200
+  },
+  progression: {
+    initial_stat_points: 10,
+    points_per_level: 4
+  },
+  world: {
+    default_world_id: 'world_metera'
+  },
+  language: {
+    storage_key: 'textRpgLang_v1',
+    default: 'ru'
+  },
+  audio: {
+    sound_folder_path: 'assets/sound/',
+    music_files: ['menu_theme.mp3'],
+    default_music_volume: 0.2,
+    default_sfx_volume: 0.5
+  },
+  backgrounds: {
+    files: ['Backgrounds_pixel.jpg', '13.jpg', '12.jpg', '14.jpg', '15.jpg', 'background-209.webp', 'background-210.webp', 'background-big-slime.webp'],
+    change_interval_ms: 210000
+  }
+};
 
-const SAVE_FILE_PREFIX = 'meterea_save_';
-const SAVE_FILE_EXTENSION = '.json';
+function getRuntimeSection(config, key) {
+  return config && typeof config[key] === 'object' && config[key] !== null ? config[key] : {};
+}
+
+function numberOrFallback(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function intOrFallback(value, fallback) {
+  const n = numberOrFallback(value, fallback);
+  return Math.max(0, Math.floor(n));
+}
+
+function readStoredVolume(storageKey, fallback) {
+  try {
+    if (typeof localStorage === 'undefined') return fallback;
+    const v = parseFloat(localStorage.getItem(storageKey));
+    return (isNaN(v) || v < 0 || v > 1) ? fallback : v;
+  } catch (error) {
+    return fallback;
+  }
+}
+
+let DEBUG_MODE = (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === RUNTIME_CONSTANT_DEFAULTS.debug.enabled_in_node_env) || RUNTIME_CONSTANT_DEFAULTS.debug.fallback;
+let SAVE_FILE_PREFIX = RUNTIME_CONSTANT_DEFAULTS.save.file_prefix;
+let SAVE_FILE_EXTENSION = RUNTIME_CONSTANT_DEFAULTS.save.file_extension;
 let GEMINI_API_KEY = '';
-const MAX_HISTORY = 12; // Количество пар (пользователь + модель) в истории для Gemini
-const MAX_MANUAL_SAVES = 5;
-const MAX_AUTO_SAVES = 20;
-const AUTOSAVE_INTERVAL = 5 * 60 * 1000; // 5 минут
-const MEMORY_SUMMARY_TURN = 29; // Ход, на котором GM делает выжимку памяти
-const MEMORY_PRUNE_TURN = 30; // Ход, на котором история для GM очищается
-const INITIAL_STAT_POINTS = 10;
-const POINTS_PER_LEVEL = 4;
-const SAVE_STORAGE_KEY = 'textRpgSaves_v3';
-const ECHO_MEMORY_MAX_ITEMS = 20;
-const ECHO_MEMORY_MAX_LENGTH = 200;
-let DEFAULT_WORLD_ID = 'world_metera';
-// Will be overridden by mod.json if total_conversion is active
-const LANGUAGE_STORAGE_KEY = 'textRpgLang_v1';
-const DEFAULT_LANGUAGE = 'ru';
-const SOUND_FOLDER_PATH = "assets/sound/";
+let MAX_HISTORY = RUNTIME_CONSTANT_DEFAULTS.memory.max_history_pairs;
+let MAX_MANUAL_SAVES = RUNTIME_CONSTANT_DEFAULTS.save.max_manual_saves;
+let MAX_AUTO_SAVES = RUNTIME_CONSTANT_DEFAULTS.save.max_auto_saves;
+let AUTOSAVE_INTERVAL = RUNTIME_CONSTANT_DEFAULTS.save.autosave_interval_ms;
+let MEMORY_SUMMARY_TURN = RUNTIME_CONSTANT_DEFAULTS.memory.summary_turn;
+let MEMORY_PRUNE_TURN = RUNTIME_CONSTANT_DEFAULTS.memory.prune_turn;
+let INITIAL_STAT_POINTS = RUNTIME_CONSTANT_DEFAULTS.progression.initial_stat_points;
+let POINTS_PER_LEVEL = RUNTIME_CONSTANT_DEFAULTS.progression.points_per_level;
+let SAVE_STORAGE_KEY = RUNTIME_CONSTANT_DEFAULTS.save.storage_key;
+let ECHO_MEMORY_MAX_ITEMS = RUNTIME_CONSTANT_DEFAULTS.memory.echo_memory_max_items;
+let ECHO_MEMORY_MAX_LENGTH = RUNTIME_CONSTANT_DEFAULTS.memory.echo_memory_max_length;
+let DEFAULT_WORLD_ID = RUNTIME_CONSTANT_DEFAULTS.world.default_world_id;
+let LANGUAGE_STORAGE_KEY = RUNTIME_CONSTANT_DEFAULTS.language.storage_key;
+let DEFAULT_LANGUAGE = RUNTIME_CONSTANT_DEFAULTS.language.default;
+let SOUND_FOLDER_PATH = RUNTIME_CONSTANT_DEFAULTS.audio.sound_folder_path;
+let musicFiles = [...RUNTIME_CONSTANT_DEFAULTS.audio.music_files];
+let musicVolume = readStoredVolume('musicVolume', RUNTIME_CONSTANT_DEFAULTS.audio.default_music_volume);
+let sfxVolume = readStoredVolume('sfxVolume', RUNTIME_CONSTANT_DEFAULTS.audio.default_sfx_volume);
+let backgroundFiles = [...RUNTIME_CONSTANT_DEFAULTS.backgrounds.files];
+let BACKGROUND_CHANGE_INTERVAL = RUNTIME_CONSTANT_DEFAULTS.backgrounds.change_interval_ms;
 
-const musicFiles = [
-    'menu_theme.mp3'
-];
-let musicVolume = (() => { const v = parseFloat(localStorage.getItem('musicVolume')); return (isNaN(v) || v < 0 || v > 1) ? 0.2 : v; })();
-let sfxVolume = (() => { const v = parseFloat(localStorage.getItem('sfxVolume')); return (isNaN(v) || v < 0 || v > 1) ? 0.5 : v; })();
+function applyRuntimeConstants(config = {}) {
+  const debug = { ...RUNTIME_CONSTANT_DEFAULTS.debug, ...getRuntimeSection(config, 'debug') };
+  const save = { ...RUNTIME_CONSTANT_DEFAULTS.save, ...getRuntimeSection(config, 'save') };
+  const memory = { ...RUNTIME_CONSTANT_DEFAULTS.memory, ...getRuntimeSection(config, 'memory') };
+  const progression = { ...RUNTIME_CONSTANT_DEFAULTS.progression, ...getRuntimeSection(config, 'progression') };
+  const world = { ...RUNTIME_CONSTANT_DEFAULTS.world, ...getRuntimeSection(config, 'world') };
+  const language = { ...RUNTIME_CONSTANT_DEFAULTS.language, ...getRuntimeSection(config, 'language') };
+  const audio = { ...RUNTIME_CONSTANT_DEFAULTS.audio, ...getRuntimeSection(config, 'audio') };
+  const backgrounds = { ...RUNTIME_CONSTANT_DEFAULTS.backgrounds, ...getRuntimeSection(config, 'backgrounds') };
 
-const backgroundFiles = [
-    'Backgrounds_pixel.jpg', '13.jpg', '12.jpg', '14.jpg', '15.jpg', 'background-209.webp', 'background-210.webp', 'background-big-slime.webp'
-];
-const BACKGROUND_CHANGE_INTERVAL = 3.5 * 60 * 1000; // 3.5 минуты
+  DEBUG_MODE = (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === debug.enabled_in_node_env) || Boolean(debug.fallback);
+  SAVE_FILE_PREFIX = String(save.file_prefix || RUNTIME_CONSTANT_DEFAULTS.save.file_prefix);
+  SAVE_FILE_EXTENSION = String(save.file_extension || RUNTIME_CONSTANT_DEFAULTS.save.file_extension);
+  MAX_HISTORY = intOrFallback(memory.max_history_pairs, RUNTIME_CONSTANT_DEFAULTS.memory.max_history_pairs);
+  MAX_MANUAL_SAVES = intOrFallback(save.max_manual_saves, RUNTIME_CONSTANT_DEFAULTS.save.max_manual_saves);
+  MAX_AUTO_SAVES = intOrFallback(save.max_auto_saves, RUNTIME_CONSTANT_DEFAULTS.save.max_auto_saves);
+  AUTOSAVE_INTERVAL = intOrFallback(save.autosave_interval_ms, RUNTIME_CONSTANT_DEFAULTS.save.autosave_interval_ms);
+  MEMORY_SUMMARY_TURN = intOrFallback(memory.summary_turn, RUNTIME_CONSTANT_DEFAULTS.memory.summary_turn);
+  MEMORY_PRUNE_TURN = intOrFallback(memory.prune_turn, RUNTIME_CONSTANT_DEFAULTS.memory.prune_turn);
+  INITIAL_STAT_POINTS = intOrFallback(progression.initial_stat_points, RUNTIME_CONSTANT_DEFAULTS.progression.initial_stat_points);
+  POINTS_PER_LEVEL = intOrFallback(progression.points_per_level, RUNTIME_CONSTANT_DEFAULTS.progression.points_per_level);
+  SAVE_STORAGE_KEY = String(save.storage_key || RUNTIME_CONSTANT_DEFAULTS.save.storage_key);
+  ECHO_MEMORY_MAX_ITEMS = intOrFallback(memory.echo_memory_max_items, RUNTIME_CONSTANT_DEFAULTS.memory.echo_memory_max_items);
+  ECHO_MEMORY_MAX_LENGTH = intOrFallback(memory.echo_memory_max_length, RUNTIME_CONSTANT_DEFAULTS.memory.echo_memory_max_length);
+  DEFAULT_WORLD_ID = String(world.default_world_id || RUNTIME_CONSTANT_DEFAULTS.world.default_world_id);
+  LANGUAGE_STORAGE_KEY = String(language.storage_key || RUNTIME_CONSTANT_DEFAULTS.language.storage_key);
+  DEFAULT_LANGUAGE = String(language.default || RUNTIME_CONSTANT_DEFAULTS.language.default);
+  SOUND_FOLDER_PATH = String(audio.sound_folder_path || RUNTIME_CONSTANT_DEFAULTS.audio.sound_folder_path);
+  musicFiles = Array.isArray(audio.music_files) && audio.music_files.length > 0 ? [...audio.music_files] : [...RUNTIME_CONSTANT_DEFAULTS.audio.music_files];
+  musicVolume = readStoredVolume('musicVolume', numberOrFallback(audio.default_music_volume, RUNTIME_CONSTANT_DEFAULTS.audio.default_music_volume));
+  sfxVolume = readStoredVolume('sfxVolume', numberOrFallback(audio.default_sfx_volume, RUNTIME_CONSTANT_DEFAULTS.audio.default_sfx_volume));
+  backgroundFiles = Array.isArray(backgrounds.files) && backgrounds.files.length > 0 ? [...backgrounds.files] : [...RUNTIME_CONSTANT_DEFAULTS.backgrounds.files];
+  BACKGROUND_CHANGE_INTERVAL = intOrFallback(backgrounds.change_interval_ms, RUNTIME_CONSTANT_DEFAULTS.backgrounds.change_interval_ms);
+}
+
+if (typeof window !== 'undefined') {
+  window.applyRuntimeConstants = applyRuntimeConstants;
+}
+
 
 // --- Data-driven: BASE_CLASS_STATS and RACE_MODIFIERS are now loaded from races.json ---
 // Hardcoded defaults remain as fallback; applyDatabaseStats() overwrites them at runtime.

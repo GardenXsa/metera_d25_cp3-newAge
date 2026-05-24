@@ -93,9 +93,7 @@ function resolveContainerLocation(containerId) {
     if (!cont) return null;
 
     const location = normalizeContainerLocation(cont.location);
-    if (cont.type === 'magical_pocket') {
-        return normalizeContainerLocation({ world_coords: null, parent_entity: cont.owner_id || null, parent_container: null, region_id: 'astral' });
-    }
+    if (cont.type === 'magical_pocket') { return normalizeContainerLocation({ world_coords: null, parent_entity: cont.owner_id || null, parent_container: null, region_id: getGameplayRuntimeConfig().inventory.system_regions.magical_pocket || 'astral' }); }
 
     if (location.parent_entity === 'player' || (cont.owner_id === 'player' && (cont.type === 'player_backpack' || cont.type === 'player_equipment'))) {
         location.parent_entity = 'player';
@@ -123,10 +121,7 @@ async function syncPlayerContainerBindings() {
 
     for (const cont of ContainerRegistry.values()) {
         if (cont.owner_id === 'player' && cont.type === 'magical_pocket') {
-            await CoreInventorySystemAsync.updateContainerLocation(cont.id, normalizeContainerLocation({ world_coords: null, parent_entity: 'player', parent_container: null, region_id: 'astral' }));
-        }
-    }
-}
+            await CoreInventorySystemAsync.updateContainerLocation(cont.id, normalizeContainerLocation({ world_coords: null, parent_entity: 'player', parent_container: null, region_id: getGameplayRuntimeConfig().inventory.system_regions.magical_pocket || 'astral' })); } } }
 
 /**
  * Гарантирует, что у игрока есть рюкзак и контейнер экипировки.
@@ -224,7 +219,13 @@ async function createConfiguredSystemContainer(aliasOrId, fallbackConfig = {}) {
         : (config.location || fallbackConfig.location || null);
 
     return await CoreInventorySystemAsync.createContainer(type, ownerId, maxWeight, maxSlots, location, {
-        custom_props: { ...(config.custom_props || {}), system_id: config.id || aliasOrId },
+    custom_props: {
+      ...(config.custom_props || {}),
+      system_id: config.id || aliasOrId
+    }
+  });
+}
+
 async function ensurePlayerContainers() {
     if (!player) return;
 
@@ -249,15 +250,8 @@ async function ensurePlayerContainers() {
     }
 
     if (needsBackpack || needsEquipment) {
-        await syncPlayerContainerBindings();
-    }
-}
-        }
-    }
-    
-    if (needsBackpack || needsEquipment) {
-        await syncPlayerContainerBindings();
-    }
+    await syncPlayerContainerBindings();
+  }
 }
 
 function resolveSpecialContainerId(containerId) {
@@ -298,10 +292,7 @@ function getGoldAmountInContainer(containerId) {
     const resolvedId = resolveSpecialContainerId(containerId);
     if (!resolvedId || !ContainerRegistry.has(resolvedId)) return 0;
     const cont = ContainerRegistry.get(resolvedId);
-    const physicalGold = getContainerItems(cont).reduce((sum, itemId) => {
-        const item = ItemRegistry.get(itemId);
-        return sum + ((item?.prototype_id === 'gold' || item?.prototype_id === 'gold_ingot' || item?.custom_props?.aiIdentifier === 'gold') ? item.stack_size : 0);
-    }, 0);
+    const physicalGold = getContainerItems(cont).reduce((sum, itemId) => { const item = ItemRegistry.get(itemId); return sum + (isGoldLikeItem(item) ? item.stack_size : 0); }, 0);
     const npcAccountGold = World?.npcs?.[cont.owner_id]?.inventory?.gold || 0;
     return physicalGold + npcAccountGold;
 }
@@ -309,10 +300,7 @@ function getGoldAmountInContainer(containerId) {
 function syncPlayerGoldFromInventory() {
     if (!player?.container_backpack || !ContainerRegistry.has(player.container_backpack)) return 0;
     const backpack = ContainerRegistry.get(player.container_backpack);
-    const totalGold = getContainerItems(backpack).reduce((sum, itemId) => {
-        const item = ItemRegistry.get(itemId);
-        return sum + ((item?.prototype_id === 'gold' || item?.prototype_id === 'gold_ingot' || item?.custom_props?.aiIdentifier === 'gold') ? item.stack_size : 0);
-    }, 0);
+    const totalGold = getContainerItems(backpack).reduce((sum, itemId) => { const item = ItemRegistry.get(itemId); return sum + (isGoldLikeItem(item) ? item.stack_size : 0); }, 0);
     player.stats.gold = totalGold;
     return totalGold;
 }
@@ -344,11 +332,7 @@ function availableManpower(faction) {
     for (let rid of faction.regions || []) {
         const region = World.regions[rid];
         if (!region || !region.vault_id) continue;
-        const weapons = countRealItems(region.vault_id, 'weapons');
-        const food = countRealItems(region.vault_id, 'bread') + countRealItems(region.vault_id, 'meat') + countRealItems(region.vault_id, 'smoked_meat');
-        const population = region.population || 0;
-        const possibleSoldiers = Math.min(Math.floor(population * 0.1), weapons);
-        if (food < possibleSoldiers * 0.5) continue;
+        const manpowerConfig = getGameplayRuntimeConfig().faction_manpower; const weapons = manpowerConfig.weapon_good_ids.reduce((sum, goodId) => sum + countRealItems(region.vault_id, goodId), 0); const food = manpowerConfig.food_good_ids.reduce((sum, goodId) => sum + countRealItems(region.vault_id, goodId), 0); const population = region.population || 0; const possibleSoldiers = Math.min(Math.floor(population * toRuntimeNumber(manpowerConfig.population_soldier_ratio, 0.1)), weapons); if (food < possibleSoldiers * toRuntimeNumber(manpowerConfig.food_per_soldier, 0.5)) continue;
         total += possibleSoldiers;
     }
     return Math.floor(total);
@@ -380,16 +364,17 @@ const OwnershipService = {
 };
 
 const EconomySim = {
-    calculatePrice: function(prototypeId, regionId, isBuying) {
-        let basePrice = ECONOMY_ITEMS[prototypeId]?.basePrice || 10;
-        let region = typeof World !== 'undefined' && World ? World.regions[regionId] : null;
-        let marketMod = region?.markets[prototypeId] ? (region.markets[prototypeId] / basePrice) : 1.0;
-        let chaMod = player ? (player.stats.cha - 10) * 0.05 : 0;
-        let finalPrice = basePrice * marketMod;
-        if (isBuying) finalPrice *= (1.2 - chaMod);
-        else finalPrice *= (0.8 + chaMod);
-        return Math.max(1, Math.floor(finalPrice));
-    }
+  calculatePrice: function(prototypeId, regionId, isBuying) {
+    const economyConfig = getGameplayRuntimeConfig().economy;
+    let basePrice = ECONOMY_ITEMS[prototypeId]?.basePrice || toRuntimeNumber(economyConfig.default_base_price, 10);
+    let region = typeof World !== 'undefined' && World ? World.regions[regionId] : null;
+    let marketMod = region?.markets[prototypeId] ? (region.markets[prototypeId] / basePrice) : 1.0;
+    let chaMod = player ? (toRuntimeNumber(player.stats.cha, 10) - toRuntimeNumber(economyConfig.charisma_baseline, 10)) * toRuntimeNumber(economyConfig.charisma_price_step, 0.05) : 0;
+    let finalPrice = basePrice * marketMod;
+    if (isBuying) finalPrice *= (toRuntimeNumber(economyConfig.buy_multiplier, 1.2) - chaMod);
+    else finalPrice *= (toRuntimeNumber(economyConfig.sell_multiplier, 0.8) + chaMod);
+    return Math.max(toRuntimeNumber(economyConfig.min_price, 1), Math.floor(finalPrice));
+  }
 };
 
 
@@ -400,7 +385,7 @@ function checkDistance(loc1, loc2) {
     if (loc1.region_id !== loc2.region_id) return false;
     if (!loc1.world_coords || !loc2.world_coords) return true;
     const dist = Math.hypot(loc1.world_coords[0] - loc2.world_coords[0], loc1.world_coords[1] - loc2.world_coords[1]);
-    return dist <= 10.0;
+    return dist <= toRuntimeNumber(getGameplayRuntimeConfig().inventory.access_distance, 10.0);
 }
 
 function is_sellable(containerId, itemId) {
@@ -432,8 +417,7 @@ const OldCoreInventorySystem = {
             max_slots: maxSlots,
             owner_id: ownerId,
             location: normalizeContainerLocation(defaultLocation),
-            lock_data: { is_locked: false, difficulty: 10, trap: null, ...(extraData.lock_data || {}) },
-            physical_props: { health: 200, flammable: type !== 'faction_vault', ...(extraData.physical_props || {}) },
+            lock_data: { is_locked: false, difficulty: toRuntimeNumber(getGameplayRuntimeConfig().inventory.default_lock_difficulty, 10), trap: null, ...(extraData.lock_data || {}) }, physical_props: { health: toRuntimeNumber(getGameplayRuntimeConfig().inventory.default_container_health, 200), flammable: !getGameplayRuntimeConfig().inventory.non_flammable_container_types.includes(type), ...(extraData.physical_props || {}) },
             custom_props: { ...(extraData.custom_props || {}) },
             items: []
         };
@@ -444,8 +428,7 @@ const OldCoreInventorySystem = {
         const proto = itemsReferenceData ? itemsReferenceData.find(i => i.id === prototypeId) : null;
         const resolvedContainerId = resolveSpecialContainerId(containerId);
         const id = "item_" + generateUUID();
-        let baseWeight = proto ? (proto.weight || 1) : 1;
-        if (prototypeId === 'gold') baseWeight = 0.01;
+        const gameplayConfig = getGameplayRuntimeConfig(); let baseWeight = proto ? (proto.weight || toRuntimeNumber(gameplayConfig.inventory.default_item_weight, 1)) : toRuntimeNumber(gameplayConfig.inventory.default_item_weight, 1); if (Object.prototype.hasOwnProperty.call(gameplayConfig.currency.physical_weights, prototypeId)) baseWeight = toRuntimeNumber(gameplayConfig.currency.physical_weights[prototypeId], baseWeight);
 
         const reservedKeys = new Set(['flags', 'durability', 'slot_index', 'slot', 'state', 'created_at', 'last_moved_at']);
         const mergedCustomProps = {};
@@ -462,7 +445,7 @@ const OldCoreInventorySystem = {
             slot_index: customProps.slot_index ?? customProps.slot ?? null,
             state: customProps.state || "idle",
             flags: { quest_item: false, bound_to_owner: null, stolen: false, magical: false, fragile: false, ...(customProps.flags || {}) },
-            durability: Number.isFinite(customProps.durability) ? customProps.durability : (proto ? (proto.durability || 100) : 100),
+            durability: Number.isFinite(customProps.durability) ? customProps.durability : (proto ? (proto.durability || toRuntimeNumber(getGameplayRuntimeConfig().inventory.default_item_durability, 100)) : toRuntimeNumber(getGameplayRuntimeConfig().inventory.default_item_durability, 100)),
             custom_props: { weight_per_unit: baseWeight, name: customProps.name || proto?.name || prototypeId, ...mergedCustomProps },
             created_at: customProps.created_at ?? (player ? player.stats.turnCount : 0),
             last_moved_at: customProps.last_moved_at ?? (player ? player.stats.turnCount : 0)
@@ -8222,17 +8205,113 @@ function updateTimeDisplay() {
 }
 
 
+
+function getGameplayRuntimeConfig() {
+  const defaults = {
+    progression: {
+      mana: { base: 50, int_baseline: 10, level_bonus: 5, minimum: 10 },
+      hp: { base: 80, constitution_baseline: 10, constitution_divisor: 2, level_bonus: 10, minimum: 10 }
+    },
+    inventory: {
+      default_item_weight: 1,
+      default_item_durability: 100,
+      access_distance: 10.0,
+      default_lock_difficulty: 10,
+      default_container_health: 200,
+      non_flammable_container_types: ['faction_vault'],
+      system_regions: { magical_pocket: 'astral' }
+    },
+    currency: {
+      prototype_ids: ['gold', 'gold_ingot'],
+      ai_identifiers: ['gold'],
+      physical_weights: { gold: 0.01, gold_ingot: 1 }
+    },
+    economy: {
+      default_base_price: 10,
+      charisma_baseline: 10,
+      charisma_price_step: 0.05,
+      buy_multiplier: 1.2,
+      sell_multiplier: 0.8,
+      min_price: 1
+    },
+    faction_manpower: {
+      weapon_good_ids: ['weapons'],
+      food_good_ids: ['bread', 'meat', 'smoked_meat'],
+      population_soldier_ratio: 0.1,
+      food_per_soldier: 0.5
+    }
+  };
+  const runtime = (typeof window !== 'undefined' && window.GAMEPLAY_RUNTIME_CONFIG && typeof window.GAMEPLAY_RUNTIME_CONFIG === 'object') ? window.GAMEPLAY_RUNTIME_CONFIG : {};
+  return {
+    ...defaults,
+    ...runtime,
+    progression: {
+      ...defaults.progression,
+      ...(runtime.progression || {}),
+      mana: { ...defaults.progression.mana, ...((runtime.progression || {}).mana || {}) },
+      hp: { ...defaults.progression.hp, ...((runtime.progression || {}).hp || {}) }
+    },
+    inventory: {
+      ...defaults.inventory,
+      ...(runtime.inventory || {}),
+      system_regions: { ...defaults.inventory.system_regions, ...((runtime.inventory || {}).system_regions || {}) }
+    },
+    currency: {
+      ...defaults.currency,
+      ...(runtime.currency || {}),
+      prototype_ids: Array.isArray(runtime.currency?.prototype_ids) ? runtime.currency.prototype_ids : defaults.currency.prototype_ids,
+      ai_identifiers: Array.isArray(runtime.currency?.ai_identifiers) ? runtime.currency.ai_identifiers : defaults.currency.ai_identifiers,
+      physical_weights: { ...defaults.currency.physical_weights, ...((runtime.currency || {}).physical_weights || {}) }
+    },
+    economy: { ...defaults.economy, ...(runtime.economy || {}) },
+    faction_manpower: {
+      ...defaults.faction_manpower,
+      ...(runtime.faction_manpower || {}),
+      weapon_good_ids: Array.isArray(runtime.faction_manpower?.weapon_good_ids) ? runtime.faction_manpower.weapon_good_ids : defaults.faction_manpower.weapon_good_ids,
+      food_good_ids: Array.isArray(runtime.faction_manpower?.food_good_ids) ? runtime.faction_manpower.food_good_ids : defaults.faction_manpower.food_good_ids
+    }
+  };
+}
+
+function toRuntimeNumber(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function getCurrencyPrototypeIds() {
+  return getGameplayRuntimeConfig().currency.prototype_ids;
+}
+
+function isCurrencyPrototype(prototypeId) {
+  return getCurrencyPrototypeIds().includes(prototypeId);
+}
+
+function isGoldLikeItem(item) {
+  if (!item) return false;
+  const currency = getGameplayRuntimeConfig().currency;
+  return currency.prototype_ids.includes(item.prototype_id) || currency.ai_identifiers.includes(item.custom_props?.aiIdentifier);
+}
+
+
 function calculateMaxMana(intelligence, level) {
-    const baseMana = 50;
-    const intModifier = Math.floor((intelligence - 10)); // Каждый пункт INT выше 10 дает 1 маны
-    return Math.max(10, baseMana + (intModifier * level) + (level * 5)); // И еще 5 за уровень
+  const manaConfig = getGameplayRuntimeConfig().progression.mana;
+  const currentLevel = toRuntimeNumber(level, 1);
+  const baseMana = toRuntimeNumber(manaConfig.base, 50);
+  const intModifier = Math.floor(toRuntimeNumber(intelligence, 10) - toRuntimeNumber(manaConfig.int_baseline, 10));
+  const levelBonus = toRuntimeNumber(manaConfig.level_bonus, 5);
+  const minimum = toRuntimeNumber(manaConfig.minimum, 10);
+  return Math.max(minimum, baseMana + (intModifier * currentLevel) + (currentLevel * levelBonus));
 }
 
 function calculateMaxHp(constitution) {
-    const baseHp = 80;
-    const conModifier = Math.floor((constitution - 10) / 2); // +1 HP за каждые 2 CON выше 10
-    const currentLevel = player ? player.stats.level : 1;
-    return Math.max(10, baseHp + (conModifier * currentLevel) + (currentLevel * 10)); // +10 HP за уровень
+  const hpConfig = getGameplayRuntimeConfig().progression.hp;
+  const currentLevel = player ? toRuntimeNumber(player.stats.level, 1) : 1;
+  const baseHp = toRuntimeNumber(hpConfig.base, 80);
+  const divisor = Math.max(1, toRuntimeNumber(hpConfig.constitution_divisor, 2));
+  const conModifier = Math.floor((toRuntimeNumber(constitution, 10) - toRuntimeNumber(hpConfig.constitution_baseline, 10)) / divisor);
+  const levelBonus = toRuntimeNumber(hpConfig.level_bonus, 10);
+  const minimum = toRuntimeNumber(hpConfig.minimum, 10);
+  return Math.max(minimum, baseHp + (conModifier * currentLevel) + (currentLevel * levelBonus));
 }
 
 function getStartingInventory(playerClass) {
@@ -12141,10 +12220,87 @@ function buildDynamicContext(expiredEffects) {
     return `======================================================================\n=== ДИНАМИЧЕСКИЕ ДАННЫЕ (ИЗМЕНЯЮТСЯ КАЖДЫЙ ХОД) ===\n======================================================================\n${echoMemoryString}\n${snapshot}\n${expiredText}\n${errorText}\n${ghostText}\n`;
 }
 
+function getPromptRuntimeConfig() {
+  const defaults = {
+    prompt_files: {
+      logic_rules: 'assets/promts/logic_rules.txt',
+      narrative_rules: 'assets/promts/narrative_rules.txt',
+      master_instructions: 'assets/promts/1.txt',
+      rules_and_instructions: 'assets/promts/rules_and_instructions.txt',
+      combat_rules: 'assets/promts/combat_system_rules.txt',
+      environment_commands_guide: 'assets/promts/environment_commands_guide.txt',
+      skills_reference: 'assets/promts/skills_reference_prompt.txt',
+      supreme_gm_style: 'assets/promts/supreme_gm_style.txt',
+      nsfw_rules_advanced: 'assets/promts/nsfw_rules_advanced.txt'
+    },
+    image_generation: {
+      prompt_field_template: '"image_prompt": "ОБЯЗАТЕЛЬНО! Описание ТЕКУЩЕЙ сцены СТРОГО НА АНГЛИЙСКОМ ЯЗЫКЕ для нейросети генерации картинок. Пиши тегами через запятую. Укажи персонажей и детали. Обязательно добавляй в конце: \'Ado music video aesthetic, monochrome anime style with one spot color, dark gothic, creepy vibe, extreme contrast, inverted colors, masterpiece, highly detailed\'.",',
+      format_field_template: '"image_prompt": "Описание сцены на АНГЛИЙСКОМ языке для генератора картинок (ОБЯЗАТЕЛЬНО).",'
+    },
+    response_languages: { ru: 'Russian', en: 'English', default: 'English' },
+    unified_response: {
+      default_time_passed: { days: 0, hours: 0, minutes: 5 },
+      suggested_action_template: { text: 'Действие', roll_stat: null }
+    },
+    fallback_texts: {
+      items_reference_error: 'DATABASE ERROR',
+      missing_era_context: 'Данные по эпохе отсутствуют.',
+      critical_logic_error: 'Critical logic error'
+    },
+    injection_headers: {
+      custom_commands: '// === КАСТОМНЫЕ КОМАНДЫ (ИЗ МОДОВ) ===',
+      custom_world_rules: '// === КАСТОМНЫЕ ПРАВИЛА МИРА (ИЗ МОДОВ) ==='
+    },
+    command_parser: {
+      start_tag: '[COMMAND:',
+      end_tag: ']',
+      delimiter: '|:|'
+    }
+  };
+  const runtime = (typeof window !== 'undefined' && window.PROMPT_RUNTIME_CONFIG && typeof window.PROMPT_RUNTIME_CONFIG === 'object') ? window.PROMPT_RUNTIME_CONFIG : {};
+  return {
+    ...defaults,
+    ...runtime,
+    prompt_files: { ...defaults.prompt_files, ...(runtime.prompt_files || {}) },
+    image_generation: { ...defaults.image_generation, ...(runtime.image_generation || {}) },
+    response_languages: { ...defaults.response_languages, ...(runtime.response_languages || {}) },
+    unified_response: { ...defaults.unified_response, ...(runtime.unified_response || {}) },
+    fallback_texts: { ...defaults.fallback_texts, ...(runtime.fallback_texts || {}) },
+    injection_headers: { ...defaults.injection_headers, ...(runtime.injection_headers || {}) },
+    command_parser: { ...defaults.command_parser, ...(runtime.command_parser || {}) }
+  };
+}
 
-let GLOBAL_CACHED_SYSTEM_PROMPT = null;
+function getPromptFilePath(key, runtimeConfig = getPromptRuntimeConfig()) {
+  return runtimeConfig.prompt_files[key] || getPromptRuntimeConfig().prompt_files[key] || '';
+}
 
-function clearPromptCache() {
+function getPromptResponseLanguage(langCode, runtimeConfig = getPromptRuntimeConfig()) {
+  return runtimeConfig.response_languages[langCode] || runtimeConfig.response_languages.default || 'English';
+}
+
+function buildPromptTimePassed(runtimeConfig = getPromptRuntimeConfig()) {
+  const tp = runtimeConfig.unified_response.default_time_passed || {};
+  const days = parseInt(tp.days, 10) || 0;
+  const hours = parseInt(tp.hours, 10) || 0;
+  const minutes = parseInt(tp.minutes, 10) || 0;
+  return `{ "days": ${days}, "hours": ${hours}, "minutes": ${minutes} }`;
+}
+
+function buildPromptSuggestedAction(runtimeConfig = getPromptRuntimeConfig()) {
+  const action = runtimeConfig.unified_response.suggested_action_template || { text: 'Действие', roll_stat: null };
+  return JSON.stringify(action);
+}
+
+function buildImagePromptInstruction(runtimeConfig = getPromptRuntimeConfig()) {
+  return enableImageGeneration ? String(runtimeConfig.image_generation.prompt_field_template || '') : '';
+}
+
+function buildImagePromptFormatField(runtimeConfig = getPromptRuntimeConfig()) {
+  return enableImageGeneration ? String(runtimeConfig.image_generation.format_field_template || '') : '';
+}
+
+let GLOBAL_CACHED_SYSTEM_PROMPT = null; function clearPromptCache() {
     GLOBAL_CACHED_SYSTEM_PROMPT = null;
     console.log("[Cache] Системный промпт сброшен.");
 }
@@ -12153,22 +12309,22 @@ function clearPromptCache() {
 async function prepareUnifiedPrompt() {
     if (GLOBAL_CACHED_SYSTEM_PROMPT) return GLOBAL_CACHED_SYSTEM_PROMPT;
     try {
-        const logicRules = await loadPromptFromFile('assets/promts/logic_rules.txt');
-        const narrativeRules = await loadPromptFromFile('assets/promts/narrative_rules.txt');
-        let masterInstructions = await loadPromptFromFile('assets/promts/1.txt');
-        let imgInstructionMaster = enableImageGeneration ? '"image_prompt": "ОБЯЗАТЕЛЬНО! Описание ТЕКУЩЕЙ сцены СТРОГО НА АНГЛИЙСКОМ ЯЗЫКЕ для нейросети генерации картинок. Пиши тегами через запятую. Укажи персонажей и детали. Обязательно добавляй в конце: \'Ado music video aesthetic, monochrome anime style with one spot color, dark gothic, creepy vibe, extreme contrast, inverted colors, masterpiece, highly detailed\'.",' : '';
+        const promptRuntime = getPromptRuntimeConfig(); const logicRules = await loadPromptFromFile(getPromptFilePath('logic_rules', promptRuntime));
+        const narrativeRules = await loadPromptFromFile(getPromptFilePath('narrative_rules', promptRuntime));
+        let masterInstructions = await loadPromptFromFile(getPromptFilePath('master_instructions', promptRuntime));
+        let imgInstructionMaster = buildImagePromptInstruction(promptRuntime);
         masterInstructions = masterInstructions.replace(/\{image_prompt_instruction\}/g, imgInstructionMaster)
                                                .replace(/\{debugMode\}/g, DEBUG_MODE ? "true" : "false");
-        const rulesAndInstructions = await loadPromptFromFile('assets/promts/rules_and_instructions.txt');
-        const combatRules = await loadPromptFromFile('assets/promts/combat_system_rules.txt');
-        const envGuide = await loadPromptFromFile('assets/promts/environment_commands_guide.txt');
-        const skillRef = await loadPromptFromFile('assets/promts/skills_reference_prompt.txt');
-        const itemsRefString = Array.isArray(itemsReferenceData) ? JSON.stringify(itemsReferenceData) : "DATABASE ERROR";
+        const rulesAndInstructions = await loadPromptFromFile(getPromptFilePath('rules_and_instructions', promptRuntime));
+        const combatRules = await loadPromptFromFile(getPromptFilePath('combat_rules', promptRuntime));
+        const envGuide = await loadPromptFromFile(getPromptFilePath('environment_commands_guide', promptRuntime));
+        const skillRef = await loadPromptFromFile(getPromptFilePath('skills_reference', promptRuntime));
+        const itemsRefString = Array.isArray(itemsReferenceData) ? JSON.stringify(itemsReferenceData) : promptRuntime.fallback_texts.items_reference_error;
 
-        const eraContext = activeEraSpecialLore || "Данные по эпохе отсутствуют.";
-        const style = await loadPromptFromFile('assets/promts/supreme_gm_style.txt');
-        const nsfwRules = allowNSFW ? await loadPromptFromFile('assets/promts/nsfw_rules_advanced.txt') : '';
-        const responseLanguage = (currentLanguage === 'ru') ? 'Russian' : 'English';
+        const eraContext = activeEraSpecialLore || promptRuntime.fallback_texts.missing_era_context;
+        const style = await loadPromptFromFile(getPromptFilePath('supreme_gm_style', promptRuntime));
+        const nsfwRules = allowNSFW ? await loadPromptFromFile(getPromptFilePath('nsfw_rules_advanced', promptRuntime)) : '';
+        const responseLanguage = getPromptResponseLanguage(currentLanguage, promptRuntime);
 
         let finalPrompt = `
 ${masterInstructions}
@@ -12196,27 +12352,19 @@ ${style}
 ### ИНСТРУКЦИЯ (ЕДИНЫЙ РЕЖИМ):
 Ты должен одновременно выполнить логические расчеты (изменить статы, выдать лут, провести бой) И написать красивый художественный ответ.
 Твой ответ ДОЛЖЕН БЫТЬ СТРОГО ВАЛИДНЫМ JSON.
-Формат:
-{
-  ${enableImageGeneration ? '"image_prompt": "Описание сцены на АНГЛИЙСКОМ языке для генератора картинок (ОБЯЗАТЕЛЬНО).",' : ''}
-  "time_passed": { "days": 0, "hours": 0, "minutes": 5 },
-  "suggested_actions": [ { "text": "Действие", "roll_stat": null } ],
-  "narrative": "Твой художественный текст...",
-  "actions": [ ...массив команд... ],
-  "logic_summary": "Краткая сводка твоих расчетов (опционально)"
-}
+Формат: { ${buildImagePromptFormatField(promptRuntime)} "time_passed": ${buildPromptTimePassed(promptRuntime)}, "suggested_actions": [ ${buildPromptSuggestedAction(promptRuntime)} ], "narrative": "Твой художественный текст...", "actions": [ ...массив команд... ], "logic_summary": "Краткая сводка твоих расчетов (опционально)" }
 
 ### ВАЖНО: Если игрок использует теги {d20}, {str} и т.д. — интерпретируй их как броски кубиков и включай результат в повествование.
 ${nsfwRules}`;
 
         // Инъекция документации кастомных команд из модов
         if (window.ModAPI && window.ModAPI.commandDocs && window.ModAPI.commandDocs.length > 0) {
-            finalPrompt += `\n\n// === КАСТОМНЫЕ КОМАНДЫ (ИЗ МОДОВ) ===\n` + window.ModAPI.commandDocs.join('\n');
+            finalPrompt += `\n\n${promptRuntime.injection_headers.custom_commands}\n` + window.ModAPI.commandDocs.join('\n');
         }
 
         // Инъекция кастомных правил лора/логики из модов
         if (window.ModAPI && window.ModAPI.promptInjections && window.ModAPI.promptInjections.length > 0) {
-            finalPrompt += `\n\n// === КАСТОМНЫЕ ПРАВИЛА МИРА (ИЗ МОДОВ) ===\n` + window.ModAPI.promptInjections.join('\n\n');
+            finalPrompt += `\n\n${promptRuntime.injection_headers.custom_world_rules}\n` + window.ModAPI.promptInjections.join('\n\n');
         }
 
         GLOBAL_CACHED_SYSTEM_PROMPT = finalPrompt;
@@ -12224,7 +12372,7 @@ ${nsfwRules}`;
         return finalPrompt;
     } catch (error) {
         console.error("Error in prepareUnifiedPrompt:", error);
-        return "Critical logic error";
+        return getPromptRuntimeConfig().fallback_texts.critical_logic_error;
     }
 }
 
@@ -12257,9 +12405,7 @@ function processCommands(text) {
 
     let narrativeText = text;
     const commandsToExecute = [];
-    const commandStartTag = '[COMMAND:';
-    const commandEndTag = ']';
-    const delimiter = '|:|';
+    const commandParserConfig = getPromptRuntimeConfig().command_parser; const commandStartTag = commandParserConfig.start_tag || '[COMMAND:'; const commandEndTag = commandParserConfig.end_tag || ']'; const delimiter = commandParserConfig.delimiter || '|:|';
 
     let startIndex = narrativeText.indexOf(commandStartTag);
 
@@ -12340,7 +12486,7 @@ function getFactionCapitalVault(factionId) {
 function getFactionGold(factionId) {
     let vaultId = getFactionCapitalVault(factionId);
     if (!vaultId) return 0;
-    return countRealItems(vaultId, 'gold_ingot');
+    return getCurrencyPrototypeIds().reduce((sum, prototypeId) => sum + countRealItems(vaultId, prototypeId), 0);
 }
 function getFactionGoodStock(factionId, goodType) {
     let vaultId = getFactionCapitalVault(factionId);

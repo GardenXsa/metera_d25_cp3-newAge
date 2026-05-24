@@ -4,18 +4,159 @@ const fs = require('fs');
 const http = require('http');
 const { spawn } = require('child_process');
 
-const USER_DATA = app.getPath('userData');
-const SAVES_DIR = path.join(USER_DATA, 'saves');
-const MODS_DIR = path.join(USER_DATA, 'mods');
-const SETTINGS_FILE = path.join(USER_DATA, 'settings.json');
+function readElectronRuntimeConfig() {
+  const configPath = path.join(__dirname, 'data', 'electron_runtime.json');
+  try {
+    if (!fs.existsSync(configPath)) return {};
+    return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  } catch (error) {
+    console.error('[Config] Failed to read data/electron_runtime.json:', error.message);
+    return {};
+  }
+}
 
+const ELECTRON_RUNTIME_CONFIG = readElectronRuntimeConfig();
+
+function getConfigValue(keys, fallback) {
+  let cursor = ELECTRON_RUNTIME_CONFIG;
+  for (const key of keys) {
+    if (!cursor || typeof cursor !== 'object' || !(key in cursor)) return fallback;
+    cursor = cursor[key];
+  }
+  return cursor === undefined || cursor === null ? fallback : cursor;
+}
+
+function getConfigObject(keys, fallback = {}) {
+  const value = getConfigValue(keys, fallback);
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : fallback;
+}
+
+function getConfigArray(keys, fallback = []) {
+  const value = getConfigValue(keys, fallback);
+  return Array.isArray(value) ? value : fallback;
+}
+
+function getConfigNumber(keys, fallback) {
+  const value = Number(getConfigValue(keys, fallback));
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function getConfigString(keys, fallback) {
+  const value = getConfigValue(keys, fallback);
+  return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
+function getConfigBoolean(keys, fallback) {
+  const value = getConfigValue(keys, fallback);
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function buildRegExpFromConfig(keys, fallbackPattern) {
+  const pattern = getConfigString(keys, fallbackPattern);
+  try {
+    return new RegExp(pattern);
+  } catch (error) {
+    console.error(`[Config] Invalid regexp "${pattern}":`, error.message);
+    return new RegExp(fallbackPattern);
+  }
+}
+
+const USER_DATA = app.getPath('userData');
+const SAVES_DIR = path.join(USER_DATA, getConfigString(['paths', 'saves_dir'], 'saves'));
+const MODS_DIR = path.join(USER_DATA, getConfigString(['paths', 'mods_dir'], 'mods'));
+const SETTINGS_FILE = path.join(USER_DATA, getConfigString(['paths', 'settings_file'], 'settings.json'));
 if (!fs.existsSync(SAVES_DIR)) fs.mkdirSync(SAVES_DIR, { recursive: true });
 if (!fs.existsSync(MODS_DIR)) fs.mkdirSync(MODS_DIR, { recursive: true });
-
-const WORLDS_DIR = path.join(SAVES_DIR, 'worlds');
+const WORLDS_DIR = path.join(SAVES_DIR, getConfigString(['paths', 'worlds_dir'], 'worlds'));
 if (!fs.existsSync(WORLDS_DIR)) fs.mkdirSync(WORLDS_DIR, { recursive: true });
 
-const PORT = 30007; 
+const SERVER_HOST = getConfigString(['server', 'host'], '127.0.0.1');
+const PORT = getConfigNumber(['server', 'port'], 30007);
+const HTTP_SESSION_TOKEN_BYTES = getConfigNumber(['server', 'session_token_bytes'], 32);
+const HTTP_SESSION_TOKEN_ENCODING = getConfigString(['server', 'session_token_encoding'], 'hex');
+const LOCALHOST_IPS = new Set(getConfigArray(['server', 'localhost_ips'], ['127.0.0.1', '::1', '::ffff:127.0.0.1']));
+const LOCAL_RATE_LIMIT_WINDOW_MS = getConfigNumber(['server', 'local_rate_limit', 'window_ms'], 10000);
+const LOCAL_RATE_LIMIT_MAX_REQUESTS = getConfigNumber(['server', 'local_rate_limit', 'max_requests'], 500);
+const REMOTE_RATE_LIMIT_WINDOW_MS = getConfigNumber(['server', 'remote_rate_limit', 'window_ms'], 60000);
+const REMOTE_RATE_LIMIT_MAX_REQUESTS = getConfigNumber(['server', 'remote_rate_limit', 'max_requests'], 60);
+const RATE_LIMIT_ENTRY_TTL_MS = getConfigNumber(['server', 'rate_limit_entry_ttl_ms'], 120000);
+const RATE_LIMIT_CLEANUP_INTERVAL_MS = getConfigNumber(['server', 'rate_limit_cleanup_interval_ms'], 300000);
+const SAFE_JSON_FILENAME_PATTERN = buildRegExpFromConfig(['server', 'safe_json_filename_pattern'], '^[a-zA-Z0-9_-]+\\.json$');
+const SENSITIVE_FILES = new Set(getConfigArray(['server', 'sensitive_files'], ['settings.json', '.env', '.gitignore', 'conversation-', 'project_scan.txt']));
+const SENSITIVE_FILE_SUBSTRINGS = getConfigArray(['server', 'sensitive_path_substrings'], ['conversation-']);
+const MAX_STATIC_FILE_SIZE_BYTES = getConfigNumber(['server', 'max_static_file_size_bytes'], 50 * 1024 * 1024);
+const MAX_APPEND_SAVE_LINE_BYTES = getConfigNumber(['server', 'max_append_save_line_bytes'], 10485760);
+const MAX_READ_SAVE_CHUNK_BYTES = getConfigNumber(['server', 'max_read_save_chunk_bytes'], 1048576);
+const WORLD_PREVIEW_BYTES = getConfigNumber(['server', 'world_preview_bytes'], 512);
+const SAVE_PREVIEW_BYTES = getConfigNumber(['server', 'save_preview_bytes'], 1024);
+const MIME_TYPES = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpg',
+  '.jpeg': 'image/jpeg',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  ...getConfigObject(['server', 'mime_types'], {})
+};
+const CSP_EXTERNAL_SOURCES = getConfigObject(['server', 'csp_external_sources'], {});
+
+const WINDOW_WIDTH = getConfigNumber(['window', 'width'], 1280);
+const WINDOW_HEIGHT = getConfigNumber(['window', 'height'], 800);
+const WINDOW_NODE_INTEGRATION = getConfigBoolean(['window', 'node_integration'], false);
+const WINDOW_CONTEXT_ISOLATION = getConfigBoolean(['window', 'context_isolation'], true);
+const WINDOW_DISABLE_WEB_SECURITY_IN_DEVELOPMENT = getConfigBoolean(['window', 'disable_web_security_in_development'], true);
+const WINDOW_PRELOAD_FILE = getConfigString(['window', 'preload_file'], 'preload.js');
+const EXTERNAL_LINK_PROTOCOLS = getConfigArray(['window', 'external_link_protocols'], ['http://', 'https://']);
+
+const ENGINE_START_TIMEOUT_MS = getConfigNumber(['engine', 'timeouts_ms', 'startup'], 10000);
+const DEFAULT_ENGINE_TIMEOUT_MS = getConfigNumber(['engine', 'timeouts_ms', 'default'], 30000);
+const ENGINE_TIMEOUT_RECOVERY_MS = getConfigNumber(['engine', 'timeouts_ms', 'timeout_recovery'], 5000);
+const PRESIMULATE_MIN_TIMEOUT_MS = getConfigNumber(['engine', 'timeouts_ms', 'pre_simulate_min'], 600000);
+const PRESIMULATE_TIMEOUT_MS_PER_TICK = getConfigNumber(['engine', 'timeouts_ms', 'pre_simulate_per_tick'], 10);
+const SYNC_TEMP_FILE_NAME = getConfigString(['engine', 'sync_temp_file_name'], '__nexus_sync_temp__.json');
+const REALTIME_DEFAULT_INTERVAL_MS = getConfigNumber(['engine', 'realtime_default_interval_ms'], 500);
+const ALLOWED_RAW_COMMANDS = new Set(getConfigArray(['engine', 'allowed_raw_commands'], ['getWorldMap', 'getGraphContext', 'getFullState']));
+const GEMINI_GENERATION_CONFIG = {
+  maxOutputTokens: 8192,
+  temperature: 0.8,
+  topP: 0.95,
+  ...getConfigObject(['gemini', 'generation_config'], {})
+};
+const GEMINI_DEFAULT_SAFETY_THRESHOLD = getConfigString(['gemini', 'default_safety_threshold'], 'BLOCK_MEDIUM_AND_ABOVE');
+
+function getServerOrigin() {
+  return `http://${SERVER_HOST}:${PORT}`;
+}
+
+function getEngineCommandTimeout(command, fallback) {
+  return getConfigNumber(['engine', 'command_timeouts_ms', command], fallback);
+}
+
+function getCspSources(key, fallback) {
+  const value = CSP_EXTERNAL_SOURCES[key];
+  return Array.isArray(value) ? value.join(' ') : fallback;
+}
+
+function buildContentSecurityPolicy() {
+  const origin = getServerOrigin();
+  const scriptSources = getCspSources('script_src', 'https://cdnjs.cloudflare.com https://cdn.jsdelivr.net');
+  const styleSources = getCspSources('style_src', 'https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net');
+  const fontSources = getCspSources('font_src', 'https://fonts.gstatic.com https://cdnjs.cloudflare.com');
+  const connectSources = getCspSources('connect_src', 'https://cdnjs.cloudflare.com https://cdn.jsdelivr.net');
+  return [
+    `default-src 'self' ${origin}`,
+    `script-src 'self' 'unsafe-eval' ${origin} ${scriptSources}`,
+    `style-src 'self' 'unsafe-inline' ${origin} ${styleSources}`,
+    `font-src 'self' ${origin} ${fontSources}`,
+    `img-src 'self' data: ${origin} https:`,
+    `media-src 'self' ${origin} https:`,
+    `connect-src 'self' ${origin} ${connectSources}`
+  ].join('; ');
+}
+ 
 
 // ============================================================================
 // NEXUS ENGINE PROCESS MANAGEMENT
@@ -27,13 +168,18 @@ let commandQueue = [];
 let currentResolve = null;
 let engineStartResolve = null;
 
+function getEngineBinaryName() {
+  const binaryNames = getConfigObject(['engine', 'binary_names'], {});
+  return String(binaryNames[process.platform] || binaryNames.default || (process.platform === 'win32' ? 'meterea_engine.exe' : 'meterea_engine'));
+}
+
 function getEnginePath() {
-    const exeName = process.platform === 'win32' ? 'meterea_engine.exe' : 'meterea_engine';
-    if (app.isPackaged) {
-        return path.join(process.resourcesPath, 'engine', exeName);
-    } else {
-        return path.join(__dirname, 'engine', exeName);
-    }
+  const exeName = getEngineBinaryName();
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'engine', exeName);
+  } else {
+    return path.join(__dirname, 'engine', exeName);
+  }
 }
 
 function startEngine() {
@@ -161,11 +307,7 @@ function startEngine() {
                 engineReady = true;
                 resolve({ status: 'ok', message: 'Engine started (ready signal timeout)' });
             }
-        }, 10000);
-    });
-}
-
-function sendCommand(command, params = {}, timeoutMs = 30000) {
+        }, ENGINE_START_TIMEOUT_MS); }); } function sendCommand(command, params = {}, timeoutMs = DEFAULT_ENGINE_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
         if (!engineProcess || !engineReady) {
             resolve({ status: 'error', message: 'Engine not ready' });
@@ -203,10 +345,7 @@ function sendCommand(command, params = {}, timeoutMs = 30000) {
                         engineReady = true;
                         console.log('[Nexus] Engine re-enabled after timeout recovery.');
                     }
-                }, 5000);
-            }
-
-            resolve({ status: 'error', message: `Command timed out (${timeoutMs / 1000}s)` });
+                }, ENGINE_TIMEOUT_RECOVERY_MS); } resolve({ status: 'error', message: `Command timed out (${timeoutMs / 1000}s)` });
         }, timeoutMs);
 
         const wrappedResolve = (result) => {
@@ -265,12 +404,12 @@ async function initEngine(forceRestart = false, activeMods = []) {
 async function buildWorld(playerId, era, initialAgents, globalLocations, startDay) {
     // buildWorld generates 256x256 terrain (Perlin noise), A* roads, NPCs — heavy computation.
     // 30s default timeout is too short; use 5 minutes like bootstrapWorld.
-    return await sendCommand('buildWorld', { player_id: playerId, era: era, initial_agents: initialAgents, global_locations: globalLocations, start_day: startDay }, 300000);
+    return await sendCommand('buildWorld', { player_id: playerId, era: era, initial_agents: initialAgents, global_locations: globalLocations, start_day: startDay }, getEngineCommandTimeout('buildWorld', 300000));
 }
 
 async function bootstrapWorld(days, startDay) {
     // Bootstrap can take a while for many days — use 5-minute timeout
-    return await sendCommand('bootstrapWorld', { days: days, start_day: startDay }, 300000);
+    return await sendCommand('bootstrapWorld', { days: days, start_day: startDay }, getEngineCommandTimeout('bootstrapWorld', 300000));
 }
 
 async function simulateTicks(world, ticks, playerLocation = "") {
@@ -284,21 +423,21 @@ async function preSimulate(world, ticks) {
     // Don't send world back to engine — it already has it in memory after buildWorld.
     // Sending a huge World JSON (1.5MB+) through stdin causes the engine to hang/timeout.
     // Pre-simulation can take minutes for large tick counts — use 10-minute timeout.
-    const timeoutMs = Math.max(600000, ticks * 10); // At least 10 min, or 10ms per tick
+    const timeoutMs = Math.max(PRESIMULATE_MIN_TIMEOUT_MS, ticks * PRESIMULATE_TIMEOUT_MS_PER_TICK); // At least 10 min, or 10ms per tick
     return await sendCommand('preSimulate', { ticks }, timeoutMs);
 }
 
 async function syncState(world, items, containers) {
     // syncState can involve huge World JSON (1.5MB+) that takes time to parse.
     // Use 5-minute timeout like bootstrapWorld.
-    return await sendCommand('syncState', { world, items, containers }, 300000);
+    return await sendCommand('syncState', { world, items, containers }, getEngineCommandTimeout('syncState', 300000));
 }
 
 async function loadWorldFile(filePath) {
     // Load world state from a file — bypasses the 64KB stdin pipe buffer limit.
     // The C++ engine reads the file directly, avoiding pipe buffer overflow for large worlds.
     // The file should contain: { "world": {...}, "items": [...], "containers": [...] }
-    return await sendCommand('loadWorldFile', { path: filePath }, 300000);
+    return await sendCommand('loadWorldFile', { path: filePath }, getEngineCommandTimeout('loadWorldFile', 300000));
 }
 
 async function getGraphContext(queryIds) {
@@ -333,7 +472,7 @@ ipcMain.handle('nexus-hook-response', async (event, world) => {
     // Previously this bypassed the queue, which could interleave with queued commands
     // and corrupt the newline-delimited protocol.
     if (engineProcess && engineReady) {
-        return await sendCommand('hook_response', { world: world }, 60000);
+        return await sendCommand('hook_response', { world: world }, getEngineCommandTimeout('hook_response', 60000));
     }
     return { status: 'error', message: 'Engine not ready for hook response' };
 });
@@ -390,7 +529,7 @@ ipcMain.handle('nexus-write-sync-file', async (event, worldData) => {
     // Write world data to a temp file for the engine to read via loadWorldFile.
     // Returns the full file path on success.
     try {
-        const tempFileName = '__nexus_sync_temp__.json';
+        const tempFileName = SYNC_TEMP_FILE_NAME;
         const tempFilePath = path.join(SAVES_DIR, tempFileName);
         fs.writeFileSync(tempFilePath, JSON.stringify(worldData));
         return { status: 'ok', path: tempFilePath };
@@ -435,7 +574,7 @@ ipcMain.handle('nexus-manage-business', async (event, params) => {
     return await sendCommand('playerManageBusiness', params);
 });
 
-ipcMain.handle('nexus-start-realtime', async (event, intervalMs = 500) => {
+ipcMain.handle('nexus-start-realtime', async (event, intervalMs = REALTIME_DEFAULT_INTERVAL_MS) => {
     return await sendCommand('startRealtime', { interval: intervalMs });
 });
 
@@ -444,11 +583,7 @@ ipcMain.handle('nexus-stop-realtime', async () => {
 });
 
 // Whitelist of allowed commands for nexus-send-raw-command (security: prevents arbitrary command execution)
-const ALLOWED_RAW_COMMANDS = new Set([
-    'getWorldMap',
-    'getGraphContext',
-    'getFullState'
-]);
+
 
 ipcMain.handle('nexus-send-raw-command', async (event, command, params) => {
     if (!ALLOWED_RAW_COMMANDS.has(command)) {
@@ -462,41 +597,16 @@ ipcMain.handle('nexus-send-raw-command', async (event, command, params) => {
 // EXISTING CODE...
 // ============================================================================ 
 
-function isSafeFileName(filename) {
-    return /^[a-zA-Z0-9_-]+\.json$/.test(filename);
-}
+function isSafeFileName(filename) { return typeof filename === 'string' && SAFE_JSON_FILENAME_PATTERN.test(filename); }
 
 // Session token for HTTP server authentication — prevents other localhost apps from accessing
-const HTTP_SESSION_TOKEN = require('crypto').randomBytes(32).toString('hex');
+const HTTP_SESSION_TOKEN = require('crypto').randomBytes(HTTP_SESSION_TOKEN_BYTES).toString(HTTP_SESSION_TOKEN_ENCODING);
 
 // Rate limiter: generous limits for localhost (desktop app, single user).
 // External connections remain restricted (defense-in-depth for exposed ports).
 // NOTE: CTRL+SHIFT+R triggers ~10-15 requests at once (all JS/CSS/HTML files),
 // plus ongoing simulation/API calls. Need high limit for localhost.
-const rateLimiter = new Map();
-function checkRateLimit(ip) {
-    const now = Date.now();
-    // Localhost (this app itself) — very generous: 500 requests per 10 seconds
-    // Non-local (shouldn't happen but just in case) — strict: 60 per 60 seconds
-    const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
-    const window = isLocal ? 10000 : 60000;
-    const maxRequests = isLocal ? 500 : 60;
-    const entry = rateLimiter.get(ip);
-    if (!entry || now - entry.start > window) {
-        rateLimiter.set(ip, { start: now, count: 1 });
-        return true;
-    }
-    entry.count++;
-    if (entry.count > maxRequests) return false;
-    return true;
-}
-// Clean up rate limiter every 5 minutes
-setInterval(() => {
-    const now = Date.now();
-    for (const [ip, entry] of rateLimiter) {
-        if (now - entry.start > 120000) rateLimiter.delete(ip);
-    }
-}, 300000);
+const rateLimiter = new Map(); function checkRateLimit(ip) { const now = Date.now(); const isLocal = LOCALHOST_IPS.has(ip); const windowMs = isLocal ? LOCAL_RATE_LIMIT_WINDOW_MS : REMOTE_RATE_LIMIT_WINDOW_MS; const maxRequests = isLocal ? LOCAL_RATE_LIMIT_MAX_REQUESTS : REMOTE_RATE_LIMIT_MAX_REQUESTS; const entry = rateLimiter.get(ip); if (!entry || now - entry.start > windowMs) { rateLimiter.set(ip, { start: now, count: 1 }); return true; } entry.count++; if (entry.count > maxRequests) return false; return true; } setInterval(() => { const now = Date.now(); for (const [ip, entry] of rateLimiter) { if (now - entry.start > RATE_LIMIT_ENTRY_TTL_MS) rateLimiter.delete(ip); } }, RATE_LIMIT_CLEANUP_INTERVAL_MS);
 
 const server = http.createServer((req, res) => {
     // Rate limit check
@@ -508,12 +618,12 @@ const server = http.createServer((req, res) => {
     }
 
     // Auth check: validate session token in URL query param
-    const urlObj = new URL(req.url, `http://127.0.0.1:${PORT}`);
+    const urlObj = new URL(req.url, getServerOrigin());
     const token = urlObj.searchParams.get('token');
     if (token !== HTTP_SESSION_TOKEN) {
         // Also allow requests from our own Electron origin without token (for initial load)
         const origin = req.headers.origin || req.headers.referer || '';
-        if (!origin.includes(`127.0.0.1:${PORT}`)) {
+        if (!origin.includes(`${SERVER_HOST}:${PORT}`)) {
             res.statusCode = 403;
             res.end('Forbidden');
             return;
@@ -541,10 +651,7 @@ const server = http.createServer((req, res) => {
 
     // Deny access to sensitive files
     const basename = path.basename(filePath);
-    const SENSITIVE_FILES = new Set([
-        'settings.json', '.env', '.gitignore', 'conversation-', 'project_scan.txt'
-    ]);
-    if (SENSITIVE_FILES.has(basename) || filePath.includes('conversation-')) {
+    if (SENSITIVE_FILES.has(basename) || SENSITIVE_FILE_SUBSTRINGS.some(part => filePath.includes(part))) {
         res.statusCode = 403;
         res.end('Forbidden');
         return;
@@ -564,58 +671,32 @@ const server = http.createServer((req, res) => {
             return;
         }
         // Limit file size to 50MB to prevent memory exhaustion
-        if (data.length > 50 * 1024 * 1024) {
+        if (data.length > MAX_STATIC_FILE_SIZE_BYTES) {
             res.statusCode = 413;
             res.end('Payload Too Large');
             return;
         }
         const ext = path.extname(filePath).toLowerCase();
-        const mimeTypes = {
-            '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
-            '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpg',
-            '.jpeg': 'image/jpeg', '.mp3': 'audio/mpeg', '.wav': 'audio/wav'
-        };
-        res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
-        res.setHeader('Access-Control-Allow-Origin', `http://127.0.0.1:${PORT}`);
+        res.setHeader('Content-Type', MIME_TYPES[ext] || 'application/octet-stream');
+        res.setHeader('Access-Control-Allow-Origin', getServerOrigin());
         // Security headers
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('X-Frame-Options', 'DENY');
         res.setHeader('X-XSS-Protection', '1; mode=block');
         // Content Security Policy — suppress Electron CSP warning, allow necessary directives
-        if (ext === '.html') {
-            res.setHeader('Content-Security-Policy',
-                "default-src 'self' http://127.0.0.1:" + PORT + "; " +
-                "script-src 'self' 'unsafe-eval' http://127.0.0.1:" + PORT + " https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
-                "style-src 'self' 'unsafe-inline' http://127.0.0.1:" + PORT + " https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
-                "font-src 'self' http://127.0.0.1:" + PORT + " https://fonts.gstatic.com https://cdnjs.cloudflare.com; " +
-                "img-src 'self' data: http://127.0.0.1:" + PORT + " https:; " +
-                "media-src 'self' http://127.0.0.1:" + PORT + " https:; " +
-                "connect-src 'self' http://127.0.0.1:" + PORT + " https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;"
-            );
-        }
+        if (ext === '.html') { res.setHeader('Content-Security-Policy', buildContentSecurityPolicy()); }
         res.end(data);
     });
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-    console.log(`[SERVER] Static origin: http://127.0.0.1:${PORT}`);
-});
+server.listen(PORT, SERVER_HOST, () => { console.log(`[SERVER] Static origin: ${getServerOrigin()}`); });
 
-function createWindow () {
-  const win = new BrowserWindow({
-    width: 1280, height: 800,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      ...(process.env.NODE_ENV === 'development' ? { webSecurity: false } : {}),
-      preload: path.join(__dirname, 'preload.js')
-    }
-  });
+function createWindow () { const win = new BrowserWindow({ width: WINDOW_WIDTH, height: WINDOW_HEIGHT, webPreferences: { nodeIntegration: WINDOW_NODE_INTEGRATION, contextIsolation: WINDOW_CONTEXT_ISOLATION, ...(process.env.NODE_ENV === 'development' && WINDOW_DISABLE_WEB_SECURITY_IN_DEVELOPMENT ? { webSecurity: false } : {}), preload: path.join(__dirname, WINDOW_PRELOAD_FILE) } });
 
   // Перехватываем открытие новых окон (внешних ссылок _blank)
   // и принудительно открываем их в браузере по умолчанию (Chrome, Firefox и т.д.)
   win.webContents.setWindowOpenHandler(({ url }) => {
-      if (url.startsWith('http://') || url.startsWith('https://')) {
+      if (EXTERNAL_LINK_PROTOCOLS.some(protocol => url.startsWith(protocol))) {
           require('electron').shell.openExternal(url);
           return { action: 'deny' };
       }
@@ -623,7 +704,7 @@ function createWindow () {
   });
 
   // Pass HTTP session token to renderer for authenticated API requests
-  win.loadURL(`http://127.0.0.1:${PORT}?token=${HTTP_SESSION_TOKEN}`);
+  win.loadURL(`${getServerOrigin()}?token=${HTTP_SESSION_TOKEN}`);
 
   // Reset rate limiter on page reload (CTRL+SHIFT+R triggers many concurrent requests)
   win.webContents.on('did-navigate', () => {
@@ -701,8 +782,7 @@ ipcMain.handle('list-worlds', async () => {
                 const filePath = path.join(WORLDS_DIR, file);
                 const stats = fs.statSync(filePath);
                 const fd = fs.openSync(filePath, 'r');
-                const buffer = Buffer.alloc(512);
-                const bytesRead = fs.readSync(fd, buffer, 0, 512, 0);
+                const buffer = Buffer.alloc(WORLD_PREVIEW_BYTES); const bytesRead = fs.readSync(fd, buffer, 0, WORLD_PREVIEW_BYTES, 0);
                 fs.closeSync(fd);
                 const chunk = buffer.toString('utf-8', 0, bytesRead);
                 const nameMatch = chunk.match(/"name"\s*:\s*"([^"]+)"/);
@@ -748,7 +828,7 @@ ipcMain.handle('init-save-file', async (event, filename) => {
 ipcMain.handle('append-save-line', async (event, filename, line) => {
     if (!isSafeFileName(filename)) return false;
     // Limit line size to prevent memory exhaustion (10MB max)
-    if (typeof line !== 'string' || line.length > 10485760) return false;
+    if (typeof line !== 'string' || line.length > MAX_APPEND_SAVE_LINE_BYTES) return false;
     try {
         await fs.promises.appendFile(path.join(SAVES_DIR, filename), line);
         return true;
@@ -771,7 +851,7 @@ ipcMain.handle('read-save-chunk', async (event, filename, position, size) => {
     if (!isSafeFileName(filename)) return "";
     // Validate bounds
     if (typeof position !== 'number' || position < 0) return "";
-    if (typeof size !== 'number' || size <= 0 || size > 1048576) return ""; // Max 1MB per chunk
+    if (typeof size !== 'number' || size <= 0 || size > MAX_READ_SAVE_CHUNK_BYTES) return ""; // Max 1MB per chunk
     try {
         const fd = await fs.promises.open(path.join(SAVES_DIR, filename), 'r');
         const buffer = Buffer.alloc(size);
@@ -791,8 +871,7 @@ ipcMain.handle('list-saves', async () => {
                 const stats = fs.statSync(filePath);
                 
                 const fd = fs.openSync(filePath, 'r');
-                const buffer = Buffer.alloc(1024);
-                const bytesRead = fs.readSync(fd, buffer, 0, 1024, 0);
+                const buffer = Buffer.alloc(SAVE_PREVIEW_BYTES); const bytesRead = fs.readSync(fd, buffer, 0, SAVE_PREVIEW_BYTES, 0);
                 fs.closeSync(fd);
                 
                 const chunk = buffer.toString('utf-8', 0, bytesRead);
@@ -989,13 +1068,7 @@ ipcMain.handle('gemini-request', async (event, model, contents) => {
     const { net } = require('electron');
     return new Promise((resolve, reject) => {
         // Read API key from settings instead of accepting from renderer
-        let apiKey = '';
-        try {
-            if (fs.existsSync(SETTINGS_FILE)) {
-                const settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
-                apiKey = settings.geminiApiKey || settings.apiKey || '';
-            }
-        } catch (e) {
+        let apiKey = ''; let settings = {}; try { if (fs.existsSync(SETTINGS_FILE)) { settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8')); apiKey = settings.geminiApiKey || settings.apiKey || ''; } } catch (e) {
             console.error('[gemini-request] Failed to read settings.json:', e.message);
             return reject(new Error('Failed to read API key from settings: ' + e.message));
         }
@@ -1006,19 +1079,14 @@ ipcMain.handle('gemini-request', async (event, model, contents) => {
         // Defaults are moderate (BLOCK_MEDIUM_AND_ABOVE) instead of BLOCK_NONE.
         // Valid thresholds: BLOCK_LOW_AND_ABOVE, BLOCK_MEDIUM_AND_ABOVE,
         //                  BLOCK_ONLY_HIGH, BLOCK_NONE
-        const defaultThreshold = "BLOCK_MEDIUM_AND_ABOVE";
-        const savedThresholds = (settings && settings.safetyThresholds) || {};
+        const defaultThreshold = GEMINI_DEFAULT_SAFETY_THRESHOLD; const savedThresholds = (settings && settings.safetyThresholds) || {};
         const safetySettings = [ 
             { category: "HARM_CATEGORY_HARASSMENT", threshold: savedThresholds.harassment || defaultThreshold }, 
             { category: "HARM_CATEGORY_HATE_SPEECH", threshold: savedThresholds.hateSpeech || defaultThreshold }, 
             { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: savedThresholds.sexuallyExplicit || defaultThreshold }, 
             { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: savedThresholds.dangerousContent || defaultThreshold } 
         ];
-        const requestBody = JSON.stringify({ 
-            contents, 
-            generationConfig: { maxOutputTokens: 8192, temperature: 0.8, topP: 0.95 }, 
-            safetySettings
-        });
+        const requestBody = JSON.stringify({ contents, generationConfig: GEMINI_GENERATION_CONFIG, safetySettings });
         const request = net.request({
             method: 'POST', protocol: 'https:', hostname: 'generativelanguage.googleapis.com',
             path: `/v1beta/models/${model}:generateContent`,

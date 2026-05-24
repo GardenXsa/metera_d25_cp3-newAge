@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "prompt_files": {
+    "logic_rules": "assets/promts/logic_rules.txt",
+    "narrative_rules": "assets/promts/narrative_rules.txt",
+    "master_instructions": "assets/promts/1.txt",
+    "rules_and_instructions": "assets/promts/rules_and_instructions.txt",
+    "combat_rules": "assets/promts/combat_system_rules.txt",
+    "environment_commands_guide": "assets/promts/environment_commands_guide.txt",
+    "skills_reference": "assets/promts/skills_reference_prompt.txt",
+    "supreme_gm_style": "assets/promts/supreme_gm_style.txt",
+    "nsfw_rules_advanced": "assets/promts/nsfw_rules_advanced.txt"
+  },
+  "image_generation": {
+    "prompt_field_template": "\"image_prompt\": \"ОБЯЗАТЕЛЬНО! Описание ТЕКУЩЕЙ сцены СТРОГО НА АНГЛИЙСКОМ ЯЗЫКЕ для нейросети генерации картинок. Пиши тегами через запятую. Укажи персонажей и детали. Обязательно добавляй в конце: 'Ado music video aesthetic, monochrome anime style with one spot color, dark gothic, creepy vibe, extreme contrast, inverted colors, masterpiece, highly detailed'.\",",
+    "format_field_template": "\"image_prompt\": \"Описание сцены на АНГЛИЙСКОМ языке для генератора картинок (ОБЯЗАТЕЛЬНО).\","
+  },
+  "response_languages": {
+    "ru": "Russian",
+    "en": "English",
+    "default": "English"
+  },
+  "unified_response": {
+    "default_time_passed": {
+      "days": 0,
+      "hours": 0,
+      "minutes": 5
+    },
+    "suggested_action_template": {
+      "text": "Действие",
+      "roll_stat": null
+    }
+  },
+  "fallback_texts": {
+    "items_reference_error": "DATABASE ERROR",
+    "missing_era_context": "Данные по эпохе отсутствуют.",
+    "critical_logic_error": "Critical logic error"
+  },
+  "injection_headers": {
+    "custom_commands": "// === КАСТОМНЫЕ КОМАНДЫ (ИЗ МОДОВ) ===",
+    "custom_world_rules": "// === КАСТОМНЫЕ ПРАВИЛА МИРА (ИЗ МОДОВ) ==="
+  },
+  "command_parser": {
+    "start_tag": "[COMMAND:",
+    "end_tag": "]",
+    "delimiter": "|:|"
+  }
+}
