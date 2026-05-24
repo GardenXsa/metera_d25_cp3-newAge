@@ -40,7 +40,7 @@
 - [x] Расширить `inventory_commands` aliases для create/update/destroy/equip/unequip flows.
 - [x] Перевести trade validation errors на data-driven feedback keys.
 - [x] Заменить оставшиеся `idle`/`in_trade` trade checks на `inventory_movement.states`.
-- [ ] Закрыть Phase 8: `ProtoSystem/sityGen.html` / city generation data-driven слой.
+- [ ] Закрыть Phase 8: Core modding/data engine contract — total-conversion/base-data-off сценарий, manifest/merge policies, mod override guarantees и отсутствие hardcoded gameplay systems.
 - [ ] Закрыть Phase 9: C++ engine data-driven слой.
 - [ ] Закрыть Phase 10: modding/data API слой.
 - [ ] Закрыть Phase 11: cleanup старых костылей.
@@ -190,13 +190,14 @@ Phase 7 diagnostic layer фактически закрыт: runtime config contr
 - [x] Добавить проверку отсутствующих prototype ids.
 - [x] Расширить `tools/runtime_smoke_check.js` до data-contract smoke-check.
 
-## Phase 8 — City generation / ProtoSystem
+## Phase 8 — Core modding/data engine contract
 
-- [ ] Просканировать `ProtoSystem/sityGen.html` на hardcoded constants.
-- [ ] Вынести параметры city generation в `data/city_gen.json` или отдельный runtime config.
-- [ ] Проверить, что city generator использует данные из manifest/data.
-- [ ] Убрать дубли city-gen данных между `ProtoSystem` и runtime.
-- [ ] Проверить генерацию города вручную.
+- [x] Просканировать активные entrypoints моддинга: `js/mods/ModLoader.js`, `js/mods/ModLoaderIntegration.js`, `data/runtime_manifest.json`, `main.js`, `engine/meterea_engine.cpp`.
+- [x] Проверить и формализовать total-conversion/base-data-off сценарий: base database files отключаются по contract gate, а обязательные секции проверяются после `onDatabaseLoad`.
+- [x] Сделать data-driven contract для `runtime_manifest.database_files`: schema version, descriptor defaults, merge policies и total-conversion required keys.
+- [ ] Убедиться, что engine получает уже собранную database и не держит gameplay content/rules, которые невозможно заменить модом.
+- [x] Убрать из текущего плана stale/orphan targets вроде `ProtoSystem/sityGen.html`, если они не являются активными entrypoints.
+- [x] Добавить проверки, которые ловят отсутствие критичных data-секций при base-data-off моде: `tools/validate_modding_contract.js` + runtime `validateRuntimeDatabaseContract()`.
 
 ## Phase 9 — C++ engine data-driven слой
 
@@ -231,7 +232,7 @@ Phase 7 diagnostic layer фактически закрыт: runtime config contr
 - [ ] Проверить inventory/container flow.
 - [ ] Проверить торговлю/economy.
 - [ ] Проверить prompt flow.
-- [ ] Проверить city generation.
+- [ ] Проверить total-conversion/base-data-off мод без загрузки базового контента.
 - [ ] Проверить engine simulation flow.
 - [ ] Сделать финальный Git checkpoint.
 
@@ -248,3 +249,18 @@ Phase 7 diagnostic layer фактически закрыт: runtime config contr
 5. inventory/economy/combat/prompt/city/engine flows не ломаются;
 6. worklog и план закрыты;
 7. финальный commit/push сделан.
+
+
+
+---
+
+## Актуализация Phase 8 — core modding/data contract
+
+- [x] `runtime_manifest.modding_contract` добавлен.
+- [x] Total-conversion/base-data-off сценарий формализован через contract gate.
+- [x] Runtime loader больше не обязан грузить base database files при total conversion.
+- [x] После `onDatabaseLoad` проверяются обязательные секции total-conversion database.
+- [x] Добавлен `tools/validate_modding_contract.js`.
+- [x] `tools/validate_modding_contract.js` подключён к `tools/runtime_smoke_check.js`.
+- [ ] Следующий крупный блок: manifest descriptor ownership/source/defaults и mod override guarantees.
+- [ ] Затем C++ engine data-driven слой: убрать скрытые gameplay assumptions, которые ломают base-data-off моды.

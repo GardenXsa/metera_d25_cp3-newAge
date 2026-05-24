@@ -1833,3 +1833,142 @@ Summary: 57 checks, 0 failed, 0 warnings
 - Phase 6 отмечается как закрытый крупный блок, следующий этап — Phase 8.
 
 **Риск:** низкий для checkpoint. Код уже прошёл smoke-check; этот patch только фиксирует результат и отправляет его в GitHub.
+
+
+
+---
+
+### 33. `abort_stale_sitygen_refocus_on_core_modding_data_engine`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `ProtoSystem/sityGen.html` откатывается через `git restore`;
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`;
+- `docs/AI_ASSISTANT_PROJECT_RULES.md`;
+- `docs/AI_PATCHER_WORKLOG.md`.
+
+**Что делаем:**
+
+Останавливаем ошибочное направление Phase 8 на `ProtoSystem/sityGen.html`.
+
+**Почему:**
+
+Пользователь уточнил реальную цель: проект — это движок для текстовых игр с игрой под капотом. Нужна не миграция старых prototype-файлов, а полная поддержка моддинга и data-driven архитектуры, где ни одна активная gameplay/system часть не остаётся жёстко закодированной.
+
+Критичный сценарий: мод может полностью отключить загрузку базовых данных. Значит engine/runtime не должны иметь скрытые зависимости от base game content.
+
+**Коррекция курса:**
+
+- `ProtoSystem/sityGen.html` считается stale/orphan target, пока не доказана его активность;
+- Phase 8 переопределяется как `Core modding/data engine contract`;
+- следующий большой patch должен идти по активным файлам: `js/mods/ModLoader.js`, `js/mods/ModLoaderIntegration.js`, `data/runtime_manifest.json`, `main.js`, `engine/meterea_engine.cpp`;
+- цель следующего куска — manifest/merge policy/base-data-off/total-conversion guarantees, а не визуальные прототипы.
+
+**Риск:** низкий. Runtime-код не меняется, ошибочный `sityGen`-след откатывается.
+
+**Проверки после применения:**
+
+```bash
+git restore -- ProtoSystem/sityGen.html
+powershell -NoProfile -Command "if (Test-Path 'tools/validate_city_gen.js') { Remove-Item 'tools/validate_city_gen.js' -Force; Write-Output 'removed stale validate_city_gen.js'; } else { Write-Output 'no stale validate_city_gen.js'; }"
+node tools/runtime_smoke_check.js
+powershell -NoProfile -Command "Select-String -Path 'js/mods/ModLoader.js','js/mods/ModLoaderIntegration.js','data/runtime_manifest.json','main.js','engine/meterea_engine.cpp','engine/item_system.cpp' -Pattern 'total_conversion','isTotalConversion','base_game','runtime_manifest','database_files','merge_policy','onDatabaseLoad','nexusLoadDatabase','city_gen','g_db','hardcoded','fallback' -ErrorAction SilentlyContinue | Select-Object -First 220 | ForEach-Object { '{0}:{1}: {2}' -f $_.Path,$_.LineNumber,$_.Line.Trim() }"
+git status --short
+```
+
+**Следующий рабочий блок:** большой code patch по активному modding/data contract: manifest ownership/default/merge rules + base-data-off validation + engine database assumptions.
+
+
+**Результат:** успешно.
+
+- `ProtoSystem/sityGen.html` откатан;
+- stale `tools/validate_city_gen.js` отсутствует;
+- smoke-check зелёный: `57 checks, 0 failed, 0 warnings`;
+- план и правила больше не ведут Phase 8 в stale ProtoSystem/sityGen;
+- audit активной modding/data архитектуры выполнен.
+
+**Следующий patch:** `phase8_core_modding_data_contract_base_data_off`.
+
+
+
+---
+
+### 34. `phase8_core_modding_data_contract_base_data_off`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `data/runtime_manifest.json`
+- `js/mods/ModLoaderIntegration.js`
+- `tools/validate_modding_contract.js`
+- `docs/AI_PATCHER_WORKLOG.md`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+
+**Что делаем:**
+
+Реальный Phase 8 progress по активной архитектуре моддинга, а не по prototype-файлам.
+
+Добавляем `runtime_manifest.modding_contract` и заставляем runtime database loader понимать total-conversion/base-data-off режим.
+
+**Что меняется в поведении:**
+
+- manifest получает явный `modding_contract`;
+- total conversion по умолчанию не грузит base database files;
+- base passthrough keys можно явно разрешить через manifest;
+- после `onDatabaseLoad` runtime проверяет, что total-conversion мод заполнил обязательные секции;
+- database получает `_runtime_contract` metadata, чтобы моды и отладка видели режим загрузки;
+- добавлен validator `tools/validate_modding_contract.js`.
+
+**Зачем:**
+
+Это закрывает главный риск: мод, который выключает базовые данные, больше не должен зависеть от скрытой загрузки base game content. Если total-conversion мод не предоставил критичные секции, loader падает явно, а не создаёт полуживую базу.
+
+**Риск:** средний. Меняется runtime database bootstrap, но обычная base-game загрузка остаётся прежней: base files грузятся как раньше, потому что gate включается только при `window.ModAPI.isTotalConversion`.
+
+**Проверки:**
+
+```bash
+node -e "const fs=require('fs'); JSON.parse(fs.readFileSync('data/runtime_manifest.json','utf8')); console.log('runtime_manifest JSON OK')"
+node --check js/mods/ModLoaderIntegration.js
+node --check tools/validate_modding_contract.js
+node tools/validate_modding_contract.js
+node tools/runtime_smoke_check.js
+node -e "const fs=require('fs'); const integration=fs.readFileSync('js/mods/ModLoaderIntegration.js','utf8'); if(!integration.includes('shouldLoadBaseDatabaseFile')) throw new Error('base-data-off loader gate missing'); if(!integration.includes('validateRuntimeDatabaseContract')) throw new Error('database contract validation missing'); const manifest=fs.readFileSync('data/runtime_manifest.json','utf8'); if(!manifest.includes('modding_contract')) throw new Error('modding contract missing'); console.log('phase8 core modding/data contract progress OK')"
+git status --short
+```
+
+
+
+**Результат entry 34:** успешно.
+
+- `data/runtime_manifest.json` валиден;
+- `js/mods/ModLoaderIntegration.js` синтаксически валиден;
+- `tools/validate_modding_contract.js` синтаксически валиден;
+- `tools/validate_modding_contract.js` вернул `modding contract OK`;
+- общий smoke-check зелёный: `57 checks, 0 failed, 0 warnings` до подключения нового validator в smoke-check;
+- `shouldLoadBaseDatabaseFile()` добавлен;
+- `validateRuntimeDatabaseContract()` добавлен;
+- `runtime_manifest.modding_contract` добавлен.
+
+---
+
+### 35. `wire_modding_contract_into_smoke_check_and_checkpoint`
+
+**Статус:** ожидает выполнения Git checkpoint.
+
+**Что делаем:**
+
+Подключаем `tools/validate_modding_contract.js` в общий `tools/runtime_smoke_check.js`, чтобы Phase 8 modding/data contract стал частью обязательного smoke-check.
+
+**Зачем:**
+
+Это реальный прогресс по движку: total-conversion/base-data-off contract теперь защищён автоматической проверкой.
+
+**Важно по процессу:**
+
+Перед крупными patch нужно сверять актуальное состояние через GitHub/master, локальный `git status`, последние AI Patcher логи и точные search-фрагменты. Нельзя строить крупный patch только по старому плану или памяти.
+
+**Git checkpoint:** после зелёного smoke-check отправить Phase 8 core modding/data contract в GitHub.

@@ -6,8 +6,53 @@ function getRuntimeDataUtils() {
 }
 
 function createDefaultValue(defaultType) {
-    return defaultType === 'array' ? [] : {};
+  if (defaultType === 'array') return [];
+  if (defaultType === 'string') return '';
+  if (defaultType === 'number') return 0;
+  if (defaultType === 'boolean') return false;
+  if (defaultType === 'null') return null;
+  return {};
 }
+
+function isRuntimeTotalConversion() {
+  return !!(window.ModAPI && window.ModAPI.isTotalConversion);
+}
+
+function shouldLoadBaseDatabaseFile(manifest, key, descriptor) {
+  if (!isRuntimeTotalConversion()) return true;
+  const contract = manifest && manifest.modding_contract ? manifest.modding_contract : {};
+  const totalConversion = contract.total_conversion || {};
+  const allowed = Array.isArray(totalConversion.allowed_base_passthrough_keys) ? totalConversion.allowed_base_passthrough_keys : [];
+  if (descriptor && descriptor.load_in_total_conversion === true) return true;
+  if (allowed.includes(key)) return true;
+  return totalConversion.skip_base_database_files_by_default === false;
+}
+
+function isRuntimeDatabaseSectionEmpty(value) {
+  if (Array.isArray(value)) return value.length === 0;
+  if (value && typeof value === 'object') return Object.keys(value).length === 0;
+  return value === undefined || value === null || value === '';
+}
+
+function validateRuntimeDatabaseContract(database, manifest) {
+  const contract = manifest && manifest.modding_contract ? manifest.modding_contract : {};
+  const totalConversion = contract.total_conversion || {};
+  const requiredKeys = Array.isArray(totalConversion.required_database_keys) ? totalConversion.required_database_keys : [];
+  if (!isRuntimeTotalConversion()) return;
+  const missing = requiredKeys.filter((key) => isRuntimeDatabaseSectionEmpty(database[key]));
+  if (missing.length > 0) {
+    throw new Error(`[RuntimeData] total_conversion/base-data-off database is missing required sections: ${missing.join(', ')}`);
+  }
+}
+
+function attachRuntimeDatabaseContractMetadata(database, manifest) {
+  database._runtime_contract = {
+    total_conversion: isRuntimeTotalConversion(),
+    base_data_loaded: !isRuntimeTotalConversion(),
+    contract: manifest && manifest.modding_contract ? manifest.modding_contract : {}
+  };
+}
+
 
 function renderTemplate(template, replacements) {
     let output = template || '';
@@ -91,28 +136,32 @@ async function buildRuntimeDatabase() {
     const database = {};
 
     for (const [key, descriptor] of Object.entries(manifestFiles)) {
-        const defaultValue = createDefaultValue(descriptor.default_type);
-        try {
-            const rawValue = await modLoader.readJsonFile(descriptor.path);
-            database[key] = rawValue ?? defaultValue;
-        } catch (error) {
-            console.warn(`[RuntimeData] Failed to load ${key} from ${descriptor.path}, using default.`, error);
-            database[key] = utils.cloneValue(defaultValue);
-        }
+    const defaultValue = createDefaultValue(descriptor.default_type);
+    if (!shouldLoadBaseDatabaseFile(manifest, key, descriptor)) {
+      database[key] = utils.cloneValue(defaultValue);
+      continue;
     }
+    try {
+      const rawValue = await modLoader.readJsonFile(descriptor.path);
+      database[key] = rawValue ?? defaultValue;
+    } catch (error) {
+      console.warn(`[RuntimeData] Failed to load ${key} from ${descriptor.path}, using default.`, error);
+      database[key] = utils.cloneValue(defaultValue);
+    }
+  }
 
     if (database.prompt_pack) {
         database.prompt_pack = await hydratePromptPack(database.prompt_pack);
     }
 
-    await window.ModAPI.emit('onDatabaseLoad', database);
-
-    if (database.prompt_pack) {
-        database.prompt_pack = await hydratePromptPack(database.prompt_pack);
-    }
-
-    database.runtime_manifest = manifest;
-    return database;
+    attachRuntimeDatabaseContractMetadata(database, manifest);
+  await window.ModAPI.emit('onDatabaseLoad', database);
+  validateRuntimeDatabaseContract(database, manifest);
+  if (database.prompt_pack) {
+    database.prompt_pack = await hydratePromptPack(database.prompt_pack);
+  }
+  database.runtime_manifest = manifest;
+  return database;
 }
 
 function applyRuntimeDatabaseGlobals(database) {

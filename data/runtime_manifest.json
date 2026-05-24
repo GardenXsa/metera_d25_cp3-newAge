@@ -6,7 +6,7 @@
       "canonical_tag_source": "tag_defaults.json"
     }
   },
-  "database_files": {
+  "modding_contract": { "schema_version": 1, "base_game_mod_id": "base_game", "descriptor_defaults": { "owner": "base_game", "source": "base_data", "required": true }, "total_conversion": { "skip_base_database_files_by_default": true, "allowed_base_passthrough_keys": [], "required_database_keys": ["items", "eras", "classes", "races", "biomes", "world_config", "tag_defaults"] }, "merge_policies": ["deepMerge", "append", "appendUnique", "upsertById", "replace"] }, "database_files": {
     "items": { "path": "./data/economy_items.json", "default_type": "object", "merge_policy": "deepMerge" },
     "recipes": { "path": "./data/economy_recipes.json", "default_type": "array", "merge_policy": "append" },
     "facilities": { "path": "./data/facility_names.json", "default_type": "object", "merge_policy": "deepMerge" },

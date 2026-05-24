@@ -134,8 +134,8 @@ function checkExpectedFiles() {
     'tools/open_worklog_viewer.bat',
 
     'tools/validate_runtime_configs.js',
-
     'tools/validate_data_integrity.js',
+    'tools/validate_modding_contract.js',
     'data/runtime_manifest.json',
     'data/ui_runtime.json',
     'data/electron_runtime.json',
@@ -185,12 +185,13 @@ function main() {
     'tools/worklog_viewer_server.js',
     'tools/runtime_smoke_check.js',
     'tools/validate_runtime_configs.js',
-    'tools/validate_data_integrity.js'
+    'tools/validate_data_integrity.js',
+    'tools/validate_modding_contract.js'
   ].forEach(checkJsSyntax);
 
   runNodeTool('tools/validate_runtime_configs.js', 'runtime config contracts');
   runNodeTool('tools/validate_data_integrity.js', 'data integrity links');
-
+  runNodeTool('tools/validate_modding_contract.js', 'modding contract');
   printResults();
 }
 
