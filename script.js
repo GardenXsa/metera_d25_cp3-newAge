@@ -215,7 +215,7 @@ async function createConfiguredSystemContainer(aliasOrId, fallbackConfig = {}) {
     const maxWeight = Number(config.maxWeight ?? config.max_weight_kg ?? config.weight_limit ?? fallbackConfig.maxWeight ?? 0);
     const maxSlots = Number(config.maxSlots ?? config.max_slots ?? config.capacity ?? fallbackConfig.maxSlots ?? 0);
     const location = config.locationBinding === 'player'
-        ? resolveActorLocation('player')
+        ? resolveActorLocation(getInventoryActorId('default'))
         : (config.location || fallbackConfig.location || null);
 
     return await CoreInventorySystemAsync.createContainer(type, ownerId, maxWeight, maxSlots, location, {
@@ -459,7 +459,7 @@ const OldCoreInventorySystem = {
         return id;
     },
     updateContainerLocation: async function(containerId, locationData) {
-        const res = await sendInventoryCommand('updateContainerLocation', {
+        const res = await sendInventoryCommand(getInventoryCommandName('update_container_location'), {
             containerId: resolveSpecialContainerId(containerId),
             location: locationData
         });
@@ -496,45 +496,45 @@ const OldCoreInventorySystem = {
         });
     },
     moveItem: function(itemId, sourceContainerId, targetContainerId, quantity = null, options = {}) {
-        if (!ItemRegistry.has(itemId)) return { success: false, error: "Item not found" };
+        if (!ItemRegistry.has(itemId)) return { success: false, error: getInventoryFeedbackText('item_not_found', 'Item not found') };
 
         const actorId = options.actorId || getInventoryActorId('default');
         const resolvedSourceId = resolveSpecialContainerId(sourceContainerId || ItemRegistry.get(itemId)?.container_id);
         const requestedTargetId = resolveSpecialContainerId(targetContainerId);
         let item = ItemRegistry.get(itemId);
 
-        if (!resolvedSourceId || !ContainerRegistry.has(resolvedSourceId)) return { success: false, error: "Source container not found" };
-        if (item.container_id !== resolvedSourceId) return { success: false, error: "Item is not in the declared source container" };
-        if (item.state === getInventoryMovementRuntimeConfig().states.trade_locked && !options.allowTradeLocked) return { success: false, error: "Item state locks movement" };
+        if (!resolvedSourceId || !ContainerRegistry.has(resolvedSourceId)) return { success: false, error: getInventoryFeedbackText('source_container_not_found', 'Source container not found') };
+        if (item.container_id !== resolvedSourceId) return { success: false, error: getInventoryFeedbackText('item_source_mismatch', 'Item is not in the declared source container') };
+        if (item.state === getInventoryMovementRuntimeConfig().states.trade_locked && !options.allowTradeLocked) return { success: false, error: getInventoryFeedbackText('item_state_locks_movement', 'Item state locks movement') };
 
         let actualTargetId = requestedTargetId;
         if (!actualTargetId) {
             actualTargetId = getOrCreateGroundPile(resolveContainerLocation(resolvedSourceId) || resolveActorLocation(actorId));
         }
-        if (!ContainerRegistry.has(actualTargetId)) return { success: false, error: "Target container not found" };
+        if (!ContainerRegistry.has(actualTargetId)) return { success: false, error: getInventoryFeedbackText('target_container_not_found', 'Target container not found') };
         if (resolvedSourceId === actualTargetId) return { success: true, movedItemId: itemId, targetContainerId: actualTargetId, sourceContainerId: resolvedSourceId };
 
         if (!options.ignoreAccess) {
             if (!OwnershipService.canAccess(actorId, resolvedSourceId, { allowLocked: options.allowLocked, ignoreDistance: options.ignoreDistance })) {
-                return { success: false, error: "Access denied to source container" };
+                return { success: false, error: getInventoryFeedbackText('access_denied_source', 'Access denied to source container') };
             }
             if (!OwnershipService.canAccess(actorId, actualTargetId, { allowLocked: options.allowLocked, ignoreDistance: options.ignoreDistance })) {
-                return { success: false, error: "Access denied to target container" };
+                return { success: false, error: getInventoryFeedbackText('access_denied_target', 'Access denied to target container') };
             }
         }
 
         const sourceContainer = ContainerRegistry.get(resolvedSourceId);
         const targetContainer = ContainerRegistry.get(actualTargetId);
         const requestedQuantity = normalizeInventoryMoveQuantity(quantity, item.stack_size);
-        if (!Number.isFinite(requestedQuantity) || requestedQuantity <= 0) return { success: false, error: "Invalid quantity" };
-        if (requestedQuantity > item.stack_size) return { success: false, error: "Not enough quantity in stack" };
-        if (item.flags?.bound_to_owner && targetContainer.owner_id !== item.flags.bound_to_owner) return { success: false, error: "Item is soulbound" };
-        if (sourceContainer.id !== targetContainer.id && getContainerItems(targetContainer).length >= targetContainer.max_slots) return { success: false, error: "Target container is full (slots)" };
+        if (!Number.isFinite(requestedQuantity) || requestedQuantity <= 0) return { success: false, error: getInventoryFeedbackText('invalid_quantity', 'Invalid quantity') };
+        if (requestedQuantity > item.stack_size) return { success: false, error: getInventoryFeedbackText('not_enough_stack', 'Not enough quantity in stack') };
+        if (item.flags?.bound_to_owner && targetContainer.owner_id !== item.flags.bound_to_owner) return { success: false, error: getInventoryFeedbackText('item_soulbound', 'Item is soulbound') };
+        if (sourceContainer.id !== targetContainer.id && getContainerItems(targetContainer).length >= targetContainer.max_slots) return { success: false, error: getInventoryFeedbackText('target_slots_full', 'Target container is full (slots)') };
 
         const currentWeight = this.getContainerWeight(actualTargetId);
         const itemWeight = (item.custom_props.weight_per_unit || 1) * requestedQuantity;
         if (sourceContainer.id !== targetContainer.id && currentWeight + itemWeight > targetContainer.max_weight_kg) {
-            return { success: false, error: "Target container is full (weight)" };
+            return { success: false, error: getInventoryFeedbackText('target_weight_full', 'Target container is full (weight)') };
         }
 
         let movingItem = item;
@@ -589,7 +589,7 @@ const OldCoreInventorySystem = {
         return { success: true, movedItemId: movingItem.id, createdItemId, targetContainerId: actualTargetId, sourceContainerId: resolvedSourceId };
     },
     moveItems: function(sourceContainerId, targetContainerId, items, options = {}) {
-        if (!Array.isArray(items) || items.length === 0) return { success: false, error: "No items requested" };
+        if (!Array.isArray(items) || items.length === 0) return { success: false, error: getInventoryFeedbackText('no_items_requested', 'No items requested') };
         const resolvedSourceId = resolveSpecialContainerId(sourceContainerId);
         const resolvedTargetId = resolveSpecialContainerId(targetContainerId) || getOrCreateGroundPile(resolveContainerLocation(resolvedSourceId) || resolveActorLocation(options.actorId || getInventoryActorId('default')));
         const trackedItemIds = Array.from(new Set(items.map(obj => obj?.id).filter(Boolean)));
@@ -641,25 +641,26 @@ const OldCoreInventorySystem = {
     unlockContainer: function(containerId, actorId) {
         const resolvedContainerId = resolveSpecialContainerId(containerId);
         const cont = ContainerRegistry.get(resolvedContainerId);
-        if (!cont || !cont.lock_data.is_locked) return { success: false, error: "Not locked or not found" };
-        if (!OwnershipService.canAccess(actorId, resolvedContainerId, { allowLocked: true })) return { success: false, error: "Too far away from container" };
+        if (!cont || !cont.lock_data.is_locked) return { success: false, error: getInventoryFeedbackText('not_locked_or_not_found', 'Not locked or not found') };
+        if (!OwnershipService.canAccess(actorId, resolvedContainerId, { allowLocked: true })) return { success: false, error: getInventoryFeedbackText('too_far_from_container', 'Too far away from container') };
         const actorContId = actorId === getInventoryActorId('default') ? player.container_backpack : null;
-        if (!actorContId) return { success: false, error: "Actor inventory not found" };
+        if (!actorContId) return { success: false, error: getInventoryFeedbackText('actor_inventory_not_found', 'Actor inventory not found') };
         const actorCont = ContainerRegistry.get(actorContId);
-        const lockpickId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === 'lockpicks_common');
-        if (!lockpickId) return { success: false, error: "No lockpicks" };
+        const unlockConfig = getInventoryUnlockRuntimeConfig();
+        const lockpickId = getContainerItems(actorCont).find(id => ItemRegistry.get(id)?.prototype_id === unlockConfig.lockpick_prototype_id);
+        if (!lockpickId) return { success: false, error: getInventoryFeedbackText('no_lockpicks', 'No lockpicks') };
         this.removeItem(lockpickId, 1);
-        const roll = GameRNG.d20((player.stats.dex - 10)/2);
+        const roll = GameRNG.d20(getInventoryUnlockAbilityModifier());
         if (roll >= cont.lock_data.difficulty) {
             cont.lock_data.is_locked = false;
-            return { success: true, message: "Unlocked successfully" };
+            return { success: true, message: getInventoryFeedbackText('unlock_success', 'Unlocked successfully') };
         } else {
             let trapMsg = "";
             if (cont.lock_data.trap) {
                 if (cont.lock_data.trap.stat === 'hp') damagePlayerHP(cont.lock_data.trap.amount);
                 trapMsg = ` Сработала ловушка! Урон: ${cont.lock_data.trap.amount}.`;
             }
-            return { success: false, error: "Lockpick broke, failed to unlock." + trapMsg };
+            return { success: false, error: getInventoryFeedbackText('lockpick_broke', 'Lockpick broke, failed to unlock.{trapMessage}', { trapMessage: trapMsg }) };
         }
     },
     confiscateStolen: function(sourceContainerId, destContainerId) {
@@ -675,7 +676,7 @@ const OldCoreInventorySystem = {
         return count;
     },
     buildContainer: function(actorId, type, location) {
-        const actorContId = actorId === 'player' ? player.container_backpack : null;
+        const actorContId = actorId === getInventoryActorId('default') ? player.container_backpack : null;
         if (!actorContId) return null;
         const actorCont = ContainerRegistry.get(actorContId);
         const buildConfig = getInventoryBuildingRuntimeConfig();
@@ -779,7 +780,7 @@ function executeLocalInventoryCommand(action, args) {
         case 'moveItems': {
             const res = OldCoreInventorySystem.moveItems(
                 args.sourceContainerId, args.targetContainerId, args.items,
-                { actorId: 'player', ignoreAccess: false, ignoreDistance: true }
+                getInventoryTransferOptions('player_ui')
             );
             return { status: res.success ? 'ok' : 'error', ...res, feedback: res.error };
         }
@@ -797,7 +798,7 @@ function executeLocalInventoryCommand(action, args) {
                 cont.location = normalizeContainerLocation(args.location);
                 return { status: 'ok', success: true };
             }
-            return { status: 'error', success: false, error: 'Container not found' };
+            return { status: 'error', success: false, error: getInventoryFeedbackText('container_not_found', 'Container not found') };
         }
         case 'syncEntity':
         case 'updateEntityStat':
@@ -807,7 +808,7 @@ function executeLocalInventoryCommand(action, args) {
             return { status: 'ok', success: true };
         default:
             console.warn(`[Inventory] Unknown local command: ${action}`);
-            return { status: 'error', success: false, error: `Unknown command: ${action}` };
+            return { status: 'error', success: false, error: getInventoryFeedbackText('unknown_command', 'Unknown command: {action}', { action }) };
     }
 }
 
@@ -858,14 +859,14 @@ const CoreInventorySystemAsync = {
                 ? { world_coords: [0, 0, 0], parent_entity: 'player', parent_container: null, region_id: player?.location || null }
                 : null
         );
-        const res = await sendInventoryCommand('createContainer', {
+        const res = await sendInventoryCommand(getInventoryCommandName('create_container'), {
             type, ownerId, maxWeight, maxSlots, location: normalizeContainerLocation(defaultLocation),
             lock_data: extraData.lock_data || {}, physical_props: extraData.physical_props || {}, custom_props: extraData.custom_props || {}
         });
         return res.containerId;
     },
     createItem: async function(prototypeId, quantity, containerId, customProps = {}) {
-        const res = await sendInventoryCommand('createItem', {
+        const res = await sendInventoryCommand(getInventoryCommandName('create_item'), {
             prototypeId, quantity, containerId: resolveSpecialContainerId(containerId), customProps
         });
         return res.itemId;
@@ -902,7 +903,7 @@ const CoreInventorySystemAsync = {
         return { success: res.success, movedItemId: res.movedItemId, error: res.feedback };
     },
     moveItems: async function(sourceContainerId, targetContainerId, items, options = {}) {
-        const actualTargetId = resolveSpecialContainerId(targetContainerId) || await getOrCreateGroundPileAsync(resolveContainerLocation(sourceContainerId) || resolveActorLocation(options.actorId || 'player'));
+        const actualTargetId = resolveSpecialContainerId(targetContainerId) || await getOrCreateGroundPileAsync(resolveContainerLocation(sourceContainerId) || resolveActorLocation(options.actorId || getInventoryActorId('default')));
         const res = await sendInventoryCommand(getInventoryCommandName('move_items'), {
             sourceContainerId: resolveSpecialContainerId(sourceContainerId),
             targetContainerId: actualTargetId,
@@ -920,7 +921,7 @@ const CoreInventorySystemAsync = {
     destroyContainer: async function(containerId) {
         const resolvedContainerId = resolveSpecialContainerId(containerId);
         const groundPileId = await getOrCreateGroundPileAsync(resolveContainerLocation(resolvedContainerId));
-        const res = await sendInventoryCommand('destroyContainer', {
+        const res = await sendInventoryCommand(getInventoryCommandName('destroy_container'), {
             containerId: resolvedContainerId, groundContainerId: groundPileId
         });
         return res.success;
@@ -1029,7 +1030,7 @@ async function equipItemAsync(itemId, targetSlot = null) {
 
     if (!bodySlots.includes(targetSlot)) return `[ERROR] Попытка экипировать в несуществующий слот: '${targetSlot}'`;
 
-    const res = await sendInventoryCommand('equipItem', {
+    const res = await sendInventoryCommand(getInventoryCommandName('equip_item'), {
         itemId, slot: targetSlot, equipmentContainerId: player.container_equipment, backpackContainerId: player.container_backpack
     });
 
@@ -1057,7 +1058,7 @@ async function unequipItemAsync(slot) {
         return t('gameInterface.commandFeedback.inventoryFullOnUnequip', { itemName: itemToUnequip.custom_props.name });
     }
 
-    const res = await sendInventoryCommand('unequipItem', {
+    const res = await sendInventoryCommand(getInventoryCommandName('unequip_item'), {
         slot, equipmentContainerId: player.container_equipment, backpackContainerId: player.container_backpack
     });
 
@@ -1339,7 +1340,7 @@ const TradeSystemAsync = {
     _transferMerchantGold: async function(trade, createdItemIds) {
         let remaining = trade.final_price;
         const targetContainer = ContainerRegistry.get(trade.target_container);
-        if (!targetContainer) return { success: false, error: "Merchant container not found" };
+        if (!targetContainer) return { success: false, error: getInventoryFeedbackText('merchant_container_not_found', 'Merchant container not found') };
 
         const physicalGoldItems = [...getContainerItems(targetContainer)].filter(itemId => {
             const it = ItemRegistry.get(itemId);
@@ -1359,17 +1360,17 @@ const TradeSystemAsync = {
 
         if (remaining > 0) {
             const merchant = World?.npcs?.[trade.target];
-            if (!merchant?.inventory || merchant.inventory.gold < remaining) return { success: false, error: "Merchant account is short on gold" };
+            if (!merchant?.inventory || merchant.inventory.gold < remaining) return { success: false, error: getInventoryFeedbackText('merchant_account_short_gold', 'Merchant account is short on gold') };
             const buyerContainer = ContainerRegistry.get(trade.initiator_container);
             const primaryCurrencyId = getPrimaryCurrencyPrototypeId('gold');
             const existingGoldId = CoreInventorySystemAsync.findItemByPrototype(trade.initiator_container, primaryCurrencyId);
             const currentWeight = CoreInventorySystemAsync.getContainerWeight(trade.initiator_container);
             const addedWeight = remaining * getCurrencyPhysicalWeight(primaryCurrencyId, 0.01);
             if (!existingGoldId && getContainerItems(buyerContainer).length >= buyerContainer.max_slots) {
-                return { success: false, error: "Buyer container has no free slot for gold" };
+                return { success: false, error: getInventoryFeedbackText('buyer_no_gold_slot', 'Buyer container has no free slot for gold') };
             }
             if (currentWeight + addedWeight > buyerContainer.max_weight_kg) {
-                return { success: false, error: "Buyer container cannot carry the gold payment" };
+                return { success: false, error: getInventoryFeedbackText('buyer_cannot_carry_gold', 'Buyer container cannot carry the gold payment') };
             }
 
             merchant.inventory.gold -= remaining;
@@ -1383,7 +1384,7 @@ const TradeSystemAsync = {
     },
     _postProcessTrade: function(trade) { return TradeSystem._postProcessTrade(trade); },
     confirmTrade: async function(tradeId) {
-        if (!this.activeTrades.has(tradeId)) return { success: false, error: "Trade not found" };
+        if (!this.activeTrades.has(tradeId)) return { success: false, error: getInventoryFeedbackText('trade_not_found', 'Trade not found') };
         const trade = this.activeTrades.get(tradeId);
 
         const readiness = this._validateTradeReady(trade);
@@ -1890,7 +1891,7 @@ async function executeCommand(command, args) {
                             for (const itemId of getContainerItems(cont)) {
                                 const item = ItemRegistry.get(itemId);
                                 if (item) {
-                                    await sendInventoryCommand('updateItemStat', { itemId: item.id, stat: 'durability', change: -Math.floor(args.damage / 2) });
+                                    await sendInventoryCommand(getInventoryCommandName('update_item_stat'), { itemId: item.id, stat: 'durability', change: -Math.floor(args.damage / 2) });
                                 }
                             }
                             if (cont.physical_props.health <= 0) {
@@ -1977,7 +1978,7 @@ async function executeCommand(command, args) {
 
                     if (item) {
                         const change = parseInt(args.change, 10);
-                        await sendInventoryCommand('updateItemStat', { itemId: item.id, stat: args.stat, change });
+                        await sendInventoryCommand(getInventoryCommandName('update_item_stat'), { itemId: item.id, stat: args.stat, change });
                         feedback = `[Предмет] Характеристика '${args.stat}' у '${item.custom_props.name}' изменена на ${change > 0 ? '+' + change : change}.`;
                         if (isEquipped) updateEquipmentDisplay();
                         else updateInventoryDisplay();
@@ -2145,29 +2146,29 @@ const OldTradeSystem = {
         return !!(initiatorLocation && targetLocation && checkDistance(initiatorLocation, targetLocation));
     },
     _prepareMerchantSale: function(trade, offerItems) {
-        if (trade.initiator !== 'player') return { success: false, error: "T3 merchant sale supports player as seller only" };
-        if (trade.initiator_container !== player?.container_backpack) return { success: false, error: "Sellable items must be in player backpack" };
-        if (!this._validateTradeDistance(trade)) return { success: false, error: "Merchant is too far away" };
+        if (trade.initiator !== getInventoryActorId('default')) return { success: false, error: getInventoryFeedbackText('merchant_sale_player_only', 'T3 merchant sale supports player as seller only') };
+        if (trade.initiator_container !== player?.container_backpack) return { success: false, error: getInventoryFeedbackText('sellable_backpack_only', 'Sellable items must be in player backpack') };
+        if (!this._validateTradeDistance(trade)) return { success: false, error: getInventoryFeedbackText('merchant_too_far', 'Merchant is too far away') };
 
         const normalizedOffers = this._normalizeTradeItems(offerItems);
-        if (normalizedOffers.length === 0) return { success: false, error: "No offer items provided" };
+        if (normalizedOffers.length === 0) return { success: false, error: getInventoryFeedbackText('no_offer_items', 'No offer items provided') };
 
         const regionId = resolveContainerLocation(trade.target_container)?.region_id || player?.location || null;
         let totalPrice = 0;
 
         for (const offer of normalizedOffers) {
             const item = ItemRegistry.get(offer.id);
-            if (!item || item.container_id !== trade.initiator_container) return { success: false, error: "Offer item is no longer in player backpack" };
-            if (offer.quantity > item.stack_size) return { success: false, error: "Not enough quantity for sale" };
-            if (!is_sellable(trade.initiator_container, offer.id)) return { success: false, error: "Item is not sellable" };
+            if (!item || item.container_id !== trade.initiator_container) return { success: false, error: getInventoryFeedbackText('offer_item_missing', 'Offer item is no longer in player backpack') };
+            if (offer.quantity > item.stack_size) return { success: false, error: getInventoryFeedbackText('sale_quantity_unavailable', 'Not enough quantity for sale') };
+            if (!is_sellable(trade.initiator_container, offer.id)) return { success: false, error: getInventoryFeedbackText('item_not_sellable', 'Item is not sellable') };
             totalPrice += EconomySim.calculatePrice(item.prototype_id, regionId, false) * offer.quantity;
         }
 
-        if (getGoldAmountInContainer(trade.target_container) < totalPrice) return { success: false, error: "Merchant does not have enough gold" };
+        if (getGoldAmountInContainer(trade.target_container) < totalPrice) return { success: false, error: getInventoryFeedbackText('merchant_no_gold', 'Merchant does not have enough gold') };
         for (const offer of normalizedOffers) {
             if (!this._lockItemForTrade(offer.id)) {
                 this._releaseTradeLocks({ offer_items: normalizedOffers, request_items: [] });
-                return { success: false, error: "Failed to lock sale item" };
+                return { success: false, error: getInventoryFeedbackText('failed_lock_sale_item', 'Failed to lock sale item') };
             }
         }
 
@@ -2186,30 +2187,30 @@ const OldTradeSystem = {
     _prepareManualTrade: function(trade, offerItems, requestItems) {
         const normalizedOffers = this._normalizeTradeItems(offerItems);
         const normalizedRequests = this._normalizeTradeItems(requestItems);
-        if (normalizedOffers.length === 0 && normalizedRequests.length === 0) return { success: false, error: "Trade is empty" };
-        if (!this._validateTradeDistance(trade)) return { success: false, error: "Trade parties are too far apart" };
+        if (normalizedOffers.length === 0 && normalizedRequests.length === 0) return { success: false, error: getInventoryFeedbackText('trade_empty', 'Trade is empty') };
+        if (!this._validateTradeDistance(trade)) return { success: false, error: getInventoryFeedbackText('trade_too_far', 'Trade parties are too far apart') };
 
         for (const offer of normalizedOffers) {
             const item = ItemRegistry.get(offer.id);
-            if (!item || item.container_id !== trade.initiator_container || item.state !== 'idle') return { success: false, error: "Offer item is unavailable" };
-            if (offer.quantity > item.stack_size) return { success: false, error: "Offer quantity is unavailable" };
+            if (!item || item.container_id !== trade.initiator_container || item.state !== getInventoryMovementRuntimeConfig().states.default) return { success: false, error: getInventoryFeedbackText('offer_item_unavailable', 'Offer item is unavailable') };
+            if (offer.quantity > item.stack_size) return { success: false, error: getInventoryFeedbackText('offer_quantity_unavailable', 'Offer quantity is unavailable') };
             if (trade.initiator === 'player' && trade.target !== 'player' && !is_sellable(trade.initiator_container, offer.id)) {
-                return { success: false, error: "Offer item is not sellable" };
+                return { success: false, error: getInventoryFeedbackText('offer_not_sellable', 'Offer item is not sellable') };
             }
         }
         for (const request of normalizedRequests) {
             const item = ItemRegistry.get(request.id);
-            if (!item || item.container_id !== trade.target_container || item.state !== 'idle') return { success: false, error: "Request item is unavailable" };
-            if (request.quantity > item.stack_size) return { success: false, error: "Request quantity is unavailable" };
+            if (!item || item.container_id !== trade.target_container || item.state !== getInventoryMovementRuntimeConfig().states.default) return { success: false, error: getInventoryFeedbackText('request_item_unavailable', 'Request item is unavailable') };
+            if (request.quantity > item.stack_size) return { success: false, error: getInventoryFeedbackText('request_quantity_unavailable', 'Request quantity is unavailable') };
         }
 
         const locked = [];
         for (const entry of [...normalizedOffers, ...normalizedRequests]) {
             if (!this._lockItemForTrade(entry.id)) {
                 locked.forEach(itemId => {
-                    if (ItemRegistry.has(itemId)) ItemRegistry.get(itemId).state = 'idle';
+                    if (ItemRegistry.has(itemId)) ItemRegistry.get(itemId).state = getInventoryMovementRuntimeConfig().states.default;
                 });
-                return { success: false, error: "Failed to lock trade item" };
+                return { success: false, error: getInventoryFeedbackText('failed_lock_trade_item', 'Failed to lock trade item') };
             }
             locked.push(entry.id);
         }
@@ -2226,10 +2227,10 @@ const OldTradeSystem = {
         const targetContainerId = resolveSpecialContainerId(config.targetContainerId || World?.npcs?.[targetId]?.inventory_id || targetId);
 
         if (!targetId || !initiatorContainerId || !targetContainerId) {
-            return { success: false, error: "Trade requires valid target and containers" };
+            return { success: false, error: getInventoryFeedbackText('requires_target_and_containers', 'Trade requires valid target and containers') };
         }
         if (!ContainerRegistry.has(initiatorContainerId) || !ContainerRegistry.has(targetContainerId)) {
-            return { success: false, error: "One of the trade containers was not found" };
+            return { success: false, error: getInventoryFeedbackText('trade_container_missing', 'One of the trade containers was not found') };
         }
 
         const tradeId = "trade_" + generateUUID();
@@ -2285,20 +2286,20 @@ const OldTradeSystem = {
         return true;
     },
     _validateTradeReady: function(trade) {
-        if (!this._validateTradeDistance(trade)) return { success: false, error: "Trade parties are too far apart" };
+        if (!this._validateTradeDistance(trade)) return { success: false, error: getInventoryFeedbackText('trade_too_far', 'Trade parties are too far apart') };
 
         for (const offer of trade.offer_items) {
             const item = ItemRegistry.get(offer.id);
-            if (!item || item.container_id !== trade.initiator_container) return { success: false, error: "Offer item moved before confirmation" };
-            if (item.stack_size < offer.quantity) return { success: false, error: "Offer quantity changed before confirmation" };
-            if (item.state !== 'in_trade') return { success: false, error: "Offer item is no longer locked for trade" };
+            if (!item || item.container_id !== trade.initiator_container) return { success: false, error: getInventoryFeedbackText('offer_moved_before_confirmation', 'Offer item moved before confirmation') };
+            if (item.stack_size < offer.quantity) return { success: false, error: getInventoryFeedbackText('offer_quantity_changed', 'Offer quantity changed before confirmation') };
+            if (item.state !== getInventoryMovementRuntimeConfig().states.trade_locked) return { success: false, error: getInventoryFeedbackText('offer_no_longer_locked', 'Offer item is no longer locked for trade') };
         }
 
         for (const request of trade.request_items) {
             const item = ItemRegistry.get(request.id);
-            if (!item || item.container_id !== trade.target_container) return { success: false, error: "Request item moved before confirmation" };
-            if (item.stack_size < request.quantity) return { success: false, error: "Request quantity changed before confirmation" };
-            if (item.state !== 'in_trade') return { success: false, error: "Request item is no longer locked for trade" };
+            if (!item || item.container_id !== trade.target_container) return { success: false, error: getInventoryFeedbackText('request_moved_before_confirmation', 'Request item moved before confirmation') };
+            if (item.stack_size < request.quantity) return { success: false, error: getInventoryFeedbackText('request_quantity_changed', 'Request quantity changed before confirmation') };
+            if (item.state !== getInventoryMovementRuntimeConfig().states.trade_locked) return { success: false, error: getInventoryFeedbackText('request_no_longer_locked', 'Request item is no longer locked for trade') };
         }
 
         if (trade.mode === 'sale' && getGoldAmountInContainer(trade.target_container) < trade.final_price) {
@@ -8315,11 +8316,17 @@ function getInventoryStackField() {
 
 function getInventoryCommandName(key) {
   const commands = getGameplayRuntimeConfig().inventory_commands || {};
-  const defaults = {
+      const defaults = {
+    create_container: 'createContainer',
+    create_item: 'createItem',
+    update_container_location: 'updateContainerLocation',
     add_item: 'addItem',
     remove_item: 'removeItem',
     move_item: 'moveItem',
     move_items: 'moveItems',
+    destroy_container: 'destroyContainer',
+    equip_item: 'equipItem',
+    unequip_item: 'unequipItem',
     update_item_stat: 'updateItemStat'
   };
   return commands[key] || defaults[key] || key;
@@ -8358,6 +8365,37 @@ function getPrimaryCurrencyPrototypeId(fallback = 'gold') {
 function getCurrencyPhysicalWeight(prototypeId, fallback = 0.01) {
   const weights = getGameplayRuntimeConfig().currency?.physical_weights || {};
   return toRuntimeNumber(weights[prototypeId], fallback);
+}
+
+
+function formatRuntimeTemplate(template, params = {}) {
+  return String(template ?? '').replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key) => {
+    return Object.prototype.hasOwnProperty.call(params, key) ? String(params[key]) : `{${key}}`;
+  });
+}
+
+function getInventoryFeedbackText(key, fallback, params = {}) {
+  const feedback = getGameplayRuntimeConfig().inventory_feedback || {};
+  const value = feedback.inventory_errors?.[key]
+    ?? feedback.trade_errors?.[key]
+    ?? fallback;
+  return formatRuntimeTemplate(value, params);
+}
+
+function getInventoryUnlockRuntimeConfig() {
+  const runtime = getGameplayRuntimeConfig().inventory_unlock || {};
+  return {
+    lockpick_prototype_id: runtime.lockpick_prototype_id || 'lockpicks_common',
+    ability_stat: runtime.ability_stat || 'dex',
+    ability_baseline: toRuntimeNumber(runtime.ability_baseline, 10),
+    ability_divisor: Math.max(1, toRuntimeNumber(runtime.ability_divisor, 2))
+  };
+}
+
+function getInventoryUnlockAbilityModifier() {
+  const config = getInventoryUnlockRuntimeConfig();
+  const statValue = toRuntimeNumber(player?.stats?.[config.ability_stat], config.ability_baseline);
+  return (statValue - config.ability_baseline) / config.ability_divisor;
 }
 
 function getCurrencyPrototypeIds() {

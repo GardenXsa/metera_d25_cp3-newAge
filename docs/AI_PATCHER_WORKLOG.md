@@ -566,7 +566,7 @@ node tools/runtime_smoke_check.js
 
 **Риск:** средний-низкий. Затронут старт новой игры и bootstrap мира, но поведение по умолчанию сохранено теми же fallback-значениями.
 
-**Проверки после применения:**
+**Проверки:**
 
 ```bash
 node -e "const fs=require('fs'); JSON.parse(fs.readFileSync('data/gameplay_runtime.json','utf8')); console.log('gameplay runtime JSON OK')"
@@ -1216,6 +1216,30 @@ git status --short
 
 **Результат:** успешно.
 
+- `data/gameplay_runtime.json` валиден;
+- `script.js` синтаксически валиден;
+- `tools/validate_runtime_configs.js` синтаксически валиден;
+- runtime config contracts OK;
+- общий smoke-check зелёный: `57 checks, 0 failed, 0 warnings`;
+- `getInventoryFeedbackText()` присутствует;
+- старый literal `error: "Item not found"` убран;
+- migration plan получил прогресс по `inventory/action feedback errors`.
+
+**Текущие изменения после применения:**
+
+```text
+ M data/gameplay_runtime.json
+ M docs/AI_PATCHER_WORKLOG.md
+ M docs/DATA_DRIVEN_MIGRATION_PLAN.md
+ M script.js
+ M tools/validate_runtime_configs.js
+```
+
+**Следующий рабочий блок:** Phase 8 — `ProtoSystem/sityGen.html` / city generation data-driven слой. Phase 6 inventory/action слой получил большой ощутимый прогресс и готов к checkpoint.
+
+
+**Результат:** успешно.
+
 - Worklog Viewer теперь умеет сопоставлять `Full data-driven migration` с секцией `Full migration mandate`;
 - `currentPhaseFill` найден;
 - `findCurrentPhaseProgress()` найден;
@@ -1709,3 +1733,103 @@ node -e "const fs=require('fs'); const viewer=fs.readFileSync('tools/worklog_vie
 node tools/runtime_smoke_check.js
 git status --short
 ```
+
+
+
+---
+
+### 31. `phase6_big_inventory_action_feedback_errors`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `data/gameplay_runtime.json`
+- `script.js`
+- `tools/validate_runtime_configs.js`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Большой Phase 6 subsystem patch вместо микрошагов.
+
+Вынесено в `data/gameplay_runtime.json`:
+
+- `inventory_feedback.inventory_errors`;
+- `inventory_feedback.trade_errors`;
+- `inventory_unlock` settings;
+- расширенные `inventory_commands` aliases.
+
+В `script.js` добавлены helpers:
+
+- `formatRuntimeTemplate()`;
+- `getInventoryFeedbackText()`;
+- `getInventoryUnlockRuntimeConfig()`;
+- `getInventoryUnlockAbilityModifier()`.
+
+Массово переведены на data-driven layer:
+
+- inventory movement errors;
+- local command errors;
+- unlock/lockpick errors;
+- trade validation errors;
+- части command literals;
+- leftover `player` actor literals в inventory flow;
+- leftover `idle` / `in_trade` checks в trade validation.
+
+**Зачем:**
+
+Это заметный прогресс по полному data-driven переносу: не одиночные константы, а большой связанный слой inventory/action/trade feedback и command routing.
+
+**Риск:** средний-высокий из-за размера patch. Но изменения находятся внутри одного subsystem-блока, fallback-значения совпадают со старым поведением, и есть runtime validator + smoke-check.
+
+**Проверки после применения:**
+
+```bash
+node -e "const fs=require('fs'); JSON.parse(fs.readFileSync('data/gameplay_runtime.json','utf8')); console.log('gameplay runtime JSON OK')"
+node --check script.js
+node --check tools/validate_runtime_configs.js
+node tools/validate_runtime_configs.js
+node tools/runtime_smoke_check.js
+node -e "const fs=require('fs'); const script=fs.readFileSync('script.js','utf8'); if(!script.includes('getInventoryFeedbackText')) throw new Error('feedback helper missing'); if(script.includes('error: \"Item not found\"')) throw new Error('old item_not_found literal remains'); const plan=fs.readFileSync('docs/DATA_DRIVEN_MIGRATION_PLAN.md','utf8'); if(!plan.includes('inventory/action feedback errors')) throw new Error('phase6 feedback progress missing'); console.log('phase6 big feedback/errors progress OK')"
+git status --short
+```
+
+
+
+---
+
+### 32. `git_checkpoint_after_phase6_big_feedback_errors`
+
+**Статус:** ожидает выполнения Git checkpoint.
+
+**Что делаем:**
+
+Фиксируем большой зелёный Phase 6 subsystem patch.
+
+**Последняя зелёная точка перед checkpoint:**
+
+```text
+Summary: 57 checks, 0 failed, 0 warnings
+```
+
+**В commit должны попасть:**
+
+- `data/gameplay_runtime.json`
+- `docs/AI_PATCHER_WORKLOG.md`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `script.js`
+- `tools/validate_runtime_configs.js`
+
+**Что за пачка:**
+
+- вынесены `inventory_feedback.inventory_errors`;
+- вынесены `inventory_feedback.trade_errors`;
+- добавлен `inventory_unlock` runtime config;
+- расширены `inventory_commands` aliases;
+- inventory/action/trade feedback переведён на data-driven keys;
+- остаточные `idle` / `in_trade` trade checks переведены на `inventory_movement.states`;
+- Phase 6 отмечается как закрытый крупный блок, следующий этап — Phase 8.
+
+**Риск:** низкий для checkpoint. Код уже прошёл smoke-check; этот patch только фиксирует результат и отправляет его в GitHub.

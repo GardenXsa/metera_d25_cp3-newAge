@@ -6,9 +6,9 @@
 
 ## Текущий статус
 
-**Текущая фаза:** Full data-driven migration — обязательный полный перенос engine/runtime/data слоёв
+**Текущая фаза:** Phase 8 — `ProtoSystem/sityGen.html` / city generation data-driven слой
 
-**Последняя зелёная точка:** smoke-check `57 checks, 0 failed, 0 warnings` после `fix_current_phase_progress_for_full_migration_mandate`.
+**Последняя зелёная точка:** smoke-check `57 checks, 0 failed, 0 warnings` после `phase6_big_inventory_action_feedback_errors`.
 
 **Git checkpoint:** `76b2df5` — `chore: advance phase6 inventory runtime migration`.
 
@@ -33,7 +33,13 @@
 
 ### Что обязательно осталось для полного переноса
 
-- [ ] Закрыть Phase 6: fallback messages + inventory/action handler errors.
+- [x] Закрыть Phase 6: fallback messages + inventory/action handler errors.
+
+- [x] Вынести Phase 6 inventory/action feedback errors в `gameplay_runtime.inventory_feedback`.
+- [x] Вынести unlock/lockpick runtime settings.
+- [x] Расширить `inventory_commands` aliases для create/update/destroy/equip/unequip flows.
+- [x] Перевести trade validation errors на data-driven feedback keys.
+- [x] Заменить оставшиеся `idle`/`in_trade` trade checks на `inventory_movement.states`.
 - [ ] Закрыть Phase 8: `ProtoSystem/sityGen.html` / city generation data-driven слой.
 - [ ] Закрыть Phase 9: C++ engine data-driven слой.
 - [ ] Закрыть Phase 10: modding/data API слой.
@@ -65,10 +71,10 @@ Phase 7 diagnostic layer фактически закрыт: runtime config contr
 
 Вернуться к Phase 6 и продолжить перенос `script.js` маленькими безопасными кусками.
 
-1. Выполнить крупный Phase 6 audit: fallback messages + inventory/action handler errors в `script.js`.
-2. На основе audit сделать один средний/крупный subsystem patch, а не микрошаги.
-3. После зелёного результата сделать Git checkpoint.
-4. Затем перейти к обязательным крупным блокам: `ProtoSystem/sityGen.html`, C++ engine файлы, modding/data API слой. только в самых шумных местах.
+1. Сделать Git checkpoint для большого зелёного Phase 6 patch.
+2. Начать обязательный крупный Phase 8 patch: `ProtoSystem/sityGen.html` / city generation data-driven слой.
+3. После Phase 8 перейти к C++ engine data-driven слою.
+4. Дальше закрывать modding/data API слой и финальную runtime-проверку. только в самых шумных местах.
 2. После зелёного результата сделать Git checkpoint.
 3. Остановить обязательную data-driven миграцию V1 и перейти к разработке/проверке игрового прогресса.
 4. Phase 8/9/10/12 считать backlog, а не блокером текущей работы.
