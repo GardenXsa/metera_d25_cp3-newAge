@@ -1216,6 +1216,17 @@ git status --short
 
 **Результат:** успешно.
 
+- Worklog Viewer теперь умеет сопоставлять `Full data-driven migration` с секцией `Full migration mandate`;
+- `currentPhaseFill` найден;
+- `findCurrentPhaseProgress()` найден;
+- smoke-check зелёный: `57 checks, 0 failed, 0 warnings`;
+- текущий git status показывает изменения в `docs/AI_PATCHER_WORKLOG.md`, `docs/DATA_DRIVEN_MIGRATION_PLAN.md`, `tools/worklog_viewer.html`.
+
+**Следующий рабочий блок:** крупный Phase 6 audit по fallback messages + inventory/action handler errors, затем один средний/крупный subsystem patch вместо микрошагов.
+
+
+**Результат:** успешно.
+
 - `tools/worklog_viewer.html` получил отдельный progress bar текущей фазы;
 - parser `findCurrentPhaseProgress()` найден;
 - smoke-check зелёный: `57 checks, 0 failed, 0 warnings`;
@@ -1500,7 +1511,7 @@ git status --short
 
 ### 27. `git_checkpoint_after_phase6_medium_inventory_and_viewer_progress`
 
-**Статус:** ожидает выполнения Git checkpoint.
+**Статус:** выполнен успешно.
 
 **Что делаем:**
 
@@ -1532,3 +1543,169 @@ Summary: 57 checks, 0 failed, 0 warnings
 - правила проекта обновлены под command-only patches и corrected-block workflow.
 
 **Риск:** низкий. Код уже прошёл smoke-check; этот patch только фиксирует checkpoint и запускает Git-команды.
+
+
+**Проверки перед commit:**
+
+```bash
+node tools/runtime_smoke_check.js
+```
+
+**Результат:** успешно. Smoke-check перед commit зелёный: `57 checks, 0 failed, 0 warnings`.
+
+**Git результат:**
+
+```text
+commit: 76b2df5
+message: chore: advance phase6 inventory runtime migration
+push: df96baa..76b2df5 master -> master
+```
+
+**Финальный git status:** чистый. `git status --short` не вывел незакоммиченных изменений.
+
+**Примечание:** Git предупредил, что `.gitignore` может быть приведён к CRLF при следующем касании файла. Это не ошибка checkpoint.
+
+
+
+---
+
+### 28. `reframe_data_driven_migration_to_v1_cutoff`
+
+**Статус:** отменён как неверная стратегия.
+
+**Изменено:**
+
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Честно меняем стратегию: прекращаем вести data-driven перенос как бесконечную полную миграцию всего проекта.
+
+Новая цель — `Migration V1 cutoff`:
+
+- закрыть полезный runtime/data слой;
+- оставить один финальный средний patch по самым шумным fallback messages + inventory/action handler errors;
+- после зелёного результата сделать Git checkpoint;
+- затем остановить обязательную миграцию и вернуться к игровому прогрессу.
+
+**Почему:**
+
+Пользователь занимается переносом больше полумесяца, это уже ломает планы. Полный перенос всех будущих Phase 8/9/10/12 не должен блокировать разработку игры.
+
+**Решение:**
+
+Phase 8/9/10/12 переводятся в backlog после Migration V1, если они не нужны прямо сейчас для игровой задачи.
+
+**Риск:** низкий. Меняется план работ, не runtime-код.
+
+
+**Итог:** стратегия `Migration V1 cutoff` признана неверной. Пользователь уточнил, что ему нужен полный data-driven перенос движка, иначе дальнейшая работа физически блокируется. Phase 8/9/10/12 не являются backlog — это обязательные этапы полного переноса.
+
+**Проверки после применения:**
+
+```bash
+node -e "const fs=require('fs'); const plan=fs.readFileSync('docs/DATA_DRIVEN_MIGRATION_PLAN.md','utf8'); if(!plan.includes('Migration V1 cutoff')) throw new Error('V1 cutoff missing'); if(!plan.includes('Phase 8/9/10/12')) throw new Error('backlog rule missing'); console.log('migration V1 cutoff plan OK')"
+node tools/runtime_smoke_check.js
+git status --short
+```
+
+
+
+---
+
+### 29. `restore_full_data_driven_migration_mandate`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Исправляем ошибочный курс `Migration V1 cutoff`.
+
+Новая/уточнённая цель:
+
+- полный data-driven перенос обязателен;
+- Phase 8/9/10/12 не являются опциональным backlog;
+- перенос продолжается до полного data-driven engine/runtime/data слоя;
+- дальше работаем крупными subsystem-патчами, чтобы прогресс был ощутимым.
+
+**Почему:**
+
+Пользователь прямо уточнил: без полного переноса он не может физически продолжать дальнейшую разработку проекта.
+
+**Следующий рабочий блок:**
+
+Крупный Phase 6 patch: fallback messages + inventory/action handler errors. После него — Git checkpoint и переход к Phase 8/9 крупными блоками.
+
+**Риск:** низкий. Меняется план и worklog, runtime-код не затрагивается.
+
+
+**Проверки:**
+
+```bash
+node tools/runtime_smoke_check.js
+git status --short
+```
+
+**Результат:** успешно. Smoke-check зелёный: `57 checks, 0 failed, 0 warnings`.
+
+**Примечание:** первая verification-команда упала не из-за плана, а из-за кодировки русской строки в `node -e`. Дальше проверки для таких случаев должны искать ASCII-маркеры вроде `Full migration mandate`, `Phase 8/9/10/12`, `restore_full_data_driven_migration_mandate`, а не длинные русские фразы.
+
+**Итог:** частичный `Migration V1 cutoff` отменён. Полный data-driven перенос снова является обязательной целью проекта.
+
+**Проверки после применения:**
+
+```bash
+node -e "const fs=require('fs'); const plan=fs.readFileSync('docs/DATA_DRIVEN_MIGRATION_PLAN.md','utf8'); if(!plan.includes('Full migration mandate')) throw new Error('full migration mandate missing'); if(!plan.includes('Phase 8/9/10/12 не являются backlog')) throw new Error('mandatory phases rule missing'); const log=fs.readFileSync('docs/AI_PATCHER_WORKLOG.md','utf8'); if(!log.includes('restore_full_data_driven_migration_mandate')) throw new Error('entry 29 missing'); console.log('full migration mandate restored OK')"
+node tools/runtime_smoke_check.js
+git status --short
+```
+
+
+
+---
+
+### 30. `fix_current_phase_progress_for_full_migration_mandate`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `tools/worklog_viewer.html`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Исправляем Worklog Viewer после возврата к полному data-driven переносу.
+
+**Проблема:**
+
+После замены текущей фазы на `Full data-driven migration — обязательный полный перенос engine/runtime/data слоёв` viewer не смог сопоставить её с чеклистом. Parser текущей фазы умел искать только `Phase N`, поэтому в UI отображалось:
+
+```text
+Не удалось сопоставить текущую фазу с чеклистом ниже.
+```
+
+**Решение:**
+
+- `extractMigrationProgress()` теперь учитывает секцию `## Full migration mandate` как фазу прогресса;
+- `findCurrentPhaseProgress()` сопоставляет текущую фазу `Full data-driven migration...` с секцией `Full migration mandate`.
+
+**Зачем:**
+
+Теперь отдельный progress bar текущей фазы снова должен двигаться и показывать прогресс полного обязательного переноса, а не `—`.
+
+**Риск:** низкий. Игровой runtime не затрагивается, меняется только viewer.
+
+**Проверки:**
+
+```bash
+node -e "const fs=require('fs'); const viewer=fs.readFileSync('tools/worklog_viewer.html','utf8'); if(!viewer.includes('Full migration mandate')) throw new Error('full migration viewer marker missing'); if(!viewer.includes('full\\s+data-driven\\s+migration')) throw new Error('full migration phase matcher missing'); console.log('full migration phase viewer matching OK')"
+node tools/runtime_smoke_check.js
+git status --short
+```

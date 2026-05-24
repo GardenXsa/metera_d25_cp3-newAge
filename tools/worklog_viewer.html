@@ -334,7 +334,7 @@
       let done = 0;
 
       for (const line of lines) {
-        const phaseMatch = line.match(/^##\s+(Phase\s+\d+\s+—\s+.+)$/i);
+        const phaseMatch = line.match(/^##\s+((?:Phase\s+\d+\s+—\s+.+)|Full migration mandate)$/i);
         if (phaseMatch) {
           current = { title: phaseMatch[1].trim(), total: 0, done: 0 };
           phases.push(current);
@@ -359,9 +359,14 @@
       const currentLine = (md || '').split(/\r?\n/).find(line => line.startsWith('**Текущая фаза:**')) || '';
       const currentTitle = currentLine.replace('**Текущая фаза:**', '').trim();
       const phaseNumber = (currentTitle.match(/Phase\s+(\d+)/i) || [])[1];
-      const phase = phaseNumber
+      let phase = phaseNumber
         ? phases.find(item => item.title.toLowerCase().includes(`phase ${phaseNumber}`))
         : null;
+
+      if (!phase && /full\s+data-driven\s+migration/i.test(currentTitle)) {
+        phase = phases.find(item => item.title.toLowerCase() === 'full migration mandate');
+      }
+
       return { currentTitle, phase };
     }
 

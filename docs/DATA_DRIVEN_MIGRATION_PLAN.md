@@ -6,11 +6,52 @@
 
 ## Текущий статус
 
-**Текущая фаза:** Phase 6 continuation — `script.js`: actions, inventory commands, handlers
+**Текущая фаза:** Full data-driven migration — обязательный полный перенос engine/runtime/data слоёв
 
-**Последняя зелёная точка:** smoke-check `57 checks, 0 failed, 0 warnings` после `improve_worklog_viewer_phase_progress_visibility`.
+**Последняя зелёная точка:** smoke-check `57 checks, 0 failed, 0 warnings` после `fix_current_phase_progress_for_full_migration_mandate`.
 
-**Git checkpoint:** `df96baa` — `chore: extend data-driven runtime validation and inventory config`.
+**Git checkpoint:** `76b2df5` — `chore: advance phase6 inventory runtime migration`.
+
+
+## Full migration mandate
+
+Это обязательная граница проекта: перенос не считается завершённым, пока engine/runtime/data слои не переведены на data-driven архитектуру полностью.
+
+### Что уже закрыто как фундамент
+
+- [x] Runtime manifest подключает основные data/runtime файлы.
+- [x] UI runtime вынесен в `data/ui_runtime.json`.
+- [x] Electron runtime вынесен в `data/electron_runtime.json`.
+- [x] Prompt runtime вынесен в `data/prompt_runtime.json`.
+- [x] Gameplay runtime вынесен в `data/gameplay_runtime.json`.
+- [x] Inventory actor routes, movement settings, buildContainer defaults и transfer/loot/command settings вынесены из `script.js`.
+- [x] Runtime config validator добавлен.
+- [x] Data integrity validator добавлен.
+- [x] Smoke-check зелёный: `57 checks, 0 failed, 0 warnings`.
+- [x] Worklog Viewer показывает общий прогресс и прогресс текущей фазы.
+- [x] Git checkpoint `76b2df5` запушен.
+
+### Что обязательно осталось для полного переноса
+
+- [ ] Закрыть Phase 6: fallback messages + inventory/action handler errors.
+- [ ] Закрыть Phase 8: `ProtoSystem/sityGen.html` / city generation data-driven слой.
+- [ ] Закрыть Phase 9: C++ engine data-driven слой.
+- [ ] Закрыть Phase 10: modding/data API слой.
+- [ ] Закрыть Phase 11: cleanup старых костылей.
+- [ ] Закрыть Phase 12: финальная runtime-проверка.
+
+### Честное правило
+
+Нельзя предлагать остановить миграцию как `достаточно хорошую`, если core engine/runtime/data слой ещё не полностью data-driven. Пользователю нужен полный перенос, потому что без него дальнейшая разработка физически блокируется.
+
+### Новый режим скорости
+
+Дальше работаем не микрошагами, а крупными subsystem-патчами:
+
+1. один patch должен закрывать полноценный слой или связанный набор правил;
+2. каждый patch обязан обновлять `AI_PATCHER_WORKLOG.md` и `DATA_DRIVEN_MIGRATION_PLAN.md`;
+3. после зелёного subsystem-патча — Git checkpoint;
+4. если patch частично зелёный, исправляем только проблемные блоки, не пересылаем весь patch заново.
 
 ## Ближайшие следующие шаги
 
@@ -24,9 +65,13 @@ Phase 7 diagnostic layer фактически закрыт: runtime config contr
 
 Вернуться к Phase 6 и продолжить перенос `script.js` маленькими безопасными кусками.
 
-1. Сделать Git checkpoint, включив `.gitignore`, обновлённые docs, Phase 6 movement/settings изменения и улучшенный progress viewer.
-2. Затем сделать следующий средний Phase 6 subsystem-патч: fallback messages + inventory/action handler errors.
-3. После этого перейти к следующему крупному блоку Phase 6 или Phase 8, если inventory/action слой достаточно очищен.
+1. Выполнить крупный Phase 6 audit: fallback messages + inventory/action handler errors в `script.js`.
+2. На основе audit сделать один средний/крупный subsystem patch, а не микрошаги.
+3. После зелёного результата сделать Git checkpoint.
+4. Затем перейти к обязательным крупным блокам: `ProtoSystem/sityGen.html`, C++ engine файлы, modding/data API слой. только в самых шумных местах.
+2. После зелёного результата сделать Git checkpoint.
+3. Остановить обязательную data-driven миграцию V1 и перейти к разработке/проверке игрового прогресса.
+4. Phase 8/9/10/12 считать backlog, а не блокером текущей работы.
 4. После каждого куска запускать `node tools/runtime_smoke_check.js`.
 5. Обновлять `docs/AI_PATCHER_WORKLOG.md` и чекбоксы этого плана.
 
