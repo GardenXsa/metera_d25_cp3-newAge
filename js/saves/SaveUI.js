@@ -1,4 +1,4 @@
-// --- ИНТЕРФЕЙС СОХРАНЕНИЙ (Отрисовка списков, Модальные окна) ---
+// ---   ( ,  ) ---
 
 function escapeHTML(str) {
     if (!str) return '';
@@ -71,7 +71,7 @@ function createSaveListItem(saveData) {
     const formattedDate = date.toLocaleString(currentLanguage, { dateStyle: 'short', timeStyle: 'short' });
     const playerName = saveData.playerData?.name || '???';
     const slotDesc = t(saveData.slotType === 'manual' ? 'loadGame.manualSlot' : 'loadGame.autoSlot', { id: saveData.slotId });
-    const sourceInfo = saveData.fileName ? '(ФС)' : '(LS)';
+    const sourceInfo = saveData.fileName ? '()' : '(LS)';
 
     li.innerHTML = `
         <div class="save-info">
@@ -93,7 +93,7 @@ async function promptManualSave() {
     if (!player) return;
 
     if (isWaitingForAI) {
-        showCustomAlert("Невозможно сохранить игру, пока Мастер Игры обдумывает ход.");
+        showCustomAlert("  ,     .");
         return;
     }
 
@@ -102,16 +102,16 @@ async function promptManualSave() {
     const closeBtn = document.getElementById('close-save-modal-button');
 
     if (!modal || !container) {
-        console.error("Модальное окно сохранения не найдено в HTML!");
+        console.error("      HTML!");
         return;
     }
 
-    // МГНОВЕННО показываем окно с индикатором загрузки, чтобы не было ощущения зависания
-    container.innerHTML = '<p style="text-align:center; color:#5dade2; padding: 20px; font-size: 1.2em;"><i class="fas fa-spinner fa-spin"></i> Чтение слотов...</p>';
+    //      ,     
+    container.innerHTML = '<p style="text-align:center; color:#5dade2; padding: 20px; font-size: 1.2em;"><i class="fas fa-spinner fa-spin"></i>  ...</p>';
     modal.style.display = 'flex';
     setTimeout(() => modal.classList.add('visible'), 10);
 
-    // Получаем список сохранений (Electron или LocalStorage)
+    //    (Electron  LocalStorage)
     let currentSaves = [];
     if (window.electronAPI && window.electronAPI.isElectron) {
         try {
@@ -123,10 +123,10 @@ async function promptManualSave() {
         currentSaves = ls.manual || [];
     }
 
-    // Очищаем контейнер от надписи "Загрузка"
+    //     ""
     container.innerHTML = '';
 
-    // Генерируем 5 кнопок для слотов
+    //  5   
     for (let i = 1; i <= MAX_MANUAL_SAVES; i++) {
         const btn = document.createElement('button');
         btn.className = 'save-slot-btn';
@@ -136,29 +136,29 @@ async function promptManualSave() {
         if (window.electronAPI && window.electronAPI.isElectron) {
             const file = currentSaves.find(f => f.filename.includes(`_manual_${i}.json`));
             if (file) {
-                const dateStr = file.timestamp ? new Date(file.timestamp).toLocaleString() : "Занято";
-                const name = escapeHTML(file.playerData?.name || "Герой");
+                const dateStr = file.timestamp ? new Date(file.timestamp).toLocaleString() : "";
+                const name = escapeHTML(file.playerData?.name || "");
                 const lvl = file.playerData?.stats?.level || "?";
-                existingInfo = `${name} (Ур.${lvl}) - ${escapeHTML(dateStr)}`;
+                existingInfo = `${name} (.${lvl}) - ${escapeHTML(dateStr)}`;
             }
         } else {
             const save = currentSaves.find(s => s.slotId === i);
             if (save) {
                 const dateStr = new Date(save.timestamp).toLocaleString();
-                existingInfo = `${escapeHTML(save.playerData.name)} (Ур.${save.playerData.stats.level}) - ${escapeHTML(dateStr)}`;
+                existingInfo = `${escapeHTML(save.playerData.name)} (.${save.playerData.stats.level}) - ${escapeHTML(dateStr)}`;
             }
         }
 
-        const infoText = existingInfo || "Пустой слот";
+        const infoText = existingInfo || " ";
 
         btn.innerHTML = `
-            <span class="save-slot-id">Слот ${i}</span>
+            <span class="save-slot-id"> ${i}</span>
             <span class="save-slot-info">${escapeHTML(infoText)}</span>
         `;
 
         btn.onclick = async () => {
             if (existingInfo) {
-                const confirmMsg = `Перезаписать слот ${i}?\n(${infoText})`;
+                const confirmMsg = `  ${i}?\n(${infoText})`;
                 if (typeof showCustomConfirm === 'function') {
                     const confirmed = await new Promise(resolve => showCustomConfirm(confirmMsg, () => resolve(true)));
                     if (!confirmed) return;
@@ -167,24 +167,24 @@ async function promptManualSave() {
                 }
             }
 
-            btn.innerHTML = `<span class="save-slot-info" style="text-align:center; width:100%; color:#f1c40f;"><i class="fas fa-spinner fa-spin"></i> Сохранение...</span>`;
+            btn.innerHTML = `<span class="save-slot-info" style="text-align:center; width:100%; color:#f1c40f;"><i class="fas fa-spinner fa-spin"></i> ...</span>`;
             btn.style.pointerEvents = 'none';
 
             const success = await saveGame('manual', i);
 
             if (success) {
-                showCustomAlert(`Игра успешно сохранена в слот ${i}!`);
+                showCustomAlert(`     ${i}!`);
                 modal.classList.remove('visible');
                 setTimeout(() => modal.style.display = 'none', 300);
             } else {
-                promptManualSave(); // Перерисовываем при ошибке
+                promptManualSave(); //   
             }
         };
 
         container.appendChild(btn);
     }
 
-    // Логика закрытия
+    //  
     const closeModal = () => {
         modal.classList.remove('visible');
         setTimeout(() => modal.style.display = 'none', 300);

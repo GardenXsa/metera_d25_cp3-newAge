@@ -1,4 +1,4 @@
-﻿function getRuntimeDataUtils() {
+function getRuntimeDataUtils() {
     if (!window.RuntimeDataUtils) {
         throw new Error('RuntimeDataUtils is not loaded.');
     }
@@ -95,7 +95,7 @@ async function hydratePromptPack(promptPack) {
                 entry.content = await loadTextAsset(entry.path);
             } catch (error) {
                 console.warn(`[RuntimeData] Failed to hydrate prompt "${semanticKey}" from ${entry.path}:`, error);
-                entry.content = `РћС€РёР±РєР°: РЅРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ prompt "${semanticKey}" РёР· ${entry.path}. ${error.message}`;
+                entry.content = `:    prompt "${semanticKey}"  ${entry.path}. ${error.message}`;
             }
         }
         utils.ensurePromptAlias(hydratedPack, semanticKey, entry.path);
@@ -106,7 +106,7 @@ async function hydratePromptPack(promptPack) {
 
 async function initModKit() {
     if (window.ModAPI && window.ModAPI.initialized) return;
-    console.log('[ModKit] РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РіР»РѕР±Р°Р»СЊРЅРѕРіРѕ API РјРѕРґРѕРІ...');
+    console.log('[ModKit]   API ...');
     const modLoader = new ModLoader();
     
     if (!window.electronAPI || !window.electronAPI.isElectron) {
@@ -330,7 +330,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
     if (window.isSimulatorInitialized) return typeof World !== 'undefined' ? World : null;
     
     if (typeof showLoadingScreen === 'function') {
-        showLoadingScreen('loadingScreen.generatingWorld', 'РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ СЃРёРјСѓР»СЏС‚РѕСЂР° (СЃ РјРѕРґР°РјРё)...');
+        showLoadingScreen('loadingScreen.generatingWorld', '  ( )...');
     }
 
     try {
@@ -346,7 +346,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         if (typeof populateRacesUI === 'function') populateRacesUI(database.races);
         if (typeof populateClassesUI === 'function') populateClassesUI(database.classes);
 
-        console.log('[ModLoader] Р‘Р°Р·Р° РґР°РЅРЅС‹С… СЃРѕР±СЂР°РЅР°. РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ C++ СЏРґСЂР°...');
+        console.log('[ModLoader]   .  C++ ...');
         
         const activeModIds = Object.keys(window.ModAPI.mods);
         const initResult = await window.electronAPI.nexusInit(true, activeModIds);
@@ -354,7 +354,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
             throw new Error(`Nexus Engine init failed: ${initResult.message}`);
         }
 
-        console.log('[ModLoader] РЇРґСЂРѕ Р·Р°РїСѓС‰РµРЅРѕ. Р—Р°РіСЂСѓР·РєР° Р±Р°Р·С‹ РґР°РЅРЅС‹С…...');
+        console.log('[ModLoader]  .   ...');
         const databaseString = JSON.stringify(database);
         const loadDbResult = await window.electronAPI.nexusLoadDatabase(databaseString);
 
@@ -369,7 +369,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         }
 
         if (typeof showLoadingScreen === 'function') {
-            showLoadingScreen('loadingScreen.generatingWorld', 'РџРѕСЃС‚СЂРѕРµРЅРёРµ РјРёСЂР°...');
+            showLoadingScreen('loadingScreen.generatingWorld', ' ...');
         }
         
         const buildResult = await window.electronAPI.nexusBuildWorld(player.id, player.era, initialAgents, globalLocations, startDay);
@@ -386,7 +386,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
     } catch (error) {
         console.error("CRITICAL: World simulator initialization failed:", error);
         if (typeof showAiErrorModal === 'function') {
-            showAiErrorModal(error.message, true, null, "РћС€РёР±РєР° РёРЅРёС†РёР°Р»РёР·Р°С†РёРё СЏРґСЂР°");
+            showAiErrorModal(error.message, true, null, "  ");
         }
         window.isSimulatorInitialized = false;
         return null;

@@ -1,11 +1,11 @@
 /**
  * ModLoader.js (ModKit v2.0)
  * 
- * Универсальная система загрузки модификаций. Поддерживает выполнение 
- * кастомных скриптов (RimWorld-like) и декларативную загрузку данных через хуки.
+ *    .   
+ *   (RimWorld-like)      .
  */
 
-// Утилита для глубокого слияния объектов.
+//     .
 function mergeDeep(target, ...sources) {
     if (!sources.length) return target;
     const source = sources.shift();
@@ -79,28 +79,28 @@ window.ModAPI = {
     addCommand: function(commandName, handler, docs) {
         this.customCommands[commandName] = handler;
         if (docs) this.commandDocs.push(docs);
-        console.log(`[ModAPI] Зарегистрирована кастомная ГМ команда: ${commandName}`);
+        console.log(`[ModAPI]    : ${commandName}`);
     },
 
     // Issue #4: addPromptInjection with validation and length limit
     addPromptInjection: function(text) {
         if (typeof text !== 'string') {
-            console.error('[ModAPI] addPromptInjection: аргумент должен быть строкой');
+            console.error('[ModAPI] addPromptInjection:    ');
             return;
         }
         if (text.length > 2000) {
-            console.warn('[ModAPI] addPromptInjection: текст обрезан до 2000 символов');
+            console.warn('[ModAPI] addPromptInjection:    2000 ');
             text = text.substring(0, 2000);
         }
         this.promptInjections.push(text);
-        console.log(`[ModAPI] Добавлена инъекция в системный промпт ИИ.`);
+        console.log(`[ModAPI]      .`);
     },
 
     // Issue #10: Improved error message for patchFunction
     // Issue #2: Store original function for rollback
     patchFunction: function(obj, funcName, patchCallback) {
         if (!obj || typeof obj !== 'object' || typeof obj[funcName] !== 'function') {
-            console.error(`[ModAPI] Ошибка патчинга: первый аргумент должен быть объектом с функцией ${funcName}. Получен тип: ${typeof obj}`);
+            console.error(`[ModAPI]  :        ${funcName}.  : ${typeof obj}`);
             return;
         }
         const original = obj[funcName];
@@ -109,7 +109,7 @@ window.ModAPI = {
         obj[funcName] = function(...args) {
             return patchCallback(original.bind(this), ...args);
         };
-        console.log(`[ModAPI] Функция ${funcName} успешно пропатчена (Monkey-patch).`);
+        console.log(`[ModAPI]  ${funcName}   (Monkey-patch).`);
     },
 
     // Issue #2: unpatchFunction - restore original function
@@ -117,9 +117,9 @@ window.ModAPI = {
         if (this._originalFunctions[funcName]) {
             obj[funcName] = this._originalFunctions[funcName];
             delete this._originalFunctions[funcName];
-            console.log(`[ModAPI] Функция ${funcName} восстановлена из оригинала.`);
+            console.log(`[ModAPI]  ${funcName}   .`);
         } else {
-            console.warn(`[ModAPI] unpatchFunction: оригинал для ${funcName} не найден.`);
+            console.warn(`[ModAPI] unpatchFunction:   ${funcName}  .`);
         }
     },
 
@@ -136,7 +136,7 @@ window.ModAPI = {
                 this._injectedUI.push({ element: addedElement, targetSelector });
             }
         } else {
-            console.error(`[ModAPI] Селектор ${targetSelector} не найден для addUI.`);
+            console.error(`[ModAPI]  ${targetSelector}    addUI.`);
         }
     },
 
@@ -173,28 +173,28 @@ window.ModAPI = {
 
     registerHotkey: function(keyCombo, callback) {
         this.hotkeys[keyCombo.toLowerCase()] = callback;
-        console.log(`[ModAPI] Зарегистрирован хоткей: ${keyCombo}`);
+        console.log(`[ModAPI]  : ${keyCombo}`);
     },
 
     // Issue #2: unregisterHotkey
     unregisterHotkey: function(keyCombo) {
         delete this.hotkeys[keyCombo.toLowerCase()];
-        console.log(`[ModAPI] Удалён хоткей: ${keyCombo}`);
+        console.log(`[ModAPI]  : ${keyCombo}`);
     },
 
     addPromptFilter: function(callback) {
         this.promptFilters.push(callback);
-        console.log(`[ModAPI] Зарегистрирован фильтр промптов ИИ.`);
+        console.log(`[ModAPI]    .`);
     },
 
     addResponseFilter: function(callback) {
         this.responseFilters.push(callback);
-        console.log(`[ModAPI] Зарегистрирован фильтр ответов ИИ.`);
+        console.log(`[ModAPI]    .`);
     },
 
     addTextFilter: function(callback) {
         this.textFilters.push(callback);
-        console.log(`[ModAPI] Зарегистрирован глобальный текстовый фильтр.`);
+        console.log(`[ModAPI]    .`);
     },
 
     // Issue #8: Log error instead of silently swallowing in applyTextFilters
@@ -202,7 +202,7 @@ window.ModAPI = {
         if (!this.textFilters || this.textFilters.length === 0 || typeof text !== 'string') return text;
         let result = text;
         for (const filter of this.textFilters) {
-            try { result = filter(result) || result; } catch(e) { console.error('[ModAPI] Ошибка в текстовом фильтре:', e); }
+            try { result = filter(result) || result; } catch(e) { console.error('[ModAPI]    :', e); }
         }
         return result;
     },
@@ -210,7 +210,7 @@ window.ModAPI = {
     addTranslations: function(lang, translationsObj) {
         if (!this.customTranslations[lang]) this.customTranslations[lang] = {};
         this.mergeDeep(this.customTranslations[lang], translationsObj);
-        console.log(`[ModAPI] Загружены кастомные переводы для языка: ${lang}`);
+        console.log(`[ModAPI]     : ${lang}`);
     },
 
     setString: function(lang, path, value) {
@@ -223,25 +223,25 @@ window.ModAPI = {
             current = current[key];
         }
         current[lastKey] = value;
-        console.log(`[ModAPI] Перезаписана строка локализации: ${lang} -> ${path}`);
+        console.log(`[ModAPI]   : ${lang} -> ${path}`);
     },
 
     registerSaveData: function(modId, onSaveCallback, onLoadCallback) {
         this.saveHandlers[modId] = { onSave: onSaveCallback, onLoad: onLoadCallback };
-        console.log(`[ModAPI] Мод ${modId} зарегистрирован в системе сохранений.`);
+        console.log(`[ModAPI]  ${modId}    .`);
     },
 
     // Issue #2: removeSaveHandler
     removeSaveHandler: function(modId) {
         delete this.saveHandlers[modId];
-        console.log(`[ModAPI] Удалён обработчик сохранений для мода: ${modId}`);
+        console.log(`[ModAPI]     : ${modId}`);
     },
 
     sendRawToEngine: async function(command, args) {
         if (window.electronAPI && window.electronAPI.nexusSendRawCommand) {
             return await window.electronAPI.nexusSendRawCommand(command, args);
         }
-        console.error("[ModAPI] Ошибка: IPC канал nexusSendRawCommand недоступен.");
+        console.error("[ModAPI] : IPC  nexusSendRawCommand .");
         return null;
     },
 
@@ -263,7 +263,7 @@ window.ModAPI = {
         const tabsContainer = document.querySelector('.settings-tabs');
         const contentContainer = document.querySelector('.settings-content');
         if (!tabsContainer || !contentContainer) {
-            console.error(`[ModAPI] Не удалось найти контейнеры настроек для вкладки ${tabId}`);
+            console.error(`[ModAPI]        ${tabId}`);
             return;
         }
 
@@ -286,7 +286,7 @@ window.ModAPI = {
 
         tabsContainer.appendChild(btn);
         contentContainer.insertBefore(content, contentContainer.lastElementChild);
-        console.log(`[ModAPI] Добавлена вкладка настроек: ${tabTitle}`);
+        console.log(`[ModAPI]   : ${tabTitle}`);
     },
 
     on: function(eventName, callback) {
@@ -307,7 +307,7 @@ window.ModAPI = {
                 try {
                     await callback(...args);
                 } catch (e) {
-                    console.error(`[ModAPI] Ошибка в хуке ${eventName}:`, e);
+                    console.error(`[ModAPI]    ${eventName}:`, e);
                 }
             }
         }
@@ -328,7 +328,7 @@ window.ModAPI = {
             const content = await this.readFile(modId, fileName);
             return content ? JSON.parse(content) : null;
         } catch (e) {
-            console.error(`[ModAPI] Ошибка чтения JSON ${fileName} из мода ${modId}:`, e);
+            console.error(`[ModAPI]   JSON ${fileName}   ${modId}:`, e);
             return null;
         }
     },
@@ -337,14 +337,14 @@ window.ModAPI = {
     removeCommand: function(commandName) {
         delete this.customCommands[commandName];
         this.commandDocs = this.commandDocs.filter(d => d.name !== commandName);
-        console.log(`[ModAPI] Удалена кастомная ГМ команда: ${commandName}`);
+        console.log(`[ModAPI]    : ${commandName}`);
     },
 
     // Issue #2: unloadMod - full cleanup for a specific mod
     unloadMod: function(modId) {
         const mod = this.mods[modId];
         if (!mod) {
-            console.warn(`[ModAPI] unloadMod: мод ${modId} не найден.`);
+            console.warn(`[ModAPI] unloadMod:  ${modId}  .`);
             return;
         }
 
@@ -388,7 +388,7 @@ window.ModAPI = {
         // Remove from mods registry
         delete this.mods[modId];
 
-        console.log(`[ModAPI] Мод ${modId} полностью выгружен.`);
+        console.log(`[ModAPI]  ${modId}  .`);
     },
     
     mergeDeep: mergeDeep
@@ -405,22 +405,22 @@ window.ModAPI = {
 //   |    with(sandboxProxy) { <mod code> }              |
 //   |                                                   |
 //   |  Every identifier lookup goes through:            |
-//   |    sandboxProxy.has() → always true               |
-//   |    sandboxProxy.get() → 3-tier resolution:        |
-//   |      1. Whitelisted safe globals → safe value     |
-//   |      2. Blocked globals → undefined + warning     |
-//   |      3. Game globals (window.X) → pass-through    |
+//   |    sandboxProxy.has()  always true               |
+//   |    sandboxProxy.get()  3-tier resolution:        |
+//   |      1. Whitelisted safe globals  safe value     |
+//   |      2. Blocked globals  undefined + warning     |
+//   |      3. Game globals (window.X)  pass-through    |
 //   |                                                   |
 //   |  window = safeWindowProxy:                        |
-//   |    window.player     → ✅ pass-through            |
-//   |    window.t          → ✅ pass-through            |
-//   |    window.fetch      → ❌ blocked + warning       |
-//   |    window.electronAPI → ❌ blocked + warning       |
+//   |    window.player       pass-through            |
+//   |    window.t            pass-through            |
+//   |    window.fetch        blocked + warning       |
+//   |    window.electronAPI   blocked + warning       |
 //   |                                                   |
 //   |  document = hardenedDocProxy:                     |
-//   |    document.createElement('div')    → ✅ allowed  |
-//   |    document.createElement('script') → ❌ blocked  |
-//   |    document.defaultView             → safeWindow  |
+//   |    document.createElement('div')      allowed  |
+//   |    document.createElement('script')   blocked  |
+//   |    document.defaultView              safeWindow  |
 //   +---------------------------------------------------+
 //
 
@@ -429,7 +429,7 @@ window.ModAPI = {
  * When a mod writes `fetch` or `eval`, the Proxy intercepts it
  * and returns undefined + logs a warning.
  *
- * NOTE: 'window' is NOT here — we provide a safe window proxy instead.
+ * NOTE: 'window' is NOT here  we provide a safe window proxy instead.
  */
 const SANDBOX_BLOCKED_GLOBALS = new Set([
     'top', 'parent', 'frames', 'contentWindow',
@@ -465,9 +465,9 @@ const SANDBOX_BLOCKED_GLOBALS = new Set([
  */
 const WINDOW_BLOCKED_PROPS = new Set([
     ...SANDBOX_BLOCKED_GLOBALS,
-    'window',    // window.window → return safe proxy (not real window)
-    'self',      // window.self  → return safe proxy
-    'globalThis',// window.globalThis → return safe proxy
+    'window',    // window.window  return safe proxy (not real window)
+    'self',      // window.self   return safe proxy
+    'globalThis',// window.globalThis  return safe proxy
     'crypto',
 ]);
 
@@ -487,16 +487,16 @@ const BLOCKED_CREATE_ELEMENTS = new Set([
  * Creates a safe `window` proxy for the mod sandbox.
  *
  * WHY: Existing mods use `window.player`, `window.t`, `window.updateCharacterSheet`, etc.
- * We can't simply block `window` — mods need game globals.
+ * We can't simply block `window`  mods need game globals.
  * Instead, we proxy `window` and block only dangerous properties.
  *
  * SECURITY:
- * - window.fetch       → ❌ blocked
- * - window.eval        → ❌ blocked
- * - window.electronAPI → ❌ blocked
- * - window.player      → ✅ pass-through (game global)
- * - window.t           → ✅ pass-through (game global)
- * - window.window      → returns safe proxy (not real window)
+ * - window.fetch         blocked
+ * - window.eval          blocked
+ * - window.electronAPI   blocked
+ * - window.player        pass-through (game global)
+ * - window.t             pass-through (game global)
+ * - window.window       returns safe proxy (not real window)
  */
 function createSafeWindowProxy(realWindow, modId, safeModAPI) {
     // We need a reference to the proxy itself for self-referencing properties.
@@ -505,7 +505,7 @@ function createSafeWindowProxy(realWindow, modId, safeModAPI) {
 
     const handler = {
         get(target, prop, receiver) {
-            // window.window / window.self / window.globalThis → return safe proxy
+            // window.window / window.self / window.globalThis  return safe proxy
             if (prop === 'window' || prop === 'self' || prop === 'globalThis') {
                 return safeWindowProxy;
             }
@@ -517,7 +517,7 @@ function createSafeWindowProxy(realWindow, modId, safeModAPI) {
 
             // Block dangerous properties
             if (WINDOW_BLOCKED_PROPS.has(prop)) {
-                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to access window.${prop} — blocked`);
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to access window.${prop}  blocked`);
                 return undefined;
             }
 
@@ -528,12 +528,12 @@ function createSafeWindowProxy(realWindow, modId, safeModAPI) {
         set(target, prop, value) {
             // Block writing to dangerous properties
             if (WINDOW_BLOCKED_PROPS.has(prop)) {
-                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to set window.${prop} — blocked`);
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to set window.${prop}  blocked`);
                 return true;
             }
             // Prevent overwriting ModAPI
             if (prop === 'ModAPI') {
-                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to overwrite window.ModAPI — blocked`);
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to overwrite window.ModAPI  blocked`);
                 return true;
             }
             // Allow setting game globals (mods may set window.player, etc.)
@@ -548,7 +548,7 @@ function createSafeWindowProxy(realWindow, modId, safeModAPI) {
 
         deleteProperty(target, prop) {
             if (WINDOW_BLOCKED_PROPS.has(prop)) {
-                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to delete window.${prop} — blocked`);
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to delete window.${prop}  blocked`);
                 return false;
             }
             delete realWindow[prop];
@@ -583,7 +583,7 @@ function createDocumentProxy(doc, safeWindowProxy, modId) {
                 return function(tagName, options) {
                     const tag = String(tagName).toLowerCase();
                     if (BLOCKED_CREATE_ELEMENTS.has(tag)) {
-                        console.error(`[ModLoader SANDBOX] Blocked document.createElement('${tag}') — not allowed in mod sandbox`);
+                        console.error(`[ModLoader SANDBOX] Blocked document.createElement('${tag}')  not allowed in mod sandbox`);
                         return target.createElement('div'); // inert element
                     }
                     return value.call(target, tagName, options);
@@ -595,7 +595,7 @@ function createDocumentProxy(doc, safeWindowProxy, modId) {
                 return function(namespace, tagName, options) {
                     const tag = String(tagName).toLowerCase();
                     if (BLOCKED_CREATE_ELEMENTS.has(tag)) {
-                        console.error(`[ModLoader SANDBOX] Blocked document.createElementNS('${tag}') — not allowed in mod sandbox`);
+                        console.error(`[ModLoader SANDBOX] Blocked document.createElementNS('${tag}')  not allowed in mod sandbox`);
                         return target.createElement('div');
                     }
                     return value.call(target, namespace, tagName, options);
@@ -633,9 +633,9 @@ function createDocumentProxy(doc, safeWindowProxy, modId) {
  *   which prevents the JS engine from falling through to the real global
  *   scope via the `with` statement.
  * - The `get` trap implements a 3-tier access policy:
- *   1. Whitelisted safe globals → return the safe value
- *   2. Explicitly blocked globals → return undefined + warn
- *   3. Game globals (on window but not blocked) → pass through
+ *   1. Whitelisted safe globals  return the safe value
+ *   2. Explicitly blocked globals  return undefined + warn
+ *   3. Game globals (on window but not blocked)  pass through
  *      This allows mods to use `player`, `updateCharacterSheet`, etc.
  *      Both bare identifiers and `window.X` forms work.
  */
@@ -658,7 +658,7 @@ function createModSandbox(modAPI, modId, modMeta) {
     }
     safeGlobals.ModAPI = Object.freeze(safeModAPI);
 
-    // Safe window proxy (must create early — document proxy needs it)
+    // Safe window proxy (must create early  document proxy needs it)
     const safeWindow = createSafeWindowProxy(window, modId, safeGlobals.ModAPI);
     safeGlobals.window = safeWindow;
 
@@ -763,14 +763,14 @@ function createModSandbox(modAPI, modId, modMeta) {
          * The `get` trap implements a 3-tier access policy:
          *
          * 1. Whitelisted safe globals (ModAPI, console, Math, etc.)
-         *    → return the safe value
+         *     return the safe value
          *
          * 2. Explicitly blocked globals (fetch, eval, electronAPI, etc.)
-         *    → return undefined + log warning
+         *     return undefined + log warning
          *
          * 3. Game globals (player, t, updateCharacterSheet, etc.)
          *    These are properties on `window` that are NOT in the blocked list.
-         *    → pass through from real window
+         *     pass through from real window
          *    This allows mods to use both bare identifiers (`player`)
          *    and `window.player` forms.
          */
@@ -782,7 +782,7 @@ function createModSandbox(modAPI, modId, modMeta) {
 
             // 2. If explicitly blocked, return undefined + warn
             if (SANDBOX_BLOCKED_GLOBALS.has(prop)) {
-                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to access blocked global "${prop}" — returned undefined`);
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to access blocked global "${prop}"  returned undefined`);
                 return undefined;
             }
 
@@ -796,7 +796,7 @@ function createModSandbox(modAPI, modId, modMeta) {
                 return window[prop];
             }
 
-            // 4. Unknown property — return undefined
+            // 4. Unknown property  return undefined
             return undefined;
         },
 
@@ -809,7 +809,7 @@ function createModSandbox(modAPI, modId, modMeta) {
         set(target, prop, value) {
             // Block overwriting our safe globals
             if (prop in target) {
-                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to overwrite sandbox property "${prop}" — blocked`);
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to overwrite sandbox property "${prop}"  blocked`);
                 return true;
             }
             // For game globals, pass through to window
@@ -827,7 +827,7 @@ function createModSandbox(modAPI, modId, modMeta) {
          */
         deleteProperty(target, prop) {
             if (prop in target) {
-                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to delete sandbox property "${prop}" — blocked`);
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to delete sandbox property "${prop}"  blocked`);
                 return false;
             }
             // Pass through to window for game globals
@@ -848,14 +848,14 @@ function createModSandbox(modAPI, modId, modMeta) {
  * The `with(sandboxProxy) { ... }` block redirects ALL identifier lookups
  * through the Proxy. Combined with the `has` trap returning `true` for
  * everything, this prevents mods from accessing the real global scope
- * through closures — they can only access what the Proxy allows.
+ * through closures  they can only access what the Proxy allows.
  *
  * Key security properties:
- * - `window` → safe proxy (blocks fetch, eval, electronAPI, etc.)
- * - `document` → blocks createElement('script'), defaultView, on* handlers
- * - `ModAPI` → deep-frozen (immutable)
- * - Bare `fetch`, `eval`, `require` → return undefined + warning
- * - Game globals (player, t, updateCharacterSheet) → pass through from window
+ * - `window`  safe proxy (blocks fetch, eval, electronAPI, etc.)
+ * - `document`  blocks createElement('script'), defaultView, on* handlers
+ * - `ModAPI`  deep-frozen (immutable)
+ * - Bare `fetch`, `eval`, `require`  return undefined + warning
+ * - Game globals (player, t, updateCharacterSheet)  pass through from window
  *
  * NOTE: Strict mode disables `with`, so we do NOT use "use strict" at the
  * outermost scope. The sandbox Proxy provides equivalent protection.
@@ -910,7 +910,7 @@ class ModLoader {
 
         if (sorted.length !== nodes.length) {
             const circular = nodes.filter(n => !sorted.includes(n));
-            return { sorted: [], error: `Обнаружена циклическая зависимость! Проверьте моды: ${circular.join(', ')}` };
+            return { sorted: [], error: `  !  : ${circular.join(', ')}` };
         }
 
         return { sorted, error: null };
@@ -922,12 +922,12 @@ class ModLoader {
         for (const mod of activeMods) {
             const errors = window.ModAPI._validateModMeta(mod);
             if (errors.length > 0) {
-                console.error(`[ModLoader] Мод "${mod.id || 'UNKNOWN'}" не прошёл валидацию. Пропускаю. Ошибки: ${errors.join('; ')}`);
+                console.error(`[ModLoader]  "${mod.id || 'UNKNOWN'}"   . . : ${errors.join('; ')}`);
                 continue;
             }
             // Issue #7: API versioning check - warn but don't block
             if (mod.apiVersion && mod.apiVersion !== window.ModAPI.apiVersion) {
-                console.warn(`[ModLoader] Мод ${mod.id} использует apiVersion "${mod.apiVersion}", текущая версия "${window.ModAPI.apiVersion}". Возможна несовместимость.`);
+                console.warn(`[ModLoader]  ${mod.id}  apiVersion "${mod.apiVersion}",   "${window.ModAPI.apiVersion}".  .`);
             }
             validatedMods.push(mod);
         }
@@ -951,25 +951,25 @@ class ModLoader {
             }
         }
 
-        console.log('[ModLoader] Порядок загрузки модов:', activeMods.map(m => m.id));
+        console.log('[ModLoader]   :', activeMods.map(m => m.id));
 
         // Issue #3: Check for multiple total_conversion mods
         const totalConversionMods = activeMods.filter(m => m.total_conversion === true);
         if (totalConversionMods.length > 1) {
-            console.error(`[ModLoader] ОШИБКА: Обнаружено ${totalConversionMods.length} модов тотальной конверсии! Только один может быть активен.`);
+            console.error(`[ModLoader] :  ${totalConversionMods.length}   !     .`);
             // Disable all but the first
             const kept = totalConversionMods[0];
             for (const m of totalConversionMods.slice(1)) {
-                console.error(`[ModLoader] Отключаю тотал-конверсию: ${m.id} (конфликтует с ${kept.id})`);
+                console.error(`[ModLoader]  -: ${m.id} (  ${kept.id})`);
                 activeMods = activeMods.filter(a => a.id !== m.id);
             }
         }
 
-        // Проверка на тотальную конверсию
+        //    
         for (const mod of activeMods) {
             if (mod.total_conversion === true) {
                 window.ModAPI.isTotalConversion = true;
-                console.log(`[ModLoader] АКТИВИРОВАН РЕЖИМ ТОТАЛЬНОЙ КОНВЕРСИИ модом: ${mod.id}. Ванильные ресурсы отключены.`);
+                console.log(`[ModLoader]     : ${mod.id}.   .`);
                 break;
             }
         }
@@ -981,13 +981,13 @@ class ModLoader {
             
             window.ModAPI.mods[modId] = mod;
 
-            // 1. Выполнение кастомных скриптов мода (RimWorld-like Assemblies/Scripts)
+            // 1.     (RimWorld-like Assemblies/Scripts)
             if (mod.scripts && Array.isArray(mod.scripts)) {
                 for (const scriptPath of mod.scripts) {
                     try {
                         const code = await window.ModAPI.readFile(modId, scriptPath);
                         if (code) {
-                            console.log(`[ModLoader] Выполнение скрипта: ${scriptPath} из мода ${modId}`);
+                            console.log(`[ModLoader]  : ${scriptPath}   ${modId}`);
 
                             // Issue #4 FULL: Execute mod in hardened with+Proxy sandbox.
                             // The with+Proxy pattern intercepts ALL identifier lookups,
@@ -997,80 +997,40 @@ class ModLoader {
                             // to the real global scope.
                             await executeModInSandbox(code, window.ModAPI, modId, mod);
                         } else {
-                            console.log(`[ModLoader] Скрипт ${scriptPath} пропущен (не найден в папке data/ мода ${modId}). Это нормально, если мод содержит только JSON.`);
+                            console.log(`[ModLoader]  ${scriptPath}  (    data/  ${modId}).  ,     JSON.`);
                         }
                     } catch (e) {
-                        console.error(`[ModLoader] Ошибка выполнения скрипта ${scriptPath} в моде ${modId}:`, e);
+                        console.error(`[ModLoader]    ${scriptPath}   ${modId}:`, e);
                     }
                 }
             }
 
-            // 2. Декларативная загрузка данных (опционально, если мод не использует скрипты)
+            // 2.    (,     )
             if (mod.data && isObject(mod.data)) {
                 window.ModAPI.on('onDatabaseLoad', async (db) => {
                     const runtimeUtils = window.RuntimeDataUtils;
-                    const keyAliases = {
-                        economy_items: 'items',
-                        economy_recipes: 'recipes',
-                        facility_names: 'facilities'
-                    };
-                    const mergePolicies = {
-                        items: 'deepMerge',
-                        recipes: 'append',
-                        facilities: 'deepMerge',
-                        eras: 'upsertById',
-                        classes: 'upsertById',
-                        biomes: 'upsertById',
-                        city_gen: 'deepMerge',
-                        monsters: 'upsertById',
-                        disasters: 'upsertById',
-                        races: 'upsertById',
-                        professions: 'upsertById',
-                        traits: 'upsertById',
-                        npc_names: 'deepMerge',
-                        faction_relations: 'deepMerge',
-                        world_config: 'deepMerge',
-                        equipment_slots: 'appendUnique',
-                        container_types: 'deepMerge',
-                        ship_types: 'deepMerge',
-                        diplomacy: 'deepMerge',
-                        casus_belli: 'deepMerge',
-                        furniture_catalog: 'deepMerge',
-                        tag_defaults: 'deepMerge',
-                        transport_registry: 'deepMerge',
-                        trek_config: 'deepMerge',
-                        narrators: 'upsertById',
-                        predefined_effects: 'upsertById',
-                        prompt_pack: 'deepMerge',
-                        world_assets: 'deepMerge',
-                        tile_dictionary: 'deepMerge'
-                    };
-                    const replaceOnTotalConversion = new Set([
-                        'items',
-                        'recipes',
-                        'facilities',
-                        'eras',
-                        'classes',
-                        'transport_registry',
-                        'trek_config',
-                        'narrators',
-                        'predefined_effects',
-                        'prompt_pack',
-                        'world_assets',
-                        'tile_dictionary'
-                    ]);
+                    const runtimeManifest = db.runtime_manifest || {};
 
                     for (const [rawKey, fileList] of Object.entries(mod.data)) {
                         if (!Array.isArray(fileList) || rawKey === 'lore' || rawKey === 'locations') {
                             continue;
                         }
 
-                        const targetKey = keyAliases[rawKey] || rawKey;
-                        const mergePolicy = mergePolicies[targetKey] || 'deepMerge';
+                        const targetKey = runtimeUtils && typeof runtimeUtils.resolveRuntimeDatabaseKey === 'function'
+                            ? runtimeUtils.resolveRuntimeDatabaseKey(rawKey, runtimeManifest)
+                            : rawKey;
+                        const descriptor = runtimeUtils && typeof runtimeUtils.getRuntimeDatabaseDescriptor === 'function'
+                            ? runtimeUtils.getRuntimeDatabaseDescriptor(rawKey, runtimeManifest)
+                            : null;
+                        const mergePolicy = descriptor && typeof descriptor.merge_policy === 'string'
+                            ? descriptor.merge_policy
+                            : 'deepMerge';
 
-                        if (mod.total_conversion && replaceOnTotalConversion.has(targetKey) && !mod._runtimeResetKeys?.includes(targetKey)) {
+                        if (mod.total_conversion && descriptor && descriptor.replace_on_total_conversion === true && !mod._runtimeResetKeys?.includes(targetKey)) {
                             if (!mod._runtimeResetKeys) mod._runtimeResetKeys = [];
-                            db[targetKey] = mergePolicy === 'deepMerge' ? {} : [];
+                            db[targetKey] = runtimeUtils && typeof runtimeUtils.createDefaultValue === 'function'
+                                ? runtimeUtils.createDefaultValue(descriptor.default_type)
+                                : (mergePolicy === 'deepMerge' ? {} : []);
                             mod._runtimeResetKeys.push(targetKey);
                         }
 
@@ -1079,7 +1039,12 @@ class ModLoader {
                             if (data === null || data === undefined) continue;
 
                             if (db[targetKey] === undefined) {
-                                db[targetKey] = Array.isArray(data) ? [] : {};
+                                const descriptorDefaultType = descriptor && typeof descriptor.default_type === 'string'
+                                    ? descriptor.default_type
+                                    : (Array.isArray(data) ? 'array' : 'object');
+                                db[targetKey] = runtimeUtils && typeof runtimeUtils.createDefaultValue === 'function'
+                                    ? runtimeUtils.createDefaultValue(descriptorDefaultType)
+                                    : (Array.isArray(data) ? [] : {});
                             }
 
                             if (runtimeUtils && typeof runtimeUtils.mergeRuntimeValue === 'function') {
@@ -1100,7 +1065,7 @@ class ModLoader {
                     if (mod.data.lore) {
                         for (const file of mod.data.lore) {
                             const loreText = await window.ModAPI.readFile(modId, file);
-                            if (loreText) hookData.lore += `\n\n=== ЛОР: ${mod.name} ===\n` + loreText;
+                            if (loreText) hookData.lore += `\n\n=== : ${mod.name} ===\n` + loreText;
                         }
                     }
                 });
@@ -1116,10 +1081,10 @@ class ModLoader {
             }
         }
 
-        // Регистрация активных хуков в C++ ядре
+        //     C++ 
         const activeHooks = Object.keys(window.ModAPI.hooks);
         if (window.electronAPI && window.electronAPI.nexusRegisterHooks) {
-            console.log('[ModLoader] Регистрация хуков в ядре:', activeHooks);
+            console.log('[ModLoader]    :', activeHooks);
             await window.electronAPI.nexusRegisterHooks(activeHooks);
         }
 
