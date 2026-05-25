@@ -1,14 +1,18 @@
-// ---    (, ,  ) ---
+// --- ЯДРО СИСТЕМЫ СОХРАНЕНИЙ (Логика, Таймеры, Сборка данных) ---
 
-let _saving = false; // Mutex-    
+let _saving = false; // Mutex-флаг для предотвращения гонки сохранений
 let _savingTimer = null; // Safety timeout to reset mutex if finally block is skipped
 
 /**
- *     .
- *     switch- (Electron chunk loop, leftover, localStorage).
+ * Обрабатывает один распарсенный блок сохранения.
+ * Выделено из трёх дублирующихся switch-блоков (Electron chunk loop, leftover, localStorage).
  */
 function processSaveBlock(parsed, rawWorld) {
     switch(parsed.block) {
+        case 'meta':
+            // Store mod_list so loadGame can validate compatibility
+            if (rawWorld && parsed.data?.mod_list) rawWorld._save_mod_list = parsed.data.mod_list;
+            break;
         case 'player': return { rawPlayer: parsed.data };
         case 'history': return { rawHistory: parsed.data };
         case 'item_registry': ItemRegistry.clear(); parsed.data.forEach(([k, v]) => ItemRegistry.set(k, v)); break;
@@ -32,7 +36,7 @@ function processSaveBlock(parsed, rawWorld) {
                         if (window.ModAPI.saveHandlers[modId] && window.ModAPI.saveHandlers[modId].onLoad) {
                             window.ModAPI.saveHandlers[modId].onLoad(data);
                         }
-                    } catch(e) { console.error(`[ModAPI]     ${modId}:`, e); }
+                    } catch(e) { console.error(`[ModAPI] Ошибка загрузки в моде ${modId}:`, e); }
                 }
             }
             break;
@@ -45,9 +49,9 @@ async function saveGame(slotType, slotId) {
     _saving = true;
     // Safety: reset mutex after 60s even if finally doesn't run
     clearTimeout(_savingTimer);
-    _savingTimer = setTimeout(() => { console.warn('[SaveManager] Mutex safety timeout  forcing reset'); _saving = false; }, 60000);
+    _savingTimer = setTimeout(() => { console.warn('[SaveManager] Mutex safety timeout — forcing reset'); _saving = false; }, 60000);
     if (isWaitingForAI || !player) { _saving = false; clearTimeout(_savingTimer); return false; }
-    showLoadingScreen('loadingScreen.saving', '  ...');
+    showLoadingScreen('loadingScreen.saving', 'Подготовка к сохранению...');
     await yieldThread();
 
     try {
@@ -59,7 +63,7 @@ async function saveGame(slotType, slotId) {
         if (isElectron) await window.electronAPI.initSaveFile(fileName);
 
         const addBlock = async (name, id, data) => {
-            updateLoadingText(`  ${blockCount++}: ${name}...`);
+            updateLoadingText(`Сохраняем блок ${blockCount++}: ${name}...`);
             await yieldThread();
             const lineStr = JSON.stringify({ block: id, data: data }) + '\n';
             if (isElectron) {
@@ -71,10 +75,10 @@ async function saveGame(slotType, slotId) {
         };
 
         if (isElectron && window.electronAPI.nexusGetFullState) {
-            updateLoadingText('   ...');
+            updateLoadingText('Синхронизация с ядром симуляции...');
             await yieldThread();
             
-            //       C++ (++    )
+            // Забираем актуальный мир и реестры из C++ (С++ является абсолютным источником правды)
             const fullState = await window.electronAPI.nexusGetFullState(player?.location || "");
             if (fullState && fullState.status === 'ok') {
                 if (fullState.world) World = fullState.world;
@@ -90,41 +94,48 @@ async function saveGame(slotType, slotId) {
             }
         }
 
+        // Collect active mod list at save time for compatibility checking
+        let _savedMods = ['base_game'];
+        try {
+            const _s = window.electronAPI?.isElectron ? await window.electronAPI.loadSettings() : null;
+            if (_s?.mods?.active) _savedMods = _s.mods.active;
+        } catch(_) {}
         const metaData = {
             slotType, slotId, timestamp: new Date().toISOString(),
-            playerData: { name: player.name, stats: { level: player.stats.level } }
+            playerData: { name: player.name, stats: { level: player.stats.level } },
+            mod_list: _savedMods
         };
         
-        await addBlock("", "meta", metaData);
-        await addBlock(" ", "player", player);
-        await addBlock(" ", "history", conversationHistory);
-        await addBlock(" ", "item_registry", Array.from(ItemRegistry.entries()));
-        await addBlock(" ", "container_registry", Array.from(ContainerRegistry.entries()));
+        await addBlock("Метаданные", "meta", metaData);
+        await addBlock("Данные персонажа", "player", player);
+        await addBlock("История диалогов", "history", conversationHistory);
+        await addBlock("Реестр предметов", "item_registry", Array.from(ItemRegistry.entries()));
+        await addBlock("Реестр контейнеров", "container_registry", Array.from(ContainerRegistry.entries()));
 
         if (typeof World !== 'undefined' && World) {
-            await addBlock("  ", "world_base", { tick: World.tick, era: World.era, time: World.time, homeostasis: World.homeostasis, lastDirectInjectionDay: World.lastDirectInjectionDay, needsGlobalEvent: World.needsGlobalEvent });
-            await addBlock(" ", "world_regions", World.regions);
-            await addBlock("", "world_factions", World.factions);
-            await addBlock(" (NPC)", "world_npcs", World.npcs);
-            await addBlock("  ", "world_rulers", { rulers: World.rulers, intrigues: World.intrigues });
-            await addBlock("", "world_businesses", World.businesses);
-            await addBlock("  ", "world_ships", { ships: World.ships, fleets: World.fleets, ports: World.port_facilities });
-            await addBlock("", "world_monsters", World.monsters);
-            await addBlock("", "world_sublocations", World.subLocations);
-            await addBlock(" ", "world_map", World.map);
-            await addBlock("", "world_trek", World.player_trek);
-            await addBlock("  ", "world_misc", { news: World.news, gmInterventionHistory: World.gmInterventionHistory });
+            await addBlock("Время и гомеостаз", "world_base", { tick: World.tick, era: World.era, time: World.time, homeostasis: World.homeostasis, lastDirectInjectionDay: World.lastDirectInjectionDay, needsGlobalEvent: World.needsGlobalEvent });
+            await addBlock("Регионы мира", "world_regions", World.regions);
+            await addBlock("Фракции", "world_factions", World.factions);
+            await addBlock("Население (NPC)", "world_npcs", World.npcs);
+            await addBlock("Правители и Интриги", "world_rulers", { rulers: World.rulers, intrigues: World.intrigues });
+            await addBlock("Предприятия", "world_businesses", World.businesses);
+            await addBlock("Корабли и Порты", "world_ships", { ships: World.ships, fleets: World.fleets, ports: World.port_facilities });
+            await addBlock("Монстры", "world_monsters", World.monsters);
+            await addBlock("Подлокации", "world_sublocations", World.subLocations);
+            await addBlock("Глобальная карта", "world_map", World.map);
+            await addBlock("Путешествие", "world_trek", World.player_trek);
+            await addBlock("Летопись и Прочее", "world_misc", { news: World.news, gmInterventionHistory: World.gmInterventionHistory });
         }
 
-        // ---  :    ---
+        // --- ИНТЕГРАЦИЯ МОДОВ: Сохранение кастомных данных ---
         if (window.ModAPI && window.ModAPI.saveHandlers) {
             let modData = {};
             for (const [modId, handler] of Object.entries(window.ModAPI.saveHandlers)) {
                 try {
                     if (handler.onSave) modData[modId] = handler.onSave();
-                } catch(e) { console.error(`[ModAPI]     ${modId}:`, e); }
+                } catch(e) { console.error(`[ModAPI] Ошибка сохранения в моде ${modId}:`, e); }
             }
-            await addBlock(" ", "mod_data", modData);
+            await addBlock("Данные модов", "mod_data", modData);
         }
         // -----------------------------------------------------
 
@@ -158,13 +169,13 @@ async function saveGame(slotType, slotId) {
 }
 
 async function loadGame(slotType, slotId) {
-    showLoadingScreen('loadingScreen.loading', ' ...');
+    showLoadingScreen('loadingScreen.loading', 'Подготовка данных...');
     await yieldThread();
 
     const fileName = getSaveFileName(slotType, slotId);
     const isElectron = window.electronAPI && window.electronAPI.isElectron;
     
-    // 1.      
+    // 1. Атомарная очистка реестров перед началом чтения
     ItemRegistry.clear();
     ContainerRegistry.clear();
 
@@ -200,7 +211,7 @@ async function loadGame(slotType, slotId) {
                         }
 
                         const parsed = JSON.parse(line);
-                        updateLoadingText(`  ${blockCount++}: ${parsed.block}...`);
+                        updateLoadingText(`Читаем блок ${blockCount++}: ${parsed.block}...`);
                         await yieldThread();
 
                         const result = processSaveBlock(parsed, rawWorld);
@@ -215,7 +226,7 @@ async function loadGame(slotType, slotId) {
                         if (result.rawPlayer !== undefined) rawPlayer = result.rawPlayer;
                         if (result.rawHistory !== undefined) rawHistory = result.rawHistory;
                     } catch(e) {
-                        console.warn('[SaveManager]     :', e);
+                        console.warn('[SaveManager] Не удалось распарсить остаток чанка:', e);
                     }
                 }
                 loadedSuccessfully = true;
@@ -227,7 +238,7 @@ async function loadGame(slotType, slotId) {
                 let blockCount = 1;
                 for (const line of lines) {
                     const parsed = JSON.parse(line);
-                    updateLoadingText(`  ${blockCount++}: ${parsed.block}...`);
+                    updateLoadingText(`Читаем блок ${blockCount++}: ${parsed.block}...`);
                     await yieldThread();
                     const result = processSaveBlock(parsed, rawWorld);
                     if (result.rawPlayer !== undefined) rawPlayer = result.rawPlayer;
@@ -240,7 +251,7 @@ async function loadGame(slotType, slotId) {
         }
     } catch (e) {
         if (e.message === "LEGACY_SAVE") {
-            updateLoadingText('  ...');
+            updateLoadingText('Конвертация старого сохранения...');
             await yieldThread();
             let oldData;
             if (isElectron) {
@@ -271,25 +282,25 @@ async function loadGame(slotType, slotId) {
     try {
         player = structuredClone(rawPlayer);
 
-        updateLoadingText('  ...');
+        updateLoadingText('Инициализация симуляции мира...');
         await yieldThread();
         
-        //  :  true (isLoadMode),  initWorldSimulator   ItemRegistry
+        // КЛЮЧЕВОЙ ФИКС: Передаем true (isLoadMode), чтобы initWorldSimulator не стирал ItemRegistry
         await initWorldSimulator(100, 0, true);
         
         if (rawWorld && Object.keys(rawWorld).length > 0) { 
             World = structuredClone(rawWorld); 
         }
 
-        // T3 Migration (  initWorldSimulator,    )
-        //  ensurePlayerContainers()     ID,     ContainerRegistry.
-        //     player.X,    ContainerRegistry  .
+        // T3 Migration (Выполняется ПОСЛЕ initWorldSimulator, чтобы не затереть предметы)
+        // Используем ensurePlayerContainers() — проверяет не только ID, но и наличие в ContainerRegistry.
+        // Если контейнер есть в player.X, но отсутствует в ContainerRegistry — пересоздаёт.
         const needsBackpackMigration = !player.container_backpack;
         const needsEquipmentMigration = !player.container_equipment;
 
         await ensurePlayerContainers();
 
-        //     player.inventory (T2  T3 )
+        // Миграция старых предметов из player.inventory (T2 → T3 формат)
         if (needsBackpackMigration && player.inventory) {
             for (let key in player.inventory) {
                 let oldItem = player.inventory[key];
@@ -298,7 +309,7 @@ async function loadGame(slotType, slotId) {
                 }
             }
         }
-        //     player.equipment (T2  T3 )
+        // Миграция старой экипировки из player.equipment (T2 → T3 формат)
         if (needsEquipmentMigration && player.equipment) {
             for (let slot in player.equipment) {
                 let oldItem = player.equipment[slot];
@@ -309,20 +320,20 @@ async function loadGame(slotType, slotId) {
             }
         }
 
-        //    (T3)
+        // Устранение утечки памяти (T3)
         if (player.inventory) delete player.inventory;
         if (player.equipment) delete player.equipment;
 
-        //    C++ 
-        //    (nexusWriteSyncFile + loadWorldFile),
-        //   stdin (nexusSyncState),   World JSON   (256x256 )
-        //   2-5MB  stdin pipe buffer  Windows  64KB,  
-        //         syncState.
+        // Синхронизация состояния с C++ ядром
+        // Используем файловую синхронизацию (nexusWriteSyncFile + loadWorldFile),
+        // а не stdin (nexusSyncState), потому что World JSON с картой (256x256 тайлов)
+        // может быть 2-5MB — stdin pipe buffer на Windows всего 64KB, что приводит
+        // к тихой потере данных карты при отправке через syncState.
         if (window.electronAPI) {
             const syncItems = Array.from(ItemRegistry.entries());
             const syncContainers = Array.from(ContainerRegistry.entries());
             const worldFileData = { world: World, items: syncItems, containers: syncContainers };
-            console.log("[SaveManager]      ...");
+            console.log("[SaveManager] Файловая синхронизация загруженного мира с ядром...");
 
             if (window.electronAPI.nexusWriteSyncFile && window.electronAPI.nexusLoadWorldFile) {
                 try {
@@ -330,23 +341,23 @@ async function loadGame(slotType, slotId) {
                     if (writeRes.status === 'ok' && writeRes.path) {
                         const loadRes = await window.electronAPI.nexusLoadWorldFile(writeRes.path);
                         if (loadRes.status === 'ok') {
-                            console.log("[SaveManager]    :", loadRes.message);
+                            console.log("[SaveManager] Файловая синхронизация мира завершена:", loadRes.message);
                         } else {
-                            console.warn("[SaveManager] loadWorldFile  :", loadRes.message || loadRes.error || 'unknown error');
+                            console.warn("[SaveManager] loadWorldFile не удался:", loadRes.message || loadRes.error || 'unknown error');
                         }
                     } else {
-                        console.warn("[SaveManager]     :", writeRes.message);
+                        console.warn("[SaveManager] Не удалось записать временный файл:", writeRes.message);
                     }
                 } catch (err) {
-                    console.warn("[SaveManager]   :", err.message || err);
+                    console.warn("[SaveManager] Ошибка файловой синхронизации:", err.message || err);
                 }
             } else if (window.electronAPI.nexusSyncState) {
-                // Fallback  stdin-   IPC 
-                console.log("[SaveManager]  IPC , fallback  syncState  stdin...");
+                // Fallback на stdin-синхронизацию если файловые IPC недоступны
+                console.log("[SaveManager] Файловые IPC недоступны, fallback на syncState через stdin...");
                 await window.electronAPI.nexusSyncState(World, syncItems, syncContainers);
             }
 
-            //      
+            // Синхронизация старых сущностей для обратной совместимости
             if (window.electronAPI.nexusSyncState || window.electronAPI.nexusLoadWorldFile) {
                 for (let entId in player.allKnownEntities) {
                     let ent = player.allKnownEntities[entId];
@@ -365,13 +376,13 @@ async function loadGame(slotType, slotId) {
             }
         }
 
-        updateLoadingText('   ...');
+        updateLoadingText('Чтение лора и истории...');
         await yieldThread();
         await loadActiveEraLore(player.era);
         await loadGlobalLocations(DEFAULT_WORLD_ID, currentLanguage, player.era);
         conversationHistory = structuredClone(rawHistory || []);
 
-        updateLoadingText(' ...');
+        updateLoadingText('Восстановление интерфейса...');
         await yieldThread();
 
         player.stats = player.stats || {};
@@ -395,7 +406,7 @@ async function loadGame(slotType, slotId) {
         player.gmNotes = player.gmNotes || {};
         player.memoryArchives = player.memoryArchives || {};
         player.archiveSummaries = player.archiveSummaries || {};
-        player.factionData = player.factionData || { global: t('factions.global', null, '') };
+        player.factionData = player.factionData || { global: t('factions.global', null, 'Общая') };
         player.nexusData = player.nexusData || {};
         await syncPlayerContainerBindings();
         syncPlayerGoldFromInventory();
@@ -415,7 +426,7 @@ async function loadGame(slotType, slotId) {
         addLogMessage(t('gameInterface.log.gameLoaded', { slotType: slotType, slotId: slotId }), "system-message");
         hideLoadingScreen();
     } catch (e) {
-        console.error(` :`, e);
+        console.error(`Ошибка загрузки:`, e);
         hideLoadingScreen();
         alert(t('loadGame.errorLoad', { slotId: slotId, message: e.message }));
         setActiveScreen('main-menu');
@@ -451,7 +462,7 @@ async function autoSaveGame() {
         }
     }
 
-    console.log(`    ${nextAutoSaveId}...`);
+    console.log(`Попытка автосохранения в слот ${nextAutoSaveId}...`);
     const savedSuccessfully = await saveGame('auto', nextAutoSaveId);
 
     if (savedSuccessfully) {
@@ -466,9 +477,9 @@ function startAutoSaveTimer() {
     stopAutoSaveTimer();
     if (autoSaveIntervalMs > 0) {
         autoSaveTimer = setInterval(autoSaveGame, autoSaveIntervalMs);
-        console.log(`     ${autoSaveIntervalMs / 1000}`);
+        console.log(`Таймер автосохранения запущен с интервалом ${autoSaveIntervalMs / 1000}с`);
     } else {
-        console.log("   .");
+        console.log("Автосохранение отключено в настройках.");
     }
 }
 
@@ -476,15 +487,15 @@ function stopAutoSaveTimer() {
     if (autoSaveTimer) {
         clearInterval(autoSaveTimer);
         autoSaveTimer = null;
-        console.log("  .");
+        console.log("Таймер автосохранения остановлен.");
     }
 }
 
 
-// ---   ---
+// --- УДАЛЕНИЕ СОХРАНЕНИЙ ---
 async function deleteSave(slotType, slotId) {
-    const typeName = slotType === 'manual' ? t('loadGame.manualSlotType', null, ' ') : t('loadGame.autoSlotType', null, '');
-    const confirmMsg = t('loadGame.confirmDelete', { slotType: typeName, slotId: slotId }, ` ,     '${typeName} #${slotId}'?   .`);
+    const typeName = slotType === 'manual' ? t('loadGame.manualSlotType', null, 'Ручной слот') : t('loadGame.autoSlotType', null, 'Автосохранение');
+    const confirmMsg = t('loadGame.confirmDelete', { slotType: typeName, slotId: slotId }, `Вы уверены, что хотите удалить сохранение '${typeName} #${slotId}'? Это действие необратимо.`);
     
     showCustomConfirm(confirmMsg, async () => {
         const fileName = getSaveFileName(slotType, slotId);
@@ -509,8 +520,8 @@ async function deleteSave(slotType, slotId) {
         if (success) {
             populateLoadGameScreen();
         } else {
-            if (typeof showCustomAlert === 'function') showCustomAlert("   .");
-            else alert("   .");
+            if (typeof showCustomAlert === 'function') showCustomAlert("Не удалось удалить сохранение.");
+            else alert("Не удалось удалить сохранение.");
         }
     });
 }

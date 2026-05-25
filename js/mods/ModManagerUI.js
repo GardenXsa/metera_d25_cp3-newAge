@@ -1,36 +1,56 @@
 /**
  * ModManagerUI.js
- * 
- * Управляет интерфейсом Менеджера Модификаций.
+ * RimWorld-style mod management:
+ *  - Snapshot active mod list on open
+ *  - Detect changes on back → prompt restart
+ *  - Settings saved on every change, but game only reloads on restart
+ *  - Session cache: if user reverts to original order → no restart needed
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('[ModManagerUI] DOMContentLoaded fired. Initializing...');
-
-    const modsButton = document.getElementById('mods-button');
-    const modsBackButton = document.getElementById('mods-back-button');
-    const modsMenu = document.getElementById('mods-menu');
-    const mainMenu = document.getElementById('main-menu');
+    const modsButton        = document.getElementById('mods-button');
+    const modsBackButton    = document.getElementById('mods-back-button');
+    const modsMenu          = document.getElementById('mods-menu');
+    const mainMenu          = document.getElementById('main-menu');
     const openModsFolderButton = document.getElementById('open-mods-folder-button');
 
-    console.log('[ModManagerUI] DOM Elements:', { modsButton, modsMenu, mainMenu });
-
     if (!modsButton || !modsMenu || !mainMenu) {
-        console.error('[ModManagerUI] CRITICAL: Could not find essential menu elements. Mod menu will not function.');
+        console.error('[ModManagerUI] CRITICAL: Could not find essential menu elements.');
         return;
     }
 
     const availableListContainer = document.getElementById('available-mods-list');
-    const activeListContainer = document.getElementById('active-mods-list');
-    const modDetailsContent = document.getElementById('mod-details-content');
-    const modErrorsContainer = document.getElementById('mod-errors-container');
-    const modErrorsList = document.getElementById('mod-errors-list');
+    const activeListContainer    = document.getElementById('active-mods-list');
+    const modDetailsContent      = document.getElementById('mod-details-content');
+    const modErrorsContainer     = document.getElementById('mod-errors-container');
+    const modErrorsList          = document.getElementById('mod-errors-list');
 
-    let allMods = [];
-    let activeModIds = []; // Массив строк, строго определяющий порядок загрузки
+    let allMods       = [];
+    let activeModIds  = [];   // current working list (may differ from saved)
     let selectedModId = null;
 
-    // --- HTML Escaping utility (prevents XSS from mod metadata) ---
+    // ── Session cache ─────────────────────────────────────────────────────────
+    // Snapshot taken the moment the game launched (first call to initializeModManager).
+    // Never overwritten mid-session.  Cleared only on actual relaunch.
+    const SESSION_KEY = '__modmanager_launch_snapshot__';
+
+    function getLaunchSnapshot() {
+        try {
+            const raw = sessionStorage.getItem(SESSION_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch(_) { return null; }
+    }
+
+    function setLaunchSnapshot(ids) {
+        try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(ids)); } catch(_) {}
+    }
+
+    function snapshotEquals(a, b) {
+        if (!a || !b || a.length !== b.length) return false;
+        return a.every((id, i) => id === b[i]);
+    }
+
+    // ── Utilities ─────────────────────────────────────────────────────────────
     function escapeHTML(str) {
         if (typeof str !== 'string') return '';
         const div = document.createElement('div');
@@ -38,49 +58,162 @@ document.addEventListener('DOMContentLoaded', () => {
         return div.innerHTML;
     }
 
-    // --- Навигация и базовые события ---
+    // ── Navigation ────────────────────────────────────────────────────────────
     modsButton.addEventListener('click', () => {
-        console.log('[ModManagerUI] "Mods" button clicked!');
         mainMenu.classList.remove('active-screen');
         modsMenu.style.display = 'flex';
-        requestAnimationFrame(() => {
-            modsMenu.classList.add('active-screen');
-        });
+        requestAnimationFrame(() => modsMenu.classList.add('active-screen'));
         initializeModManager();
     });
 
-    modsBackButton.addEventListener('click', () => {
+    modsBackButton.addEventListener('click', handleBack);
+    openModsFolderButton.addEventListener('click', () => window.electronAPI.modsOpenFolder());
+
+    // ── Back with change detection ────────────────────────────────────────────
+    async function handleBack() {
+        const snapshot = getLaunchSnapshot();
+        if (!snapshot) {
+            // First time — no snapshot yet, just go back
+            goBackToMenu();
+            return;
+        }
+
+        if (snapshotEquals(activeModIds, snapshot)) {
+            // User reverted to original order — no restart needed
+            goBackToMenu();
+            return;
+        }
+
+        // Changes detected — show restart dialog
+        showRestartDialog();
+    }
+
+    function goBackToMenu() {
         modsMenu.classList.remove('active-screen');
         setTimeout(() => {
             modsMenu.style.display = 'none';
             mainMenu.style.display = 'flex';
             mainMenu.classList.add('active-screen');
         }, 300);
-    });
+    }
 
-    openModsFolderButton.addEventListener('click', () => {
-        window.electronAPI.modsOpenFolder();
-    });
+    function showRestartDialog() {
+        // Remove any existing dialog
+        const existing = document.getElementById('mods-restart-dialog');
+        if (existing) existing.remove();
 
-    // --- Основная логика ---
+        const overlay = document.createElement('div');
+        overlay.id = 'mods-restart-dialog';
+        overlay.style.cssText = `
+            position: fixed; inset: 0; z-index: 100000;
+            background: rgba(0,0,0,0.75);
+            display: flex; align-items: center; justify-content: center;
+            animation: fadeIn 0.2s ease;
+        `;
+
+        const box = document.createElement('div');
+        box.style.cssText = `
+            background: rgba(12,16,22,0.98);
+            border: 1px solid rgba(93,173,226,0.4);
+            border-radius: 12px;
+            padding: 32px 40px;
+            max-width: 460px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+            font-family: 'Segoe UI', sans-serif;
+        `;
+
+        box.innerHTML = `
+            <div style="font-size:2em; margin-bottom:12px;">🔄</div>
+            <h3 style="color:#5dade2; margin:0 0 12px; font-size:1.1em; letter-spacing:0.05em;">
+                СПИСОК МОДОВ ИЗМЕНЁН
+            </h3>
+            <p style="color:#bdc3c7; line-height:1.6; margin:0 0 24px; font-size:0.95em;">
+                Порядок загрузки или состав активных модов был изменён.<br>
+                <strong style="color:#e8d5b4;">Для применения изменений требуется перезапуск игры.</strong>
+            </p>
+            <div style="display:flex; gap:12px; justify-content:center;">
+                <button id="mods-restart-back" style="
+                    padding: 10px 24px;
+                    border-radius: 6px;
+                    border: 1px solid rgba(93,173,226,0.4);
+                    background: transparent;
+                    color: #5dade2;
+                    cursor: pointer;
+                    font-size: 0.9em;
+                    transition: all 0.2s;
+                ">← Вернуться к модам</button>
+                <button id="mods-restart-now" style="
+                    padding: 10px 24px;
+                    border-radius: 6px;
+                    border: none;
+                    background: linear-gradient(135deg, #2980b9, #1a5276);
+                    color: #fff;
+                    cursor: pointer;
+                    font-size: 0.9em;
+                    font-weight: bold;
+                    transition: all 0.2s;
+                ">Перезапустить →</button>
+            </div>
+        `;
+
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+
+        document.getElementById('mods-restart-back').addEventListener('click', () => {
+            overlay.remove();
+        });
+
+        document.getElementById('mods-restart-now').addEventListener('click', async () => {
+            // Save final settings before relaunch
+            await saveModSettings();
+            // Clear session cache so fresh snapshot is taken on next launch
+            try { sessionStorage.removeItem(SESSION_KEY); } catch(_) {}
+            // Relaunch
+            if (window.electronAPI && window.electronAPI.appRelaunch) {
+                window.electronAPI.appRelaunch();
+            } else {
+                location.reload();
+            }
+        });
+
+        // Hover effects
+        const backBtn    = document.getElementById('mods-restart-back');
+        const restartBtn = document.getElementById('mods-restart-now');
+        backBtn.addEventListener('mouseenter',    () => { backBtn.style.borderColor = '#5dade2'; backBtn.style.background = 'rgba(93,173,226,0.1)'; });
+        backBtn.addEventListener('mouseleave',    () => { backBtn.style.borderColor = 'rgba(93,173,226,0.4)'; backBtn.style.background = 'transparent'; });
+        restartBtn.addEventListener('mouseenter', () => { restartBtn.style.background = 'linear-gradient(135deg, #3498db, #2471a3)'; });
+        restartBtn.addEventListener('mouseleave', () => { restartBtn.style.background = 'linear-gradient(135deg, #2980b9, #1a5276)'; });
+    }
+
+    // ── Core logic ────────────────────────────────────────────────────────────
     async function initializeModManager() {
-        console.log('[ModManagerUI] Initializing mod manager data...');
         const settings = await window.electronAPI.loadSettings();
-        activeModIds = (settings && settings.mods && settings.mods.active) ? settings.mods.active : ['base_game'];
-        
-        // Гарантируем, что base_game всегда первый
+        activeModIds = (settings && settings.mods && settings.mods.active)
+            ? [...settings.mods.active]
+            : ['base_game'];
+
+        // Ensure base_game is always first
         if (!activeModIds.includes('base_game')) activeModIds.unshift('base_game');
         if (activeModIds[0] !== 'base_game') {
             activeModIds = activeModIds.filter(id => id !== 'base_game');
             activeModIds.unshift('base_game');
         }
 
+        // Take session snapshot ONCE (first open after launch)
+        if (!getLaunchSnapshot()) {
+            setLaunchSnapshot([...activeModIds]);
+        }
+
         const response = await window.electronAPI.modsGetList();
         if (response.success) {
             allMods = response.mods;
-            // Добавляем фиктивный объект для Ядра игры, чтобы он отображался в списке
             if (!allMods.find(m => m.id === 'base_game')) {
-                allMods.push({ id: 'base_game', name: 'Core (Ядро Игры)', author: 'MrKins', description: 'Базовые файлы игры. Должно загружаться первым.', version: '1.0' });
+                allMods.push({
+                    id: 'base_game', name: 'Core (Ядро Игры)',
+                    author: 'MrKins', version: '1.0',
+                    description: 'Базовые файлы игры. Должно загружаться первым.'
+                });
             }
             renderLists();
         } else {
@@ -91,24 +224,45 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderLists() {
         availableListContainer.innerHTML = '';
-        activeListContainer.innerHTML = '';
+        activeListContainer.innerHTML   = '';
 
+        const snapshot = getLaunchSnapshot() || [];
         const validationErrors = validateLoadOrder();
 
-        // Рендер Активных модов (строго по порядку activeModIds)
+        // Show "changes pending restart" banner if state differs from launch snapshot
+        let pendingBanner = activeListContainer.previousElementSibling;
+        if (pendingBanner && pendingBanner.id === 'mods-pending-banner') pendingBanner.remove();
+
+        if (!snapshotEquals(activeModIds, snapshot)) {
+            const banner = document.createElement('div');
+            banner.id = 'mods-pending-banner';
+            banner.style.cssText = `
+                background: rgba(241,196,15,0.12);
+                border: 1px solid rgba(241,196,15,0.4);
+                border-radius: 6px;
+                padding: 8px 14px;
+                margin-bottom: 8px;
+                color: #f1c40f;
+                font-size: 0.82em;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            `;
+            banner.innerHTML = '<i class="fas fa-clock"></i> Изменения будут применены после перезапуска игры.';
+            activeListContainer.parentNode.insertBefore(banner, activeListContainer);
+        }
+
+        // Render active mods (ordered)
         activeModIds.forEach((id, index) => {
             const mod = allMods.find(m => m.id === id);
-            if (!mod) return; // Мод удален с диска
-
-            const el = createModElement(mod, true, index, validationErrors[id]);
-            activeListContainer.appendChild(el);
+            if (!mod) return;
+            const changedFromSnapshot = !snapshotEquals(activeModIds, snapshot);
+            activeListContainer.appendChild(createModElement(mod, true, index, validationErrors[id], changedFromSnapshot));
         });
 
-        // Рендер Доступных модов (те, которых нет в activeModIds)
-        const availableMods = allMods.filter(m => !activeModIds.includes(m.id));
-        availableMods.forEach(mod => {
-            const el = createModElement(mod, false, -1, null);
-            availableListContainer.appendChild(el);
+        // Render available mods
+        allMods.filter(m => !activeModIds.includes(m.id)).forEach(mod => {
+            availableListContainer.appendChild(createModElement(mod, false, -1, null, false));
         });
 
         if (selectedModId) {
@@ -117,12 +271,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function createModElement(mod, isActive, index, errorMsg) {
+    function createModElement(mod, isActive, index, errorMsg, _pendingChanges) {
         const el = document.createElement('div');
         let classes = 'mm-card';
         if (mod.id === selectedModId) classes += ' selected';
-        if (mod.id === 'base_game') classes += ' core-mod';
-        if (errorMsg || mod.error) classes += ' has-error';
+        if (mod.id === 'base_game')   classes += ' core-mod';
+        if (errorMsg || mod.error)    classes += ' has-error';
         el.className = classes;
 
         const infoDiv = document.createElement('div');
@@ -148,20 +302,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (mod.id !== 'base_game') {
             const controlsDiv = document.createElement('div');
             controlsDiv.className = 'mm-card-controls';
-            
+
             if (isActive) {
                 const upBtn = document.createElement('button');
                 upBtn.className = 'mm-ctrl-btn';
                 upBtn.title = 'Поднять приоритет';
                 upBtn.innerHTML = '<i class="fas fa-chevron-up"></i>';
-                upBtn.disabled = index <= 1; // Cannot move above base_game
-                upBtn.addEventListener('click', (e) => { e.stopPropagation(); if(index > 1) moveModUp(index); });
+                upBtn.disabled = index <= 1;
+                upBtn.addEventListener('click', (e) => { e.stopPropagation(); if (index > 1) moveModUp(index); });
 
                 const downBtn = document.createElement('button');
                 downBtn.className = 'mm-ctrl-btn';
                 downBtn.title = 'Опустить приоритет';
                 downBtn.innerHTML = '<i class="fas fa-chevron-down"></i>';
-                downBtn.disabled = index === 0 || index >= activeModIds.length - 1;
+                downBtn.disabled = index >= activeModIds.length - 1;
                 downBtn.addEventListener('click', (e) => { e.stopPropagation(); moveModDown(index); });
 
                 const removeBtn = document.createElement('button');
@@ -170,16 +324,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 removeBtn.innerHTML = '<i class="fas fa-minus"></i>';
                 removeBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMod(mod.id, false); });
 
-                controlsDiv.appendChild(upBtn);
-                controlsDiv.appendChild(downBtn);
-                controlsDiv.appendChild(removeBtn);
+                controlsDiv.append(upBtn, downBtn, removeBtn);
             } else {
                 const addBtn = document.createElement('button');
                 addBtn.className = 'mm-ctrl-btn success';
                 addBtn.title = 'Включить мод';
                 addBtn.innerHTML = '<i class="fas fa-plus"></i>';
                 addBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMod(mod.id, true); });
-
                 controlsDiv.appendChild(addBtn);
             }
             el.appendChild(controlsDiv);
@@ -190,28 +341,21 @@ document.addEventListener('DOMContentLoaded', () => {
             el.appendChild(coreBadge);
         }
 
-        el.addEventListener('click', () => {
-            selectedModId = mod.id;
-            renderLists();
-        });
-
+        el.addEventListener('click', () => { selectedModId = mod.id; renderLists(); });
         return el;
     }
 
+    // ── Mod order mutations ───────────────────────────────────────────────────
     async function moveModUp(index) {
-        if (index <= 1) return; // Нельзя двигать выше base_game (индекс 0)
-        const temp = activeModIds[index - 1];
-        activeModIds[index - 1] = activeModIds[index];
-        activeModIds[index] = temp;
+        if (index <= 1) return;
+        [activeModIds[index - 1], activeModIds[index]] = [activeModIds[index], activeModIds[index - 1]];
         await saveModSettings();
         renderLists();
     }
 
     async function moveModDown(index) {
         if (index === 0 || index >= activeModIds.length - 1) return;
-        const temp = activeModIds[index + 1];
-        activeModIds[index + 1] = activeModIds[index];
-        activeModIds[index] = temp;
+        [activeModIds[index + 1], activeModIds[index]] = [activeModIds[index], activeModIds[index + 1]];
         await saveModSettings();
         renderLists();
     }
@@ -226,29 +370,39 @@ document.addEventListener('DOMContentLoaded', () => {
         renderLists();
     }
 
+    // ── Persistence ───────────────────────────────────────────────────────────
+    async function saveModSettings() {
+        const fullSettings = await window.electronAPI.loadSettings() || {};
+        fullSettings.mods = { active: activeModIds };
+        await window.electronAPI.saveSettings(fullSettings);
+    }
+
+    // ── Mod details ───────────────────────────────────────────────────────────
     function renderModDetails(mod) {
         modDetailsContent.innerHTML = '';
 
         if (mod.error) {
             const errBox = document.createElement('div');
             errBox.className = 'mm-details-error';
-            errBox.innerHTML = `<h3><i class="fas fa-times-circle"></i> Ошибка загрузки</h3><p><strong>${escapeHTML(mod.name || mod.id)}:</strong> ${escapeHTML(mod.error)}</p><p class="mm-hint">Проверьте файл mod.json на синтаксические ошибки.</p>`;
+            errBox.innerHTML = `<h3><i class="fas fa-times-circle"></i> Ошибка загрузки</h3>
+                <p><strong>${escapeHTML(mod.name || mod.id)}:</strong> ${escapeHTML(mod.error)}</p>
+                <p class="mm-hint">Проверьте файл mod.json на синтаксические ошибки.</p>`;
             modDetailsContent.appendChild(errBox);
             return;
         }
 
+        const snapshot = getLaunchSnapshot() || [];
+        const isChanged = !snapshotEquals(activeModIds, snapshot);
+        const isActive  = activeModIds.includes(mod.id);
+
         const headerDiv = document.createElement('div');
         headerDiv.className = 'mm-details-header';
-        
-        const h2 = document.createElement('h2');
-        h2.textContent = mod.name;
-        
-        const badgesDiv = document.createElement('div');
-        badgesDiv.className = 'mm-details-badges';
-        badgesDiv.innerHTML = `<span class="mm-badge version">v${escapeHTML(mod.version || '1.0')}</span><span class="mm-badge author"><i class="fas fa-user"></i> ${escapeHTML(mod.author || 'Неизвестный')}</span>`;
-        
-        headerDiv.appendChild(h2);
-        headerDiv.appendChild(badgesDiv);
+        headerDiv.innerHTML = `<h2>${escapeHTML(mod.name)}</h2>
+            <div class="mm-details-badges">
+                <span class="mm-badge version">v${escapeHTML(mod.version || '1.0')}</span>
+                <span class="mm-badge author"><i class="fas fa-user"></i> ${escapeHTML(mod.author || 'Неизвестный')}</span>
+                ${isActive && isChanged ? '<span class="mm-badge" style="background:rgba(241,196,15,0.2);color:#f1c40f;border:1px solid rgba(241,196,15,0.4);">⏳ Ожидает перезапуска</span>' : ''}
+            </div>`;
 
         const idP = document.createElement('p');
         idP.className = 'mm-details-id';
@@ -260,46 +414,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const depsDiv = document.createElement('div');
         depsDiv.className = 'mm-dependencies';
-        const depsTitle = document.createElement('h4');
-        depsTitle.innerHTML = '<i class="fas fa-link"></i> Зависимости:';
-        depsDiv.appendChild(depsTitle);
-
+        depsDiv.innerHTML = '<h4><i class="fas fa-link"></i> Зависимости:</h4>';
         const depsList = document.createElement('div');
         depsList.className = 'mm-deps-list';
-        if (mod.dependencies && mod.dependencies.length > 0) {
-            mod.dependencies.forEach(dep => {
-                const badge = document.createElement('span');
-                badge.className = 'mm-dep-badge';
-                badge.textContent = dep;
-                depsList.appendChild(badge);
-            });
-        } else {
+        (mod.dependencies?.length ? mod.dependencies : []).forEach(dep => {
             const badge = document.createElement('span');
-            badge.className = 'mm-dep-badge empty';
-            badge.textContent = 'Нет зависимостей';
+            badge.className = 'mm-dep-badge';
+            badge.textContent = dep;
             depsList.appendChild(badge);
+        });
+        if (!mod.dependencies?.length) {
+            const empty = document.createElement('span');
+            empty.className = 'mm-dep-badge empty';
+            empty.textContent = 'Нет зависимостей';
+            depsList.appendChild(empty);
         }
         depsDiv.appendChild(depsList);
 
-        modDetailsContent.appendChild(headerDiv);
-        modDetailsContent.appendChild(idP);
-        modDetailsContent.appendChild(descDiv);
-        modDetailsContent.appendChild(depsDiv);
+        modDetailsContent.append(headerDiv, idP, descDiv, depsDiv);
     }
 
-    async function saveModSettings() {
-        const fullSettings = await window.electronAPI.loadSettings() || {};
-        fullSettings.mods = { active: activeModIds };
-        await window.electronAPI.saveSettings(fullSettings);
-    }
-
+    // ── Validation ────────────────────────────────────────────────────────────
     function validateLoadOrder() {
         const errors = {};
-
-        // Проходим по списку активных модов СВЕРХУ ВНИЗ
         const loadedSoFar = new Set();
-
-        // Clear and rebuild error list safely
         modErrorsList.innerHTML = '';
         let hasErrors = false;
 
@@ -309,40 +447,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (mod.error) {
                 errors[id] = mod.error;
-                const errDiv = document.createElement('div');
-                const bold = document.createElement('b');
-                bold.textContent = mod.name + ':';
-                errDiv.appendChild(bold);
-                errDiv.appendChild(document.createTextNode(' Поврежденный файл mod.json'));
-                modErrorsList.appendChild(errDiv);
+                const d = document.createElement('div');
+                d.innerHTML = `<b>${escapeHTML(mod.name)}:</b> Повреждённый файл mod.json`;
+                modErrorsList.appendChild(d);
                 hasErrors = true;
             }
 
-            if (mod.dependencies && Array.isArray(mod.dependencies)) {
-                for (const dep of mod.dependencies) {
-                    if (!loadedSoFar.has(dep)) {
-                        // Ошибка: зависимость не загружена ДО этого мода
-                        const errMsg = `Требует мод '${dep}', который должен быть загружен ДО него.`;
-                        errors[id] = errMsg;
-                        const errDiv = document.createElement('div');
-                        const bold = document.createElement('b');
-                        bold.textContent = mod.name + ':';
-                        errDiv.appendChild(bold);
-                        errDiv.appendChild(document.createTextNode(' ' + errMsg));
-                        modErrorsList.appendChild(errDiv);
-                        hasErrors = true;
-                    }
+            (mod.dependencies || []).forEach(dep => {
+                if (!loadedSoFar.has(dep)) {
+                    const msg = `Требует мод '${dep}', который должен быть загружен ДО него.`;
+                    errors[id] = msg;
+                    const d = document.createElement('div');
+                    d.innerHTML = `<b>${escapeHTML(mod.name)}:</b> ${escapeHTML(msg)}`;
+                    modErrorsList.appendChild(d);
+                    hasErrors = true;
                 }
-            }
+            });
+
             loadedSoFar.add(id);
         });
 
-        if (hasErrors) {
-            modErrorsContainer.style.display = 'block';
-        } else {
-            modErrorsContainer.style.display = 'none';
-        }
-
+        modErrorsContainer.style.display = hasErrors ? 'block' : 'none';
         return errors;
     }
 });

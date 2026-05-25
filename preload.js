@@ -29,8 +29,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     speakText: (text, voiceModel) => ipcRenderer.invoke('speak-text', text, voiceModel),
     sendGeminiRequest: (model, contents) => ipcRenderer.invoke('gemini-request', model, contents),
-    getSavePath: () => ipcRenderer.invoke('get-save-path')
-,
+    getSavePath: () => ipcRenderer.invoke('get-save-path'),
+    appRelaunch: () => ipcRenderer.send('app-relaunch'),
+
     onNexusHookRequest: (callback) => {
         const handler = (event, hook, world) => callback(hook, world);
         ipcRenderer.on('nexus-hook-request', handler);
