@@ -58,6 +58,34 @@ document.addEventListener('DOMContentLoaded', () => {
         return div.innerHTML;
     }
 
+    function getDisabledMods(settings) {
+        return settings && settings.mods && settings.mods.disabled && typeof settings.mods.disabled === 'object'
+            ? settings.mods.disabled
+            : {};
+    }
+
+    async function clearRuntimeDisabledMod(modId) {
+        const fullSettings = await window.electronAPI.loadSettings() || {};
+        if (!fullSettings.mods || typeof fullSettings.mods !== 'object') fullSettings.mods = {};
+        if (fullSettings.mods.disabled && typeof fullSettings.mods.disabled === 'object') {
+            delete fullSettings.mods.disabled[modId];
+        }
+        await window.electronAPI.saveSettings(fullSettings);
+        allMods = allMods.map(mod => {
+            if (mod.id !== modId) return mod;
+            const copy = { ...mod };
+            delete copy.runtimeDisabled;
+            delete copy.disabledInfo;
+            if (copy.error && String(copy.error).startsWith('Автоотключён:')) delete copy.error;
+            return copy;
+        });
+        if (window.RuntimeLog) {
+            window.RuntimeLog.info('ModManagerUI', `Сброшена runtime-блокировка мода ${modId}.`, { modId });
+        }
+    }
+
+
+
     // ── Navigation ────────────────────────────────────────────────────────────
     modsButton.addEventListener('click', () => {
         mainMenu.classList.remove('active-screen');
@@ -189,8 +217,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Core logic ────────────────────────────────────────────────────────────
     async function initializeModManager() {
         const settings = await window.electronAPI.loadSettings();
+        const disabledMods = getDisabledMods(settings);
         activeModIds = (settings && settings.mods && settings.mods.active)
-            ? [...settings.mods.active]
+            ? [...settings.mods.active].filter(id => id === 'base_game' || !disabledMods[id])
             : ['base_game'];
 
         // Ensure base_game is always first
@@ -207,7 +236,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const response = await window.electronAPI.modsGetList();
         if (response.success) {
-            const disabledMods = (settings && settings.mods && settings.mods.disabled && typeof settings.mods.disabled === 'object') ? settings.mods.disabled : {};
+            const disabledMods = getDisabledMods(settings);
             activeModIds = activeModIds.filter(id => id === 'base_game' || !disabledMods[id]);
             allMods = response.mods.map(mod => {
                 if (!disabledMods[mod.id]) return mod;
@@ -287,6 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (mod.id === selectedModId) classes += ' selected';
         if (mod.id === 'base_game')   classes += ' core-mod';
         if (errorMsg || mod.error)    classes += ' has-error';
+        if (mod.runtimeDisabled)      classes += ' runtime-disabled';
         el.className = classes;
 
         const infoDiv = document.createElement('div');
@@ -338,8 +368,8 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 const addBtn = document.createElement('button');
                 addBtn.className = 'mm-ctrl-btn success';
-                addBtn.title = 'Включить мод';
-                addBtn.innerHTML = '<i class="fas fa-plus"></i>';
+                addBtn.title = mod.runtimeDisabled ? 'Сбросить автоотключение и включить мод' : 'Включить мод';
+                addBtn.innerHTML = mod.runtimeDisabled ? '<i class="fas fa-undo"></i>' : '<i class="fas fa-plus"></i>';
                 addBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMod(mod.id, true); });
                 controlsDiv.appendChild(addBtn);
             }
@@ -372,6 +402,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function toggleMod(modId, enable) {
         if (enable) {
+            await clearRuntimeDisabledMod(modId);
             if (!activeModIds.includes(modId)) activeModIds.push(modId);
         } else {
             activeModIds = activeModIds.filter(id => id !== modId);
@@ -395,10 +426,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (mod.error) {
             const errBox = document.createElement('div');
             errBox.className = 'mm-details-error';
-            errBox.innerHTML = `<h3><i class="fas fa-times-circle"></i> Ошибка загрузки</h3>
+            const disabledReason = mod.disabledInfo ? escapeHTML(mod.disabledInfo.reason || 'runtime error') : '';
+            const disabledAt = mod.disabledInfo ? escapeHTML(mod.disabledInfo.disabled_at || '') : '';
+            errBox.innerHTML = `<h3><i class="fas fa-times-circle"></i> ${mod.runtimeDisabled ? 'Мод автоотключён' : 'Ошибка загрузки'}</h3>
                 <p><strong>${escapeHTML(mod.name || mod.id)}:</strong> ${escapeHTML(mod.error)}</p>
-                <p class="mm-hint">Проверьте файл mod.json на синтаксические ошибки.</p>`;
+                ${mod.runtimeDisabled ? `<p class="mm-hint">Причина: ${disabledReason}<br>Время: ${disabledAt}</p><button id="mm-clear-disabled-mod" class="mm-ctrl-btn success" style="padding:8px 12px;">Сбросить блокировку и включить</button>` : '<p class="mm-hint">Проверьте файл mod.json на синтаксические ошибки.</p>'}`;
             modDetailsContent.appendChild(errBox);
+            const clearBtn = document.getElementById('mm-clear-disabled-mod');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', async () => {
+                    await toggleMod(mod.id, true);
+                    selectedModId = mod.id;
+                    renderLists();
+                });
+            }
             return;
         }
 

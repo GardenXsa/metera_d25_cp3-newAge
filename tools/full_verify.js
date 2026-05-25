@@ -94,6 +94,7 @@ function main() {
 
   runIfExists('runtime smoke-check', 'tools/runtime_smoke_check.js', process.execPath, ['tools/runtime_smoke_check.js']);
   runIfExists('runtime data tests', 'tests/runtime_data.test.js', process.execPath, ['tests/runtime_data.test.js']);
+  runIfExists('character stats resolver tests', 'tests/character_stats_resolver.test.js', process.execPath, ['tests/character_stats_resolver.test.js']);
   runIfExists('stub game integration tests', 'tests/test_stub_game.js', process.execPath, ['tests/test_stub_game.js']);
 
   const py = detectPython();

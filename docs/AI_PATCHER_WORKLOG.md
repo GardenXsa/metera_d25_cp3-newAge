@@ -3374,3 +3374,81 @@ character stats contract preflight OK
 - `neon_siltlands_core` стабилизирован как новый total-conversion мод.
 
 **Следующий шаг после push:** продолжать уже от чистого Git checkpoint. Если всплывут новые проблемы мода — чинить через contract/data-flow, а не через UI-костыли.
+
+
+
+---
+
+### 64. `harden_mod_runtime_followup_watchdog_tests_disabled_ui`
+
+**Статус:** подготовлен к применению.
+
+**Что закрываем одним патчем:**
+
+- dedicated unit-test для `CharacterStatsResolver`;
+- watchdog запуска мира: если мир завис на loading-state, активные пользовательские моды автоотключаются и причина пишется в runtime log;
+- UI-сброс автоотключения мода в Mod Manager;
+- `npm run verify` теперь запускает resolver unit-test;
+- smoke-check baseline обновляется до `77 checks, 0 failed, 0 warnings`.
+
+**Что сознательно не делаем:**
+
+- не удаляем `BASE_CLASS_STATS/RACE_MODIFIERS` из `constants.js` в этом патче. Они уже не являются главным источником character creation после resolver-перехода, но пока остаются безопасным legacy fallback для старых участков кода. Удалять их нужно отдельным cleanup-патчем после поиска всех ссылок.
+
+**Проверки после применения:**
+
+```bash
+node --check script.js
+node --check js/mods/ModManagerUI.js
+node --check tests/character_stats_resolver.test.js
+node tests/character_stats_resolver.test.js
+node tools/verify_character_stats_contract.js
+npm run verify
+node -e "const fs=require('fs'); const script=fs.readFileSync('script.js','utf8'); if(!script.includes('armWorldGenerationWatchdog')) throw new Error('world startup watchdog missing'); const ui=fs.readFileSync('js/mods/ModManagerUI.js','utf8'); if(!ui.includes('clearRuntimeDisabledMod')) throw new Error('disabled mod reset UI missing'); const test=fs.readFileSync('tests/character_stats_resolver.test.js','utf8'); if(!test.includes('character stats resolver tests OK')) throw new Error('resolver unit test missing'); const full=fs.readFileSync('tools/full_verify.js','utf8'); if(!full.includes('character stats resolver tests')) throw new Error('full verify does not run resolver tests'); console.log('mod runtime hardening follow-up OK')"
+git status --short
+```
+
+**Ручной тест:**
+
+- запустить `npm start`;
+- открыть Mod Manager;
+- убедиться, что автоотключённый мод можно осознанно вернуть кнопкой сброса;
+- создать новый мир с рабочим `neon_siltlands_core`;
+- убедиться, что запуск мира не ломает обычный flow.
+
+
+
+---
+
+### 65. `git_checkpoint_mod_runtime_hardening_followup`
+
+**Статус:** готово к Git checkpoint.
+
+**Что фиксируем:**
+
+Follow-up после стабилизации модов и архитектуры статов:
+
+- `script.js`: добавлен watchdog запуска мира, который логирует зависание loading-state и автоотключает активные пользовательские моды;
+- `js/mods/ModManagerUI.js`: добавлен UI-сброс runtime-disabled модов;
+- `tests/character_stats_resolver.test.js`: добавлен unit-test для `CharacterStatsResolver`;
+- `tools/full_verify.js`: resolver unit-test теперь входит в полный verify;
+- `tools/runtime_smoke_check.js`: smoke-check теперь проверяет resolver test;
+- docs/worklog/plan/notes обновлены до smoke baseline `77 checks, 0 failed, 0 warnings`.
+
+**Зелёная точка перед checkpoint:**
+
+```text
+node --check script.js                              OK
+node --check js/mods/ModManagerUI.js               OK
+node --check tests/character_stats_resolver.test.js OK
+node tests/character_stats_resolver.test.js         character stats resolver tests OK
+node tools/verify_character_stats_contract.js       Character stats contract OK
+npm run verify                                      OK
+Smoke-check: 77 checks, 0 failed, 0 warnings
+Stub tests: 80 PASSED, 0 FAILED, 0 WARNINGS
+Python engine regression tests: PASS
+Full verify summary: 0 failed, 0 skipped
+mod runtime hardening follow-up OK
+```
+
+**Следующий шаг после push:** продолжать от чистого checkpoint. Legacy `BASE_CLASS_STATS/RACE_MODIFIERS` не удалялись в этом патче; их cleanup делать отдельной проверенной пачкой после поиска всех оставшихся ссылок.

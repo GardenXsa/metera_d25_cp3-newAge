@@ -56,7 +56,7 @@ node tools\validate_modding_contract.js
 
 ### Текущая зелёная база (2026-05-25):
 ```
-node tools/runtime_smoke_check.js  →  74 checks, 0 failed, 0 warnings
+node tools/runtime_smoke_check.js  →  77 checks, 0 failed, 0 warnings
 node tests/test_stub_game.js       →  80 PASSED, 0 FAILED, 0 WARNINGS
 все py -3 engine/test_*.py         →  PASS
 ```
@@ -166,7 +166,7 @@ tools\\full_verify.bat
 3. **Data-driven рефакторинг завершён** (Phase 0–12 + Phase 9 engine cleanup).
    Все item ID, профессии, стоимости — в data/*.json. Движок читает через loadDatabase.
 
-4. **Smoke-check зелёный: 74/0** — базовая точка после character stats contract preflight на 2026-05-25. Полная быстрая проверка: `npm run verify`.
+4. **Smoke-check зелёный: 77/0** — базовая точка после world startup watchdog, disabled-mod reset UI и resolver unit tests на 2026-05-25. Полная быстрая проверка: `npm run verify`.
 
 5. **_processHover** — метод Cartographer, НЕ вложенная функция. this контекст важен.
 

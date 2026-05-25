@@ -8062,9 +8062,104 @@ async function startGameWithNarrator() {
     setActiveScreen('world-setup-screen');
 }
 
+function getActiveNonBaseModIdsFromSettings(settings) {
+    const active = settings && settings.mods && Array.isArray(settings.mods.active) ? settings.mods.active : [];
+    return active.filter(id => id && id !== 'base_game');
+}
+
+async function disableActiveModsAfterWorldStartupFailure(reason, detail = null) {
+    if (!window.electronAPI || typeof window.electronAPI.loadSettings !== 'function' || typeof window.electronAPI.saveSettings !== 'function') {
+        if (window.RuntimeLog) window.RuntimeLog.warn('WorldStartupWatchdog', 'Не удалось автоотключить моды: settings API недоступен.', { reason, detail });
+        return false;
+    }
+
+    const settings = await window.electronAPI.loadSettings() || {};
+    if (!settings.mods || typeof settings.mods !== 'object') settings.mods = {};
+    const active = Array.isArray(settings.mods.active) ? settings.mods.active : ['base_game'];
+    const nonBaseActive = active.filter(id => id && id !== 'base_game');
+
+    if (nonBaseActive.length === 0) {
+        if (window.RuntimeLog) window.RuntimeLog.warn('WorldStartupWatchdog', 'Watchdog сработал без активных пользовательских модов.', { reason, detail });
+        return false;
+    }
+
+    settings.mods.active = active.filter(id => id === 'base_game' || !nonBaseActive.includes(id));
+    if (!settings.mods.active.includes('base_game')) settings.mods.active.unshift('base_game');
+    if (!settings.mods.disabled || typeof settings.mods.disabled !== 'object') settings.mods.disabled = {};
+
+    const disabledAt = new Date().toISOString();
+    for (const modId of nonBaseActive) {
+        settings.mods.disabled[modId] = {
+            reason,
+            detail,
+            disabled_at: disabledAt,
+            source: 'WorldStartupWatchdog'
+        };
+    }
+
+    await window.electronAPI.saveSettings(settings);
+
+    if (window.RuntimeLog) {
+        window.RuntimeLog.error('WorldStartupWatchdog', `Автоотключены моды после зависания/ошибки запуска мира: ${nonBaseActive.join(', ')}`, { reason, detail });
+    }
+
+    return true;
+}
+
+function armWorldGenerationWatchdog(phase) {
+    const timeoutMs = 45000;
+    const armedAt = Date.now();
+
+    if (window.RuntimeLog) {
+        window.RuntimeLog.info('WorldStartupWatchdog', `Watchdog запуска мира активирован: ${phase}`, { timeoutMs });
+    }
+
+    const timer = setTimeout(async () => {
+        const detail = {
+            phase,
+            timeoutMs,
+            elapsedMs: Date.now() - armedAt,
+            screen: document.querySelector('.active-screen')?.id || null,
+            loadingText: document.getElementById('loading-text')?.textContent || null
+        };
+
+        if (window.RuntimeLog) {
+            window.RuntimeLog.error('WorldStartupWatchdog', 'Запуск мира не завершился в отведённое время. Активные пользовательские моды будут отключены.', detail);
+        } else {
+            console.error('[WorldStartupWatchdog] World startup timeout:', detail);
+        }
+
+        await disableActiveModsAfterWorldStartupFailure('world startup watchdog timeout', detail);
+
+        try {
+            hideLoadingScreen();
+            showCustomAlert('Запуск мира завис или занял слишком много времени. Активные пользовательские моды автоотключены. Перезапусти игру и попробуй снова.');
+        } catch (error) {
+            console.error('[WorldStartupWatchdog] Failed to show timeout alert:', error);
+        }
+    }, timeoutMs);
+
+    return { timer, phase, armedAt };
+}
+
+function disarmWorldGenerationWatchdog(watchdog, reason = 'completed') {
+    if (!watchdog || !watchdog.timer) return;
+    clearTimeout(watchdog.timer);
+    watchdog.timer = null;
+    if (window.RuntimeLog) {
+        window.RuntimeLog.info('WorldStartupWatchdog', `Watchdog запуска мира снят: ${reason}`, {
+            phase: watchdog.phase,
+            elapsedMs: Date.now() - watchdog.armedAt
+        });
+    }
+}
+
+
 async function finalizeWorldSetupAndStart() {
     const yearsToSimulate = parseInt(worldYearsSlider.value, 10);
     const initialAgents = parseInt(worldAgentsSlider.value, 10);
+
+    const worldGenerationWatchdog = armWorldGenerationWatchdog('finalizeWorldSetupAndStart');
 
     player = tempPlayer;
     await loadActiveEraLore(player.era);
@@ -8099,6 +8194,7 @@ async function finalizeWorldSetupAndStart() {
     } else {
         setWorld(await initWorldSimulator(initialAgents, absoluteStartDay));
         if (!World) {
+            disarmWorldGenerationWatchdog(worldGenerationWatchdog, 'world simulator returned empty world');
             hideLoadingScreen();
             return; // Прерываем запуск, так как ядро упало или не инициализировалось
         }
@@ -8177,6 +8273,7 @@ async function finalizeWorldSetupAndStart() {
     - Используй мат и жаргон для акцентов, не делай из этого самоцель, но и не стесняйся.`;
 
     if (enableDeepSetup) {
+        disarmWorldGenerationWatchdog(worldGenerationWatchdog, 'deep setup pipeline started');
         await runDeepSetupPipeline(narratorStyleGuide);
         return;
     }
@@ -8194,6 +8291,7 @@ async function finalizeWorldSetupAndStart() {
 
     if (initialPromptTemplate.startsWith('Ошибка:')) {
         addLogMessage(t('error.loadPromptFailed', { filePath: initialPromptFile }), 'system-message');
+        disarmWorldGenerationWatchdog(worldGenerationWatchdog, 'initial prompt failed to load');
         hideLoadingScreen();
         isWaitingForAI = false;
         if (userInput) userInput.disabled = false;
@@ -8313,6 +8411,8 @@ async function finalizeWorldSetupAndStart() {
         .replace(/{language}/g, currentLanguage === 'ru' ? 'Russian' : 'English')
         .replace(/{narrator_style_guide}/g, narratorStyleGuide)
                 .replace(/{dynamic_context}/g, dynamicContextStr);
+
+    disarmWorldGenerationWatchdog(worldGenerationWatchdog, 'initial prompt ready');
 
     sendApiRequest(startPrompt, true);
 
