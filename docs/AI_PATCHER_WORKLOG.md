@@ -3053,3 +3053,92 @@ cyberpunk map/log fix OK                          OK
 **Риск:** средний-низкий. Runtime-генерация мира не менялась; изменения касаются preview списка миров, визуализации карты и data defaults cyberpunk total conversion.
 
 **Следующий шаг после push:** открыть `npm start` с активным `cyberpunk_core` и глазами проверить, что в консоли больше нет `modList is not defined`, нет `DATA ERROR` по vanilla `tag_defaults`, а riverbank/floodplain контуры на карте стали адекватнее.
+
+
+
+---
+
+### 56. `create_neon_siltlands_total_conversion_mod`
+
+**Статус:** подготовлен к применению.
+
+**Что делаем:**
+
+Создаём новый самостоятельный total-conversion мод `neon_siltlands_core`, чтобы заменить старые экспериментальные моды и не наследовать их визуальные/data-проблемы.
+
+**Почему:**
+
+Старый cyberpunk-мод продолжал давать неприятные riverbank/floodplain контуры на карте. Новый мод не использует `riverbank` / `floodplain` tags в своих биомах `numeric_id` 14/16: они заменены на приглушённые land tags `shore` / `lowland`, чтобы генератор мог использовать legacy numeric slots без кислотной зелёной каймы.
+
+**Изменено:**
+
+- `mods/neon_siltlands_core/mod.json`
+- `mods/neon_siltlands_core/data/biomes.json`
+- `mods/neon_siltlands_core/data/world_config.json`
+- `mods/neon_siltlands_core/data/items.json`
+- `mods/neon_siltlands_core/data/tag_defaults.json`
+- `mods/neon_siltlands_core/data/eras.json`
+- `mods/neon_siltlands_core/data/classes.json`
+- `mods/neon_siltlands_core/data/races.json`
+- `mods/neon_siltlands_core/data/professions.json`
+- `mods/neon_siltlands_core/data/traits.json`
+- `mods/neon_siltlands_core/data/npc_names.json`
+- `mods/neon_siltlands_core/data/faction_relations.json`
+- `mods/neon_siltlands_core/data/facilities.json`
+- `mods/neon_siltlands_core/data/city_gen.json`
+- `mods/neon_siltlands_core/data/locations.json`
+- `mods/neon_siltlands_core/data/recipes.json`
+- `mods/neon_siltlands_core/data/monsters.json`
+- `mods/neon_siltlands_core/data/disasters.json`
+- `mods/neon_siltlands_core/data/lore.txt`
+
+**Проверки после применения:**
+
+```bash
+node -e "const fs=require('fs'); const path=require('path'); const root='mods/neon_siltlands_core'; const files=['mod.json','data/biomes.json','data/world_config.json','data/items.json','data/tag_defaults.json','data/eras.json','data/classes.json','data/races.json','data/professions.json','data/traits.json','data/npc_names.json','data/faction_relations.json','data/facilities.json','data/city_gen.json','data/locations.json','data/recipes.json','data/monsters.json','data/disasters.json']; for (const f of files) JSON.parse(fs.readFileSync(path.join(root,f),'utf8')); const biomes=JSON.parse(fs.readFileSync(path.join(root,'data/biomes.json'),'utf8')); const bad=biomes.filter(b => Array.isArray(b.tags) && (b.tags.includes('riverbank') || b.tags.includes('floodplain'))); if (bad.length) throw new Error('new mod still has riverbank/floodplain tags: '+bad.map(b=>b.id).join(',')); const items=JSON.parse(fs.readFileSync(path.join(root,'data/items.json'),'utf8')); const tags=JSON.parse(fs.readFileSync(path.join(root,'data/tag_defaults.json'),'utf8')); const missing=[]; for (const [k,v] of Object.entries(tags)) { const arr=Array.isArray(v)?v:[v]; for (const id of arr) if (typeof id==='string' && !items[id]) missing.push(k+' -> '+id); } if (missing.length) throw new Error('tag_defaults missing items: '+missing.join('; ')); console.log('neon_siltlands_core JSON/data contract OK')"
+npm run verify
+git status --short
+```
+
+**Ручной шаг:** после применения удалить/отключить старые моды в папке модов приложения, оставить активным только `neon_siltlands_core`, запустить `npm start` и создать новый мир.
+
+
+
+---
+
+### 57. `git_checkpoint_neon_siltlands_mod_replacement`
+
+**Статус:** ожидает выполнения Git checkpoint.
+
+**Что фиксируем:**
+
+Старые экспериментальные cyberpunk-моды удалены из репозитория, вместо них добавлен новый самостоятельный total-conversion мод `neon_siltlands_core`.
+
+**Runtime установка:**
+
+Мод установлен в:
+
+```text
+C:\Users\user\AppData\Roaming\chronicles-of-meterea\mods\neon_siltlands_core
+```
+
+Игра видит только:
+
+```text
+neon_siltlands_core
+```
+
+**Зелёная точка перед checkpoint:**
+
+```text
+neon_siltlands_core JSON/data contract OK
+npm run verify
+Smoke-check: 67 checks, 0 failed, 0 warnings
+Stub tests: 80 PASSED, 0 FAILED, 0 WARNINGS
+Python engine regression tests: PASS
+Full verify summary: 0 failed, 0 skipped
+```
+
+**Важно:** для проверки нового мода нужно создавать новый мир. Старые миры могли быть сгенерированы на старых cyberpunk биомах и не являются валидным тестом новой карты.
+
+**Следующий шаг после push:** запустить `npm start`, активировать `neon_siltlands_core`, создать новый мир и проверить карту глазами.

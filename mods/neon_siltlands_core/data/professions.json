@@ -1,0 +1,6 @@
+[
+  { "id": "silt_farmer", "name": "Фермер ила", "profession_type": "farmer", "tool_tag": "tool", "tool_chance": 20, "production_type": "food", "demand_pattern": { "base": 1 }, "job_multiplier": 1.0, "special_abilities": ["farming"], "display_name_i18n_key": "profession.silt_farmer", "preferred_facility": "farms" },
+  { "id": "scrap_smith", "name": "Ломовой кузнец", "profession_type": "artisan", "tool_tag": "tool", "tool_chance": 30, "production_type": "crafts", "demand_pattern": { "base": 1 }, "job_multiplier": 1.0, "special_abilities": ["crafting"], "display_name_i18n_key": "profession.scrap_smith", "preferred_facility": "smithy" },
+  { "id": "memory_scribe", "name": "Писец памяти", "profession_type": "scholar", "tool_tag": "magic_raw", "tool_chance": 15, "production_type": "services", "demand_pattern": { "base": 1 }, "job_multiplier": 1.0, "special_abilities": ["spellcasting"], "display_name_i18n_key": "profession.memory_scribe", "preferred_facility": "library" },
+  { "id": "shore_trader", "name": "Береговой торговец", "profession_type": "merchant", "tool_tag": "currency", "tool_chance": 25, "production_type": "services", "demand_pattern": { "base": 1 }, "job_multiplier": 1.0, "special_abilities": ["trading"], "display_name_i18n_key": "profession.shore_trader", "preferred_facility": "market" }
+]

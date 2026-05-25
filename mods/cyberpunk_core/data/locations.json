@@ -1,8 +1,0 @@
-{
-  "night_city": { "name": "Найт-Сити", "type": "city", "description": "Город грез и разбитых надежд. Мегаполис, контролируемый корпорациями.", "placement": "center", "x": 0, "y": 0 },
-  "dogtown": { "name": "Догтаун", "type": "ruins", "description": "Боевая зона, неподконтрольная корпорациям. Рай для контрабандистов.", "placement": "desert", "x": 50, "y": 50 },
-  "orbital_station": { "name": "Орбитальная Станция 'Кристалл'", "type": "observatory", "description": "Элита смотрит на мир свысока. Недосягаемая роскошь.", "placement": "mountain", "x": -100, "y": -100 },
-  "badlands_camp": { "name": "Лагерь Кочевников (Пустоши)", "type": "camp", "description": "Прибежище тех, кто отверг корпоративные правила.", "placement": "plains", "x": 120, "y": -80 },
-  "biotechnica_farms": { "name": "Фермы Биотехники", "type": "village", "description": "Огромные гидропонные комплексы, кормящие город синтетикой.", "placement": "forest", "x": -80, "y": 60 },
-  "pacifica_slums": { "name": "Трущобы Пасифики", "type": "village", "description": "Заброшенный курортный район, ставший домом для банд.", "placement": "coast", "x": 150, "y": 150 }
-}

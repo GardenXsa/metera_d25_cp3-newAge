@@ -1,0 +1,5 @@
+[
+  { "id": "silt_runner", "name": "Иловый ходок", "base_stats": { "str": 8, "dex": 13, "int": 9, "con": 10, "cha": 8 }, "starting_items": ["silt_blade", "field_kit"] },
+  { "id": "blackwater_warden", "name": "Страж Чёрной воды", "base_stats": { "str": 12, "dex": 8, "int": 8, "con": 13, "cha": 7 }, "starting_items": ["warden_armor", "silt_blade"] },
+  { "id": "memory_broker", "name": "Скупщик памяти", "base_stats": { "str": 6, "dex": 9, "int": 14, "con": 8, "cha": 13 }, "starting_items": ["memory_shards", "field_kit"] }
+]

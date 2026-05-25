@@ -1,0 +1,5 @@
+[
+  { "id": "siltborn", "name": "Илорождённые", "base_race": true, "faction_preference": ["free_harbors"], "biome_preference": "ash_plain", "stat_modifiers": { "str": 0, "dex": 1, "int": 0, "con": 1, "cha": -1 }, "class_stats": {} },
+  { "id": "ashkin", "name": "Пепельники", "base_race": false, "faction_preference": ["ash_cartels"], "biome_preference": "glass_desert", "stat_modifiers": { "str": 1, "dex": 0, "int": 0, "con": 1, "cha": -1 }, "class_stats": {} },
+  { "id": "lumen", "name": "Люмены", "base_race": false, "faction_preference": ["lumen_synod"], "biome_preference": "aether_scar", "stat_modifiers": { "str": -1, "dex": 0, "int": 2, "con": -1, "cha": 1 }, "class_stats": {} }
+]

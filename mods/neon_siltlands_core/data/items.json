@@ -1,0 +1,19 @@
+{
+  "silt_mark": { "names": { "rebirth": "Илистая марка" }, "basePrice": 1, "category": "currency", "tags": ["currency"], "properties": { "weight_per_unit": 0.001 } },
+  "mold_bread": { "names": { "rebirth": "Плесневой хлеб" }, "basePrice": 4, "category": "consumable", "tags": ["food", "consumable", "processed_food"], "shelfLife": 120, "properties": { "nutrition": 18.0, "weight": 0.25 } },
+  "mold_grain": { "names": { "rebirth": "Плесневое зерно" }, "basePrice": 2, "category": "crop", "tags": ["food", "raw_food", "crop"], "shelfLife": 240, "properties": { "nutrition": 8.0, "weight": 0.35 } },
+  "feral_meat": { "names": { "rebirth": "Мясо падальщика" }, "basePrice": 7, "category": "raw_food", "tags": ["food", "raw_food", "meat"], "shelfLife": 72, "properties": { "nutrition": 24.0, "weight": 0.6 } },
+  "brine_fish": { "names": { "rebirth": "Соляная рыба" }, "basePrice": 6, "category": "raw_food", "tags": ["food", "raw_food", "seafood"], "shelfLife": 96, "properties": { "nutrition": 20.0, "weight": 0.45 } },
+  "scrap_wood": { "names": { "rebirth": "Сухой лом-древесник" }, "basePrice": 3, "category": "raw_material", "tags": ["wood", "building", "raw_material"], "properties": { "weight": 1.0 } },
+  "iron_scrap": { "names": { "rebirth": "Железный лом" }, "basePrice": 5, "category": "raw_material", "tags": ["ore", "metal_ingot", "building", "raw_material"], "properties": { "weight": 1.5 } },
+  "glass_ore": { "names": { "rebirth": "Стеклянная руда" }, "basePrice": 8, "category": "raw_material", "tags": ["ore", "stone", "luxury", "raw_material"], "properties": { "weight": 1.2 } },
+  "night_herbs": { "names": { "rebirth": "Ночные травы" }, "basePrice": 9, "category": "medical", "tags": ["medical", "herbs", "consumable"], "shelfLife": 180, "properties": { "weight": 0.1 } },
+  "salt_sludge": { "names": { "rebirth": "Соляной ил" }, "basePrice": 3, "category": "raw_material", "tags": ["stone", "medical", "building", "raw_material"], "properties": { "weight": 0.8 } },
+  "memory_shards": { "names": { "rebirth": "Осколки памяти" }, "basePrice": 35, "category": "magic_raw", "tags": ["magic_raw", "luxury", "document"], "properties": { "weight": 0.05 } },
+  "silt_blade": { "names": { "rebirth": "Илистый клинок" }, "basePrice": 80, "category": "weapon", "tags": ["weapon", "melee"], "properties": { "weight": 2.5, "damage": 8 } },
+  "coil_rifle": { "names": { "rebirth": "Катушечная винтовка" }, "basePrice": 140, "category": "weapon", "tags": ["weapon", "ranged"], "properties": { "weight": 4.0, "damage": 12 } },
+  "tar_coat": { "names": { "rebirth": "Смоляной плащ" }, "basePrice": 65, "category": "armor", "tags": ["armor", "cloth"], "properties": { "weight": 1.2, "armor": 8 } },
+  "warden_armor": { "names": { "rebirth": "Доспех Стража" }, "basePrice": 160, "category": "armor", "tags": ["armor", "metal_ingot"], "properties": { "weight": 6.0, "armor": 18 } },
+  "field_kit": { "names": { "rebirth": "Полевой набор" }, "basePrice": 30, "category": "tool", "tags": ["tool", "medical", "consumable"], "properties": { "weight": 1.0 } },
+  "silt_cart": { "names": { "rebirth": "Илистая телега" }, "basePrice": 120, "category": "vehicle", "tags": ["vehicle", "mount"], "properties": { "isTransport": true, "speedMultiplier": 1.4, "cargoBonus": 35, "weight": 45.0 } }
+}

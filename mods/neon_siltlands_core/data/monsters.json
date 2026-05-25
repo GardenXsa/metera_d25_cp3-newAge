@@ -1,0 +1,4 @@
+[
+  { "id": "silt_horror", "string_id": "silt_horror", "name": "Иловой ужас", "base_hp": 90, "base_attack": 14, "base_defense": 8, "spawn_biome_tag": "swamp", "corrupt_biome_to": "tar_marsh", "loot_table_id": "memory_shards" },
+  { "id": "glass_wraith", "string_id": "glass_wraith", "name": "Стеклянный призрак", "base_hp": 60, "base_attack": 18, "base_defense": 5, "spawn_biome_tag": "desert", "corrupt_biome_to": "glass_desert", "loot_table_id": "glass_ore" }
+]

@@ -1,0 +1,68 @@
+{
+  "id": "neon_siltlands_core",
+  "name": "Neon Siltlands: Clean Core",
+  "version": "1.0.0",
+  "author": "GardenXsa + GPT",
+  "description": "Самостоятельная total-conversion база без старого cyberpunk_core. Тёмная неон-метерия, приглушённые берега, без кислотно-зелёных riverbank/floodplain контуров.",
+  "apiVersion": "2.0",
+  "total_conversion": true,
+  "dependencies": [
+    "base_game"
+  ],
+  "data": {
+    "items": [
+      "data/items.json"
+    ],
+    "recipes": [
+      "data/recipes.json"
+    ],
+    "facilities": [
+      "data/facilities.json"
+    ],
+    "eras": [
+      "data/eras.json"
+    ],
+    "classes": [
+      "data/classes.json"
+    ],
+    "biomes": [
+      "data/biomes.json"
+    ],
+    "city_gen": [
+      "data/city_gen.json"
+    ],
+    "monsters": [
+      "data/monsters.json"
+    ],
+    "disasters": [
+      "data/disasters.json"
+    ],
+    "races": [
+      "data/races.json"
+    ],
+    "professions": [
+      "data/professions.json"
+    ],
+    "traits": [
+      "data/traits.json"
+    ],
+    "npc_names": [
+      "data/npc_names.json"
+    ],
+    "faction_relations": [
+      "data/faction_relations.json"
+    ],
+    "world_config": [
+      "data/world_config.json"
+    ],
+    "tag_defaults": [
+      "data/tag_defaults.json"
+    ],
+    "locations": [
+      "data/locations.json"
+    ],
+    "lore": [
+      "data/lore.txt"
+    ]
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "map_width": 256,
+  "map_height": 256,
+  "landform": "continent",
+  "continent": {
+    "noise_frequency": 2.8,
+    "noise_octaves": 5,
+    "elevation_shift": 0.24,
+    "edge_falloff_power": 2.2,
+    "edge_falloff_range": 0.62,
+    "edge_ocean_elevation": -0.52,
+    "min_land_ratio": 0.58,
+    "connectivity_pass": true,
+    "land_bridge_max_gap": 3,
+    "remove_islands_under": 90,
+    "smoothing_passes": 2
+  },
+  "rivers": {
+    "noise_frequency": 3.4,
+    "noise_octaves": 2,
+    "threshold_default": 0.075,
+    "threshold_plains": 0.09,
+    "threshold_mountains": 0.055
+  },
+  "volcanoes": {
+    "count": 3,
+    "min_radius": 2,
+    "max_radius": 5
+  },
+  "location_size_thresholds": {
+    "city": 5000,
+    "village": 1,
+    "ruins": 0
+  },
+  "default_era": "rebirth",
+  "default_race_field": "base_race",
+  "biomes_legacy_numeric_ids": [
+    "black_ocean",
+    "deep_shallows",
+    "silt_shore",
+    "ash_plain",
+    "blackwood",
+    "basalt_spires",
+    "iron_hills",
+    "glass_desert",
+    "tar_marsh",
+    "frost_ash",
+    "old_ruins",
+    "aether_scar",
+    "black_river",
+    "ember_vent",
+    "mud_bank",
+    "sink_lake",
+    "reed_lowland",
+    "molten_glass",
+    "ashfall"
+  ]
+}

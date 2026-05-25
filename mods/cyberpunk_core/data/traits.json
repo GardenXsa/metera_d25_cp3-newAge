@@ -1,7 +1,0 @@
-[
-  { "id": "cyberpsycho_prone", "name": "Склонность к киберпсихозу", "personality_bias": { "aggression": 30, "sociability": -20, "loyalty": -10 } },
-  { "id": "chrome_junkie", "name": "Хромоголик", "personality_bias": { "greed": 25, "aggression": 10 } },
-  { "id": "corpo_rat", "name": "Корпоративная крыса", "personality_bias": { "loyalty": 30, "greed": 20, "sociability": -10 } },
-  { "id": "street_smart", "name": "Дитя улиц", "personality_bias": { "sociability": 15, "loyalty": -15, "aggression": 5 } },
-  { "id": "net_diver", "name": "Сетевой ныряльщик", "personality_bias": { "sociability": -25, "greed": 10 } }
-]
