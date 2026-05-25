@@ -8306,7 +8306,7 @@ void processNavalTrade() {
         for (const auto& [rid, port] : g_world.port_facilities) {
             if (g_world.map.locations.count(rid)) {
                 auto loc = g_world.map.locations[rid];
-                if (std::abs(loc.x - ship.x) <= 1 && std::abs(loc.y - ship.y) <= 1) {
+                if (std::abs(loc.x - ship.x) <= 3 && std::abs(loc.y - ship.y) <= 3) {
                     current_port = rid;
                     break;
                 }
@@ -8326,7 +8326,7 @@ void processNavalTrade() {
         for (const auto& [gtStr, itemDef] : g_db.items) {
             if (itemDef.category == "document") continue;
             int available = countItemsInContainer(localPort.dock_container_id, gtStr);
-            if (available < 50) continue;
+            if (available < 20) continue; // Lower threshold for ship loading
 
             double localP = localReg.markets.count(gtStr) ? localReg.markets.at(gtStr) : itemDef.basePrice;
             if (localP <= 0) localP = itemDef.basePrice;
@@ -14423,7 +14423,7 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
     placeRegionsOnMap(g_world.map, g_world);
     generateRoads(g_world.map, g_world);
 
-    generateSeaRoutes(g_world.map, g_world);
+    // NOTE: generateSeaRoutes moved AFTER port creation below
 
     for (auto& [rid, region] : g_world.regions) {
         if (g_world.map.locations.count(rid) == 0) continue;
@@ -14491,8 +14491,14 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
             }
         }
     }
+    // Generate sea routes NOW — after ports are created
+    generateSeaRoutes(g_world.map, g_world);
+
     g_world.map.generation_tick = g_world.tick;
 
+
+    // Export initial goods to port docks so ships have something to trade
+    exportGoodsToPortDocks();
 
     // Initial news
     addNews("World created. Era " + g_world.era + " begins.", "Global", 3, "misc");
