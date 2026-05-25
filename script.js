@@ -9044,10 +9044,17 @@ async function loadPredefinedEffects() {
             effectsArray = await response.json();
         }
 
-        predefinedStatusEffects = effectsArray.reduce((acc, effect) => {
-            acc[effect.id] = effect;
-            return acc;
-        }, {});
+        // Handle both array [{id,name,...}] and object {id:{name,...}} formats
+        if (Array.isArray(effectsArray)) {
+            predefinedStatusEffects = effectsArray.reduce((acc, effect) => {
+                if (effect && effect.id) acc[effect.id] = effect;
+                return acc;
+            }, {});
+        } else if (effectsArray && typeof effectsArray === 'object') {
+            predefinedStatusEffects = effectsArray; // Already {id: {name,...}} format
+        } else {
+            predefinedStatusEffects = {};
+        }
 
         console.log(`РџСЂРµРґРѕРїСЂРµРґРµР»РµРЅРЅС‹Рµ СЌС„С„РµРєС‚С‹ (${Object.keys(predefinedStatusEffects).length} С€С‚.) СѓСЃРїРµС€РЅРѕ Р·Р°РіСЂСѓР¶РµРЅС‹.`);
     } catch (error) {

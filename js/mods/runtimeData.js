@@ -117,10 +117,83 @@
         }
     }
 
+    function createDefaultValue(defaultType) {
+        if (defaultType === 'array') return [];
+        if (defaultType === 'string') return '';
+        if (defaultType === 'number') return 0;
+        if (defaultType === 'boolean') return false;
+        if (defaultType === 'null') return null;
+        return {};
+    }
+
+    function normalizeRuntimeManifest(manifest) {
+        const safeManifest = isPlainObject(manifest) ? cloneValue(manifest) : {};
+        const contract = isPlainObject(safeManifest.modding_contract) ? safeManifest.modding_contract : {};
+        const descriptorDefaults = isPlainObject(contract.descriptor_defaults) ? contract.descriptor_defaults : {};
+        const rawDatabaseFiles = isPlainObject(safeManifest.database_files) ? safeManifest.database_files : {};
+        const databaseFiles = {};
+        const aliasToRuntimeKey = {};
+
+        Object.entries(rawDatabaseFiles).forEach(([runtimeKey, rawDescriptor]) => {
+            const descriptor = isPlainObject(rawDescriptor) ? cloneValue(rawDescriptor) : {};
+            const aliases = Array.isArray(descriptor.key_aliases) ? descriptor.key_aliases.filter((entry) => typeof entry === 'string' && entry.length > 0) : [];
+            const normalizedDescriptor = {
+                ...descriptor,
+                owner: typeof descriptor.owner === 'string' && descriptor.owner.length > 0
+                    ? descriptor.owner
+                    : descriptorDefaults.owner,
+                source: typeof descriptor.source === 'string' && descriptor.source.length > 0
+                    ? descriptor.source
+                    : descriptorDefaults.source,
+                required: typeof descriptor.required === 'boolean'
+                    ? descriptor.required
+                    : descriptorDefaults.required !== false,
+                key_aliases: aliases,
+                replace_on_total_conversion: descriptor.replace_on_total_conversion === true,
+                load_in_total_conversion: descriptor.load_in_total_conversion === true,
+                runtime_key: runtimeKey
+            };
+
+            databaseFiles[runtimeKey] = normalizedDescriptor;
+            aliasToRuntimeKey[runtimeKey] = runtimeKey;
+            aliases.forEach((alias) => {
+                aliasToRuntimeKey[alias] = runtimeKey;
+            });
+        });
+
+        safeManifest.database_files = databaseFiles;
+        safeManifest._normalized_database_aliases = aliasToRuntimeKey;
+
+        return {
+            manifest: safeManifest,
+            databaseFiles,
+            aliasToRuntimeKey
+        };
+    }
+
+    function resolveRuntimeDatabaseKey(rawKey, manifest) {
+        if (typeof rawKey !== 'string' || rawKey.length === 0) {
+            return rawKey;
+        }
+        const normalized = normalizeRuntimeManifest(manifest);
+        return normalized.aliasToRuntimeKey[rawKey] || rawKey;
+    }
+
+    function getRuntimeDatabaseDescriptor(rawKey, manifest) {
+        const normalized = normalizeRuntimeManifest(manifest);
+        const runtimeKey = resolveRuntimeDatabaseKey(rawKey, normalized.manifest);
+        return normalized.databaseFiles[runtimeKey] || null;
+    }
+
     function resolveEraLocationFile(eras, eraId, fallbackFileName) {
-        const safeFallback = fallbackFileName || 'locations_rebirth.json';
         const eraList = Array.isArray(eras) ? eras : [];
+        const safeFallback = fallbackFileName
+            || eraList.find((item) => item && typeof item.default_location_file === 'string' && item.default_location_file)?.default_location_file
+            || '';
         const era = eraList.find((item) => item && item.id === eraId);
+        if (!safeFallback) {
+            throw new Error('[RuntimeData] No era location fallback file is defined.');
+        }
         if (!era) {
             return {
                 fileName: safeFallback,
@@ -169,6 +242,10 @@
         cloneValue,
         mergeDeep,
         mergeRuntimeValue,
+        createDefaultValue,
+        normalizeRuntimeManifest,
+        resolveRuntimeDatabaseKey,
+        getRuntimeDatabaseDescriptor,
         resolveEraLocationFile,
         resolvePromptEntry,
         ensurePromptAlias,
