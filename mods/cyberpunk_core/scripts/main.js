@@ -242,15 +242,22 @@ ModAPI.on('onModsInitialized', async () => {
 
 
     // 9. Очистка UI от ванильных рудиментов (Эпохи)
-    const eraSelect = document.getElementById('char-era-select');
-    if (eraSelect) {
-        Array.from(eraSelect.options).slice().forEach(opt => {
-            if (opt.value !== 'rebirth') {
-                eraSelect.removeChild(opt);
+    // Use innerHTML rebuild — avoids Illegal invocation in eval sandbox
+    setTimeout(() => {
+        try {
+            const eraSelect = document.getElementById('char-era-select');
+            if (eraSelect) {
+                // Rebuild options keeping only 'rebirth'
+                const rebirthOpt = Array.from(eraSelect.options).find(o => o.value === 'rebirth');
+                if (rebirthOpt) {
+                    const rebirthText = rebirthOpt.text || 'Rebirth';
+                    eraSelect.innerHTML = '<option value="rebirth">' + rebirthText + '</option>';
+                    eraSelect.value = 'rebirth';
+                }
+                if (typeof updateEraDescription === 'function') updateEraDescription();
             }
-        });
-        if (typeof updateEraDescription === 'function') updateEraDescription();
-    }
+        } catch(e) { /* silently skip if DOM not ready */ }
+    }, 150);
 
     // Патчим Быстрый Старт, чтобы он не выбирал удаленные эпохи и генерировал лорные имена
     if (window.handleQuickStart) {
