@@ -56,10 +56,22 @@ node tools\validate_modding_contract.js
 
 ### Текущая зелёная база (2026-05-25):
 ```
-node tools/runtime_smoke_check.js  →  60 checks, 0 failed, 0 warnings
+node tools/runtime_smoke_check.js  →  66 checks, 0 failed, 0 warnings
 node tests/test_stub_game.js       →  80 PASSED, 0 FAILED, 0 WARNINGS
 все py -3 engine/test_*.py         →  PASS
 ```
+
+### Единая проверка перед push / крупным патчем:
+```bat
+npm run verify
+```
+
+Или напрямую:
+```bat
+tools\\full_verify.bat
+```
+
+`full_verify` запускает smoke-check, runtime-data test, stub-game integration test и ключевые Python engine regression tests.
 
 ### Интеграционные тесты (stub provider):
 - `tests/test_stub_game.js` — 80 ассертов:
@@ -75,14 +87,17 @@ node tests/test_stub_game.js       →  80 PASSED, 0 FAILED, 0 WARNINGS
 
 ### КРИТИЧЕСКИЕ (блокируют игру)
 
-- [ ] **meterea_engine.exe устарел** — исходник `meterea_engine.cpp` был значительно
-  изменён в ходе рефакторинга (Phase 9), но `.exe` / `.so` не перекомпилированы.
-  Движок работает через fallback (OldCoreInventorySystem), пока бинарник не пересобран.
-  **Что нужно**: `g++ -std=c++17 -O2 -o engine/meterea_engine.exe engine/meterea_engine.cpp`
-  (или через CMake/Makefile если есть). После этого — перезапустить Electron.
+На 2026-05-25 известных критических блокеров в документации не осталось.
 
-- [ ] **UI примитивный** — основное окно выглядит скучно, не как игра.
-  Нужен визуальный оверхол: тёмная тема с градиентами, анимации, иконки предметов.
+### ВАЖНЫЕ, НО НЕ БЛОКИРУЮЩИЕ
+
+- [ ] **Electron E2E нужно проверять вручную после крупных правок** — автоматические тесты
+  закрывают smoke/runtime/stub/engine контур, но не доказывают, что реальное окно Electron,
+  DevTools console, новая игра, загрузка сохранения и полный IPC pipeline работают глазами.
+
+- [ ] **Документацию нужно держать синхронной с GitHub/master** — ранее `NOTES.md` и
+  `DATA_DRIVEN_MIGRATION_PLAN.md` расходились по статусам перекомпиляции, UI overhaul и push.
+  После этого патча источником быстрой проверки становится `npm run verify` / `tools\\full_verify.bat`.
 
 ### ИСПРАВЛЕНО (архив)
 
@@ -142,12 +157,11 @@ node tests/test_stub_game.js       →  80 PASSED, 0 FAILED, 0 WARNINGS
 
 ## ЗАМЕТКИ ДЛЯ БУДУЩИХ СЕССИЙ
 
-1. **Бинарник движка устарел** — первое, что нужно сделать: перекомпилировать
-   `engine/meterea_engine.cpp` в `.exe` (Windows) и `.so`/бинарник (Linux).
-   После этого проверить IPC цепочку JS→Python→C++.
+1. **Перед продолжением сначала запустить `npm run verify`** — это единая быстрая проверка
+   smoke/runtime/stub/engine контура. Если она красная, сначала чинить её.
 
-2. **UI оверхол** — следующая крупная задача после компиляции движка.
-   Нужна тёмная тема, иконки, анимации. CSS полностью переработать.
+2. **Electron E2E остаётся ручным финальным шагом** — после крупных патчей нужно открыть приложение,
+   проверить старт новой игры, загрузку сохранения, DevTools console и IPC цепочку JS→Python→C++.
 
 3. **Data-driven рефакторинг завершён** (Phase 0–12 + Phase 9 engine cleanup).
    Все item ID, профессии, стоимости — в data/*.json. Движок читает через loadDatabase.

@@ -10,7 +10,7 @@
 
 **Текущая фаза:** ✅ Миграция завершена (Phase 0–12 + Phase 9 Engine Cleanup закрыты)
 
-**Последняя зелёная точка:** `e8ca738` — Phase 9 final cleanup. Smoke-check: `60 checks, 0 failed, 0 warnings`. Тесты: все pass.
+**Последняя зелёная точка:** локально после `sync_project_state_and_add_full_verify` — `npm run verify`: `0 failed, 0 skipped`; smoke-check: `66 checks, 0 failed, 0 warnings`. Последний зафиксированный Git checkpoint до этого: `e8ca738` — Phase 9 final cleanup.
 
 **Git checkpoint:** `e8ca738` — `refactor(engine): phase9 final cleanup — remove legacy shims, externalize all remaining hardcodes`
 
@@ -28,7 +28,7 @@
 - [x] Inventory actor routes, movement settings, buildContainer defaults вынесены из `script.js`.
 - [x] Runtime config validator добавлен.
 - [x] Data integrity validator добавлен.
-- [x] Smoke-check зелёный: `60 checks, 0 failed, 0 warnings`.
+- [x] Smoke-check зелёный: `66 checks, 0 failed, 0 warnings`.
 - [x] Worklog Viewer показывает общий прогресс.
 - [x] Git checkpoint `76b2df5` запушен (Phase 6).
 
@@ -83,9 +83,9 @@
 
 ## Ближайшие следующие шаги
 
-1. **Перекомпилировать движок** — самое важное. После этого проверить IPC.
-2. **UI оверхол** — следующая крупная пользовательская задача.
-3. **Git push** — запустить `.\push.sh` или `git push` из терминала вручную.
+1. **Запустить единый verification-контур**: `npm run verify` или `tools\\full_verify.bat`.
+2. **Если verify зелёный — сделать короткий ручной Electron E2E**: запуск окна, новая игра, загрузка сохранения, DevTools console, IPC flow.
+3. **После E2E — переходить к следующей игровой задаче**, а не возвращаться к уже закрытой миграции без нового конкретного бага.
 
 ---
 
@@ -201,4 +201,4 @@
 4. ✅ Сохранение/загрузка работают.
 5. ✅ Inventory/economy/prompt/engine flows не ломаются.
 6. ✅ Worklog и план обновлены.
-7. ⏳ Финальный push — нужно запустить вручную (`git push origin master`).
+7. ✅ Финальный push по закрытым migration/UI/engine этапам выполнен; перед следующими push использовать `npm run verify`.

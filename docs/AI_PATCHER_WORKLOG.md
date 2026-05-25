@@ -2745,3 +2745,98 @@ node tests/test_stub_game.js                     → 80 PASSED, 0 FAILED
 **Проверки:** нет (документация, не код).
 
 **Следующий шаг:** перекомпилировать `meterea_engine.exe` → проверить IPC pipeline → UI оверхол.
+
+
+
+---
+
+### 50. `sync_project_state_and_add_full_verify`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `package.json`
+- `tools/full_verify.js`
+- `tools/full_verify.bat`
+- `NOTES.md`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Синхронизируем проектную память после завершения data-driven миграции, перекомпиляции движка, UI/push этапов и последних runtime fixes.
+
+**Зачем:**
+
+В `NOTES.md` и `DATA_DRIVEN_MIGRATION_PLAN.md` остались противоречивые статусы: старые пункты про устаревший бинарник, примитивный UI, следующий push и уже закрытые шаги. Это мешает новым чатам и следующему patch-планированию.
+
+**Что меняется:**
+
+- устаревшие критические пункты в `NOTES.md` заменены на актуальные non-blocking риски;
+- ближайшие шаги в migration plan переведены с уже закрытых задач на verification + Electron E2E;
+- добавлен единый verification entrypoint `npm run verify`;
+- добавлены `tools/full_verify.js` и `tools/full_verify.bat`, которые запускают smoke-check, runtime-data test, stub-game integration test и ключевые Python engine regression tests.
+
+**Риск:** низкий. Runtime игры не меняется; патч добавляет проверочный инструмент и исправляет документацию.
+
+**Проверки после применения:**
+
+```bash
+node --check tools/full_verify.js
+npm run verify
+node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); if(!pkg.scripts.verify) throw new Error('verify script missing'); const notes=fs.readFileSync('NOTES.md','utf8'); if(notes.includes('**meterea_engine.exe устарел**')) throw new Error('stale engine blocker remains'); const plan=fs.readFileSync('docs/DATA_DRIVEN_MIGRATION_PLAN.md','utf8'); if(!plan.includes('npm run verify')) throw new Error('verify next step missing'); console.log('project state sync docs OK')"
+git status --short
+```
+
+**Результат применения:** успешно.
+
+- `node --check tools/full_verify.js` зелёный;
+- `npm run verify` зелёный;
+- smoke-check внутри verify: `66 checks, 0 failed, 0 warnings`;
+- stub-game integration tests: `80 PASSED, 0 FAILED, 0 WARNINGS`;
+- Python engine regression tests зелёные;
+- full verify summary: `0 failed, 0 skipped`.
+
+**Примечание:** первая docs-check команда дала false positive, потому что искала любое упоминание `meterea_engine.exe`. Это имя легитимно встречается в архитектурном описании/путях. Проверка уточнена до старого markdown-блокера `**meterea_engine.exe устарел**`.
+
+**Следующий шаг:** сделать ручной Electron E2E и затем Git checkpoint.
+
+
+
+---
+
+### 51. `git_checkpoint_after_full_verify_state_sync`
+
+**Статус:** ожидает выполнения Git checkpoint.
+
+**Что фиксируем:**
+
+Зелёную стабилизационную пачку после синхронизации проектной памяти и добавления единого verification entrypoint.
+
+**В commit должны попасть:**
+
+- `NOTES.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `package.json`
+- `tools/full_verify.js`
+- `tools/full_verify.bat`
+
+**Последняя зелёная точка перед checkpoint:**
+
+```text
+npm run verify
+Full verify summary: 0 failed, 0 skipped
+Smoke-check: 66 checks, 0 failed, 0 warnings
+Stub tests: 80 PASSED, 0 FAILED, 0 WARNINGS
+Python engine regression tests: PASS
+```
+
+**Зачем:**
+
+Теперь проект имеет единый быстрый verification-контур через `npm run verify`, а `NOTES.md` и `DATA_DRIVEN_MIGRATION_PLAN.md` больше не ведут следующий чат к устаревшим задачам вроде уже закрытой перекомпиляции/UI/push.
+
+**Риск:** низкий. Runtime игры не менялся; это документация, package script и verification tooling.
+
+**Следующий шаг после checkpoint:** ручной Electron E2E: запуск окна, новая игра, загрузка сохранения, DevTools console, IPC flow.
