@@ -82,6 +82,7 @@ struct Database {
     std::vector<BiomeDef> biomes;
     std::unordered_map<std::string, uint8_t> biome_string_to_id;
     std::unordered_map<uint8_t, size_t> biome_numeric_to_index;
+    std::vector<std::string> biome_legacy_numeric_ids; // Data-driven: legacy save migration list
     CityGenDef city_gen_rules;
     std::unordered_map<std::string, MonsterDef> monsters;
     std::unordered_map<std::string, DisasterDef> disasters;
