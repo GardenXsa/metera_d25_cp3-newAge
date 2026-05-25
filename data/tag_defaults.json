@@ -34,5 +34,15 @@
     "herbs"
   ],
   "reserve_priority": "bread",
-  "army_supply_priority": "smoked_meat"
+  "army_supply_priority": "smoked_meat",
+  "reserve_priority_hints": [
+    "bread",
+    "smoked_meat",
+    "meat"
+  ],
+  "army_supply_priority_hints": [
+    "smoked_meat",
+    "bread",
+    "fish"
+  ]
 }

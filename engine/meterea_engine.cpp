@@ -3518,10 +3518,19 @@ struct WorldMap {
         if (j.has("generation_tick")) m.generation_tick = j["generation_tick"].asInt();
         int version = j.has("version") ? j["version"].asInt() : 1;
         
-        std::vector<std::string> legacy_map = {
-            "ocean", "shallow_water", "plains", "forest", "mountains", "hills", "desert", "swamp", 
+        // Data-driven: legacy numeric biome ID list loaded from biomes.json "legacy_numeric_ids"
+        // Fallback inline list kept for saves created before data/biomes.json had this field
+        const std::vector<std::string>* legacy_map_ptr = nullptr;
+        std::vector<std::string> legacy_map_fallback = {
+            "ocean", "shallow_water", "plains", "forest", "mountains", "hills", "desert", "swamp",
             "tundra", "ruins", "anomaly", "river", "volcano", "riverbank", "lake", "floodplain", "lava", "ash"
         };
+        if (!g_db.biome_legacy_numeric_ids.empty()) {
+            legacy_map_ptr = &g_db.biome_legacy_numeric_ids;
+        } else {
+            legacy_map_ptr = &legacy_map_fallback;
+        }
+        const std::vector<std::string>& legacy_map = *legacy_map_ptr;
 
         if (j.has("grid")) {
             for (size_t i = 0; i < j["grid"].size(); i++) {
@@ -13506,8 +13515,15 @@ std::string chooseMonopolyProductionFocus(const std::string& facilityId, const R
 void addBootstrapStarterResources(Region& region) {
     if (region.vault_id.empty()) return;
 
-    const std::string stapleFoodId = getPreferredGlobalItemByTag("food", {"bread", "smoked_meat", "meat"}, {"processed_food", "bakery_product", "raw_food"}, "reserve_priority");
-    const std::string preservedFoodId = getPreferredGlobalItemByTag("food", {"smoked_meat", "bread", "fish"}, {"preserved_food", "processed_food", "raw_food"}, "army_supply_priority");
+    // Data-driven: priority hint lists loaded from tag_defaults (reserve_priority_hints / army_supply_priority_hints)
+    const std::vector<std::string>& staplePriority = g_db.tag_default_lists.count("reserve_priority_hints")
+        ? g_db.tag_default_lists.at("reserve_priority_hints")
+        : std::vector<std::string>{"bread", "smoked_meat", "meat"};
+    const std::vector<std::string>& preservedPriority = g_db.tag_default_lists.count("army_supply_priority_hints")
+        ? g_db.tag_default_lists.at("army_supply_priority_hints")
+        : std::vector<std::string>{"smoked_meat", "bread", "fish"};
+    const std::string stapleFoodId = getPreferredGlobalItemByTag("food", staplePriority, {"processed_food", "bakery_product", "raw_food"}, "reserve_priority");
+    const std::string preservedFoodId = getPreferredGlobalItemByTag("food", preservedPriority, {"preserved_food", "processed_food", "raw_food"}, "army_supply_priority");
     const std::string constructionId = getPreferredRegionalItemByTag(region.available_raw_resources, "raw_material", {"wood", "stone"}, {"construction_material", "raw_material"});
     const std::string oreId = getPreferredRegionalOreId(region.available_raw_resources);
     const std::string currencyId = getCoreIdByTag("currency");
@@ -13681,13 +13697,8 @@ std::string getLegacyCraftFacilityForProfession(const NPC& npc) {
         return profIt->second.preferred_facility;
     }
 
-    // Legacy fallback map (migration shim — remove once professions.json has preferred_facility)
-    static const std::unordered_map<std::string, std::string> legacy_map = {
-        {"blacksmith", "forges"}, {"weaver", "weavers"}, {"baker", "bakeries"},
-        {"jeweler", "jewelers"}, {"alchemist", "alchemists"}, {"tailor", "tailors"}
-    };
-    auto it = legacy_map.find(profLower);
-    if (it != legacy_map.end()) return it->second;
+    // All professions now define preferred_facility in professions.json.
+    // Legacy shim removed — fallback to empty string.
     return "";
 }
 
@@ -14636,6 +14647,7 @@ int main() {
                     g_db.biome_string_to_id[b.string_id] = b.numeric_id;
                     g_db.biome_numeric_to_index[b.numeric_id] = g_db.biomes.size() - 1;
                 }
+
             }
 
             // Parse CityGen
@@ -14874,6 +14886,12 @@ int main() {
                     if (cc.has("land_bridge_max_gap")) g_db.world_config.continent.land_bridge_max_gap = cc["land_bridge_max_gap"].asInt();
                     if (cc.has("remove_islands_under")) g_db.world_config.continent.remove_islands_under = cc["remove_islands_under"].asInt();
                     if (cc.has("smoothing_passes")) g_db.world_config.continent.smoothing_passes = cc["smoothing_passes"].asInt();
+                }
+                // Data-driven: legacy biome numeric ID list for save migration
+                if (wc.has("biomes_legacy_numeric_ids") && wc["biomes_legacy_numeric_ids"].type == JsonValue::ARRAY) {
+                    g_db.biome_legacy_numeric_ids.clear();
+                    const JsonValue& bArr = wc["biomes_legacy_numeric_ids"];
+                    for (size_t i = 0; i < bArr.size(); i++) g_db.biome_legacy_numeric_ids.push_back(bArr[i].asString());
                 }
                 if (wc.has("rivers") && wc["rivers"].type == JsonValue::OBJECT) {
                     JsonValue rc = wc["rivers"];

@@ -2660,3 +2660,54 @@ node tests/test_stub_game.js            → 80 PASSED, 0 FAILED
 
 **Следующий шаг:** Git push → продолжить оставшиеся пункты бэклога Phase 9.
 
+
+
+---
+
+### 48. `phase9_final_cleanup_legacy_shims`
+
+**Статус:** применён успешно. Дата: 2026-05-25.
+
+**Изменено:**
+
+- `engine/meterea_engine.cpp`
+- `data/tag_defaults.json`
+- `data/world_config.json`
+
+**Что сделали:**
+
+Финальная чистка оставшихся migration shims и inline хардкодов в движке. Три патча:
+
+**Патч A — stapleFoodId/preservedFoodId inline priority hints:**
+Списки `{"bread","smoked_meat","meat"}` и `{"smoked_meat","bread","fish"}` вынесены из кода.
+Теперь читаются из `g_db.tag_default_lists["reserve_priority_hints"]` / `["army_supply_priority_hints"]`.
+Inline fallback сохранён в коде на случай старых данных.
+В `tag_defaults.json` добавлены ключи `reserve_priority_hints` и `army_supply_priority_hints`.
+
+**Патч B — Удалён мёртвый legacy_map в getLegacyCraftFacilityForProfession:**
+Статический fallback map `{blacksmith→forges, weaver→weavers, ...}` удалён.
+Он никогда не срабатывал — все профессии уже имеют `preferred_facility` в `professions.json`.
+Функция теперь возвращает `""` если data не найдена (чистый путь).
+
+**Патч C/D/E — biome legacy_numeric_ids data-driven:**
+Список строковых ID биомов для конвертации старых числовых сохранений вынесен из кода.
+- В `Database` struct добавлено поле `biome_legacy_numeric_ids`.
+- В блоке Parse World Config добавлено чтение `wc["biomes_legacy_numeric_ids"]`.
+- В `world_config.json` добавлен массив `biomes_legacy_numeric_ids` (18 биомов).
+- Использование в десериализации карты: если `g_db.biome_legacy_numeric_ids` не пуст — 
+  используется он, иначе inline fallback (для совместимости).
+
+**Проверки:**
+
+```
+node tools/runtime_smoke_check.js               → 60 checks, 0 failed, 0 warnings
+py -3 engine/test_profession_cluster_refactor.py → PASS
+py -3 engine/test_bootstrap_cluster_refactor.py  → PASS
+py -3 engine/test_runtime_bundle.py              → PASS
+node tests/test_stub_game.js                     → 80 PASSED, 0 FAILED
+```
+
+**Риски:** минимальный. Все изменения имеют C++ inline fallback.
+
+**Итог по бэклогу remaining_meterea_engine_backlog_2026-05-22.md:**
+Все 11 пунктов закрыты. Движок полностью data-driven по item ID, профессиям и материалам.

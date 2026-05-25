@@ -35,23 +35,99 @@
   "default_era": "rebirth",
   "default_race_field": "base_race",
   "months": [
-    { "id": "morning_star", "name_i18n_key": "months.morningStar" },
-    { "id": "ice_break", "name_i18n_key": "months.iceBreak" },
-    { "id": "wind_blow", "name_i18n_key": "months.windBlow" },
-    { "id": "blossom", "name_i18n_key": "months.blossom" },
-    { "id": "solstice", "name_i18n_key": "months.solstice" },
-    { "id": "heat_month", "name_i18n_key": "months.heatMonth" },
-    { "id": "harvest", "name_i18n_key": "months.harvest" },
-    { "id": "leaf_fall", "name_i18n_key": "months.leafFall" },
-    { "id": "chill", "name_i18n_key": "months.chill" },
-    { "id": "dead_moon", "name_i18n_key": "months.deadMoon" },
-    { "id": "dark_frontier", "name_i18n_key": "months.darkFrontier" },
-    { "id": "year_end", "name_i18n_key": "months.yearEnd" }
+    {
+      "id": "morning_star",
+      "name_i18n_key": "months.morningStar"
+    },
+    {
+      "id": "ice_break",
+      "name_i18n_key": "months.iceBreak"
+    },
+    {
+      "id": "wind_blow",
+      "name_i18n_key": "months.windBlow"
+    },
+    {
+      "id": "blossom",
+      "name_i18n_key": "months.blossom"
+    },
+    {
+      "id": "solstice",
+      "name_i18n_key": "months.solstice"
+    },
+    {
+      "id": "heat_month",
+      "name_i18n_key": "months.heatMonth"
+    },
+    {
+      "id": "harvest",
+      "name_i18n_key": "months.harvest"
+    },
+    {
+      "id": "leaf_fall",
+      "name_i18n_key": "months.leafFall"
+    },
+    {
+      "id": "chill",
+      "name_i18n_key": "months.chill"
+    },
+    {
+      "id": "dead_moon",
+      "name_i18n_key": "months.deadMoon"
+    },
+    {
+      "id": "dark_frontier",
+      "name_i18n_key": "months.darkFrontier"
+    },
+    {
+      "id": "year_end",
+      "name_i18n_key": "months.yearEnd"
+    }
   ],
   "time_periods": [
-    { "id": "night", "name_i18n_key": "time.night", "start_hour": 22, "end_hour": 6 },
-    { "id": "morning", "name_i18n_key": "time.morning", "start_hour": 6, "end_hour": 10 },
-    { "id": "day", "name_i18n_key": "time.day", "start_hour": 10, "end_hour": 18 },
-    { "id": "evening", "name_i18n_key": "time.evening", "start_hour": 18, "end_hour": 22 }
+    {
+      "id": "night",
+      "name_i18n_key": "time.night",
+      "start_hour": 22,
+      "end_hour": 6
+    },
+    {
+      "id": "morning",
+      "name_i18n_key": "time.morning",
+      "start_hour": 6,
+      "end_hour": 10
+    },
+    {
+      "id": "day",
+      "name_i18n_key": "time.day",
+      "start_hour": 10,
+      "end_hour": 18
+    },
+    {
+      "id": "evening",
+      "name_i18n_key": "time.evening",
+      "start_hour": 18,
+      "end_hour": 22
+    }
+  ],
+  "biomes_legacy_numeric_ids": [
+    "ocean",
+    "shallow_water",
+    "plains",
+    "forest",
+    "mountains",
+    "hills",
+    "desert",
+    "swamp",
+    "tundra",
+    "ruins",
+    "anomaly",
+    "river",
+    "volcano",
+    "riverbank",
+    "lake",
+    "floodplain",
+    "lava",
+    "ash"
   ]
 }
