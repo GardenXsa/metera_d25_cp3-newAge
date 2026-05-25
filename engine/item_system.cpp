@@ -1,12 +1,35 @@
 #include "item_system.h"
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 
 // Definition of the global registry instance
 ItemRegistry g_itemRegistry;
 
+namespace {
+std::filesystem::path resolveItemTemplatePath(const std::string& filePath) {
+    const std::filesystem::path inputPath(filePath);
+    const std::filesystem::path currentPath = std::filesystem::current_path();
+
+    const std::filesystem::path candidates[] = {
+        inputPath,
+        currentPath / inputPath,
+        currentPath.parent_path() / inputPath
+    };
+
+    for (const auto& candidate : candidates) {
+        if (std::filesystem::exists(candidate)) {
+            return candidate;
+        }
+    }
+
+    return inputPath;
+}
+}
+
 void ItemRegistry::loadItemsFromJSON(const std::string& filePath) {
-    std::ifstream f(filePath);
+    const std::filesystem::path resolvedPath = resolveItemTemplatePath(filePath);
+    std::ifstream f(resolvedPath);
     if (!f.is_open()) {
         std::cerr << "Failed to open " << filePath << std::endl;
         return;

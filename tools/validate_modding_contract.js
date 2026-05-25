@@ -26,6 +26,9 @@ function main() {
   check(isObject(contract && contract.descriptor_defaults), 'modding_contract.descriptor_defaults must be an object');
   check(isObject(contract && contract.total_conversion), 'modding_contract.total_conversion must be an object');
   check(Array.isArray(contract && contract.merge_policies), 'modding_contract.merge_policies must be an array');
+  check(typeof (contract && contract.descriptor_defaults && contract.descriptor_defaults.owner) === 'string', 'modding_contract.descriptor_defaults.owner must be a string');
+  check(typeof (contract && contract.descriptor_defaults && contract.descriptor_defaults.source) === 'string', 'modding_contract.descriptor_defaults.source must be a string');
+  check(typeof (contract && contract.descriptor_defaults && contract.descriptor_defaults.required) === 'boolean', 'modding_contract.descriptor_defaults.required must be a boolean');
 
   const totalConversion = contract && contract.total_conversion ? contract.total_conversion : {};
   check(totalConversion.skip_base_database_files_by_default === true, 'total_conversion must skip base database files by default');
@@ -42,6 +45,26 @@ function main() {
     check(typeof descriptor.path === 'string' && descriptor.path.length > 0, `database_files.${key}.path must be a non-empty string`);
     check(typeof descriptor.default_type === 'string' && descriptor.default_type.length > 0, `database_files.${key}.default_type must be a non-empty string`);
     check(typeof descriptor.merge_policy === 'string' && descriptor.merge_policy.length > 0, `database_files.${key}.merge_policy must be a non-empty string`);
+    if (Object.prototype.hasOwnProperty.call(descriptor, 'owner')) {
+      check(typeof descriptor.owner === 'string' && descriptor.owner.length > 0, `database_files.${key}.owner must be a non-empty string when present`);
+    }
+    if (Object.prototype.hasOwnProperty.call(descriptor, 'source')) {
+      check(typeof descriptor.source === 'string' && descriptor.source.length > 0, `database_files.${key}.source must be a non-empty string when present`);
+    }
+    if (Object.prototype.hasOwnProperty.call(descriptor, 'required')) {
+      check(typeof descriptor.required === 'boolean', `database_files.${key}.required must be a boolean when present`);
+    }
+    if (Object.prototype.hasOwnProperty.call(descriptor, 'key_aliases')) {
+      check(Array.isArray(descriptor.key_aliases), `database_files.${key}.key_aliases must be an array when present`);
+      if (Array.isArray(descriptor.key_aliases)) {
+        descriptor.key_aliases.forEach((alias, index) => {
+          check(typeof alias === 'string' && alias.length > 0, `database_files.${key}.key_aliases[${index}] must be a non-empty string`);
+        });
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(descriptor, 'replace_on_total_conversion')) {
+      check(typeof descriptor.replace_on_total_conversion === 'boolean', `database_files.${key}.replace_on_total_conversion must be a boolean when present`);
+    }
     if (contract && Array.isArray(contract.merge_policies)) {
       check(contract.merge_policies.includes(descriptor.merge_policy), `database_files.${key}.merge_policy is not declared in modding_contract.merge_policies`);
     }
@@ -51,6 +74,7 @@ function main() {
   check(integration.includes('validateRuntimeDatabaseContract'), 'ModLoaderIntegration must validate total-conversion database contract');
   check(integration.includes('attachRuntimeDatabaseContractMetadata'), 'ModLoaderIntegration must attach runtime contract metadata');
   check(integration.includes('base-data-off database is missing required sections'), 'ModLoaderIntegration must fail loudly for incomplete base-data-off database');
+  check(integration.includes('database.runtime_manifest = normalizedManifest'), 'ModLoaderIntegration must attach normalized runtime manifest before onDatabaseLoad hooks');
 
   if (errors.length > 0) {
     console.error('modding contract errors:');

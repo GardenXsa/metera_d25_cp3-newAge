@@ -95,7 +95,7 @@ async function hydratePromptPack(promptPack) {
                 entry.content = await loadTextAsset(entry.path);
             } catch (error) {
                 console.warn(`[RuntimeData] Failed to hydrate prompt "${semanticKey}" from ${entry.path}:`, error);
-                entry.content = `:    prompt "${semanticKey}"  ${entry.path}. ${error.message}`;
+                entry.content = `Ошибка: не удалось загрузить prompt "${semanticKey}" из ${entry.path}. ${error.message}`;
             }
         }
         utils.ensurePromptAlias(hydratedPack, semanticKey, entry.path);
@@ -106,7 +106,7 @@ async function hydratePromptPack(promptPack) {
 
 async function initModKit() {
     if (window.ModAPI && window.ModAPI.initialized) return;
-    console.log('[ModKit]   API ...');
+    console.log('[ModKit] Инициализация глобального API модов...');
     const modLoader = new ModLoader();
     
     if (!window.electronAPI || !window.electronAPI.isElectron) {
@@ -330,7 +330,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
     if (window.isSimulatorInitialized) return typeof World !== 'undefined' ? World : null;
     
     if (typeof showLoadingScreen === 'function') {
-        showLoadingScreen('loadingScreen.generatingWorld', '  ( )...');
+        showLoadingScreen('loadingScreen.generatingWorld', 'Инициализация симулятора (с модами)...');
     }
 
     try {
@@ -346,7 +346,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         if (typeof populateRacesUI === 'function') populateRacesUI(database.races);
         if (typeof populateClassesUI === 'function') populateClassesUI(database.classes);
 
-        console.log('[ModLoader]   .  C++ ...');
+        console.log('[ModLoader] База данных собрана. Инициализация C++ ядра...');
         
         const activeModIds = Object.keys(window.ModAPI.mods);
         const initResult = await window.electronAPI.nexusInit(true, activeModIds);
@@ -354,7 +354,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
             throw new Error(`Nexus Engine init failed: ${initResult.message}`);
         }
 
-        console.log('[ModLoader]  .   ...');
+        console.log('[ModLoader] Ядро запущено. Загрузка базы данных...');
         const databaseString = JSON.stringify(database);
         const loadDbResult = await window.electronAPI.nexusLoadDatabase(databaseString);
 
@@ -369,7 +369,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         }
 
         if (typeof showLoadingScreen === 'function') {
-            showLoadingScreen('loadingScreen.generatingWorld', ' ...');
+            showLoadingScreen('loadingScreen.generatingWorld', 'Построение мира...');
         }
         
         const buildResult = await window.electronAPI.nexusBuildWorld(player.id, player.era, initialAgents, globalLocations, startDay);
@@ -386,7 +386,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
     } catch (error) {
         console.error("CRITICAL: World simulator initialization failed:", error);
         if (typeof showAiErrorModal === 'function') {
-            showAiErrorModal(error.message, true, null, "  ");
+            showAiErrorModal(error.message, true, null, "Ошибка инициализации ядра");
         }
         window.isSimulatorInitialized = false;
         return null;

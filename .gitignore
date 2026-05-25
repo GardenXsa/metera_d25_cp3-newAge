@@ -79,3 +79,9 @@ debug_dumps/
 
 # AI Patcher Pro local state
 .ai_patcher/
+
+# AI Patcher Pro GPT context files
+Project_scan.txt
+local_diff.txt
+GPT_TASK.md
+PATCH_RESULT.md
