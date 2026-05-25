@@ -70,7 +70,7 @@ window.Cartographer = {
     _lastHoveredMapPoint: null,
     TILE_SIZE: 10,
 
-        /**
+    /**
      * Инициализирует модуль картографии, привязывает Canvas и настраивает события.
      */
     init: function() {
@@ -84,9 +84,6 @@ window.Cartographer = {
     },
 
     /**
-     * Настраивает UI-кнопки для переключения фильтров отображения карты.
-     */
-        /**
      * Настраивает UI-кнопки для переключения фильтров отображения карты.
      */
     setupFilters: function() {
@@ -438,9 +435,6 @@ window.Cartographer = {
      * @param {boolean} isPlayer - Флаг, является ли маркер позицией игрока
      * @param {string|null} factionId - ID фракции для отрисовки политического флага
      */
-        /**
-     * Отрисовывает маркер локации или игрока на карте.
-     */
     drawMapMarker: function(ctx, pos, type, isPlayer, factionId = null) {
         ctx.lineWidth = 2;
         ctx.strokeStyle = '#2c3e50';
@@ -619,7 +613,7 @@ window.Cartographer = {
         ctx.fillText('E', x + radius + 8, y);
     },
 
-        /**
+    /**
      * Запрашивает актуальные данные карты у нативного движка через IPC.
      * @returns {Promise<void>}
      */
@@ -797,11 +791,7 @@ window.Cartographer = {
      * @param {Object} map - Объект глобальной карты
      * @param {Function} transform - Функция преобразования мировых координат в экранные
      */
-        /**
-     * Обновляет кэш тайловых фильтров (диаграмма Вороного) на OffscreenCanvas.
-     * @param {Object} map - Объект глобальной карты
-     */
-        updateFilterCache: function(map) {
+    updateFilterCache: function(map) {
         if (this.currentFilter === 'none') return;
         
         if (!this.filterCacheCanvas) {
