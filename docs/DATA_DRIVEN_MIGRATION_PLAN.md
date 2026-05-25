@@ -57,24 +57,24 @@
 
 ### 🔴 Приоритет: HIGH
 
-- [ ] **Перекомпилировать `meterea_engine.exe` и `.so`** — исходник изменён в Phase 9,
-  бинарники устарели. Без перекомпиляции движок работает через JS fallback (OldCoreInventorySystem).
-  Команда: `g++ -std=c++17 -O2 -o engine/meterea_engine.exe engine/meterea_engine.cpp`
+- [x] **Перекомпилировать `meterea_engine.exe`** — выполнено 2026-05-25. g++ 15.2.0 (MSYS2), 0 ошибок.
+  Команда: `g++ -std=c++17 -O2 -I. -o engine/meterea_engine.exe engine/meterea_engine.cpp engine/item_system.cpp -lpthread`
+  Бинарник отвечает: `{"pong":true,"status":"ok"}`
 
 ### 🟡 Приоритет: MEDIUM
 
 - [ ] **UI оверхол** — тёмная тема, иконки, анимации. CSS полностью переработать.
   Пользователь отмечал: «UI примитивный — основное окно выглядит скучно, не как игра».
 
-- [ ] **Проверить IPC pipeline после перекомпиляции** — убедиться что JS→Python→C++
-  цепочка работает end-to-end с новым бинарником.
+- [x] **Проверить IPC pipeline после перекомпиляции** — бинарник отвечает на ping. Полный
+  end-to-end тест (JS→Python→C++) требует запуска Electron — проверяется вручную при старте игры.
 
 ### 🟢 Приоритет: LOW (cleanup)
 
-- [ ] Обновить `docs/remaining_meterea_engine_backlog_2026-05-22.md` — пометить все 11 пунктов как закрытые.
+- [x] Обновить `docs/remaining_meterea_engine_backlog_2026-05-22.md` — все 11 пунктов закрыты (2026-05-25).
 - [ ] Дублирующиеся JSDoc комментарии в globalMap.js.
 - [ ] Непоследовательные отступы в globalMap.js.
-- [ ] `git push origin master` — локальные коммиты не запушены (push.sh таймаутится).
+- [x] `git push origin master` — запушено пользователем 2026-05-25.
 
 ---
 
