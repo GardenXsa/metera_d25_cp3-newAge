@@ -244,9 +244,9 @@ ModAPI.on('onModsInitialized', async () => {
     // 9. Очистка UI от ванильных рудиментов (Эпохи)
     const eraSelect = document.getElementById('char-era-select');
     if (eraSelect) {
-        Array.from(eraSelect.options).forEach(opt => {
+        Array.from(eraSelect.options).slice().forEach(opt => {
             if (opt.value !== 'rebirth') {
-                opt.remove();
+                eraSelect.removeChild(opt);
             }
         });
         if (typeof updateEraDescription === 'function') updateEraDescription();

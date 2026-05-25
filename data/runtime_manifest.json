@@ -20,7 +20,11 @@
     },
     "total_conversion": {
       "skip_base_database_files_by_default": true,
-      "allowed_base_passthrough_keys": [],
+      "allowed_base_passthrough_keys": [
+        "eras",
+        "tag_defaults",
+        "classes"
+      ],
       "required_database_keys": [
         "items",
         "eras",
