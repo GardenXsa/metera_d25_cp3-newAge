@@ -2,38 +2,255 @@
   "schemaVersion": 1,
   "contracts": {
     "items": {
-      "required_fields": ["basePrice", "category", "tags"],
+      "required_fields": [
+        "basePrice",
+        "category",
+        "tags"
+      ],
       "canonical_tag_source": "tag_defaults.json"
     }
   },
-  "modding_contract": { "schema_version": 1, "base_game_mod_id": "base_game", "descriptor_defaults": { "owner": "base_game", "source": "base_data", "required": true }, "total_conversion": { "skip_base_database_files_by_default": true, "allowed_base_passthrough_keys": [], "required_database_keys": ["items", "eras", "classes", "races", "biomes", "world_config", "tag_defaults"] }, "merge_policies": ["deepMerge", "append", "appendUnique", "upsertById", "replace"] }, "database_files": {
-    "items": { "path": "./data/economy_items.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "recipes": { "path": "./data/economy_recipes.json", "default_type": "array", "merge_policy": "append" },
-    "facilities": { "path": "./data/facility_names.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "eras": { "path": "./data/eras.json", "default_type": "array", "merge_policy": "upsertById" },
-    "classes": { "path": "./data/classes.json", "default_type": "array", "merge_policy": "upsertById" },
-    "biomes": { "path": "./data/biomes.json", "default_type": "array", "merge_policy": "upsertById" },
-    "city_gen": { "path": "./data/city_gen.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "monsters": { "path": "./data/monsters.json", "default_type": "array", "merge_policy": "upsertById" },
-    "disasters": { "path": "./data/disasters.json", "default_type": "array", "merge_policy": "upsertById" },
-    "races": { "path": "./data/races.json", "default_type": "array", "merge_policy": "upsertById" },
-    "professions": { "path": "./data/professions.json", "default_type": "array", "merge_policy": "upsertById" },
-    "traits": { "path": "./data/traits.json", "default_type": "array", "merge_policy": "upsertById" },
-    "npc_names": { "path": "./data/npc_names.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "faction_relations": { "path": "./data/faction_relations.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "world_config": { "path": "./data/world_config.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "equipment_slots": { "path": "./data/equipment_slots.json", "default_type": "array", "merge_policy": "appendUnique" },
-    "container_types": { "path": "./data/container_types.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "ship_types": { "path": "./data/ship_types.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "diplomacy": { "path": "./data/diplomacy.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "casus_belli": { "path": "./data/casus_belli.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "furniture_catalog": { "path": "./data/furniture_catalog.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "tag_defaults": { "path": "./data/tag_defaults.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "transport_registry": { "path": "./data/transport_registry.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "trek_config": { "path": "./data/trek_config.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "narrators": { "path": "./data/narrators.json", "default_type": "array", "merge_policy": "upsertById" },
-    "prompt_pack": { "path": "./data/prompt_pack.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "world_assets": { "path": "./data/world_assets.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "tile_dictionary": { "path": "./data/tile_dictionary.json", "default_type": "object", "merge_policy": "deepMerge" },
-    "predefined_effects": { "path": "./assets/res/predefined_effects.json", "default_type": "array", "merge_policy": "upsertById" }, "ui_runtime": { "path": "./data/ui_runtime.json", "default_type": "object", "merge_policy": "deepMerge" }, "prompt_runtime": { "path": "./data/prompt_runtime.json", "default_type": "object", "merge_policy": "deepMerge" }, "gameplay_runtime": { "path": "./data/gameplay_runtime.json", "default_type": "object", "merge_policy": "deepMerge" } }, "era_location_fallback_file": "locations_rebirth.json"
+  "modding_contract": {
+    "schema_version": 1,
+    "base_game_mod_id": "base_game",
+    "descriptor_defaults": {
+      "owner": "base_game",
+      "source": "base_data",
+      "required": true
+    },
+    "total_conversion": {
+      "skip_base_database_files_by_default": true,
+      "allowed_base_passthrough_keys": [],
+      "required_database_keys": [
+        "items",
+        "eras",
+        "classes",
+        "races",
+        "biomes",
+        "world_config",
+        "tag_defaults"
+      ]
+    },
+    "merge_policies": [
+      "deepMerge",
+      "append",
+      "appendUnique",
+      "upsertById",
+      "replace"
+    ]
+  },
+  "database_files": {
+    "items": {
+      "path": "./data/economy_items.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge",
+      "key_aliases": [
+        "economy_items"
+      ],
+      "replace_on_total_conversion": true
+    },
+    "recipes": {
+      "path": "./data/economy_recipes.json",
+      "default_type": "array",
+      "merge_policy": "append",
+      "key_aliases": [
+        "economy_recipes"
+      ],
+      "replace_on_total_conversion": true
+    },
+    "facilities": {
+      "path": "./data/facility_names.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge",
+      "key_aliases": [
+        "facility_names"
+      ],
+      "replace_on_total_conversion": true
+    },
+    "eras": {
+      "path": "./data/eras.json",
+      "default_type": "array",
+      "merge_policy": "upsertById",
+      "replace_on_total_conversion": true
+    },
+    "classes": {
+      "path": "./data/classes.json",
+      "default_type": "array",
+      "merge_policy": "upsertById",
+      "replace_on_total_conversion": true
+    },
+    "biomes": {
+      "path": "./data/biomes.json",
+      "default_type": "array",
+      "merge_policy": "upsertById"
+    },
+    "city_gen": {
+      "path": "./data/city_gen.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "monsters": {
+      "path": "./data/monsters.json",
+      "default_type": "array",
+      "merge_policy": "upsertById"
+    },
+    "disasters": {
+      "path": "./data/disasters.json",
+      "default_type": "array",
+      "merge_policy": "upsertById"
+    },
+    "races": {
+      "path": "./data/races.json",
+      "default_type": "array",
+      "merge_policy": "upsertById"
+    },
+    "professions": {
+      "path": "./data/professions.json",
+      "default_type": "array",
+      "merge_policy": "upsertById"
+    },
+    "traits": {
+      "path": "./data/traits.json",
+      "default_type": "array",
+      "merge_policy": "upsertById"
+    },
+    "npc_names": {
+      "path": "./data/npc_names.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "faction_relations": {
+      "path": "./data/faction_relations.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "world_config": {
+      "path": "./data/world_config.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "equipment_slots": {
+      "path": "./data/equipment_slots.json",
+      "default_type": "array",
+      "merge_policy": "appendUnique"
+    },
+    "container_types": {
+      "path": "./data/container_types.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "ship_types": {
+      "path": "./data/ship_types.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "diplomacy": {
+      "path": "./data/diplomacy.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "casus_belli": {
+      "path": "./data/casus_belli.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "furniture_catalog": {
+      "path": "./data/furniture_catalog.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "tag_defaults": {
+      "path": "./data/tag_defaults.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "transport_registry": {
+      "path": "./data/transport_registry.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge",
+      "replace_on_total_conversion": true
+    },
+    "trek_config": {
+      "path": "./data/trek_config.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge",
+      "replace_on_total_conversion": true
+    },
+    "narrators": {
+      "path": "./data/narrators.json",
+      "default_type": "array",
+      "merge_policy": "upsertById",
+      "replace_on_total_conversion": true
+    },
+    "prompt_pack": {
+      "path": "./data/prompt_pack.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge",
+      "replace_on_total_conversion": true
+    },
+    "world_assets": {
+      "path": "./data/world_assets.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge",
+      "replace_on_total_conversion": true
+    },
+    "tile_dictionary": {
+      "path": "./data/tile_dictionary.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge",
+      "replace_on_total_conversion": true
+    },
+    "predefined_effects": {
+      "path": "./assets/res/predefined_effects.json",
+      "default_type": "object",
+      "merge_policy": "upsertById",
+      "replace_on_total_conversion": true
+    },
+    "ui_runtime": {
+      "path": "./data/ui_runtime.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "prompt_runtime": {
+      "path": "./data/prompt_runtime.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "gameplay_runtime": {
+      "path": "./data/gameplay_runtime.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "building_types": {
+      "path": "./data/building_types.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "citygen_default_rules": {
+      "path": "./data/citygen_default_rules.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "map_markers": {
+      "path": "./data/map_markers.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "news_categories": {
+      "path": "./data/news_categories.json",
+      "default_type": "array",
+      "merge_policy": "append"
+    },
+    "system_containers": {
+      "path": "./data/system_containers.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
+    "item_descriptions": {
+      "path": "./data/item_descriptions.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    }
+  },
+  "era_location_fallback_file": "locations_rebirth.json"
 }

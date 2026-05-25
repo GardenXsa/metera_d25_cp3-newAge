@@ -187,7 +187,14 @@ function applyDatabaseStats(racesArray) {
         Object.keys(RACE_MODIFIERS).length, 'races,', Object.keys(BASE_CLASS_STATS).length, 'classes');
 }
 
-let predefinedStatusEffects = {
+let predefinedStatusEffects = (function() {
+    // Data-driven: loaded from predefined_effects.json via loadPredefinedEffects()
+    if (typeof _loadedPredefinedEffects !== 'undefined' && _loadedPredefinedEffects &&
+        Object.keys(_loadedPredefinedEffects).length > 0) {
+        return _loadedPredefinedEffects;
+    }
+    // Inline fallback (canonical source now in predefined_effects.json)
+    return {
     // --- Негативные эффекты (Дебаффы) ---
     "minor_burn_dot": {
         name: "Слабое горение",
@@ -234,7 +241,8 @@ let predefinedStatusEffects = {
         description: "Ваши раны медленно затягиваются (+1 HP каждый ход).",
         effects: [{trigger:{type:"on_turn_start",interval:1},action:{type:"modify_stat",stat:"hp",change:1}}]
     }
-};
+}
+})()
 
 // Backward-compat accessor: if code still reads effectsJSON, parse from effects
 // Backward-compat accessor: if code still reads effectsJSON, return parsed effects
@@ -253,18 +261,29 @@ Object.defineProperty(predefinedStatusEffects, 'effectsJSON', {
     configurable: true
 });
 
-const standardItemDescriptions = {
-    'sword_short': () => t('itemDescriptions.shortSword', null, 'Простой, но надежный короткий меч. Базовое оружие ближнего боя.'),
-    'shield_wooden': () => t('itemDescriptions.woodenShield', null, 'Круглый деревянный щит. Обеспечивает минимальную защиту.'),
-    'potion_heal_small': () => t('itemDescriptions.smallHealthPotion', null, 'Маленькая склянка с красной жидкостью. Восстанавливает немного здоровья.'),
-    'staff_simple': () => t('itemDescriptions.simpleStaff', null, 'Гладкий деревянный посох. Помогает фокусировать магическую энергию.'),
-    'robe_novice': () => t('itemDescriptions.noviceRobe', null, 'Простая роба, которую носят начинающие маги. Практически не защищает.'),
-    'mana_potion_small': () => t('itemDescriptions.smallManaPotion', null, 'Маленькая склянка с синей жидкостью. Восстанавливает немного маны.'),
-    'dagger_basic': () => t('itemDescriptions.basicDagger', null, 'Обычный кинжал. Быстрое, но слабое оружие.'),
-    'leather_armor_light': () => t('itemDescriptions.lightLeatherArmor', null, 'Легкий доспех из обработанной кожи. Дает небольшую защиту, не стесняя движений.'),
-    'lockpicks': () => t('itemDescriptions.lockpicks', null, 'Набор тонких металлических инструментов для вскрытия замков.'),
-    'lute_simple': () => t('itemDescriptions.simpleLute', null, 'Простая лютня. Инструмент для бардовских песен и заклинаний.'),
-    'colorful_clothes': () => t('itemDescriptions.colorfulClothes', null, 'Яркая и удобная одежда, подходящая для выступлений.'),
-    'gold': () => t('itemDescriptions.gold', null, 'Блестящие золотые монеты. Основная валюта.')
-};
+const standardItemDescriptions = (function() {
+    // Data-driven: loaded from data/item_descriptions.json
+    const _db = (typeof getLoadedDatabase === 'function' && getLoadedDatabase()) ? getLoadedDatabase() : null;
+    const _raw = (_db && _db.item_descriptions) ? _db.item_descriptions : {};
+    const result = {};
+    for (const [id, entry] of Object.entries(_raw)) {
+        result[id] = () => t(entry.i18n_key, null, entry.fallback || id);
+    }
+    // Inline fallback entries (if DB not loaded yet)
+    if (Object.keys(result).length === 0) {
+        result['sword_short'] = () => t('itemDescriptions.shortSword', null, 'Простой, но надежный короткий меч. Базовое оружие ближнего боя.');
+        result['shield_wooden'] = () => t('itemDescriptions.woodenShield', null, 'Круглый деревянный щит. Обеспечивает минимальную защиту.');
+        result['potion_heal_small'] = () => t('itemDescriptions.smallHealthPotion', null, 'Маленькая склянка с красной жидкостью. Восстанавливает немного здоровья.');
+        result['staff_simple'] = () => t('itemDescriptions.simpleStaff', null, 'Гладкий деревянный посох. Помогает фокусировать магическую энергию.');
+        result['robe_novice'] = () => t('itemDescriptions.noviceRobe', null, 'Простая роба, которую носят начинающие маги. Практически не защищает.');
+        result['mana_potion_small'] = () => t('itemDescriptions.smallManaPotion', null, 'Маленькая склянка с синей жидкостью. Восстанавливает немного маны.');
+        result['dagger_basic'] = () => t('itemDescriptions.basicDagger', null, 'Обычный кинжал. Быстрое, но слабое оружие.');
+        result['leather_armor_light'] = () => t('itemDescriptions.lightLeatherArmor', null, 'Легкий доспех из обработанной кожи. Дает небольшую защиту, не стесняя движений.');
+        result['lockpicks'] = () => t('itemDescriptions.lockpicks', null, 'Набор тонких металлических инструментов для вскрытия замков.');
+        result['lute_simple'] = () => t('itemDescriptions.simpleLute', null, 'Простая лютня. Инструмент для бардовских песен и заклинаний.');
+        result['colorful_clothes'] = () => t('itemDescriptions.colorfulClothes', null, 'Яркая и удобная одежда, подходящая для выступлений.');
+        result['gold'] = () => t('itemDescriptions.gold', null, 'Блестящие золотые монеты. Основная валюта.');
+    }
+    return result;
+})()
 
