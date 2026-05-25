@@ -1,4 +1,4 @@
-function getRuntimeDataUtils() {
+﻿function getRuntimeDataUtils() {
     if (!window.RuntimeDataUtils) {
         throw new Error('RuntimeDataUtils is not loaded.');
     }
@@ -6,6 +6,10 @@ function getRuntimeDataUtils() {
 }
 
 function createDefaultValue(defaultType) {
+  const utils = getRuntimeDataUtils();
+  if (typeof utils.createDefaultValue === 'function') {
+    return utils.createDefaultValue(defaultType);
+  }
   if (defaultType === 'array') return [];
   if (defaultType === 'string') return '';
   if (defaultType === 'number') return 0;
@@ -91,7 +95,7 @@ async function hydratePromptPack(promptPack) {
                 entry.content = await loadTextAsset(entry.path);
             } catch (error) {
                 console.warn(`[RuntimeData] Failed to hydrate prompt "${semanticKey}" from ${entry.path}:`, error);
-                entry.content = `Ошибка: не удалось загрузить prompt "${semanticKey}" из ${entry.path}. ${error.message}`;
+                entry.content = `РћС€РёР±РєР°: РЅРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ prompt "${semanticKey}" РёР· ${entry.path}. ${error.message}`;
             }
         }
         utils.ensurePromptAlias(hydratedPack, semanticKey, entry.path);
@@ -102,7 +106,7 @@ async function hydratePromptPack(promptPack) {
 
 async function initModKit() {
     if (window.ModAPI && window.ModAPI.initialized) return;
-    console.log('[ModKit] Инициализация глобального API модов...');
+    console.log('[ModKit] РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РіР»РѕР±Р°Р»СЊРЅРѕРіРѕ API РјРѕРґРѕРІ...');
     const modLoader = new ModLoader();
     
     if (!window.electronAPI || !window.electronAPI.isElectron) {
@@ -117,6 +121,7 @@ async function initModKit() {
     const activeIds = (settings && settings.mods) ? settings.mods.active : ['base_game'];
     const activeMods = modsResponse.mods.filter(m => activeIds.includes(m.id) && !m.error);
     
+    // Legacy hook_request: engine fires hook and waits for world response
     if (window.electronAPI && window.electronAPI.onNexusHookRequest) {
         window.electronAPI.onNexusHookRequest(async (hook, world) => {
             await window.ModAPI.emit(hook, world);
@@ -124,20 +129,56 @@ async function initModKit() {
         });
     }
 
+    // New hook_event: lightweight fire-and-forget with specific event data
+    if (window.electronAPI && window.electronAPI.onNexusHookEvent) {
+        window.electronAPI.onNexusHookEvent(async (hookName, data) => {
+            if (window.ModAPI) await ModAPI.emit(hookName, data);
+        });
+    }
+
     await modLoader.initMods(activeMods);
     window.ModAPI.initialized = true;
+
+    // Register which hooks mods are listening to (engine skips unregistered hooks)
+    await registerEngineHooks();
+}
+
+async function registerEngineHooks() {
+    if (!window.electronAPI || !window.electronAPI.nexusRegisterHooks) return;
+    const modHooks = (window.ModAPI && ModAPI.hooks) ? Object.keys(ModAPI.hooks) : [];
+    const baseEngineHooks = [
+        'onNpcDied','onNpcBorn','onNpcJobChanged','onRulerDied',
+        'onArmyCreated','onArmyMoved','onArmyDestroyed','onSiegeStarted',
+        'onRegionCaptured','onWarDeclared','onPeaceMade','onRelationsChanged',
+        'onFacilityUpgraded','onFacilityDestroyed','onFleetCreated',
+        'onShipDestroyed','onPortBuilt','onRevoltStarted','onFamineStarted',
+        'onMonsterSpawned','onDisasterTriggered','onGlobalEvent',
+        'onIntrigueDiscovered','onTradeCompleted','onBanditEncounter',
+        'onSeasonChanged','onWeatherChanged',
+        'onBeforeDailyTick','onAfterDailyTick','onBeforeHourlyTick','onAfterHourlyTick'
+    ];
+    const all = [...new Set([...baseEngineHooks, ...modHooks])];
+    try {
+        await window.electronAPI.nexusRegisterHooks(all);
+        console.log('[ModKit] Engine hooks registered:', all.length);
+    } catch(e) {
+        console.warn('[ModKit] registerEngineHooks failed:', e.message);
+    }
 }
 
 async function buildRuntimeDatabase() {
     const utils = getRuntimeDataUtils();
     const modLoader = new ModLoader();
-    const manifest = await modLoader.readJsonFile('./data/runtime_manifest.json');
-    const manifestFiles = manifest && manifest.database_files ? manifest.database_files : {};
+    const rawManifest = await modLoader.readJsonFile('./data/runtime_manifest.json');
+    const normalizedManifest = typeof utils.normalizeRuntimeManifest === 'function'
+        ? utils.normalizeRuntimeManifest(rawManifest).manifest
+        : rawManifest;
+    const manifestFiles = normalizedManifest && normalizedManifest.database_files ? normalizedManifest.database_files : {};
     const database = {};
 
     for (const [key, descriptor] of Object.entries(manifestFiles)) {
     const defaultValue = createDefaultValue(descriptor.default_type);
-    if (!shouldLoadBaseDatabaseFile(manifest, key, descriptor)) {
+    if (!shouldLoadBaseDatabaseFile(normalizedManifest, key, descriptor)) {
       database[key] = utils.cloneValue(defaultValue);
       continue;
     }
@@ -154,23 +195,36 @@ async function buildRuntimeDatabase() {
         database.prompt_pack = await hydratePromptPack(database.prompt_pack);
     }
 
-    attachRuntimeDatabaseContractMetadata(database, manifest);
+    database.runtime_manifest = normalizedManifest;
+    attachRuntimeDatabaseContractMetadata(database, normalizedManifest);
   await window.ModAPI.emit('onDatabaseLoad', database);
-  validateRuntimeDatabaseContract(database, manifest);
+  validateRuntimeDatabaseContract(database, normalizedManifest);
   if (database.prompt_pack) {
     database.prompt_pack = await hydratePromptPack(database.prompt_pack);
   }
-  database.runtime_manifest = manifest;
   return database;
 }
 
+function assertRuntimeSection(database, key, validator, expected) {
+    const value = database ? database[key] : undefined;
+    if (!validator(value)) {
+        throw new Error(`[RuntimeData] Required runtime section "${key}" is missing or invalid (expected ${expected})`);
+    }
+}
+
 function applyRuntimeDatabaseGlobals(database) {
+    assertRuntimeSection(database, 'eras', (v) => Array.isArray(v) && v.length > 0, 'non-empty array');
+    assertRuntimeSection(database, 'equipment_slots', Array.isArray, 'array');
+    assertRuntimeSection(database, 'trek_config', (v) => v && typeof v === 'object', 'object');
+    assertRuntimeSection(database, 'gameplay_runtime', (v) => v && typeof v === 'object', 'object');
+    assertRuntimeSection(database, 'ui_runtime', (v) => v && typeof v === 'object', 'object');
+    assertRuntimeSection(database, 'prompt_runtime', (v) => v && typeof v === 'object', 'object');
     window.RUNTIME_DATABASE = database;
     window.RUNTIME_MANIFEST = database.runtime_manifest || {};
-    window.ERAS_DATA = database.eras || [];
-    window.RACES_DATA = database.races || [];
-    window.CLASSES_DATA = database.classes || [];
-    window.EQUIPMENT_SLOTS = database.equipment_slots || ["head", "face", "neck", "shoulders", "torso", "right_hand", "left_hand", "legs", "feet"];
+    window.ERAS_DATA = database.eras;
+    window.RACES_DATA = database.races;
+    window.CLASSES_DATA = database.classes;
+    window.EQUIPMENT_SLOTS = database.equipment_slots;
     window.WORLD_CONFIG = database.world_config || {};
     window.CONTAINER_TYPES = database.container_types || {};
     window.SHIP_TYPES = database.ship_types || {};
@@ -179,13 +233,13 @@ function applyRuntimeDatabaseGlobals(database) {
     window.FURNITURE_CATALOG = database.furniture_catalog || {};
     window.TAG_DEFAULTS = database.tag_defaults || {};
     window.ECONOMY_ITEMS = database.items || {};
-    window.CRAFTING_RECIPES = database.recipes || [];
+    window.CRAFTING_RECIPES = database.recipes;
     window.FACILITY_NAMES = database.facilities || {};
-    window.TREK_CONFIG = database.trek_config || { base_travel_speed: 5, tick_interval_ms: 1000 };
+    window.TREK_CONFIG = database.trek_config;
     window.TILE_TYPE_DICTIONARY = database.tile_dictionary || {};
     window.TRANSPORT_REGISTRY = database.transport_registry || {};
-    window.NARRATORS_DATA = database.narrators || [];
-    window.PREDEFINED_EFFECTS_DATA = database.predefined_effects || []; window.UI_RUNTIME_CONFIG = database.ui_runtime || {}; window.PROMPT_RUNTIME_CONFIG = database.prompt_runtime || {}; window.GAMEPLAY_RUNTIME_CONFIG = database.gameplay_runtime || {}; if (typeof applyRuntimeConstants === 'function') { applyRuntimeConstants(window.UI_RUNTIME_CONFIG); } if (Array.isArray(database.biomes)) {
+    window.NARRATORS_DATA = database.narrators;
+    window.PREDEFINED_EFFECTS_DATA = database.predefined_effects; window.UI_RUNTIME_CONFIG = database.ui_runtime; window.PROMPT_RUNTIME_CONFIG = database.prompt_runtime; window.GAMEPLAY_RUNTIME_CONFIG = database.gameplay_runtime; if (typeof applyRuntimeConstants === 'function') { applyRuntimeConstants(window.UI_RUNTIME_CONFIG); } if (Array.isArray(database.biomes)) {
         window.BIOME_COLORS = database.biomes
             .slice()
             .sort((a, b) => (a.numeric_id ?? 0) - (b.numeric_id ?? 0))
@@ -210,15 +264,8 @@ async function ensureRuntimeDataLoaded(forceRefresh = false) {
         const database = await buildRuntimeDatabase();
 
         if (!database.eras || database.eras.length === 0) {
-            console.warn('[RuntimeData] Список эпох пуст. Использую fallback (rebirth).');
-            database.eras = [{
-                id: 'rebirth',
-                name: 'Возрождение',
-                start_year: 1042,
-                default_location_file: 'locations_expanded.json',
-                display_name_i18n_key: 'characterCreation.eraRebirth',
-                description_i18n_key: 'characterCreation.eraRebirthDesc'
-            }];
+            throw new Error('[RuntimeData] Required runtime section "eras" is missing or empty.');
+            
         }
 
         applyRuntimeDatabaseGlobals(database);
@@ -247,7 +294,8 @@ function getRuntimePrompt(keyOrPath) {
 function resolveEraLocationInfo(eraId) {
     const database = getRuntimeDatabase() || {};
     const utils = getRuntimeDataUtils();
-    const fallbackFile = (database.runtime_manifest && database.runtime_manifest.era_location_fallback_file) || 'locations_rebirth.json';
+    const fallbackFile = (database.runtime_manifest && database.runtime_manifest.era_location_fallback_file)
+        || (Array.isArray(database.eras) ? database.eras.find((era) => era && typeof era.default_location_file === 'string' && era.default_location_file)?.default_location_file : '');
     const result = utils.resolveEraLocationFile(database.eras || [], eraId, fallbackFile);
     if (result.warning) {
         console.warn(result.warning);
@@ -282,7 +330,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
     if (window.isSimulatorInitialized) return typeof World !== 'undefined' ? World : null;
     
     if (typeof showLoadingScreen === 'function') {
-        showLoadingScreen('loadingScreen.generatingWorld', 'Инициализация симулятора (с модами)...');
+        showLoadingScreen('loadingScreen.generatingWorld', 'РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ СЃРёРјСѓР»СЏС‚РѕСЂР° (СЃ РјРѕРґР°РјРё)...');
     }
 
     try {
@@ -298,7 +346,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         if (typeof populateRacesUI === 'function') populateRacesUI(database.races);
         if (typeof populateClassesUI === 'function') populateClassesUI(database.classes);
 
-        console.log('[ModLoader] База данных собрана. Инициализация C++ ядра...');
+        console.log('[ModLoader] Р‘Р°Р·Р° РґР°РЅРЅС‹С… СЃРѕР±СЂР°РЅР°. РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ C++ СЏРґСЂР°...');
         
         const activeModIds = Object.keys(window.ModAPI.mods);
         const initResult = await window.electronAPI.nexusInit(true, activeModIds);
@@ -306,7 +354,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
             throw new Error(`Nexus Engine init failed: ${initResult.message}`);
         }
 
-        console.log('[ModLoader] Ядро запущено. Загрузка базы данных...');
+        console.log('[ModLoader] РЇРґСЂРѕ Р·Р°РїСѓС‰РµРЅРѕ. Р—Р°РіСЂСѓР·РєР° Р±Р°Р·С‹ РґР°РЅРЅС‹С…...');
         const databaseString = JSON.stringify(database);
         const loadDbResult = await window.electronAPI.nexusLoadDatabase(databaseString);
 
@@ -321,7 +369,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         }
 
         if (typeof showLoadingScreen === 'function') {
-            showLoadingScreen('loadingScreen.generatingWorld', 'Построение мира...');
+            showLoadingScreen('loadingScreen.generatingWorld', 'РџРѕСЃС‚СЂРѕРµРЅРёРµ РјРёСЂР°...');
         }
         
         const buildResult = await window.electronAPI.nexusBuildWorld(player.id, player.era, initialAgents, globalLocations, startDay);
@@ -338,7 +386,7 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
     } catch (error) {
         console.error("CRITICAL: World simulator initialization failed:", error);
         if (typeof showAiErrorModal === 'function') {
-            showAiErrorModal(error.message, true, null, "Ошибка инициализации ядра");
+            showAiErrorModal(error.message, true, null, "РћС€РёР±РєР° РёРЅРёС†РёР°Р»РёР·Р°С†РёРё СЏРґСЂР°");
         }
         window.isSimulatorInitialized = false;
         return null;

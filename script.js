@@ -18248,28 +18248,3 @@ if (typeof document !== 'undefined') {
         }
     });
 }
-
-
-// Registers active mod hooks with the engine (engine skips unregistered hooks for performance)
-async function registerEngineHooks() {
-    if (!window.electronAPI || !window.electronAPI.nexusRegisterHooks) return;
-    const modHooks = (window.ModAPI && ModAPI.hooks) ? Object.keys(ModAPI.hooks) : [];
-    const baseEngineHooks = [
-        'onNpcDied','onNpcBorn','onNpcJobChanged','onRulerDied',
-        'onArmyCreated','onArmyMoved','onArmyDestroyed','onSiegeStarted',
-        'onRegionCaptured','onWarDeclared','onPeaceMade','onRelationsChanged',
-        'onFacilityUpgraded','onFacilityDestroyed','onFleetCreated',
-        'onShipDestroyed','onPortBuilt','onRevoltStarted','onFamineStarted',
-        'onMonsterSpawned','onDisasterTriggered','onGlobalEvent',
-        'onIntrigueDiscovered','onTradeCompleted','onBanditEncounter',
-        'onSeasonChanged','onWeatherChanged',
-        'onBeforeDailyTick','onAfterDailyTick','onBeforeHourlyTick','onAfterHourlyTick'
-    ];
-    const all = [...new Set([...baseEngineHooks, ...modHooks])];
-    try {
-        await window.electronAPI.nexusRegisterHooks(all);
-        console.log('[ModAPI] Engine hooks registered:', all.length);
-    } catch(e) {
-        console.warn('[ModAPI] registerEngineHooks failed:', e.message);
-    }
-}
