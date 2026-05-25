@@ -125,8 +125,8 @@ tools\\full_verify.bat
 4. Проверить async/await соответствие (async методы → await вызовы)
 5. Если меняешь `engine/meterea_engine.cpp` — перекомпилировать бинарник
 6. Если меняешь `data/*.json` — обновить `data/runtime_manifest.json` если нужен новый ключ
-7. **ПРАВИЛО: Перед каждым git push запускать smoke-check + test_stub_game.js**
-   Если есть FAIL — пуш запрещён. push.sh делает это автоматически.
+7. **ПРАВИЛО: Перед каждым git push запускать `npm run verify`**
+   Если есть FAIL — пуш запрещён. `npm run verify` включает smoke-check, runtime-data test, stub-game integration test и ключевые Python engine regression tests.
 
 ---
 
@@ -150,8 +150,8 @@ tools\\full_verify.bat
 - Push скрипт: `push.sh` (автоматически запускает тесты перед пушем)
 - Deploy key: `deploy_key` / `deploy_key.pub`
 - Репозиторий: `https://github.com/GardenXsa/metera_d25_cp3-newAge`
-- **ПРАВИЛО**: Никогда не пушить минуя push.sh.
-  Если нужно руками: сначала smoke-check, потом `git push`.
+- **ПРАВИЛО**: перед push обязательно запускать `npm run verify`.
+  Если нужно пушить руками: сначала `npm run verify`, потом `git push`.
 
 ---
 
@@ -166,7 +166,7 @@ tools\\full_verify.bat
 3. **Data-driven рефакторинг завершён** (Phase 0–12 + Phase 9 engine cleanup).
    Все item ID, профессии, стоимости — в data/*.json. Движок читает через loadDatabase.
 
-4. **Smoke-check зелёный: 60/0** — базовая точка на 2026-05-25.
+4. **Smoke-check зелёный: 66/0** — базовая точка после `d32f687` на 2026-05-25. Полная быстрая проверка: `npm run verify`.
 
 5. **_processHover** — метод Cartographer, НЕ вложенная функция. this контекст важен.
 

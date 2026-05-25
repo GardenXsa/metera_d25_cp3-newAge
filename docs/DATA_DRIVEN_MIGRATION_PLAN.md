@@ -10,9 +10,9 @@
 
 **Текущая фаза:** ✅ Миграция завершена (Phase 0–12 + Phase 9 Engine Cleanup закрыты)
 
-**Последняя зелёная точка:** локально после `sync_project_state_and_add_full_verify` — `npm run verify`: `0 failed, 0 skipped`; smoke-check: `66 checks, 0 failed, 0 warnings`. Последний зафиксированный Git checkpoint до этого: `e8ca738` — Phase 9 final cleanup.
+**Последняя зелёная точка:** `d32f687` — `npm run verify`: `0 failed, 0 skipped`; smoke-check: `66 checks, 0 failed, 0 warnings`; stub tests: `80 PASSED, 0 FAILED, 0 WARNINGS`; Python engine regression tests: PASS.
 
-**Git checkpoint:** `e8ca738` — `refactor(engine): phase9 final cleanup — remove legacy shims, externalize all remaining hardcodes`
+**Git checkpoint:** `d32f687` — `chore: add full verify and sync project docs`
 
 ---
 
