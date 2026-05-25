@@ -12908,9 +12908,9 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
                     if (hasBiomeTag(b_id, "river")) {
                         cost = (map.grid[nIdx].water_depth <= 1) ? 15 : 25; // Брод или паром
                     } else if (hasBiomeTag(b_id, "lake")) {
-                        cost = 100; // lake without bridge: expensive
+                        cost = 9999; // lake: impassable without bridge
                     } else {
-                        cost = 500; // ocean without bridge/ferry: VERY expensive
+                        cost = 9999; // ocean: impassable without bridge/ferry/sea_route
                     }
                 } else if (is_impassable_a) {
                     // ANY может проходить через горы/вулканы с огромным штрафом (для генерации тоннелей)
