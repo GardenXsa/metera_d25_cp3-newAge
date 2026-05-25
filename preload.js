@@ -38,6 +38,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     sendNexusHookResponse: (world) => ipcRenderer.invoke('nexus-hook-response', world),
     nexusRegisterHooks: (hooks) => ipcRenderer.invoke('nexus-register-hooks', hooks),
+    // Lightweight hook events (no world sync — fire-and-forget from engine)
+    onNexusHookEvent: (callback) => {
+        const handler = (event, hook, data) => callback(hook, data);
+        ipcRenderer.on('nexus-hook-event', handler);
+        return () => ipcRenderer.removeListener('nexus-hook-event', handler);
+    },
 
     nexusInit: (forceRestart, activeMods) => ipcRenderer.invoke('nexus-init', forceRestart, activeMods),
 

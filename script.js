@@ -5804,6 +5804,28 @@ async function initializeApp() {
             updateTimeDisplay();
         });
     }
+
+    // ── Mod API Engine Hook System ──────────────────────────────
+    // Connects C++ engine hook events to ModAPI.on() subscriptions
+
+    // 1. Legacy hook_request (engine waits for world response)
+    if (window.electronAPI && window.electronAPI.onNexusHookRequest) {
+        window.electronAPI.onNexusHookRequest(async (hookName, world) => {
+            if (window.ModAPI) await ModAPI.emit(hookName, { world });
+            if (window.electronAPI.sendNexusHookResponse) {
+                await window.electronAPI.sendNexusHookResponse(world);
+            }
+        });
+    }
+
+    // 2. New hook_event (fire-and-forget, specific event data only)
+    if (window.electronAPI && window.electronAPI.onNexusHookEvent) {
+        window.electronAPI.onNexusHookEvent(async (hookName, data) => {
+            if (window.ModAPI) await ModAPI.emit(hookName, data);
+        });
+    }
+    // ────────────────────────────────────────────────────────────
+
     console.log("РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РїСЂРёР»РѕР¶РµРЅРёСЏ...");
 
     currentApiProvider = localStorage.getItem('apiProvider') || 'gemini';
@@ -18227,3 +18249,27 @@ if (typeof document !== 'undefined') {
     });
 }
 
+
+// Registers active mod hooks with the engine (engine skips unregistered hooks for performance)
+async function registerEngineHooks() {
+    if (!window.electronAPI || !window.electronAPI.nexusRegisterHooks) return;
+    const modHooks = (window.ModAPI && ModAPI.hooks) ? Object.keys(ModAPI.hooks) : [];
+    const baseEngineHooks = [
+        'onNpcDied','onNpcBorn','onNpcJobChanged','onRulerDied',
+        'onArmyCreated','onArmyMoved','onArmyDestroyed','onSiegeStarted',
+        'onRegionCaptured','onWarDeclared','onPeaceMade','onRelationsChanged',
+        'onFacilityUpgraded','onFacilityDestroyed','onFleetCreated',
+        'onShipDestroyed','onPortBuilt','onRevoltStarted','onFamineStarted',
+        'onMonsterSpawned','onDisasterTriggered','onGlobalEvent',
+        'onIntrigueDiscovered','onTradeCompleted','onBanditEncounter',
+        'onSeasonChanged','onWeatherChanged',
+        'onBeforeDailyTick','onAfterDailyTick','onBeforeHourlyTick','onAfterHourlyTick'
+    ];
+    const all = [...new Set([...baseEngineHooks, ...modHooks])];
+    try {
+        await window.electronAPI.nexusRegisterHooks(all);
+        console.log('[ModAPI] Engine hooks registered:', all.length);
+    } catch(e) {
+        console.warn('[ModAPI] registerEngineHooks failed:', e.message);
+    }
+}

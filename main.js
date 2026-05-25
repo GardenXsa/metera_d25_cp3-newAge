@@ -241,6 +241,15 @@ function startEngine() {
                         continue; // Не резолвим основной промис, ждем hook_response
                     }
 
+                    // Lightweight mod hook event — fire-and-forget, no world sync
+                    if (response.status === 'hook_event') {
+                        const wins = BrowserWindow.getAllWindows();
+                        if (wins.length > 0) {
+                            wins[0].webContents.send('nexus-hook-event', response.hook, response.data || {});
+                        }
+                        continue; // Не резолвим промис — это событие, не ответ на команду
+                    }
+
                     // Realtime update from engine — stream world state to renderer immediately
                     if (response.status === 'realtime_update') {
                         const wins = BrowserWindow.getAllWindows();

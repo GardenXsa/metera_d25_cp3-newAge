@@ -95,6 +95,10 @@ class EngineProcess:
 
                 if data.get("status") == "progress":
                     self.on_progress(data.get("message", ""))
+                elif data.get("status") == "hook_event":
+                    # Lightweight mod hook — fire-and-forget, no world sync needed
+                    if hasattr(self, "on_hook_event") and self.on_hook_event:
+                        self.on_hook_event(data.get("hook", ""), data.get("data", {}))
                 elif data.get("status") in ("ok", "realtime_update"):
                     self.on_result(data)
                 elif data.get("status") == "error":
