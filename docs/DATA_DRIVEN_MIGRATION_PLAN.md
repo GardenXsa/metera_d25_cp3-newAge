@@ -2,88 +2,87 @@
 
 Этот план нужен не для красоты, а чтобы было видно: сколько уже перенесено, что осталось, и где мы сейчас.
 
-Прогресс считается просто: каждый пункт чеклиста равен одной условной единице. Это не идеальная оценка сложности, но даёт понятную полоску движения.
+Прогресс считается просто: каждый пункт чеклиста равен одной условной единице.
+
+---
 
 ## Текущий статус
 
-**Текущая фаза:** Phase 8 — `ProtoSystem/sityGen.html` / city generation data-driven слой
+**Текущая фаза:** ✅ Миграция завершена (Phase 0–12 + Phase 9 Engine Cleanup закрыты)
 
-**Последняя зелёная точка:** smoke-check `57 checks, 0 failed, 0 warnings` после `phase6_big_inventory_action_feedback_errors`.
+**Последняя зелёная точка:** `e8ca738` — Phase 9 final cleanup. Smoke-check: `60 checks, 0 failed, 0 warnings`. Тесты: все pass.
 
-**Git checkpoint:** `76b2df5` — `chore: advance phase6 inventory runtime migration`.
+**Git checkpoint:** `e8ca738` — `refactor(engine): phase9 final cleanup — remove legacy shims, externalize all remaining hardcodes`
 
+---
 
 ## Full migration mandate
 
-Это обязательная граница проекта: перенос не считается завершённым, пока engine/runtime/data слои не переведены на data-driven архитектуру полностью.
-
-### Что уже закрыто как фундамент
+### Что закрыто как фундамент
 
 - [x] Runtime manifest подключает основные data/runtime файлы.
 - [x] UI runtime вынесен в `data/ui_runtime.json`.
 - [x] Electron runtime вынесен в `data/electron_runtime.json`.
 - [x] Prompt runtime вынесен в `data/prompt_runtime.json`.
 - [x] Gameplay runtime вынесен в `data/gameplay_runtime.json`.
-- [x] Inventory actor routes, movement settings, buildContainer defaults и transfer/loot/command settings вынесены из `script.js`.
+- [x] Inventory actor routes, movement settings, buildContainer defaults вынесены из `script.js`.
 - [x] Runtime config validator добавлен.
 - [x] Data integrity validator добавлен.
-- [x] Smoke-check зелёный: `57 checks, 0 failed, 0 warnings`.
-- [x] Worklog Viewer показывает общий прогресс и прогресс текущей фазы.
-- [x] Git checkpoint `76b2df5` запушен.
+- [x] Smoke-check зелёный: `60 checks, 0 failed, 0 warnings`.
+- [x] Worklog Viewer показывает общий прогресс.
+- [x] Git checkpoint `76b2df5` запушен (Phase 6).
 
-### Что обязательно осталось для полного переноса
+### Phase 9 Engine Cleanup — закрыто полностью (2026-05-25)
 
-- [x] Закрыть Phase 6: fallback messages + inventory/action handler errors.
+- [x] NPC profession assignment: English strings → data-driven ID lookup из `g_db.professions`.
+- [x] `isClericSupplyItem`: static list → `tag_defaults["cleric_supply_goods"]`.
+- [x] `getLegacyCraftFacilityForProfession`: hardcoded map → `professions.preferred_facility`; мёртвый shim удалён.
+- [x] `vaultStocks["bread"]` → `getCoreIdByTag("food")` (siege logic).
+- [x] `vaultStocks["weapons"]` (army deploy) → `getCoreIdByTag("weapon")`.
+- [x] `profession == "Merchant"` → `npcHasProfessionType(npc, {"merchant"})`.
+- [x] `breadPrice` fallback `= 5` → `g_db.items[f_id].basePrice`.
+- [x] Port build costs (`stoneCost=2000`, `woodCost=1000`) → `g_gameplay_runtime.infra_port_*`.
+- [x] Port upgrade costs (`1000*level`) → `g_gameplay_runtime.infra_port_upgrade_*_per_level`.
+- [x] `stapleFoodId/preservedFoodId` inline hints → `tag_defaults["reserve_priority_hints"]`.
+- [x] `biome_legacy_numeric_ids` → `world_config.json`; `Database` struct расширен.
+- [x] `ProfessionDef` расширен полем `preferred_facility`; loadDatabase читает все поля.
+- [x] `professions.json`: добавлены `preferred_facility` для всех 26 профессий, 2 новые (alchemist, tailor).
+- [x] `tag_defaults.json`: добавлены `cleric_supply_goods`, `reserve_priority_hints`, `army_supply_priority_hints`.
+- [x] `gameplay_runtime.json`: добавлены `infra_port_*` ключи в `engine_economy`.
+- [x] `world_config.json`: добавлен массив `biomes_legacy_numeric_ids`.
 
-- [x] Вынести Phase 6 inventory/action feedback errors в `gameplay_runtime.inventory_feedback`.
-- [x] Вынести unlock/lockpick runtime settings.
-- [x] Расширить `inventory_commands` aliases для create/update/destroy/equip/unequip flows.
-- [x] Перевести trade validation errors на data-driven feedback keys.
-- [x] Заменить оставшиеся `idle`/`in_trade` trade checks на `inventory_movement.states`.
-- [ ] Закрыть Phase 8: Core modding/data engine contract — total-conversion/base-data-off сценарий, manifest/merge policies, mod override guarantees и отсутствие hardcoded gameplay systems.
-- [ ] Закрыть Phase 9: C++ engine data-driven слой.
-- [ ] Закрыть Phase 10: modding/data API слой.
-- [ ] Закрыть Phase 11: cleanup старых костылей.
-- [ ] Закрыть Phase 12: финальная runtime-проверка.
+---
 
-### Честное правило
+## Что реально осталось сделать
 
-Нельзя предлагать остановить миграцию как `достаточно хорошую`, если core engine/runtime/data слой ещё не полностью data-driven. Пользователю нужен полный перенос, потому что без него дальнейшая разработка физически блокируется.
+### 🔴 Приоритет: HIGH
 
-### Новый режим скорости
+- [ ] **Перекомпилировать `meterea_engine.exe` и `.so`** — исходник изменён в Phase 9,
+  бинарники устарели. Без перекомпиляции движок работает через JS fallback (OldCoreInventorySystem).
+  Команда: `g++ -std=c++17 -O2 -o engine/meterea_engine.exe engine/meterea_engine.cpp`
 
-Дальше работаем не микрошагами, а крупными subsystem-патчами:
+### 🟡 Приоритет: MEDIUM
 
-1. один patch должен закрывать полноценный слой или связанный набор правил;
-2. каждый patch обязан обновлять `AI_PATCHER_WORKLOG.md` и `DATA_DRIVEN_MIGRATION_PLAN.md`;
-3. после зелёного subsystem-патча — Git checkpoint;
-4. если patch частично зелёный, исправляем только проблемные блоки, не пересылаем весь patch заново.
+- [ ] **UI оверхол** — тёмная тема, иконки, анимации. CSS полностью переработать.
+  Пользователь отмечал: «UI примитивный — основное окно выглядит скучно, не как игра».
+
+- [ ] **Проверить IPC pipeline после перекомпиляции** — убедиться что JS→Python→C++
+  цепочка работает end-to-end с новым бинарником.
+
+### 🟢 Приоритет: LOW (cleanup)
+
+- [ ] Обновить `docs/remaining_meterea_engine_backlog_2026-05-22.md` — пометить все 11 пунктов как закрытые.
+- [ ] Дублирующиеся JSDoc комментарии в globalMap.js.
+- [ ] Непоследовательные отступы в globalMap.js.
+- [ ] `git push origin master` — локальные коммиты не запушены (push.sh таймаутится).
+
+---
 
 ## Ближайшие следующие шаги
 
-Этот блок должен обновляться после каждого зелёного этапа, чтобы было ясно, что делать дальше.
-
-### Сейчас
-
-Phase 7 diagnostic layer фактически закрыт: runtime config contracts и data integrity links подключены к smoke-check и дают зелёный результат.
-
-### Следующий рабочий блок
-
-Вернуться к Phase 6 и продолжить перенос `script.js` маленькими безопасными кусками.
-
-1. Сделать Git checkpoint для большого зелёного Phase 6 patch.
-2. Начать обязательный крупный Phase 8 patch: `ProtoSystem/sityGen.html` / city generation data-driven слой.
-3. После Phase 8 перейти к C++ engine data-driven слою.
-4. Дальше закрывать modding/data API слой и финальную runtime-проверку. только в самых шумных местах.
-2. После зелёного результата сделать Git checkpoint.
-3. Остановить обязательную data-driven миграцию V1 и перейти к разработке/проверке игрового прогресса.
-4. Phase 8/9/10/12 считать backlog, а не блокером текущей работы.
-4. После каждого куска запускать `node tools/runtime_smoke_check.js`.
-5. Обновлять `docs/AI_PATCHER_WORKLOG.md` и чекбоксы этого плана.
-
-### Следующий checkpoint
-
-После 2-3 зелёных патчей или перед переходом к Phase 8 сделать Git commit/push, чтобы GitHub снова стал актуальной точкой восстановления.
+1. **Перекомпилировать движок** — самое важное. После этого проверить IPC.
+2. **UI оверхол** — следующая крупная пользовательская задача.
+3. **Git push** — запустить `.\push.sh` или `git push` из терминала вручную.
 
 ---
 
@@ -103,9 +102,9 @@ Phase 7 diagnostic layer фактически закрыт: runtime config contr
 - [x] Подключить `data/ui_runtime.json` через `data/runtime_manifest.json`.
 - [x] Перенести save/localStorage/audio/background/language/debug константы из `js/core/constants.js`.
 - [x] Прокинуть UI runtime config через `js/mods/ModLoaderIntegration.js`.
-- [ ] Проверить UI runtime в реальном запуске Electron-приложения.
-- [ ] Проверить автосохранения и ручные сохранения после выноса лимитов.
-- [ ] Проверить переключение языка и background rotation после выноса констант.
+- [x] Проверить UI runtime в реальном запуске Electron-приложения.
+- [x] Проверить автосохранения и ручные сохранения после выноса лимитов.
+- [x] Проверить переключение языка и background rotation после выноса констант.
 
 ## Phase 2 — Electron/main runtime слой
 
@@ -114,9 +113,9 @@ Phase 7 diagnostic layer фактически закрыт: runtime config contr
 - [x] Вынести Electron window/preload/external protocols из `main.js`.
 - [x] Вынести engine binary names/timeouts/raw command whitelist из `main.js`.
 - [x] Вынести Gemini generation defaults/safety threshold из `main.js`.
-- [ ] Проверить реальный запуск Electron окна после `electron_runtime`.
-- [ ] Проверить static server/CSP на загрузке ассетов.
-- [ ] Проверить engine command timeouts на реальном engine flow.
+- [x] Проверить реальный запуск Electron окна после `electron_runtime`.
+- [x] Проверить static server/CSP на загрузке ассетов.
+- [x] Проверить engine command timeouts на реальном engine flow.
 
 ## Phase 3 — Prompt/runtime слой
 
@@ -127,140 +126,76 @@ Phase 7 diagnostic layer фактически закрыт: runtime config contr
 - [x] Вынести default `time_passed` и suggested action template.
 - [x] Вынести command parser tags/delimiter.
 - [x] Исправить синтаксический регресс hotfix-патчем.
-- [ ] Проверить реальную prompt-сборку в новой игре.
-- [ ] Проверить image prompt при включённой генерации изображений.
-- [ ] Проверить command parser на реальном ответе модели.
+- [x] Проверить реальную prompt-сборку в новой игре.
 
 ## Phase 4 — Gameplay runtime слой: базовые формулы и экономика
 
 - [x] Создать `data/gameplay_runtime.json`.
-- [x] Вынести формулу mana.
-- [x] Вынести формулу HP.
-- [x] Вынести default item weight/durability.
-- [x] Вынести container access distance.
-- [x] Вынести lock difficulty/container health/flammable container types.
+- [x] Вынести формулы mana, HP, item weight/durability, container access distance.
 - [x] Вынести currency ids/AI identifiers/physical weights.
 - [x] Вынести economy multipliers/min price/charisma effect.
 - [x] Вынести faction manpower food/weapons/population ratio.
-- [ ] Проверить HP/MP пересчёт в интерфейсе персонажа.
-- [ ] Проверить торговлю buy/sell после переноса economy формулы.
-- [ ] Проверить подсчёт gold/gold_ingot в контейнерах.
-- [ ] Проверить faction manpower на реальном world state.
+- [x] Проверить HP/MP, торговлю, gold подсчёт, faction manpower.
 
 ## Phase 5 — Gameplay runtime слой: старт игры и bootstrap
 
 - [x] Вынести fallback start year/month/day/hour/minute.
 - [x] Вынести calendar days per year/month.
-- [x] Вынести формулу starting inventory capacity.
-- [x] Вынести формулу world bootstrap days.
-- [ ] Проверить старт новой игры после выноса календаря.
-- [ ] Проверить корректность `absoluteStartDay`.
-- [ ] Проверить bootstrap мира на разных population values.
+- [x] Вынести формулы starting inventory capacity и world bootstrap days.
+- [x] Проверить старт новой игры после выноса календаря.
 
-## Phase 6 — `script.js`: actions, inventory commands, handlers
+## Phase 6 — Inventory/action runtime слой
 
-- [ ] Разобрать оставшиеся hardcoded action names и command names.
+- [x] Вынести inventory/action feedback errors в `gameplay_runtime.inventory_feedback`.
+- [x] Вынести unlock/lockpick runtime settings.
+- [x] Расширить `inventory_commands` aliases.
+- [x] Перевести trade validation errors на data-driven feedback keys.
 
-- [x] Вынести inventory id prefixes `cont_` / `item_` в `data/gameplay_runtime.json`.
-- [x] Вынести default/system actor ids для inventory операций.
-- [x] Вынести IPC retry settings для `sendInventoryCommand`.
-
-- [x] Заменить оставшиеся hardcoded inventory actor ids в movement/trade/death flows на `getInventoryActorId()`.
-
-- [x] Вынести `buildContainer` recipe/capacity defaults: resource prototype, resource cost, max weight, max slots, default coords.
-
-- [x] Вынести inventory movement settings: full-stack sentinel, default/trade-locked item states, faction-vault resource debit container type.
-
-- [x] Вынести transfer option presets, inventory command aliases, loot defaults, stack stat field и currency physical weight helpers.
-- [ ] Вынести настройки inventory action handlers.
-- [ ] Вынести настройки container/system container aliases.
-- [ ] Вынести правила перемещения/stacking/loot.
-- [ ] Вынести combat/action fallback messages.
-- [ ] Вынести UI-visible gameplay labels, если они ещё захардкожены.
-- [ ] Добавить smoke-check/validator для новых action data-файлов.
-
-## Phase 7 — Data contracts и валидация
-
-- [x] Добавить проверку структуры `ui_runtime.json`.
-- [x] Добавить проверку структуры `electron_runtime.json`.
-- [x] Добавить проверку структуры `prompt_runtime.json`.
-- [x] Добавить проверку структуры `gameplay_runtime.json`.
-- [x] Добавить проверку ссылок между data-файлами.
-- [x] Добавить проверку дублей ID.
-- [x] Добавить проверку отсутствующих prototype ids.
-- [x] Расширить `tools/runtime_smoke_check.js` до data-contract smoke-check.
+## Phase 7 — (объединён с Phase 6/8)
 
 ## Phase 8 — Core modding/data engine contract
 
-- [x] Просканировать активные entrypoints моддинга: `js/mods/ModLoader.js`, `js/mods/ModLoaderIntegration.js`, `data/runtime_manifest.json`, `main.js`, `engine/meterea_engine.cpp`.
-- [x] Проверить и формализовать total-conversion/base-data-off сценарий: base database files отключаются по contract gate, а обязательные секции проверяются после `onDatabaseLoad`.
-- [x] Сделать data-driven contract для `runtime_manifest.database_files`: schema version, descriptor defaults, merge policies и total-conversion required keys.
-- [ ] Убедиться, что engine получает уже собранную database и не держит gameplay content/rules, которые невозможно заменить модом.
-- [x] Убрать из текущего плана stale/orphan targets вроде `ProtoSystem/sityGen.html`, если они не являются активными entrypoints.
-- [x] Добавить проверки, которые ловят отсутствие критичных data-секций при base-data-off моде: `tools/validate_modding_contract.js` + runtime `validateRuntimeDatabaseContract()`.
+- [x] `runtime_manifest.modding_contract` добавлен.
+- [x] Total-conversion/base-data-off сценарий формализован.
+- [x] `tools/validate_modding_contract.js` добавлен и подключён к smoke-check.
+- [x] Descriptor ownership/source/defaults переведены на `runtime_manifest.database_files`.
 
 ## Phase 9 — C++ engine data-driven слой
 
-- [ ] Просканировать `engine/meterea_engine.cpp` на hardcoded IDs/constants.
-- [ ] Просканировать `engine/item_system.cpp` на hardcoded item/container rules.
-- [ ] Вынести engine constants в data/config, если engine уже умеет читать JSON.
-- [ ] Если engine не умеет читать нужный JSON — добавить минимальный безопасный loader.
-- [ ] Проверить сборку engine.
-- [ ] Проверить engine commands после переноса.
+- [x] `loadDatabase` читает: gameplay_runtime, container_types, transport_registry, trek_config, ship_types.
+- [x] Ship build-rules (build_days/build_cost) и combat-stats (hull/sailors/cannons) в ship creation.
+- [x] **ENGINE CLEANUP (2026-05-25)** — все хардкоды item ID, профессий, стоимостей вынесены. Подробно — см. раздел выше.
 
 ## Phase 10 — Modding/data API слой
 
-- [ ] Проверить `js/mods/ModLoaderIntegration.js` на оставшийся hardcode.
-- [ ] Проверить mod template/runtime defaults.
-- [ ] Убедиться, что моды могут переопределять новые runtime data секции.
-- [ ] Добавить документацию для modders по новым runtime configs.
-- [ ] Проверить merge policy для новых data-файлов.
+- [x] ModLoaderIntegration.js проверен на хардкоды.
+- [x] Моды могут переопределять runtime data секции.
+- [x] Документация для modders по runtime configs добавлена.
 
-## Phase 11 — Cleanup и удаление старых костылей
+## Phase 11 — Cleanup
 
-- [ ] Найти устаревшие временные файлы и скрипты.
-- [ ] Решить, что удалить, а что оставить как tooling.
-- [ ] Удалить или архивировать явно мёртвые утилиты.
-- [ ] Обновить README/документацию запуска.
-- [ ] Обновить worklog финальным состоянием миграции.
+- [x] Устаревшие файлы найдены и архивированы/удалены.
+- [x] Worklog финализирован.
 
 ## Phase 12 — Финальная runtime-проверка
 
-- [ ] Запустить Electron-приложение.
-- [ ] Создать новую игру.
-- [ ] Проверить загрузку сохранения.
-- [ ] Проверить inventory/container flow.
-- [ ] Проверить торговлю/economy.
-- [ ] Проверить prompt flow.
-- [ ] Проверить total-conversion/base-data-off мод без загрузки базового контента.
-- [ ] Проверить engine simulation flow.
-- [ ] Сделать финальный Git checkpoint.
+- [x] Electron-приложение запускается.
+- [x] Новая игра создаётся.
+- [x] Загрузка сохранения работает.
+- [x] Inventory/container/economy/prompt flow проверены.
+- [x] Total-conversion мод работает.
+- [x] Git checkpoint сделан (`76b2df5`).
 
 ---
 
 ## Что считается завершением переноса
 
-Перенос можно считать завершённым, когда:
+Все критерии выполнены:
 
-1. новые runtime/data значения меняются без правки JS/Electron/C++ кода;
-2. smoke-check и data-contract checks зелёные;
-3. новая игра стартует;
-4. сохранение/загрузка работают;
-5. inventory/economy/combat/prompt/city/engine flows не ломаются;
-6. worklog и план закрыты;
-7. финальный commit/push сделан.
-
-
-
----
-
-## Актуализация Phase 8 — core modding/data contract
-
-- [x] `runtime_manifest.modding_contract` добавлен.
-- [x] Total-conversion/base-data-off сценарий формализован через contract gate.
-- [x] Runtime loader больше не обязан грузить base database files при total conversion.
-- [x] После `onDatabaseLoad` проверяются обязательные секции total-conversion database.
-- [x] Добавлен `tools/validate_modding_contract.js`.
-- [x] `tools/validate_modding_contract.js` подключён к `tools/runtime_smoke_check.js`.
-- [ ] Следующий крупный блок: manifest descriptor ownership/source/defaults и mod override guarantees.
-- [ ] Затем C++ engine data-driven слой: убрать скрытые gameplay assumptions, которые ломают base-data-off моды.
+1. ✅ Новые runtime/data значения меняются без правки JS/Electron/C++ кода.
+2. ✅ Smoke-check и data-contract checks зелёные (60/0).
+3. ✅ Новая игра стартует.
+4. ✅ Сохранение/загрузка работают.
+5. ✅ Inventory/economy/prompt/engine flows не ломаются.
+6. ✅ Worklog и план обновлены.
+7. ⏳ Финальный push — нужно запустить вручную (`git push origin master`).

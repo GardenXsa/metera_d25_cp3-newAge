@@ -1,63 +1,73 @@
-# METERA D25 CP3 — NEW AGE
+# METERA D25 CP3 — Хроники Метерии
 ## Долгосрочные заметки и чек-лист тестирования
 
 > Этот файл — постоянная память проекта. Обновляется при каждом изменении.
-> Расположение: `/home/z/my-project/metera_d25_cp3-newAge/NOTES.md`
+> Расположение: `C:\Users\user\Desktop\projects\MET_test\metera_d25_cp3-01-21\NOTES.md`
+> **Последнее обновление: 2026-05-25**
 
 ---
 
 ## АРХИТЕКТУРА ПРОЕКТА
 
 - **Electron** (main.js) → загружает index.html
-- **Рендерер**: script.js (основная логика), js/ (модули)
-- **Движок**: C++ (engine/meterea_engine.cpp) → компилируется в engine/meterea_engine
+- **Рендерер**: script.js (основная логика ~5000+ строк), js/ (модули)
+- **Движок**: C++ (engine/meterea_engine.cpp, ~15 800 строк) → компилируется в engine/meterea_engine.exe (Windows) / engine/meterea_engine (Linux)
 - **Python-мост**: engine/engine_client.py — общается с C++ через stdin/stdout JSON
 - **IPC**: preload.js ↔ main.js → electronAPI
-- **Моды**: js/mods/ (ModLoader, ModManagerUI, ModLoaderIntegration)
+- **Моды**: js/mods/ (ModLoader, ModManagerUI, ModLoaderIntegration, runtimeData)
 - **Сохранения**: js/saves/ (SaveManager, SaveUI, StorageProvider)
 - **Карта**: js/cartographer/globalMap.js (Canvas 2D, OffscreenCanvas кэши)
+- **Data layer**: data/*.json (~40 файлов) подключены через data/runtime_manifest.json
+
+### Data-driven архитектура (актуально)
+
+Проект полностью переведён на data-driven подход (Phase 0–12 закрыты):
+- Все item ID, профессии, стоимости строительства, военные пороги → в `data/*.json`
+- Движок загружает настройки через `loadDatabase` + `loadGameplayRuntimeConfig`
+- Моддинг: total conversion, manifest/merge policies, base-data-off сценарий — всё работает
+- Runtime configs: `ui_runtime.json`, `electron_runtime.json`, `prompt_runtime.json`, `gameplay_runtime.json`
 
 ---
 
-## ЗАПУСК ТЕСТИРОВАНИЯ
+## ЗАПУСК ТЕСТИРОВАНИЯ (Windows)
 
-```bash
-cd /home/z/my-project/metera_d25_cp3-newAge
+```bat
+cd C:\Users\user\Desktop\projects\MET_test\metera_d25_cp3-01-21
 
-# Быстрая проверка (только синтаксис/структура) — по умолчанию
-bash test_runner.sh
-bash test_runner.sh --quick
+:: Smoke-check (основной, быстрый)
+node tools\runtime_smoke_check.js
 
-# Полная проверка (синтаксис + интеграция через stub provider)
-bash test_runner.sh --full
+:: Тесты движка (Python)
+py -3 engine\test_profession_cluster_refactor.py
+py -3 engine\test_food_cluster_refactor.py
+py -3 engine\test_bootstrap_cluster_refactor.py
+py -3 engine\test_legacy_resource_and_business_refactor.py
+py -3 engine\test_runtime_bundle.py
+py -3 engine\test_gameplay_runtime_inventory.py
 
-# Полная симуляция игры через stub provider
-bash test_runner.sh --game
+:: Интеграционный тест JS (stub provider)
+node tests\test_stub_game.js
 
-# Подробный вывод
-bash test_runner.sh --game --verbose
+:: Валидаторы
+node tools\validate_runtime_configs.js
+node tools\validate_data_integrity.js
+node tools\validate_modding_contract.js
 ```
 
-### Режимы:
-| Флаг | Описание | Тесты |
-|------|----------|-------|
-| `--quick` | Синтаксис + структура (по умолчанию) | 1-10 |
-| `--full` | + Интеграция через stub provider | 1-13 |
-| `--game` | + Полная симуляция игры | 1-16 |
-| `--verbose` | Подробный вывод | — |
+### Текущая зелёная база (2026-05-25):
+```
+node tools/runtime_smoke_check.js  →  60 checks, 0 failed, 0 warnings
+node tests/test_stub_game.js       →  80 PASSED, 0 FAILED, 0 WARNINGS
+все py -3 engine/test_*.py         →  PASS
+```
 
 ### Интеграционные тесты (stub provider):
-- `tests/test_stub_game.js` — 80 ассертов, проверяет:
+- `tests/test_stub_game.js` — 80 ассертов:
   - Создание контейнеров (рюкзак, экипировка, сундуки)
   - Создание предметов (оружие, зелья, золото)
   - Система золота (добавление, удаление, синхронизация)
   - Перемещение предметов (включая разделение стаков)
-  - Вес контейнеров
-  - `ensurePlayerContainers()` (создание, пересоздание при потере)
-  - Полный цикл игры (создание → контейнеры → предметы → золото → экипировка → перемещение)
-  - Флаг кражи (stolen items)
-  - Ограничения вместимости
-  - Обновление локации контейнеров
+  - Вес контейнеров, ensurePlayerContainers(), флаг кражи, вместимость
 
 ---
 
@@ -65,184 +75,90 @@ bash test_runner.sh --game --verbose
 
 ### КРИТИЧЕСКИЕ (блокируют игру)
 
-- [ ] **Движок/симуляция** — JS→Python→C++ pipeline. Сейчас работает FALLBACK
-  на локальную реализацию (OldCoreInventorySystem), если IPC недоступен.
-  Нужно трассировать: script.js → electronAPI → main.js IPC → engine_client.py → meterea_engine
-  Проверить: запускается ли C++ процесс, приходит ли ответ, парсится ли JSON.
-
-- [x] **Инвентарь не работает без движка** — ИСПРАВЛЕНО: sendInventoryCommand() теперь
-  fallback на OldCoreInventorySystem когда IPC недоступен. ensurePlayerContainers()
-  гарантирует создание рюкзака и экипировки перед операциями.
-
-- [x] **Inventory async/sync mismatch** — ПРОВЕРЕНО: все вызовы async методов
-  (createContainer, createItem, moveItem, removeItem, destroyContainer и т.д.)
-  используют await. Вызовы без await — это синхронные методы getContainerWeight
-  и findItemByPrototype (они не async, читают напрямую из ContainerRegistry/ItemRegistry).
-  Тест 12 WARN — ложноположительный (регекс не отличает sync от async методы).
-
-### СРЕДНИЕ (ухудшают опыт)
+- [ ] **meterea_engine.exe устарел** — исходник `meterea_engine.cpp` был значительно
+  изменён в ходе рефакторинга (Phase 9), но `.exe` / `.so` не перекомпилированы.
+  Движок работает через fallback (OldCoreInventorySystem), пока бинарник не пересобран.
+  **Что нужно**: `g++ -std=c++17 -O2 -o engine/meterea_engine.exe engine/meterea_engine.cpp`
+  (или через CMake/Makefile если есть). После этого — перезапустить Electron.
 
 - [ ] **UI примитивный** — основное окно выглядит скучно, не как игра.
-  Нужен визуальный оверхол: тёмная тема с градиентами, анимации, иконки.
+  Нужен визуальный оверхол: тёмная тема с градиентами, анимации, иконки предметов.
 
-- [x] **Карта лагала** — ИСПРАВЛЕНО: добавлен throttle (~30fps) через setTimeout в handleMouseMove,
-  hover-обработка вынесена в _processHover, render через requestAnimationFrame с флагом _needsRender.
+### ИСПРАВЛЕНО (архив)
 
-- [x] **CSP inline handler violations** — ИСПРАВЛЕНО: все 14 inline обработчиков
-  (onclick, onmouseover, onmouseout) в index.html заменены на CSP-совместимые:
-  data-атрибуты + addEventListener. Убраны ошибки "Refused to execute inline event handler".
-
-- [x] **loadWorldFile** — ИСПРАВЛЕНО (корневая причина): meterea_engine.exe был устаревшим
-  бинарником, скомпилированным до добавления обработчика loadWorldFile в C++ исходник (строка 13647).
-  Оба бинарника (Linux + Windows) перекомпилированы из актуального исходного кода.
-  Команда loadWorldFile теперь работает. Костыльный fallback через syncState удалён.
-
-- [x] **Карта не загружается из сохранения** — ИСПРАВЛЕНО: nexusSyncState отправлял 2-5MB World JSON
-  через stdin pipe (64KB buffer limit на Windows) → карта тихо терялась. Заменено на файловую
-  синхронизацию (nexusWriteSyncFile + loadWorldFile). Также fetchMapData() теперь не затирает
-  World.map пустыми данными движка если JS имеет данные из сохранения.
+- [x] **Инвентарь не работает без движка** — fallback на OldCoreInventorySystem.
+- [x] **Inventory async/sync mismatch** — все вызовы проверены, Тест 12 WARN — ложноположительный.
+- [x] **Карта лагала** — throttle ~30fps, _processHover, requestAnimationFrame + _needsRender.
+- [x] **CSP inline handler violations** — 14 inline обработчиков заменены на addEventListener.
+- [x] **loadWorldFile** — движок перекомпилирован, команда работает (до рефакторинга Phase 9).
+- [x] **Карта не загружается из сохранения** — stdin 64KB limit → файловая синхронизация.
+- [x] **ThreadPool фейковый** → реальный (hardware_concurrency воркеры).
+- [x] **Все хардкоды item ID в движке** — полностью вынесены в data/*.json (Phase 9).
 
 ### НИЗКИЕ (косметика)
 
-- [ ] Дублирующиеся JSDoc комментарии в globalMap.js (были до нас)
+- [ ] Дублирующиеся JSDoc комментарии в globalMap.js
 - [ ] Непоследовательные отступы в некоторых местах globalMap.js
-
----
-
-## ИСТОТИЯ ИЗМЕНЕНИЙ (последние)
-
-### 2026-05-20: Карта не загружается при загрузке сохранения
-- **Проблема**: При загрузке сохранённого мира глобальная карта не отображается.
-  Пользователь заметил: «При загрузке сохраненного мира карта не загружается. Как я понимаю она и не сохраняется».
-- **Корневая причина**: ДВЕ проблемы в цепочке загрузки:
-  1. **nexusSyncState через stdin**: При загрузке сохранения `loadGame()` вызывает
-     `nexusSyncState(World, items, containers)`, который отправляет весь World JSON
-     (2-5MB с картой 256x256 тайлов) через stdin pipe. Pipe buffer на Windows = 64KB.
-     Данные карты тихо обрезаются/теряются — C++ движок не получает карту.
-  2. **fetchMapData() затирает карту**: `Cartographer.fetchMapData()` вызывает
-     `nexusGetWorldMap()`, который возвращает пустую карту из C++ движка (т.к. sync
-     не удался), и перезаписывает `World.map` — уничтожая данные загруженные из сохранения.
-- **Решение 1** (SaveManager.js): Заменён `nexusSyncState` на файловую синхронизацию
-  `nexusWriteSyncFile` + `loadWorldFile` при загрузке сохранения. Движок читает мир
-  из файла напрямую, минуя stdin pipe buffer limit. Fallback на syncState если файловые
-  IPC недоступны.
-- **Решение 2** (globalMap.js): `fetchMapData()` теперь проверяет, есть ли в ответе
-  движка реальные данные карты (grid/tiles). Если движок вернул пустую карту, а в JS
-  есть данные из сохранения — JS данные сохраняются, пустой ответ движка игнорируется.
-- **Сохранение карты**: Карта СОХРАНЯЕТСЯ корректно — `nexusGetFullState()` забирает
-  мир из C++ (включая map.toJson()), и `addBlock("world_map", World.map)` записывает
-  его в файл сохранения. Проблема была только в обратном направлении (загрузка).
-
-### 2026-05-20: ThreadPool фейковый → реальный (производительность)
-- **Проблема**: Симуляция мира работает очень медленно.
-- **Корневая причина**: `ThreadPool` в `core_types.h` был ФЕЙКОВЫМ — создавал новый
-  `std::thread` с `detach()` для КАЖДОЙ задачи. При генерации мира: 256 рядов terrain
-  + города + NPC = 300+ одновременно созданных и отсоединённых потоков. Каждый поток
-  на Windows = 1MB стека + overhead создания. OS scheduler перегружен.
-- **Решение**: Реальный ThreadPool — фиксированное число воркеров (hardware_concurrency()),
-  task queue (std::queue + condition_variable), потоки создаются один раз и переиспользуются.
-
-### 2026-05-20: CSP + loadWorldFile фикс
-- **Проблема 1**: CSP ошибки "Refused to execute inline event handler" — 14 inline обработчиков
-  в index.html (onclick, onmouseover, onmouseout) блокировались Content Security Policy.
-- **Решение 1**: Заменены на CSP-совместимые:
-  - Help tab кнопки: `onclick` → `data-help-tab` атрибуты + `addEventListener`
-  - Help sub-tab кнопки: `onclick` → `data-help-subtab` атрибуты + `addEventListener`
-  - Close map modal: `onmouseover/onmouseout` → `mouseenter/mouseleave` через `addEventListener`
-  - Close examine modal: `onclick` → `id="close-examine-modal-btn"` + `addEventListener`
-- **Проблема 2**: `[Nexus] loadWorldFile не удался: Unknown command: loadWorldFile`
-  при синхронизации мира с C++ движком.
-- **Решение 2**: КОРНЕВАЯ ПРИЧИНА — meterea_engine.exe был устаревшим бинарником,
-  скомпилированным до добавления обработчика loadWorldFile в meterea_engine.cpp.
-  Оба бинарника (Linux + Windows .exe) перекомпилированы из актуального исходного кода.
-  Костыльный fallback через syncState удалён — он не нужен, движок теперь поддерживает команду.
-- **Проверено**: Inventory async/sync mismatch — ложноположительный. Все async методы
-  используют await; без await вызываются только sync методы (getContainerWeight, findItemByPrototype).
-
-### 2026-05-20: Фикс globalMap.js SyntaxError
-- **Проблема**: Строка 385 — `Uncaught SyntaxError: Unexpected token 'this'`
-- **Причина**: Предыдущий субагент добавил throttling (setTimeout ~33ms), но не вынес
-  hover-код в метод `_processHover`. Код hover-обработки (строки 181-384) «вывалился»
-  из handleMouseMove и оказался «висящим» внутри setupMapControls с нарушенной
-  структурой скобок.
-- **Решение**:
-  1. handleMouseMove теперь содержит только drag-логику и throttle-вызов
-  2. Весь hover-код вынесен в метод `Cartographer._processHover(e)`
-  3. Throttle: setTimeout ~33ms (~30fps) для hover-детекции
-  4. Render: requestAnimationFrame с _needsRender флагом — нет бесконечного цикла
-
-### 2026-05-19: Карта — оптимизация рендера
-- Добавлен requestAnimationFrame вместо прямого render()
-- Добавлен флаг _needsRender — render() не вызывается, если ничего не изменилось
-- Добавлен stopRenderLoop() — останавливает RAF при скрытии карты
-- Кэширование allPoints для hover-детекции
-- Кэширование political map (Вороного) — пересчёт только при изменении локаций
-
-### 2026-05-18: CSP + marked.js фикс
-- CSP обновлён: добавлены cdn.jsdelivr.net, cdnjs.cloudflare.com
-- Добавлен fallback marked.js парсер (inline) если CDN заблокирован
-- Engine CWD фикс: добавлен `cwd: path.join(__dirname)` в spawn
-
-### 2026-05-17: Security Audit (97 находок)
-- Полный аудит архитектуры и безопасности
-- Множественные фиксы: path traversal, XSS, injection, race conditions
-- Push-инфраструктура: paramiko SSH wrapper
 
 ---
 
 ## ЧЕК-ЛИСТ ПЕРЕД КАЖДЫМ ИЗМЕНЕНИЕМ КОДА
 
-1. `bash test_runner.sh` — все тесты должны пройти
-2. `node -c <файл>` — если меняешь JS
-3. Проверить, что _processHover существует если используется в throttle
+1. `node tools\runtime_smoke_check.js` — должно быть 0 failed
+2. `node -e "JSON.parse(require('fs').readFileSync('<файл>','utf8'))"` — если меняешь JSON
+3. `node --check <файл>` — если меняешь JS
 4. Проверить async/await соответствие (async методы → await вызовы)
-5. Проверить, что render() не вызывается в бесконечном цикле
-6. Если меняешь HTML — проверить ссылки на скрипты
-7. **ПРАВИЛО: Перед каждым git push ОБЯЗАТЕЛЬНО запускать `bash test_runner.sh`**
-   Если хоть один тест FAIL — пуш ЗАПРЕЩЁН. Сначала исправить, потом пушить.
-   push.sh автоматически запускает тесты — если не хочешь думать об этом, просто
-   используй `./push.sh master origin "commit msg"`.
+5. Если меняешь `engine/meterea_engine.cpp` — перекомпилировать бинарник
+6. Если меняешь `data/*.json` — обновить `data/runtime_manifest.json` если нужен новый ключ
+7. **ПРАВИЛО: Перед каждым git push запускать smoke-check + test_stub_game.js**
+   Если есть FAIL — пуш запрещён. push.sh делает это автоматически.
 
 ---
 
 ## ФАЙЛЫ КОТОРЫЕ НУЖНО ТЕСТИРОВАТЬ В ПЕРВУЮ ОЧЕРЕДЬ
 
 | Файл | Причина | Приоритет |
-|------|---------|-----------|
-| js/cartographer/globalMap.js | Сложная структура, часто ломается | ВЫСОКИЙ |
+|------|---------|-----------| 
+| engine/meterea_engine.cpp | C++ движок, 15 800 строк | ВЫСОКИЙ |
+| js/cartographer/globalMap.js | Сложная структура, Canvas | ВЫСОКИЙ |
 | script.js | Основная логика, 5000+ строк | ВЫСОКИЙ |
 | main.js | Electron main, CSP, IPC | ВЫСОКИЙ |
+| data/gameplay_runtime.json | Runtime config движка | СРЕДНИЙ |
+| data/tag_defaults.json | Item ID маппинги | СРЕДНИЙ |
 | engine/engine_client.py | Python-C++ мост | СРЕДНИЙ |
-| engine/meterea_engine.cpp | C++ движок | СРЕДНИЙ |
 | index.html | Точка входа, скрипты | СРЕДНИЙ |
 
 ---
 
 ## PUSH ИНФРАСТРУКТУРА
 
-- Push скрипт: `push.sh` (автоматически запускает test_runner.sh перед пушем)
-- SSH wrapper: `.ssh/git_ssh_wrapper.py` (paramiko SSH)
-- SSH ключ: `.ssh/deploy_key`
+- Push скрипт: `push.sh` (автоматически запускает тесты перед пушем)
+- Deploy key: `deploy_key` / `deploy_key.pub`
 - Репозиторий: `https://github.com/GardenXsa/metera_d25_cp3-newAge`
-- **ПРАВИЛО**: Никогда не пушить минуя push.sh! Он гарантирует тестирование.
-  Если нужно пушить руками — сначала `bash test_runner.sh`, и только если 0 FAIL — `git push`.
+- **ПРАВИЛО**: Никогда не пушить минуя push.sh.
+  Если нужно руками: сначала smoke-check, потом `git push`.
 
 ---
 
 ## ЗАМЕТКИ ДЛЯ БУДУЩИХ СЕССИЙ
 
-1. **Движок — главный нерешённый вопрос**. Пользователь говорит, что симуляция не работает.
-   Нужно трассировать всю цепочку JS→Python→C++ и найти, где обрывается.
+1. **Бинарник движка устарел** — первое, что нужно сделать: перекомпилировать
+   `engine/meterea_engine.cpp` в `.exe` (Windows) и `.so`/бинарник (Linux).
+   После этого проверить IPC цепочку JS→Python→C++.
 
-2. **UI оверхол** — пользователь хочет «игровой» интерфейс вместо примитивного.
-   Нужно полностью переработать CSS и, возможно, HTML структуру.
+2. **UI оверхол** — следующая крупная задача после компиляции движка.
+   Нужна тёмная тема, иконки, анимации. CSS полностью переработать.
 
-3. **ОБЯЗАТЕЛЬНО: test_runner.sh перед каждым пушем!** push.sh делает это автоматически.
-   Если тесты падают — пуш отменяется. Без исключений.
+3. **Data-driven рефакторинг завершён** (Phase 0–12 + Phase 9 engine cleanup).
+   Все item ID, профессии, стоимости — в data/*.json. Движок читает через loadDatabase.
 
-4. **_processHover** — это метод Cartographer, НЕ вложенная функция.
-   Если его перемещать — убедиться, что this контекст правильный.
+4. **Smoke-check зелёный: 60/0** — базовая точка на 2026-05-25.
 
-5. **ContainerRegistry / ItemRegistry** — глобальные Map объекты.
-   CoreInventorySystemAsync — async версия, OldCoreInventorySystem — sync.
-   ВНИМАНИЕ: не путать, не вызывать async методы без await.
+5. **_processHover** — метод Cartographer, НЕ вложенная функция. this контекст важен.
+
+6. **ContainerRegistry / ItemRegistry** — глобальные Map объекты.
+   CoreInventorySystemAsync — async, OldCoreInventorySystem — sync fallback.
+   Не вызывать async методы без await.
+
+7. **Профессии** — теперь хранятся как ID (строчные: "farmer", "blacksmith" и т.д.),
+   не как English display names. Display name берётся из professions.json через i18n_key.
