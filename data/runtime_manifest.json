@@ -21,9 +21,11 @@
     "total_conversion": {
       "skip_base_database_files_by_default": true,
       "allowed_base_passthrough_keys": [
-        "eras",
+        "prompt_pack",
+        "classes",
+        "narrators",
         "tag_defaults",
-        "classes"
+        "eras"
       ],
       "required_database_keys": [
         "items",
@@ -207,8 +209,7 @@
     "predefined_effects": {
       "path": "./assets/res/predefined_effects.json",
       "default_type": "object",
-      "merge_policy": "upsertById",
-      "replace_on_total_conversion": true
+      "merge_policy": "upsertById"
     },
     "ui_runtime": {
       "path": "./data/ui_runtime.json",
