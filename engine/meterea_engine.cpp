@@ -12910,7 +12910,7 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
                     } else if (hasBiomeTag(b_id, "lake")) {
                         cost = 100; // lake without bridge: expensive
                     } else {
-                        cost = 50; // Морской маршрут
+                        cost = 500; // ocean without bridge/ferry: VERY expensive
                     }
                 } else if (is_impassable_a) {
                     // ANY может проходить через горы/вулканы с огромным штрафом (для генерации тоннелей)
