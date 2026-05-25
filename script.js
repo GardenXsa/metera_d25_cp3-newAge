@@ -36,7 +36,7 @@ const GameRNG = {
      */
     seed(seed) { this._seed = seed >>> 0; },
     /**
-     * Mulberry32 вЂ” fast 32-bit PRNG. Returns [0, 1).
+     * Mulberry32 — fast 32-bit PRNG. Returns [0, 1).
      * Deterministic given the same seed sequence.
      */
     next() {
@@ -544,7 +544,7 @@ const OldCoreInventorySystem = {
             item.stack_size -= requestedQuantity;
             // FIX: Create the split item directly in the TARGET container, not source.
             // Previously passed resolvedSourceId which added it to source,
-            // then it was moved via filter+push вЂ” but createItem already adds to container's .items array,
+            // then it was moved via filter+push — but createItem already adds to container's .items array,
             // causing a duplicate in source or missed addition to target.
             createdItemId = this.createItem(item.prototype_id, requestedQuantity, null, {
                 ...structuredClone(item.custom_props || {}),
@@ -986,7 +986,7 @@ const CoreInventorySystemAsync = {
 // 
 // MIGRATION GUIDE:
 // - For code that NEEDS sync behavior (UI helpers, pure local calculations):
-//   Use OldCoreInventorySystem directly вЂ” it operates on local registries only.
+//   Use OldCoreInventorySystem directly — it operates on local registries only.
 // - For code that NEEDS engine synchronization (persisting to C++ engine):
 //   Use CoreInventorySystemAsync and ALWAYS await the result.
 // - NEVER call CoreInventorySystemAsync methods without await.
@@ -1001,7 +1001,7 @@ const CoreInventorySystem = new Proxy(OldCoreInventorySystem, {
             const asyncFn = CoreInventorySystemAsync[prop];
             return function(...args) {
                 const stackHint = new Error().stack?.split('\n')[2]?.trim() || 'unknown caller';
-                console.warn(`[DEPRECATED] CoreInventorySystem.${prop}() called вЂ” this returns a Promise. Use "await CoreInventorySystemAsync.${prop}()" instead. Called from: ${stackHint}`);
+                console.warn(`[DEPRECATED] CoreInventorySystem.${prop}() called — this returns a Promise. Use "await CoreInventorySystemAsync.${prop}()" instead. Called from: ${stackHint}`);
                 const result = asyncFn.apply(this, args);
                 // If the result is a promise, check if it's being awaited
                 if (result && typeof result.then === 'function') {
@@ -2494,9 +2494,9 @@ const OldTradeSystem = {
 // --- TREK SYSTEM (GLOBAL TRAVEL ENGINE) --- 
 // ======================================================================
 function getCaravanContents(chestId) {
-    if (!chestId || !ContainerRegistry.has(chestId)) return "РџСѓСЃС‚Рѕ";
+    if (!chestId || !ContainerRegistry.has(chestId)) return "Пусто";
     const cont = ContainerRegistry.get(chestId);
-    if (!cont.items || cont.items.length === 0) return "РџСѓСЃС‚Рѕ";
+    if (!cont.items || cont.items.length === 0) return "Пусто";
     let contents = [];
     cont.items.forEach(itemId => {
         const item = ItemRegistry.get(itemId);
@@ -2959,7 +2959,7 @@ function generateWorldNews(text, location, importance, category) {
 }
 
 let World = null;
-// Defensive getter for World state вЂ” prevents null reference errors
+// Defensive getter for World state — prevents null reference errors
 function getWorld() {
     return World;
 }
@@ -3241,7 +3241,7 @@ async function runWorldSimulationTick() {
                     }
                 }
             }
-            let resStr = resArr.length > 0 ? resArr.slice(0, 6).join(', ') : "РџСѓСЃС‚Рѕ";
+            let resStr = resArr.length > 0 ? resArr.slice(0, 6).join(', ') : "Пусто";
 
             worldSummary += `Регион: ${r.name} (Владелец: ${ownerName}). Население: ${r.population}. Погода: ${r.weather || "Нормальная"}. Ресурсы: ${resStr}.\n`;
         }
@@ -3585,7 +3585,7 @@ function escapeHTML(str) {
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
               .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
-// Sanitize HTML content вЂ” strip dangerous tags while preserving safe formatting
+// Sanitize HTML content — strip dangerous tags while preserving safe formatting
 function sanitizeHTML(html) {
     if (typeof html !== 'string') return '';
     // Use DOMPurify if available (loaded in index.html), otherwise fallback to basic sanitization
@@ -3688,7 +3688,7 @@ let currentLanguage = DEFAULT_LANGUAGE;
 let translations = {};
 
 let player = null;
-// Defensive getter for player state вЂ” prevents null reference errors
+// Defensive getter for player state — prevents null reference errors
 // Usage: getPlayer()?.stats.hp instead of player?.stats.hp (same effect, but centralized)
 function getPlayer() {
     return player;
@@ -5178,12 +5178,12 @@ function saveApiKey() {
         GEMINI_API_KEY = newKey;
         isUsingBuiltInKey = false;
         localStorage.setItem('useBuiltInApiKey_v1', 'false');
-        // Р—РђРњР•РќРђ ALERT
+        // ЗАМЕНА ALERT
         showCustomAlert(t('settingsMenu.apiKeySaved', null, 'API ключ сохранен!'));
     } else {
         localStorage.removeItem('geminiApiKey');
         GEMINI_API_KEY = '';
-        // Р—РђРњР•РќРђ ALERT
+        // ЗАМЕНА ALERT
         showCustomAlert(t('settingsMenu.apiKeyRemovedOrEmpty', null, 'API ключ удален.'));
     }
     updateApiKeyStatus();
@@ -6488,7 +6488,7 @@ async function fetchModels() {
 
                     return {
                         id: id, name: m.displayName || id, desc: m.description || 'Официальная модель Google Gemini.',
-                        type: type, free: false, context: m.inputTokenLimit || null, priceText: 'Р›РёРјРёС‚С‹ API (Free Tier)',
+                        type: type, free: false, context: m.inputTokenLimit || null, priceText: 'Лимиты API (Free Tier)',
                         caching: isCaching, thinking: isThinking
                     };
                 });
@@ -7927,7 +7927,7 @@ async function finalizeCharacterCreation() {
             },
             currentCombat: { isActive: false, participants: [] },
             gameTime: buildInitialGameTime(selectedEra),
-            timeOfDay: "РЈС‚СЂРѕ",
+            timeOfDay: "Утро",
             equipment: {},
             holdings: {},
             bankAccount: { deposit: 0, loan: 0, loanDays: 0 },
@@ -9367,7 +9367,7 @@ function updateCharacterSheet() {
         if (locationStatLine) locationStatLine.style.display = 'none';
         if (journeyContainer) {
             journeyContainer.style.display = 'flex';
-            journeyDest.textContent = `Р’ РїСѓС‚Рё: ${player.travel.destinationName}`;
+            journeyDest.textContent = `Р’ пути: ${player.travel.destinationName}`;
             journeyProgressText.textContent = `${player.travel.elapsedHours} / ${player.travel.totalHours} С‡.`;
             const pct = Math.min(100, (player.travel.elapsedHours / player.travel.totalHours) * 100);
             journeyProgressBar.style.width = `${pct}%`;
@@ -9484,9 +9484,9 @@ function updateCharacterSheet() {
             journeyContainer.style.display = 'flex';
             // Визуальная индикация боя в путешествии
             if (player.currentCombat && player.currentCombat.isActive) {
-                journeyDest.innerHTML = `Р’ РїСѓС‚Рё: ${player.currentJourney.destination} <span style="color: #e74c3c;">[Р‘РћР™!]</span>`;
+                journeyDest.innerHTML = `Р’ пути: ${player.currentJourney.destination} <span style="color: #e74c3c;">[БОЙ!]</span>`;
             } else {
-                journeyDest.textContent = `Р’ РїСѓС‚Рё: ${player.currentJourney.destination}`;
+                journeyDest.textContent = `Р’ пути: ${player.currentJourney.destination}`;
             }
             journeyProgressText.textContent = `${player.currentJourney.currentPoint} / ${player.currentJourney.points}`;
             const pct = Math.min(100, (player.currentJourney.currentPoint / player.currentJourney.points) * 100);
@@ -9897,9 +9897,9 @@ function updateSkillsDisplay() {
                 detailsHTML += `<span><strong>${t('skills.damageLabel', 'РЈСЂРѕРЅ')}:</strong> ${skill.damage}</span>`;
             }
             if (skill.cost && skill.costType && String(skill.costType).toLowerCase() !== 'нет') {
-                detailsHTML += `<span><strong>${t('skills.costLabel', 'РЎС‚РѕРёРјРѕСЃС‚СЊ')}:</strong> ${skill.cost} ${skill.costType}</span>`;
+                detailsHTML += `<span><strong>${t('skills.costLabel', 'Стоимость')}:</strong> ${skill.cost} ${skill.costType}</span>`;
             } else if (skill.cost && String(skill.cost).toLowerCase() !== '0' && String(skill.cost).toLowerCase() !== 'нет') {
-                detailsHTML += `<span><strong>${t('skills.costLabel', 'РЎС‚РѕРёРјРѕСЃС‚СЊ')}:</strong> ${skill.cost}</span>`;
+                detailsHTML += `<span><strong>${t('skills.costLabel', 'Стоимость')}:</strong> ${skill.cost}</span>`;
             }
             if (skill.duration && String(skill.duration).toLowerCase() !== 'нет') {
                 detailsHTML += `<span><strong>${t('skills.durationLabel', 'Длит.')}:</strong> ${skill.duration}</span>`;
@@ -10422,7 +10422,7 @@ function showEntityTooltip(event) {
     if (data.dex !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.dex', '🤸 Ловкость')}:</span> <span class="stat-value">${data.dex}</span></p>`;
     if (data.con !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.con', '맷 Выносливость')}:</span> <span class="stat-value">${data.con}</span></p>`;
     if (data.int !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.int', '💡 Интеллект')}:</span> <span class="stat-value">${data.int}</span></p>`;
-    if (allowNSFW && data.lust !== undefined) statsHtml += `<p><span class="stat-label" style="color:#e91e63;">рџ’‹ РџРѕС…РѕС‚СЊ:</span> <span class="stat-value" style="color:#e91e63;">${data.lust}%</span></p>`;
+    if (allowNSFW && data.lust !== undefined) statsHtml += `<p><span class="stat-label" style="color:#e91e63;">рџ’‹ Похоть:</span> <span class="stat-value" style="color:#e91e63;">${data.lust}%</span></p>`;
 
     let healthBarHtml = '';
     let healthText = '';
@@ -10731,8 +10731,8 @@ function updateEroticJournal() {
         let fetishesStr = [];
         if (stats.fetishes.anal > 0) fetishesStr.push(`Анал (${stats.fetishes.anal})`);
         if (stats.fetishes.oral > 0) fetishesStr.push(`Орал (${stats.fetishes.oral})`);
-        if (stats.fetishes.bdsm > 0) fetishesStr.push(`Р‘Р”РЎРњ (${stats.fetishes.bdsm})`);
-        if (stats.fetishes.group > 0) fetishesStr.push(`Р“СЂСѓРїРїРѕРІРѕР№ (${stats.fetishes.group})`);
+        if (stats.fetishes.bdsm > 0) fetishesStr.push(`БДСМ (${stats.fetishes.bdsm})`);
+        if (stats.fetishes.group > 0) fetishesStr.push(`Групповой (${stats.fetishes.group})`);
         let fetishesDisplay = fetishesStr.length > 0 ? fetishesStr.join(', ') : "Нет";
 
         statsDiv.innerHTML = `
@@ -10988,7 +10988,7 @@ function closeInGameMenu() {
     }, 300); // Время анимации
 }
 
-// --- Р›РѕРі Рё Р’РІРѕРґ ---
+// --- Лог Рё Р’РІРѕРґ ---
 function addLogMessage(message, type = "gm-message", isRestoring = false, imagePrompt = "", savedImageBase64 = null) {
     if (!gameLog) return;
     message = parseLocString(message); // Авто-локализация
@@ -12602,7 +12602,7 @@ function parseAIResponse(rawResponse) {
         const jsonString = cleanRaw.substring(startIdx, endIdx + 1);
 
         try {
-            // РЈРјРЅС‹Р№ С…РёСЂСѓСЂРі JSON
+            // Умный С…РёСЂСѓСЂРі JSON
             let fixedJsonString = jsonString
                 .replace(/,\s*([\]}\]])/g, '$1')
                 .replace(/}\s*{/g, '},{')
@@ -16587,7 +16587,7 @@ function populateAdminMenu() {
                     if (phaseName === 'vanguard_clash') phaseName = 'Стычка авангардов';
                     else if (phaseName === 'main_battle') phaseName = 'Основное сражение';
                     else if (phaseName === 'rout') phaseName = 'Отступление';
-                    statusText = `<b style="color:#e74c3c">Р‘РћР™: ${phaseName}</b>`;
+                    statusText = `<b style="color:#e74c3c">БОЙ: ${phaseName}</b>`;
                 }
 
                 let armyName = World.factions[fId].rulerId === 'player' ? "👑 Ваша армия" : World.factions[fId].name;
@@ -17787,7 +17787,7 @@ function updatePortPanel() {
     
     const yesStr = t('extraLoc.general.yes', null, 'Да');
     const noStr = t('extraLoc.general.no', null, 'Нет');
-    const existStr = t('extraLoc.general.exists', null, 'Р•СЃС‚СЊ');
+    const existStr = t('extraLoc.general.exists', null, 'Есть');
     const notExistStr = t('extraLoc.general.notExists', null, 'Нет');
 
     let html = `<div style="margin-bottom: 10px; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 5px; font-size: 0.85em; color: #ecf0f1;">
@@ -17841,7 +17841,7 @@ function updatePortPanel() {
     if (shipsInPort.length === 0) html += `<li style="color:#7f8c8d; padding: 3px;">${t('extraLoc.portPanel.noShips')}</li>`;
     shipsInPort.forEach(s => {
         let icon = "в›µ";
-        if (s.type === "WAR_GALLEY" || s.type === "WAR_FRIGATE") icon = "в›ґпёЏ";
+        if (s.type === "WAR_GALLEY" || s.type === "WAR_FRIGATE") icon = "⛴️";
         if (s.type === "PIRATE") icon = "🏴‍☠️";
         if (s.type === "TRANSPORT") icon = "рџ›¶";
         html += `<li style="background: rgba(0,0,0,0.4); padding: 4px; margin-bottom: 2px; border-radius: 4px; border-left: 3px solid #3498db;">${icon} <b>${t('extraLoc.portPanel.shipTypes.' + s.type, null, s.type)}</b> (${t('extraLoc.portPanel.owner')}: ${s.owner_id})<br><span style="font-size:0.85em; color:#bdc3c7;">${t('extraLoc.portPanel.hull')}: ${s.hull}% | ${t('extraLoc.portPanel.crew')}: ${s.sailors} | ${t('extraLoc.portPanel.cargo')}: ${s.cargo_capacity}</span></li>`;
@@ -18280,15 +18280,20 @@ async function openLoadWorldModal() {
         btn.style.flexDirection = 'column';
         btn.style.alignItems = 'flex-start';
         btn.innerHTML = `
-            <div style="display:flex; justify-content:space-between; width:100%;">
-                <span class="save-slot-id" style="color:#f1c40f;">${w.name}</span>
-                <span style="color:#bdc3c7; font-size:0.85em;">Р­РїРѕС…Р°: ${w.era}</span>
+            <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                <span class="save-slot-id" style="color:#f1c40f; font-size:0.95em;">${escapeHTML(w.name || w.filename)}</span>
+                <span style="color:#5dade2; font-size:0.82em; border:1px solid rgba(93,173,226,0.3); border-radius:3px; padding:1px 6px;">${escapeHTML(w.era)}</span>
             </div>
-            <div style="display:flex; justify-content:space-between; width:100%; margin-top:10px; align-items: center;">
+            ${w.mod_list && w.mod_list.filter(m=>m!=='base_game').length > 0
+                ? `<div style="margin-top:4px; display:flex; flex-wrap:wrap; gap:3px;">
+                    ${w.mod_list.filter(m=>m!=='base_game').map(m=>`<span style="background:rgba(93,173,226,0.1);border:1px solid rgba(93,173,226,0.25);border-radius:3px;padding:1px 5px;font-size:0.7em;color:#5dade2;">${m}</span>`).join('')}
+                   </div>`
+                : ''}
+            <div style="display:flex; justify-content:space-between; width:100%; margin-top:8px; align-items:center;">
                 <span style="color:#7f8c8d; font-size:0.8em;">${new Date(w.timestamp).toLocaleString()}</span>
                 <div style="display:flex; gap: 5px;">
-                    <button class="bus-btn btn-green load-w-btn" data-file="${w.filename}" style="padding:6px 12px; font-size:0.85em; margin:0; min-width:auto;">Выбрать</button>
-                    <button class="bus-btn btn-red del-w-btn" data-file="${w.filename}" style="padding:6px 12px; font-size:0.85em; margin:0; min-width:auto;">Удалить</button>
+                    <button class="bus-btn btn-green load-w-btn" data-file="${w.filename}" style="padding:6px 14px;">${t('worldSetup.selectButton', null, 'Select')}</button>
+                    <button class="bus-btn btn-red del-w-btn" data-file="${w.filename}" style="padding:6px 14px;">${t('worldSetup.deleteButton', null, 'Delete')}</button>
                 </div>
             </div>
         `;

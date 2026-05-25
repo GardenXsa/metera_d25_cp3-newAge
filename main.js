@@ -801,7 +801,8 @@ ipcMain.handle('list-worlds', async () => {
                     filename: file, 
                     timestamp: stats.mtime.toISOString(), 
                     name: nameMatch ? nameMatch[1] : "Неизвестный мир",
-                    era: eraMatch ? eraMatch[1] : "rebirth"
+                    era: eraMatch ? eraMatch[1] : "rebirth",
+                    mod_list: modList || []
                 });
             } catch (err) {
                 console.error(`[World] Ошибка чтения файла ${file}:`, err.message);
