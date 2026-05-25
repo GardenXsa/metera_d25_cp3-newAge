@@ -797,12 +797,24 @@ ipcMain.handle('list-worlds', async () => {
                 const chunk = buffer.toString('utf-8', 0, bytesRead);
                 const nameMatch = chunk.match(/"name"\s*:\s*"([^"]+)"/);
                 const eraMatch = chunk.match(/"era"\s*:\s*"([^"]+)"/);
+                const modListMatch = chunk.match(/"mod_list"\s*:\s*(\[[\s\S]*?\])/);
+                let modList = [];
+                if (modListMatch) {
+                    try {
+                        const parsedModList = JSON.parse(modListMatch[1]);
+                        if (Array.isArray(parsedModList)) {
+                            modList = parsedModList.filter(m => typeof m === 'string');
+                        }
+                    } catch (parseError) {
+                        console.warn(`[World] Не удалось прочитать mod_list из ${file}:`, parseError.message);
+                    }
+                }
                 results.push({ 
                     filename: file, 
                     timestamp: stats.mtime.toISOString(), 
                     name: nameMatch ? nameMatch[1] : "Неизвестный мир",
                     era: eraMatch ? eraMatch[1] : "rebirth",
-                    mod_list: modList || []
+                    mod_list: modList
                 });
             } catch (err) {
                 console.error(`[World] Ошибка чтения файла ${file}:`, err.message);

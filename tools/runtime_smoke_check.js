@@ -181,6 +181,7 @@ function main() {
     'script.js',
     'preload.js',
     'js/core/constants.js',
+    'js/cartographer/globalMap.js',
     'js/mods/ModLoaderIntegration.js',
     'tools/worklog_viewer_server.js',
     'tools/runtime_smoke_check.js',

@@ -646,6 +646,133 @@ window.Cartographer = {
 
 
     /**
+     * Returns numeric tile type from either grid[] or legacy tiles[].
+     * Used by visual-only cartography cleanup; does not mutate World.map.
+     */
+    getMapTileType: function(map, x, y) {
+        if (!map || x < 0 || y < 0 || x >= map.width || y >= map.height) return null;
+        const idx = y * map.width + x;
+        const cell = map.grid ? map.grid[idx] : null;
+        return cell ? cell[0] : (map.tiles ? map.tiles[idx] : null);
+    },
+
+    getBiomeDefByNumericId: function(tileType) {
+        const biomes = window.RUNTIME_DATABASE && Array.isArray(window.RUNTIME_DATABASE.biomes)
+            ? window.RUNTIME_DATABASE.biomes
+            : null;
+        if (!biomes) return null;
+        return biomes.find(b => b && b.numeric_id === tileType) || null;
+    },
+
+    isWaterTileType: function(tileType) {
+        const biome = this.getBiomeDefByNumericId(tileType);
+        if (biome) return biome.is_water === true || (Array.isArray(biome.tags) && biome.tags.includes('water'));
+        return [0, 1, 12, 15].includes(tileType); // ocean, shallow_water, river, lake fallback
+    },
+
+    isCoastalWaterTileType: function(tileType) {
+        const biome = this.getBiomeDefByNumericId(tileType);
+        if (biome && Array.isArray(biome.tags)) {
+            return biome.tags.includes('ocean') || biome.tags.includes('shallow_water') || biome.tags.includes('lake');
+        }
+        return [0, 1, 15].includes(tileType); // ocean, shallow_water, lake fallback
+    },
+
+    isRiverTileType: function(tileType) {
+        const biome = this.getBiomeDefByNumericId(tileType);
+        if (biome && Array.isArray(biome.tags)) return biome.tags.includes('river');
+        return tileType === 12;
+    },
+
+    isRiverEdgeTileType: function(tileType) {
+        const biome = this.getBiomeDefByNumericId(tileType);
+        if (biome && Array.isArray(biome.tags)) {
+            return biome.tags.includes('riverbank') || biome.tags.includes('floodplain');
+        }
+        return tileType === 14 || tileType === 16;
+    },
+
+    hasAdjacentTileMatching: function(map, x, y, predicate) {
+        const dirs = [[0, -1], [1, 0], [0, 1], [-1, 0], [-1, -1], [1, -1], [1, 1], [-1, 1]];
+        for (const [dx, dy] of dirs) {
+            const tileType = this.getMapTileType(map, x + dx, y + dy);
+            if (tileType !== null && predicate.call(this, tileType)) return true;
+        }
+        return false;
+    },
+
+    findNearbyLandVisualTileType: function(map, x, y) {
+        const dirs = [[0, -1], [1, 0], [0, 1], [-1, 0], [-1, -1], [1, -1], [1, 1], [-1, 1]];
+        for (const [dx, dy] of dirs) {
+            const tileType = this.getMapTileType(map, x + dx, y + dy);
+            if (tileType === null) continue;
+            if (!this.isWaterTileType(tileType) && !this.isRiverEdgeTileType(tileType)) return tileType;
+        }
+        return 2; // beach fallback
+    },
+
+    normalizeVisualTileType: function(map, x, y, tileType) {
+        if (!this.isRiverEdgeTileType(tileType)) return tileType;
+
+        const touchesAnyWater = this.hasAdjacentTileMatching(map, x, y, this.isWaterTileType);
+
+        // Riverbank/floodplain are useful gameplay biomes, but visually they create thick green
+        // closed outlines around rivers, lakes and cyberpunk toxic water. Keep the biome data in
+        // World.map, but render it as nearby land/beach so rivers remain open blue/acid channels.
+        if (touchesAnyWater) {
+            return this.findNearbyLandVisualTileType(map, x, y);
+        }
+
+        return tileType;
+    },
+
+    isWaterRoadType: function(road) {
+        const type = road && road.type;
+        return type === 'sea_route' || type === 'ferry' || type === 'bridge';
+    },
+
+    shouldDrawRoadSegment: function(map, road, fromWp, toWp) {
+        if (this.isWaterRoadType(road)) return true;
+        if (!fromWp || !toWp) return false;
+
+        const dx = toWp[0] - fromWp[0];
+        const dy = toWp[1] - fromWp[1];
+        const steps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) * 2));
+
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const x = Math.round(fromWp[0] + dx * t);
+            const y = Math.round(fromWp[1] + dy * t);
+            const tileType = this.getMapTileType(map, x, y);
+            if (tileType !== null && this.isWaterTileType(tileType)) return false;
+        }
+
+        return true;
+    },
+
+    strokeRoadWaypoints: function(ctx, map, road) {
+        const waypoints = Array.isArray(road && road.waypoints) ? road.waypoints : [];
+        if (waypoints.length < 2) return;
+
+        for (let i = 1; i < waypoints.length; i++) {
+            const fromWp = waypoints[i - 1];
+            const toWp = waypoints[i];
+            if (!this.shouldDrawRoadSegment(map, road, fromWp, toWp)) continue;
+
+            const x1 = fromWp[0] * this.TILE_SIZE + this.TILE_SIZE / 2;
+            const y1 = fromWp[1] * this.TILE_SIZE + this.TILE_SIZE / 2;
+            const x2 = toWp[0] * this.TILE_SIZE + this.TILE_SIZE / 2;
+            const y2 = toWp[1] * this.TILE_SIZE + this.TILE_SIZE / 2;
+
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        }
+    },
+
+
+    /**
      * Обновляет кэш фонового слоя (тайлы и дороги) на OffscreenCanvas.
      * @param {Object} map - Объект глобальной карты (World.map)
      */
@@ -686,8 +813,10 @@ window.Cartographer = {
                 let tileType = cell ? cell[0] : (map.tiles ? map.tiles[y * map.width + x] : 0);
                 let isFlooded = cell ? cell[4] : false;
 
-                let color = colors[tileType] || '#000';
-                // Убрана подмена цвета реки на равнину, теперь река рисуется своим цветом
+                const visualTileType = this.normalizeVisualTileType(map, x, y, tileType);
+                let color = colors[visualTileType] || colors[tileType] || '#000';
+                // Убрана подмена цвета реки на равнину, теперь река рисуется своим цветом.
+                // Riverbank/floodplain at river mouths is visually opened by normalizeVisualTileType().
 
                 ctx.fillStyle = color;
                 ctx.fillRect(x * this.TILE_SIZE, y * this.TILE_SIZE, this.TILE_SIZE, this.TILE_SIZE);
@@ -763,13 +892,7 @@ window.Cartographer = {
                     else ctx.setLineDash([8, 4]);
                 }
 
-                road.waypoints.forEach((wp, idx) => {
-                    const px = wp[0] * this.TILE_SIZE + this.TILE_SIZE / 2;
-                    const py = wp[1] * this.TILE_SIZE + this.TILE_SIZE / 2;
-                    if (idx === 0) ctx.moveTo(px, py);
-                    else ctx.lineTo(px, py);
-                });
-                ctx.stroke();
+                this.strokeRoadWaypoints(ctx, map, road);
                 ctx.setLineDash([]);
 
                 if (road.type === 'bridge' && !isRuined) {

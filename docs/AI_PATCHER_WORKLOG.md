@@ -2851,3 +2851,205 @@ final git status: clean
 **Итог:** стабилизационная пачка зафиксирована в GitHub. `npm run verify` теперь является основной быстрой проверкой перед следующими крупными патчами и push.
 
 **Следующий шаг после checkpoint:** ручной Electron E2E: запуск окна, новая игра, загрузка сохранения, DevTools console, IPC flow.
+
+
+
+---
+
+### 52. `fix_map_roads_over_ocean_and_riverbank_mouth_artifacts`
+
+**Статус:** подготовлен к применению.
+
+**Изменено:**
+
+- `js/cartographer/globalMap.js`
+- `tools/runtime_smoke_check.js`
+- `NOTES.md`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Исправляем две визуальные аномалии глобальной карты:
+
+1. сухопутные дороги/контуры не должны визуально идти через океан;
+2. зелёная riverbank/floodplain обводка у устья реки не должна замыкаться вокруг места, где река входит в океан/озеро.
+
+**Диагноз:**
+
+- `map.roads` в renderer раньше рисовались простым соединением всех `road.waypoints`, без проверки, что сегмент проходит по воде;
+- `sea_route`, `ferry`, `bridge` остаются разрешёнными водными/переходными типами;
+- реки уже не рисуются отдельными vector paths: они являются тайлами; зелёный артефакт идёт от `riverbank/floodplain` tile types.
+
+**Что меняется:**
+
+- добавлены visual-only helpers для чтения tile type и определения water/river/riverbank/coastal water;
+- сухопутные road segments теперь не рисуются, если sampled segment пересекает water tile;
+- `sea_route`, `ferry`, `bridge` не режутся этим фильтром;
+- riverbank/floodplain у river mouth визуально заменяется на соседний land/beach tile, чтобы открыть устье и убрать замкнутую зелёную петлю;
+- `js/cartographer/globalMap.js` добавлен в `tools/runtime_smoke_check.js`, чтобы будущие правки карты ловились `node --check`.
+
+**Риск:** средний-низкий. Это visual-only fix: `World.map` и генерация мира не меняются. Возможный риск — если где-то обычные road types намеренно использовались как морские маршруты, они перестанут рисоваться на воде; для этого должен использоваться `sea_route`, `ferry` или `bridge`.
+
+**Проверки после применения:**
+
+```bash
+node --check js/cartographer/globalMap.js
+node --check tools/runtime_smoke_check.js
+npm run verify
+node -e "const fs=require('fs'); const map=fs.readFileSync('js/cartographer/globalMap.js','utf8'); if(!map.includes('strokeRoadWaypoints')) throw new Error('road segment clipping helper missing'); if(!map.includes('normalizeVisualTileType')) throw new Error('river mouth visual cleanup helper missing'); const smoke=fs.readFileSync('tools/runtime_smoke_check.js','utf8'); if(!smoke.includes('js/cartographer/globalMap.js')) throw new Error('globalMap syntax check missing'); console.log('map visual artifact fix OK')"
+git status --short
+```
+
+**Следующий шаг:** после зелёных проверок открыть карту в Electron и глазами проверить: обычные дороги не идут через океан; sea_route/bridge/ferry ещё видны; устья рек не замыкаются зелёным контуром.
+
+
+
+---
+
+### 53. `fix_cyberpunk_map_riverbank_visuals_modlist_and_tag_defaults`
+
+**Статус:** подготовлен к применению.
+
+**Изменено:**
+
+- `main.js`
+- `js/cartographer/globalMap.js`
+- `mods/cyberpunk_core/mod.json`
+- `mods/cyberpunk_core/data/tag_defaults.json`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Закрываем три проблемы, найденные при ручном запуске Electron с активным `cyberpunk_core` total conversion:
+
+1. `list-worlds` падал на старых world JSON: `modList is not defined`;
+2. карта всё ещё рисовала зелёные/кислотные riverbank/floodplain контуры вокруг воды;
+3. C++ engine stderr выводил `DATA ERROR` по base `tag_defaults`, потому что cyberpunk total conversion отключает vanilla items, но base tag defaults ссылались на `bread`, `meat`, `gold_ingot`, `weapons` и другие отсутствующие IDs.
+
+**Что меняется:**
+
+- `main.js`: `modList` теперь безопасно извлекается из preview chunk через regex + JSON.parse fallback;
+- `globalMap.js`: `riverbank/floodplain` остаются в `World.map` как gameplay biome, но визуально рисуются как соседняя суша/берег, если соприкасаются с водой;
+- `cyberpunk_core`: добавлен собственный `data/tag_defaults.json`, который переводит базовые default item roles на реальные cyberpunk item IDs;
+- `mod.json`: подключает cyberpunk tag defaults к declarative mod data load.
+
+**Риск:** средний-низкий.
+
+- `main.js` fix безопасный и локальный;
+- map fix visual-only, генерацию/сохранения не меняет;
+- cyberpunk tag defaults могут требовать будущей балансировки, но они должны убрать engine stderr по отсутствующим vanilla item IDs.
+
+**Проверки после применения:**
+
+```bash
+node --check main.js
+node --check js/cartographer/globalMap.js
+node -e "JSON.parse(require('fs').readFileSync('mods/cyberpunk_core/data/tag_defaults.json','utf8')); JSON.parse(require('fs').readFileSync('mods/cyberpunk_core/mod.json','utf8')); console.log('cyberpunk tag defaults JSON OK')"
+npm run verify
+node -e "const fs=require('fs'); const main=fs.readFileSync('main.js','utf8'); if(!main.includes('const modListMatch')) throw new Error('modList parser missing'); const map=fs.readFileSync('js/cartographer/globalMap.js','utf8'); if(!map.includes('touchesAnyWater')) throw new Error('aggressive riverbank visual cleanup missing'); const mod=fs.readFileSync('mods/cyberpunk_core/mod.json','utf8'); if(!mod.includes('data/tag_defaults.json')) throw new Error('cyberpunk tag_defaults not connected'); const tags=JSON.parse(fs.readFileSync('mods/cyberpunk_core/data/tag_defaults.json','utf8')); if(tags.food !== 'synth_paste' || tags.currency !== 'eurodollar') throw new Error('cyberpunk tag defaults wrong'); console.log('cyberpunk map/log fix OK')"
+git status --short
+```
+
+**Ручная проверка после автоматических тестов:**
+
+Запустить `npm start` с активным `cyberpunk_core` и проверить:
+
+- в консоли больше нет `modList is not defined`;
+- в stderr больше нет `DATA ERROR` по vanilla `tag_defaults`;
+- зелёные riverbank/floodplain петли вокруг воды исчезли или стали существенно менее заметны;
+- обычные дороги не идут через океан, а `sea_route/ferry/bridge` всё ещё видны.
+
+
+
+---
+
+### 53. `fix_cyberpunk_map_riverbank_visuals_modlist_and_tag_defaults_v2`
+
+**Статус:** подготовлен к применению.
+
+**Изменено:**
+
+- `main.js`
+- `js/cartographer/globalMap.js`
+- `mods/cyberpunk_core/mod.json`
+- `mods/cyberpunk_core/data/tag_defaults.json`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Закрываем три проблемы, найденные при ручном запуске Electron с активным `cyberpunk_core` total conversion:
+
+1. `list-worlds` падал на старых world JSON: `modList is not defined`;
+2. карта всё ещё рисовала зелёные/кислотные riverbank/floodplain контуры вокруг воды;
+3. C++ engine stderr выводил `DATA ERROR` по base `tag_defaults`, потому что cyberpunk total conversion отключает vanilla items, но base tag defaults ссылались на `bread`, `meat`, `gold_ingot`, `weapons` и другие отсутствующие IDs.
+
+**Что меняется:**
+
+- `main.js`: `modList` теперь безопасно извлекается из preview chunk через regex + JSON.parse fallback;
+- `globalMap.js`: `riverbank/floodplain` остаются в `World.map` как gameplay biome, но визуально рисуются как соседняя суша/берег, если соприкасаются с водой;
+- `cyberpunk_core`: добавлен собственный `data/tag_defaults.json`, который переводит базовые default item roles на реальные cyberpunk item IDs;
+- `mod.json`: подключает cyberpunk tag defaults к declarative mod data load.
+
+**Риск:** средний-низкий.
+
+- `main.js` fix безопасный и локальный;
+- map fix visual-only, генерацию/сохранения не меняет;
+- cyberpunk tag defaults могут требовать будущей балансировки, но они должны убрать engine stderr по отсутствующим vanilla item IDs.
+
+**Проверки после применения:**
+
+```bash
+node --check main.js
+node --check js/cartographer/globalMap.js
+node -e "JSON.parse(require('fs').readFileSync('mods/cyberpunk_core/data/tag_defaults.json','utf8')); JSON.parse(require('fs').readFileSync('mods/cyberpunk_core/mod.json','utf8')); console.log('cyberpunk tag defaults JSON OK')"
+npm run verify
+node -e "const fs=require('fs'); const main=fs.readFileSync('main.js','utf8'); if(!main.includes('const modListMatch')) throw new Error('modList parser missing'); const map=fs.readFileSync('js/cartographer/globalMap.js','utf8'); if(!map.includes('touchesAnyWater')) throw new Error('aggressive riverbank visual cleanup missing'); const mod=fs.readFileSync('mods/cyberpunk_core/mod.json','utf8'); if(!mod.includes('data/tag_defaults.json')) throw new Error('cyberpunk tag_defaults not connected'); const tags=JSON.parse(fs.readFileSync('mods/cyberpunk_core/data/tag_defaults.json','utf8')); if(tags.food !== 'synth_paste' || tags.currency !== 'eurodollar') throw new Error('cyberpunk tag defaults wrong'); console.log('cyberpunk map/log fix OK')"
+git status --short
+```
+
+**Ручная проверка после автоматических тестов:**
+
+Запустить `npm start` с активным `cyberpunk_core` и проверить:
+
+- в консоли больше нет `modList is not defined`;
+- в stderr больше нет `DATA ERROR` по vanilla `tag_defaults`;
+- зелёные riverbank/floodplain петли вокруг воды исчезли или стали существенно менее заметны;
+- обычные дороги не идут через океан, а `sea_route/ferry/bridge` всё ещё видны.
+
+
+
+---
+
+### 55. `git_checkpoint_cyberpunk_map_log_fix`
+
+**Статус:** ожидает выполнения Git checkpoint.
+
+**Что фиксируем:**
+
+Зелёную пачку фиксов после ручной проверки cyberpunk-мода и карты:
+
+- `main.js`: исправлен `modList is not defined` в `list-worlds` preview;
+- `js/cartographer/globalMap.js`: усилен visual cleanup для riverbank/floodplain вокруг воды;
+- `mods/cyberpunk_core/mod.json`: подключены mod-specific `tag_defaults`;
+- `mods/cyberpunk_core/data/tag_defaults.json`: добавлены cyberpunk item defaults вместо vanilla IDs;
+- `tools/runtime_smoke_check.js`: карта включена в syntax smoke-check;
+- `NOTES.md` и `docs/DATA_DRIVEN_MIGRATION_PLAN.md`: обновлена зелёная точка `67 checks`.
+
+**Последняя зелёная точка перед commit:**
+
+```text
+node --check main.js                              OK
+node --check js/cartographer/globalMap.js         OK
+cyberpunk tag defaults JSON OK                    OK
+npm run verify                                    OK
+Smoke-check: 67 checks, 0 failed, 0 warnings
+Stub tests: 80 PASSED, 0 FAILED, 0 WARNINGS
+Python engine regression tests: PASS
+Full verify summary: 0 failed, 0 skipped
+cyberpunk map/log fix OK                          OK
+```
+
+**Риск:** средний-низкий. Runtime-генерация мира не менялась; изменения касаются preview списка миров, визуализации карты и data defaults cyberpunk total conversion.
+
+**Следующий шаг после push:** открыть `npm start` с активным `cyberpunk_core` и глазами проверить, что в консоли больше нет `modList is not defined`, нет `DATA ERROR` по vanilla `tag_defaults`, а riverbank/floodplain контуры на карте стали адекватнее.

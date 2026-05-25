@@ -10,7 +10,7 @@
 
 **Текущая фаза:** ✅ Миграция завершена (Phase 0–12 + Phase 9 Engine Cleanup закрыты)
 
-**Последняя зелёная точка:** `d32f687` — `npm run verify`: `0 failed, 0 skipped`; smoke-check: `66 checks, 0 failed, 0 warnings`; stub tests: `80 PASSED, 0 FAILED, 0 WARNINGS`; Python engine regression tests: PASS.
+**Последняя зелёная точка:** после `fix_map_roads_over_ocean_and_riverbank_mouth_artifacts` — `npm run verify`: ожидается `0 failed, 0 skipped`; smoke-check: `67 checks, 0 failed, 0 warnings`; stub tests: `80 PASSED, 0 FAILED, 0 WARNINGS`; Python engine regression tests: PASS.
 
 **Git checkpoint:** `d32f687` — `chore: add full verify and sync project docs`
 
@@ -28,7 +28,7 @@
 - [x] Inventory actor routes, movement settings, buildContainer defaults вынесены из `script.js`.
 - [x] Runtime config validator добавлен.
 - [x] Data integrity validator добавлен.
-- [x] Smoke-check зелёный: `66 checks, 0 failed, 0 warnings`.
+- [x] Smoke-check зелёный: `67 checks, 0 failed, 0 warnings`.
 - [x] Worklog Viewer показывает общий прогресс.
 - [x] Git checkpoint `76b2df5` запушен (Phase 6).
 
