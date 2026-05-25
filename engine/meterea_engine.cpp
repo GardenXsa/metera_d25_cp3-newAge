@@ -12908,7 +12908,7 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
                     if (hasBiomeTag(b_id, "river")) {
                         cost = (map.grid[nIdx].water_depth <= 1) ? 15 : 25; // Брод или паром
                     } else if (hasBiomeTag(b_id, "lake")) {
-                        cost = 30; // Паром через озеро
+                        cost = 100; // lake without bridge: expensive
                     } else {
                         cost = 50; // Морской маршрут
                     }
