@@ -3142,3 +3142,235 @@ Full verify summary: 0 failed, 0 skipped
 **Важно:** для проверки нового мода нужно создавать новый мир. Старые миры могли быть сгенерированы на старых cyberpunk биомах и не являются валидным тестом новой карты.
 
 **Следующий шаг после push:** запустить `npm start`, активировать `neon_siltlands_core`, создать новый мир и проверить карту глазами.
+
+
+
+---
+
+### 58. `stabilize_neon_siltlands_schema`
+
+**Статус:** подготовлен к применению.
+
+**Причина:** `neon_siltlands_core` загружается и проходит JSON/data contract, но игра падает при генерации мира без явной ошибки в DevConsole. Вероятная причина — не JSON-синтаксис, а несовместимость части схемы данных с ожиданиями runtime/engine.
+
+**Что стабилизируем:**
+
+- `classes.json`: class IDs возвращены к совместимым `warrior/mage/rogue/bard`; `starting_items` теперь объект `{ itemId: qty }`, добавлен `res`;
+- `races.json`: добавлен `class_stats.default` и совместимые class stats;
+- `professions.json`: profession IDs/types/demand patterns приведены к базовым совместимым формам (`base_demand`, `per_population`);
+- `facilities.json` и `city_gen.json`: добавлены alias-ключи для ожидаемых facility IDs (`forges`, `trade_posts`, `libraries`, `alchemists`, `taverns`, `temples`);
+- `world_config.json`: добавлены `months` и `time_periods`, чтобы total-conversion world_config не был беднее базового runtime contract;
+- `items.json`: transport item получил совместимые поля `speed_mult/cargo_bonus/transport_type`.
+
+**Риск:** низкий-средний. Это data-only стабилизация нового мода. Старые миры всё равно невалидны для проверки; нужен новый мир.
+
+**Проверки после применения:**
+
+```bash
+node -e "const fs=require('fs'); const path=require('path'); const root='mods/neon_siltlands_core/data'; const files=['classes.json','races.json','professions.json','facilities.json','city_gen.json','world_config.json','items.json','tag_defaults.json']; for (const f of files) JSON.parse(fs.readFileSync(path.join(root,f),'utf8')); const classes=JSON.parse(fs.readFileSync(path.join(root,'classes.json'),'utf8')); if (!classes.every(c => c.base_stats && Number.isFinite(c.base_stats.res) && c.starting_items && !Array.isArray(c.starting_items))) throw new Error('classes schema mismatch'); const races=JSON.parse(fs.readFileSync(path.join(root,'races.json'),'utf8')); if (!races.every(r => r.class_stats && r.class_stats.default)) throw new Error('race class_stats.default missing'); const professions=JSON.parse(fs.readFileSync(path.join(root,'professions.json'),'utf8')); if (!professions.every(p => p.demand_pattern && (p.demand_pattern.base_demand !== undefined || p.demand_pattern.per_population !== undefined))) throw new Error('profession demand_pattern incompatible'); const wc=JSON.parse(fs.readFileSync(path.join(root,'world_config.json'),'utf8')); if (!Array.isArray(wc.months) || !Array.isArray(wc.time_periods)) throw new Error('world_config calendar missing'); console.log('neon_siltlands_core stable schema OK')"
+npm run verify
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$src = Join-Path (Get-Location) 'mods\\neon_siltlands_core'; $dstRoot = Join-Path $env:APPDATA 'chronicles-of-meterea\\mods'; $dst = Join-Path $dstRoot 'neon_siltlands_core'; if (!(Test-Path $src)) { throw 'Source mod not found: ' + $src }; New-Item -ItemType Directory -Force -Path $dstRoot | Out-Null; if (Test-Path $dst) { Remove-Item -Recurse -Force $dst }; Copy-Item -Recurse -Force $src $dst; Write-Host 'Installed neon_siltlands_core to:' $dst"
+git status --short
+```
+
+**Ручной шаг:** перезапустить `npm start`, оставить активным только `neon_siltlands_core`, создать новый мир. Старые миры не использовать для проверки.
+
+
+
+---
+
+### 59. `fix_neon_siltlands_missing_era_location_file`
+
+**Статус:** подготовлен к применению.
+
+**Причина:** `neon_siltlands_core` загружается, BIOME_COLORS синхронизируется, но игра остаётся на пустом фоне/стадии генерации без явной ошибки в DevConsole.
+
+**Диагноз:**
+
+В `data/eras.json` нового мода эпоха `rebirth` ссылалась на `default_location_file: locations_rebirth.json`, но такого файла в моде не было. Проверки JSON/schema это не ловили, потому что они проверяли только синтаксис и часть контрактов, но не связь `era.default_location_file -> data/<file>`.
+
+**Что меняется:**
+
+- добавлен `mods/neon_siltlands_core/data/locations_rebirth.json`;
+- `mod.json` теперь явно подключает `data/locations_rebirth.json` в `data.locations`;
+- `eras.json` приведён ближе к базовому формату эпохи: добавлены `start_year`, `display_name_i18n_key`, `description_i18n_key`.
+
+**Проверки после применения:**
+
+```bash
+node -e "const fs=require('fs'); const path=require('path'); const root='mods/neon_siltlands_core'; const mod=JSON.parse(fs.readFileSync(path.join(root,'mod.json'),'utf8')); const eras=JSON.parse(fs.readFileSync(path.join(root,'data/eras.json'),'utf8')); for (const era of eras) { if (!era.default_location_file) throw new Error('era has no default_location_file: '+era.id); const p=path.join(root,'data',era.default_location_file); if (!fs.existsSync(p)) throw new Error('missing era location file: '+p); JSON.parse(fs.readFileSync(p,'utf8')); } const locationFiles = new Set((mod.data.locations||[]).map(x=>x.replace(/^data\\//,''))); for (const era of eras) if (!locationFiles.has(era.default_location_file)) throw new Error('era location file is not listed in mod.data.locations: '+era.default_location_file); console.log('neon_siltlands era location contract OK')"
+npm run verify
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$src = Join-Path (Get-Location) 'mods\\neon_siltlands_core'; $dstRoot = Join-Path $env:APPDATA 'chronicles-of-meterea\\mods'; $dst = Join-Path $dstRoot 'neon_siltlands_core'; if (!(Test-Path $src)) { throw 'Source mod not found: ' + $src }; New-Item -ItemType Directory -Force -Path $dstRoot | Out-Null; if (Test-Path $dst) { Remove-Item -Recurse -Force $dst }; Copy-Item -Recurse -Force $src $dst; Write-Host 'Installed neon_siltlands_core to:' $dst"
+git status --short
+```
+
+**Ручной шаг:** перезапустить `npm start`, оставить активным только `neon_siltlands_core`, создать новый мир. Старые миры не использовать.
+
+
+
+---
+
+### 60. `add_runtime_log_and_auto_disable_broken_mods`
+
+**Статус:** подготовлен к применению.
+
+**Причина:** текущий мод может пройти JSON/schema/static checks, но игра всё равно зависает на runtime-стадии без понятной ошибки в DevConsole. Нужен единый runtime log и автоматическое отключение сломанных модов.
+
+**Что делаем:**
+
+- добавляем `js/core/runtimeLog.js` — единый renderer/runtime log;
+- пишем runtime errors в DevConsole/console, localStorage tail и AppData `runtime.log` через IPC;
+- добавляем `ModRuntimeGuard.disableBrokenMod()`;
+- если мод не проходит metadata validation, declarative data preflight, конфликт total conversion, script execution или hook execution — ошибка логируется, мод удаляется из `settings.mods.active` и записывается в `settings.mods.disabled`;
+- `initModKit()` больше не загружает моды, уже помеченные disabled;
+- Mod Manager показывает автоотключённые моды как ошибочные и не теряет `settings.mods.disabled` при сохранении;
+- smoke-check теперь проверяет синтаксис `runtimeLog.js`, `ModLoader.js`, `ModManagerUI.js`.
+
+**Нужный runtime flow:**
+
+1. пользователь включает мод;
+2. игра пробует загрузить/валидировать мод;
+3. ошибки мода видны в логе;
+4. мод автоматически выключается;
+5. после перезапуска игра стартует без сломанного мода, а причина остаётся в настройках и логе.
+
+**Проверки после применения:**
+
+```bash
+node --check js/core/runtimeLog.js
+node --check js/mods/ModLoader.js
+node --check js/mods/ModLoaderIntegration.js
+node --check js/mods/ModManagerUI.js
+node --check main.js
+node --check preload.js
+node --check tools/runtime_smoke_check.js
+npm run verify
+node -e "const fs=require('fs'); const modLoader=fs.readFileSync('js/mods/ModLoader.js','utf8'); if(!modLoader.includes('_validateDeclarativeModData')) throw new Error('mod preflight missing'); if(!modLoader.includes('disableBrokenMod')) throw new Error('auto-disable hook missing'); const integration=fs.readFileSync('js/mods/ModLoaderIntegration.js','utf8'); if(!integration.includes('disabledModIds')) throw new Error('disabled mods filter missing'); const runtimeLog=fs.readFileSync('js/core/runtimeLog.js','utf8'); if(!runtimeLog.includes('runtimeLogAppend')) throw new Error('runtime file logging missing'); console.log('runtime log and mod guard OK')"
+git status --short
+```
+
+**Ручной шаг:** запустить игру, включить/оставить проблемный мод, перезапустить. Если мод сломан, он должен записать причину в DevConsole/runtime.log и исчезнуть из active list после перезапуска.
+
+
+
+---
+
+### 61. `fix_character_creation_stats_runtime_resolver`
+
+**Статус:** подготовлен к применению.
+
+**Диагноз:** экран создания персонажа заполнял race/class select из runtime database (`window.RACES_DATA` / `window.CLASSES_DATA`), но расчёт статов в `handleRaceOrClassChange()` оставался на legacy-глобалах `RACE_MODIFIERS` / `BASE_CLASS_STATS`. Из-за этого модовые race/class могли отображаться в UI, но блок характеристик не рассчитывался корректно.
+
+**Что меняется:**
+
+- добавлен `js/core/characterStatsResolver.js`;
+- canonical source для стартовых статов: `class.base_stats + race.stat_modifiers + распределённые очки игрока`;
+- `race.class_stats` больше не нужен для основного расчёта character creation, остаётся legacy/fallback-данными;
+- `handleRaceOrClassChange()` теперь берёт данные из единой runtime database через `CharacterStatsResolver`;
+- восстановление backup формы тоже пересчитывает base stats через resolver, а не через legacy globals;
+- кнопка `Далее` не активируется, пока статы не рассчитаны;
+- smoke-check теперь проверяет синтаксис `characterStatsResolver.js`.
+
+**Почему не правим мод:**
+
+Проблема была не в отсутствии ещё одного поля в моде, а в разрыве data-flow: select'ы уже data-driven, но stat calculation оставался на старой прослойке.
+
+**Проверки после применения:**
+
+```bash
+node --check js/core/characterStatsResolver.js
+node --check script.js
+node --check tools/runtime_smoke_check.js
+npm run verify
+node -e "const fs=require('fs'); const resolver=fs.readFileSync('js/core/characterStatsResolver.js','utf8'); if(!resolver.includes('resolveCharacterCreationStats')) throw new Error('resolver missing'); const script=fs.readFileSync('script.js','utf8'); if(!script.includes('CharacterStatsResolver.resolveCharacterCreationStats')) throw new Error('script does not use resolver'); if(script.includes('selectedRace && selectedClass && RACE_MODIFIERS[selectedRace] && BASE_CLASS_STATS[selectedClass]')) throw new Error('legacy character stat gate still present'); const html=fs.readFileSync('index.html','utf8'); if(!html.includes('js/core/characterStatsResolver.js')) throw new Error('resolver is not loaded by index.html'); console.log('character stats runtime resolver OK')"
+git status --short
+```
+
+**Ручной шаг:** запустить `npm start`, открыть создание персонажа с активным `neon_siltlands_core`, выбрать расу и класс. Блок характеристик должен появляться за счёт runtime database, без добавления костыльных полей в мод.
+
+
+
+---
+
+### 62. `enforce_character_stats_contract_preflight`
+
+**Статус:** подготовлен к применению.
+
+**Шаг архитектуры:** шаг 2 после `fix_character_creation_stats_runtime_resolver`.
+
+**Диагноз:** прошлый патч перевёл расчёт статов character creation на runtime database. Теперь нужно закрепить контракт, чтобы сломанные классы/расы не доходили до UI и не создавали пустой экран/невидимые статы.
+
+**Что меняется:**
+
+- `CharacterStatsResolver.validateCharacterStatsContract()` стал строгим валидатором runtime contract;
+- `ModLoaderIntegration.buildRuntimeDatabase()` теперь валидирует character stats contract после сборки runtime database;
+- `ModLoader._validateDeclarativeModData()` получает preflight для `classes/races` модов;
+- total-conversion моды теперь проверяются на `class.starting_items -> item id`, потому что база игры у них отключена;
+- добавлен CLI-check `tools/verify_character_stats_contract.js`;
+- `runtime_smoke_check.js` запускает новый contract-check;
+- smoke-check baseline обновлён до `74 checks, 0 failed, 0 warnings`.
+
+**Канонический контракт character creation:**
+
+```text
+finalStats = class.base_stats + race.stat_modifiers + playerAllocation
+```
+
+`race.class_stats` остаётся legacy/fallback-данными и не должен быть основным источником стартовых статов.
+
+**Проверки после применения:**
+
+```bash
+node --check js/core/characterStatsResolver.js
+node --check js/mods/ModLoaderIntegration.js
+node --check js/mods/ModLoader.js
+node --check tools/verify_character_stats_contract.js
+node tools/verify_character_stats_contract.js
+npm run verify
+node -e "const fs=require('fs'); const resolver=fs.readFileSync('js/core/characterStatsResolver.js','utf8'); if(!resolver.includes('validateCharacterStatsContract')) throw new Error('stats contract validator missing'); const integration=fs.readFileSync('js/mods/ModLoaderIntegration.js','utf8'); if(!integration.includes('validateRuntimeCharacterStatsContract(database)')) throw new Error('runtime stats contract call missing'); const loader=fs.readFileSync('js/mods/ModLoader.js','utf8'); if(!loader.includes('starting_items -> missing item id')) throw new Error('mod preflight starting_items check missing'); const tool=fs.readFileSync('tools/verify_character_stats_contract.js','utf8'); if(!tool.includes('Character stats contract OK')) throw new Error('stats contract CLI check missing'); console.log('character stats contract preflight OK')"
+git status --short
+```
+
+**Ручной тест:** запустить `npm start`, открыть создание персонажа с активным `neon_siltlands_core`. Если модовые classes/races валидны — статы отображаются. Если нет — мод должен быть пойман preflight/contract-check, ошибка уйдёт в runtime log, а не в молчаливую поломку UI.
+
+
+
+---
+
+### 63. `git_checkpoint_runtime_log_mod_guard_and_character_stats_architecture`
+
+**Статус:** готово к Git checkpoint.
+
+**Что подтверждено вручную:**
+
+- `neon_siltlands_core` запускается;
+- экран создания персонажа с модовыми race/class/era теперь показывает и рассчитывает характеристики;
+- character creation больше не зависит от legacy-разрыва `select из runtime database / stats из BASE_CLASS_STATS + RACE_MODIFIERS`;
+- runtime resolver и contract preflight работают в игре.
+
+**Зелёная точка перед checkpoint:**
+
+```text
+node --check js/core/characterStatsResolver.js              OK
+node --check js/mods/ModLoaderIntegration.js                OK
+node --check js/mods/ModLoader.js                           OK
+node --check tools/verify_character_stats_contract.js       OK
+node tools/verify_character_stats_contract.js               Character stats contract OK
+npm run verify                                               OK
+Smoke-check: 74 checks, 0 failed, 0 warnings
+Stub tests: 80 PASSED, 0 FAILED, 0 WARNINGS
+Python engine regression tests: PASS
+Full verify summary: 0 failed, 0 skipped
+character stats contract preflight OK
+```
+
+**Архитектурный результат:**
+
+- добавлен единый runtime log;
+- добавлен guard автоотключения сломанных модов;
+- добавлен `CharacterStatsResolver`;
+- character creation считает стартовые статы из runtime database;
+- добавлен preflight/CLI contract-check для `classes/races`;
+- `neon_siltlands_core` стабилизирован как новый total-conversion мод.
+
+**Следующий шаг после push:** продолжать уже от чистого Git checkpoint. Если всплывут новые проблемы мода — чинить через contract/data-flow, а не через UI-костыли.

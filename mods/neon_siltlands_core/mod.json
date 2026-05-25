@@ -59,7 +59,8 @@
       "data/tag_defaults.json"
     ],
     "locations": [
-      "data/locations.json"
+      "data/locations.json",
+      "data/locations_rebirth.json"
     ],
     "lore": [
       "data/lore.txt"

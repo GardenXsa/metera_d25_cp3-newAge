@@ -43,6 +43,8 @@ window.ModAPI = {
     isTotalConversion: false,
     apiVersion: '2.0',
 
+    _currentRegisteringModId: null,
+
     // --- Lifecycle tracking: stores originals for rollback (Issue #2) ---
     _originalFunctions: {},
     _injectedStyles: [],
@@ -291,6 +293,9 @@ window.ModAPI = {
 
     on: function(eventName, callback) {
         if (!this.hooks[eventName]) this.hooks[eventName] = [];
+        if (callback && typeof callback === 'function' && this._currentRegisteringModId) {
+            callback.__modId = this._currentRegisteringModId;
+        }
         this.hooks[eventName].push(callback);
     },
 
@@ -307,7 +312,14 @@ window.ModAPI = {
                 try {
                     await callback(...args);
                 } catch (e) {
-                    console.error(`[ModAPI] Ошибка в хуке ${eventName}:`, e);
+                    const modId = callback && callback.__modId ? callback.__modId : 'unknown';
+                    console.error(`[ModAPI] Ошибка в хуке ${eventName}${modId !== 'unknown' ? ` мода ${modId}` : ''}:`, e);
+                    if (window.RuntimeLog) {
+                        window.RuntimeLog.error('ModAPI', `Ошибка в хуке ${eventName}${modId !== 'unknown' ? ` мода ${modId}` : ''}`, e);
+                    }
+                    if (window.ModRuntimeGuard && modId !== 'unknown') {
+                        await window.ModRuntimeGuard.disableBrokenMod(modId, `hook ${eventName} failed`, e);
+                    }
                 }
             }
         }
@@ -916,13 +928,228 @@ class ModLoader {
         return { sorted, error: null };
     }
 
+    _formatError(error) {
+        if (!error) return '';
+        if (error instanceof Error) return `${error.name}: ${error.message}\n${error.stack || ''}`;
+        return String(error);
+    }
+
+    async _disableBrokenMod(modId, reason, detail = null) {
+        if (window.ModRuntimeGuard && typeof window.ModRuntimeGuard.disableBrokenMod === 'function') {
+            return await window.ModRuntimeGuard.disableBrokenMod(modId, reason, detail);
+        }
+        console.error(`[ModLoader] Мод ${modId} сломан и должен быть отключён: ${reason}`, detail || '');
+        return false;
+    }
+
+    async _readModFileStrict(mod, fileName) {
+        const modFolder = mod.folder || mod.id;
+        if (!window.electronAPI || typeof window.electronAPI.modsReadFile !== 'function') {
+            throw new Error('modsReadFile IPC is unavailable');
+        }
+        const result = await window.electronAPI.modsReadFile({ modFolder, fileName });
+        if (!result || !result.success) {
+            throw new Error(`missing mod file ${fileName}: ${result?.error || 'unknown error'}`);
+        }
+        return result.content;
+    }
+
+    _collectItemIds(itemsData) {
+        if (!itemsData) return new Set();
+        if (Array.isArray(itemsData)) {
+            return new Set(itemsData.map(item => item && item.id).filter(Boolean));
+        }
+        if (typeof itemsData === 'object') {
+            return new Set(Object.keys(itemsData));
+        }
+        return new Set();
+    }
+
+    async _validateDeclarativeModData(mod) {
+        if (!mod.data || !isObject(mod.data)) return [];
+        const errors = [];
+        const parsedByFile = new Map();
+
+        for (const [rawKey, fileList] of Object.entries(mod.data)) {
+            if (!Array.isArray(fileList)) continue;
+            for (const fileName of fileList) {
+                try {
+                    const content = await this._readModFileStrict(mod, fileName);
+                    if (rawKey !== 'lore') {
+                        parsedByFile.set(fileName, JSON.parse(content));
+                    }
+                } catch (error) {
+                    errors.push(`${rawKey}:${fileName}: ${error.message}`);
+                }
+            }
+        }
+
+        const eras = [];
+        for (const fileName of mod.data.eras || []) {
+            const parsed = parsedByFile.get(fileName);
+            if (Array.isArray(parsed)) eras.push(...parsed);
+        }
+        const locationFiles = new Set((mod.data.locations || []).map(fileName => fileName.replace(/^data\//, '')));
+        for (const era of eras) {
+            if (!era || !era.id) continue;
+            if (!era.default_location_file) {
+                errors.push(`eras:${era.id}: missing default_location_file`);
+                continue;
+            }
+            if (!locationFiles.has(era.default_location_file)) {
+                errors.push(`eras:${era.id}: default_location_file ${era.default_location_file} is not listed in mod.data.locations`);
+            }
+            try {
+                const eraLocationPath = `data/${era.default_location_file}`;
+                const content = await this._readModFileStrict(mod, eraLocationPath);
+                JSON.parse(content);
+            } catch (error) {
+                errors.push(`eras:${era.id}: missing/invalid default location file ${era.default_location_file}: ${error.message}`);
+            }
+        }
+
+        let mergedItems = {};
+        for (const fileName of mod.data.items || []) {
+            const parsed = parsedByFile.get(fileName);
+            if (Array.isArray(parsed)) {
+                parsed.forEach(item => { if (item && item.id) mergedItems[item.id] = item; });
+            } else if (parsed && typeof parsed === 'object') {
+                mergedItems = { ...mergedItems, ...parsed };
+            }
+        }
+        const itemIds = this._collectItemIds(mergedItems);
+        for (const fileName of mod.data.tag_defaults || []) {
+            const tags = parsedByFile.get(fileName);
+            if (!tags || typeof tags !== 'object') continue;
+            for (const [key, value] of Object.entries(tags)) {
+                const values = Array.isArray(value) ? value : [value];
+                for (const itemId of values) {
+                    if (typeof itemId === 'string' && itemId && !itemIds.has(itemId)) {
+                        errors.push(`tag_defaults:${key} -> missing item id ${itemId}`);
+                    }
+                }
+            }
+        }
+
+        
+        const statKeys = ['str', 'dex', 'int', 'con', 'cha', 'res'];
+        const isTotalConversionMod = !!(mod.total_conversion || mod.totalConversion || mod.mod_type === 'total_conversion');
+        const classEntries = [];
+        const raceEntries = [];
+
+        const collectArrayData = (fileNames, out, label) => {
+            for (const fileName of fileNames || []) {
+                const parsed = parsedByFile.get(fileName);
+                if (Array.isArray(parsed)) {
+                    out.push(...parsed);
+                } else if (parsed && typeof parsed === 'object') {
+                    for (const [id, value] of Object.entries(parsed)) {
+                        if (value && typeof value === 'object') out.push({ id: value.id || id, ...value });
+                    }
+                } else if (parsed !== undefined) {
+                    errors.push(`${label}:${fileName}: expected array or object`);
+                }
+            }
+        };
+
+        const validateRequiredStats = (stats, label) => {
+            if (!stats || typeof stats !== 'object' || Array.isArray(stats)) {
+                errors.push(`${label} is missing or not an object`);
+                return;
+            }
+            for (const key of statKeys) {
+                if (!Number.isFinite(Number(stats[key]))) {
+                    errors.push(`${label}.${key} is missing or not numeric`);
+                }
+            }
+        };
+
+        const validateOptionalStatObject = (stats, label) => {
+            if (stats === undefined || stats === null) return;
+            if (typeof stats !== 'object' || Array.isArray(stats)) {
+                errors.push(`${label} must be an object when present`);
+                return;
+            }
+            for (const [key, value] of Object.entries(stats)) {
+                if (!statKeys.includes(key)) {
+                    errors.push(`${label}.${key} is not a known character stat`);
+                    continue;
+                }
+                if (!Number.isFinite(Number(value))) {
+                    errors.push(`${label}.${key} is not numeric`);
+                }
+            }
+        };
+
+        collectArrayData(mod.data.classes, classEntries, 'classes');
+        collectArrayData(mod.data.races, raceEntries, 'races');
+
+        const classIds = new Set();
+        for (const cls of classEntries) {
+            if (!cls || typeof cls !== 'object') {
+                errors.push('classes: class entry is not an object');
+                continue;
+            }
+            if (!cls.id || typeof cls.id !== 'string') {
+                errors.push('classes: class entry without string id');
+                continue;
+            }
+            classIds.add(cls.id);
+            validateRequiredStats(cls.base_stats, `classes:${cls.id}.base_stats`);
+            validateOptionalStatObject(cls.stat_modifiers, `classes:${cls.id}.stat_modifiers`);
+
+            if (cls.starting_items !== undefined) {
+                if (!cls.starting_items || typeof cls.starting_items !== 'object' || Array.isArray(cls.starting_items)) {
+                    errors.push(`classes:${cls.id}.starting_items must be an object { itemId: quantity } when present`);
+                } else if (isTotalConversionMod) {
+                    for (const itemId of Object.keys(cls.starting_items)) {
+                        if (!itemIds.has(itemId)) {
+                            errors.push(`classes:${cls.id}.starting_items -> missing item id ${itemId}`);
+                        }
+                    }
+                }
+            }
+        }
+
+        for (const race of raceEntries) {
+            if (!race || typeof race !== 'object') {
+                errors.push('races: race entry is not an object');
+                continue;
+            }
+            if (!race.id || typeof race.id !== 'string') {
+                errors.push('races: race entry without string id');
+                continue;
+            }
+            validateOptionalStatObject(race.stat_modifiers || {}, `races:${race.id}.stat_modifiers`);
+
+            if (race.class_stats !== undefined) {
+                if (!race.class_stats || typeof race.class_stats !== 'object' || Array.isArray(race.class_stats)) {
+                    errors.push(`races:${race.id}.class_stats must be an object when present`);
+                    continue;
+                }
+                for (const [classId, stats] of Object.entries(race.class_stats)) {
+                    if (classId !== 'default' && classIds.size > 0 && !classIds.has(classId)) {
+                        errors.push(`races:${race.id}.class_stats references unknown class ${classId}`);
+                    }
+                    validateOptionalStatObject(stats, `races:${race.id}.class_stats.${classId}`);
+                }
+            }
+        }
+
+return errors;
+    }
+
+
     async initMods(activeMods) {
         // Issue #6: Validate mod metadata before loading
         const validatedMods = [];
         for (const mod of activeMods) {
             const errors = window.ModAPI._validateModMeta(mod);
             if (errors.length > 0) {
-                console.error(`[ModLoader] Мод "${mod.id || 'UNKNOWN'}" не прошёл валидацию. Пропускаю. Ошибки: ${errors.join('; ')}`);
+                const message = `[ModLoader] Мод "${mod.id || 'UNKNOWN'}" не прошёл валидацию. Ошибки: ${errors.join('; ')}`;
+                console.error(message);
+                if (window.RuntimeLog) window.RuntimeLog.error('ModLoader', message, errors);
+                await this._disableBrokenMod(mod.id || mod.folder || 'UNKNOWN', 'metadata validation failed', errors);
                 continue;
             }
             // Issue #7: API versioning check - warn but don't block
@@ -932,6 +1159,21 @@ class ModLoader {
             validatedMods.push(mod);
         }
         activeMods = validatedMods;
+
+
+        const preflightPassedMods = [];
+        for (const mod of activeMods) {
+            const dataErrors = await this._validateDeclarativeModData(mod);
+            if (dataErrors.length > 0) {
+                const message = `[ModLoader] Мод ${mod.id} отключён: ошибки declarative data preflight (${dataErrors.length}).`;
+                console.error(message, dataErrors);
+                if (window.RuntimeLog) window.RuntimeLog.error('ModLoader', message, dataErrors);
+                await this._disableBrokenMod(mod.id, 'declarative data preflight failed', dataErrors);
+                continue;
+            }
+            preflightPassedMods.push(mod);
+        }
+        activeMods = preflightPassedMods;
 
         // Issue #11: Topological sort for dependency ordering
         if (activeMods.length > 1) {
@@ -960,7 +1202,10 @@ class ModLoader {
             // Disable all but the first
             const kept = totalConversionMods[0];
             for (const m of totalConversionMods.slice(1)) {
-                console.error(`[ModLoader] Отключаю тотал-конверсию: ${m.id} (конфликтует с ${kept.id})`);
+                const message = `[ModLoader] Отключаю тотал-конверсию: ${m.id} (конфликтует с ${kept.id})`;
+                console.error(message);
+                if (window.RuntimeLog) window.RuntimeLog.error('ModLoader', message, { kept: kept.id, disabled: m.id });
+                await this._disableBrokenMod(m.id, `total_conversion conflict with ${kept.id}`, { kept: kept.id, disabled: m.id });
                 activeMods = activeMods.filter(a => a.id !== m.id);
             }
         }
@@ -995,18 +1240,31 @@ class ModLoader {
                             // even through closures. The Proxy's `has` trap returns true
                             // for all properties, so the JS engine never falls through
                             // to the real global scope.
-                            await executeModInSandbox(code, window.ModAPI, modId, mod);
+                            const previousRegisteringModId = window.ModAPI._currentRegisteringModId;
+                            window.ModAPI._currentRegisteringModId = modId;
+                            try {
+                                await executeModInSandbox(code, window.ModAPI, modId, mod);
+                            } finally {
+                                window.ModAPI._currentRegisteringModId = previousRegisteringModId;
+                            }
                         } else {
                             console.log(`[ModLoader] Скрипт ${scriptPath} пропущен (не найден в папке data/ мода ${modId}). Это нормально, если мод содержит только JSON.`);
                         }
                     } catch (e) {
                         console.error(`[ModLoader] Ошибка выполнения скрипта ${scriptPath} в моде ${modId}:`, e);
+                        if (window.RuntimeLog) window.RuntimeLog.error('ModLoader', `Ошибка выполнения скрипта ${scriptPath} в моде ${modId}`, e);
+                        await this._disableBrokenMod(modId, `script ${scriptPath} failed`, e);
+                        window.ModAPI.unloadMod(modId);
                     }
                 }
             }
 
             // 2. Декларативная загрузка данных (опционально, если мод не использует скрипты)
             if (mod.data && isObject(mod.data)) {
+
+                const previousRegisteringModId = window.ModAPI._currentRegisteringModId;
+                window.ModAPI._currentRegisteringModId = modId;
+                try {
                 window.ModAPI.on('onDatabaseLoad', async (db) => {
                     const runtimeUtils = window.RuntimeDataUtils;
                     const runtimeManifest = db.runtime_manifest || {};
@@ -1078,6 +1336,9 @@ class ModLoader {
                         }
                     }
                 });
+                } finally {
+                    window.ModAPI._currentRegisteringModId = previousRegisteringModId;
+                }
             }
         }
 

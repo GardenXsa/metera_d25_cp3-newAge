@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     loadSettings: () => ipcRenderer.invoke('load-settings'),
     saveSettings: (data) => ipcRenderer.invoke('save-settings', data),
 
+    runtimeLogAppend: (entry) => ipcRenderer.invoke('runtime-log-append', entry),
+
     // Mods
     modsGetList: () => ipcRenderer.invoke('mods-get-list'),
     modsOpenFolder: () => ipcRenderer.invoke('mods-open-folder'),

@@ -49,6 +49,23 @@ function validateRuntimeDatabaseContract(database, manifest) {
   }
 }
 
+
+function validateRuntimeCharacterStatsContract(database) {
+  if (!window.CharacterStatsResolver || typeof window.CharacterStatsResolver.validateCharacterStatsContract !== 'function') {
+    console.warn('[RuntimeData] CharacterStatsResolver is not available; character stats contract was not validated.');
+    return;
+  }
+
+  const errors = window.CharacterStatsResolver.validateCharacterStatsContract(database);
+  if (errors.length > 0) {
+    const preview = errors.slice(0, 30).join('; ');
+    const suffix = errors.length > 30 ? `; ...and ${errors.length - 30} more` : '';
+    const message = `[RuntimeData] character stats contract failed (${errors.length}): ${preview}${suffix}`;
+    if (window.RuntimeLog) window.RuntimeLog.error('RuntimeData', message, errors);
+    throw new Error(message);
+  }
+}
+
 function attachRuntimeDatabaseContractMetadata(database, manifest) {
   database._runtime_contract = {
     total_conversion: isRuntimeTotalConversion(),
@@ -118,7 +135,13 @@ async function initModKit() {
     if (!modsResponse.success) return;
     
     const settings = await window.electronAPI.loadSettings();
-    const activeIds = (settings && settings.mods) ? settings.mods.active : ['base_game'];
+    const disabledMods = (settings && settings.mods && settings.mods.disabled && typeof settings.mods.disabled === 'object') ? settings.mods.disabled : {};
+    const disabledModIds = new Set(Object.keys(disabledMods));
+    const activeIdsRaw = (settings && settings.mods && Array.isArray(settings.mods.active)) ? settings.mods.active : ['base_game'];
+    const activeIds = activeIdsRaw.filter(id => id === 'base_game' || !disabledModIds.has(id));
+    if (activeIds.length !== activeIdsRaw.length && window.RuntimeLog) {
+        window.RuntimeLog.warn('ModKit', 'Некоторые моды были автоотключены и пропущены при загрузке.', { disabled: Object.keys(disabledMods) });
+    }
     const activeMods = modsResponse.mods.filter(m => activeIds.includes(m.id) && !m.error);
     
     // Legacy hook_request: engine fires hook and waits for world response
@@ -199,6 +222,7 @@ async function buildRuntimeDatabase() {
     attachRuntimeDatabaseContractMetadata(database, normalizedManifest);
   await window.ModAPI.emit('onDatabaseLoad', database);
   validateRuntimeDatabaseContract(database, normalizedManifest);
+  validateRuntimeCharacterStatsContract(database);
   if (database.prompt_pack) {
     database.prompt_pack = await hydratePromptPack(database.prompt_pack);
   }

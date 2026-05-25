@@ -2,7 +2,10 @@
   {
     "id": "rebirth",
     "name": "Эпоха Ила",
-    "description": "После падения старых маяков города выживают на тёмных берегах, среди чёрных рек и пепельных равнин.",
-    "default_location_file": "locations_rebirth.json"
+    "start_year": 1042,
+    "default_location_file": "locations_rebirth.json",
+    "display_name_i18n_key": "characterCreation.eraRebirth",
+    "description_i18n_key": "characterCreation.eraRebirthDesc",
+    "description": "После падения старых маяков города выживают на тёмных берегах, среди чёрных рек и пепельных равнин."
   }
 ]

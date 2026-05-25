@@ -15,5 +15,5 @@
   "tar_coat": { "names": { "rebirth": "Смоляной плащ" }, "basePrice": 65, "category": "armor", "tags": ["armor", "cloth"], "properties": { "weight": 1.2, "armor": 8 } },
   "warden_armor": { "names": { "rebirth": "Доспех Стража" }, "basePrice": 160, "category": "armor", "tags": ["armor", "metal_ingot"], "properties": { "weight": 6.0, "armor": 18 } },
   "field_kit": { "names": { "rebirth": "Полевой набор" }, "basePrice": 30, "category": "tool", "tags": ["tool", "medical", "consumable"], "properties": { "weight": 1.0 } },
-  "silt_cart": { "names": { "rebirth": "Илистая телега" }, "basePrice": 120, "category": "vehicle", "tags": ["vehicle", "mount"], "properties": { "isTransport": true, "speedMultiplier": 1.4, "cargoBonus": 35, "weight": 45.0 } }
+  "silt_cart": { "names": { "rebirth": "Илистая телега" }, "basePrice": 120, "category": "vehicle", "tags": ["vehicle", "mount", "transport"], "properties": { "isTransport": true, "transport_type": "cart", "speed_mult": 1.4, "speedMultiplier": 1.4, "cargo_bonus": 35, "cargoBonus": 35, "weight": 45.0 } }
 }

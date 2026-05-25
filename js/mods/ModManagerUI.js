@@ -207,7 +207,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const response = await window.electronAPI.modsGetList();
         if (response.success) {
-            allMods = response.mods;
+            const disabledMods = (settings && settings.mods && settings.mods.disabled && typeof settings.mods.disabled === 'object') ? settings.mods.disabled : {};
+            activeModIds = activeModIds.filter(id => id === 'base_game' || !disabledMods[id]);
+            allMods = response.mods.map(mod => {
+                if (!disabledMods[mod.id]) return mod;
+                return {
+                    ...mod,
+                    runtimeDisabled: true,
+                    error: `Автоотключён: ${disabledMods[mod.id].reason || 'runtime error'}`,
+                    disabledInfo: disabledMods[mod.id]
+                };
+            });
             if (!allMods.find(m => m.id === 'base_game')) {
                 allMods.push({
                     id: 'base_game', name: 'Core (Ядро Игры)',
@@ -373,7 +383,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Persistence ───────────────────────────────────────────────────────────
     async function saveModSettings() {
         const fullSettings = await window.electronAPI.loadSettings() || {};
-        fullSettings.mods = { active: activeModIds };
+        const existingModsSettings = fullSettings.mods && typeof fullSettings.mods === 'object' ? fullSettings.mods : {};
+        fullSettings.mods = { ...existingModsSettings, active: activeModIds };
         await window.electronAPI.saveSettings(fullSettings);
     }
 

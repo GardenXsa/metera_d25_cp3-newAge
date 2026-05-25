@@ -136,6 +136,7 @@ function checkExpectedFiles() {
     'tools/validate_runtime_configs.js',
     'tools/validate_data_integrity.js',
     'tools/validate_modding_contract.js',
+    'tools/verify_character_stats_contract.js',
     'data/runtime_manifest.json',
     'data/ui_runtime.json',
     'data/electron_runtime.json',
@@ -181,18 +182,24 @@ function main() {
     'script.js',
     'preload.js',
     'js/core/constants.js',
+    'js/core/runtimeLog.js',
+    'js/core/characterStatsResolver.js',
     'js/cartographer/globalMap.js',
+    'js/mods/ModLoader.js',
     'js/mods/ModLoaderIntegration.js',
+    'js/mods/ModManagerUI.js',
     'tools/worklog_viewer_server.js',
     'tools/runtime_smoke_check.js',
     'tools/validate_runtime_configs.js',
     'tools/validate_data_integrity.js',
-    'tools/validate_modding_contract.js'
+    'tools/validate_modding_contract.js',
+    'tools/verify_character_stats_contract.js'
   ].forEach(checkJsSyntax);
 
   runNodeTool('tools/validate_runtime_configs.js', 'runtime config contracts');
   runNodeTool('tools/validate_data_integrity.js', 'data integrity links');
   runNodeTool('tools/validate_modding_contract.js', 'modding contract');
+  runNodeTool('tools/verify_character_stats_contract.js', 'character stats contract');
   printResults();
 }
 

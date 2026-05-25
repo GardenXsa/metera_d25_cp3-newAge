@@ -66,6 +66,8 @@ const USER_DATA = app.getPath('userData');
 const SAVES_DIR = path.join(USER_DATA, getConfigString(['paths', 'saves_dir'], 'saves'));
 const MODS_DIR = path.join(USER_DATA, getConfigString(['paths', 'mods_dir'], 'mods'));
 const SETTINGS_FILE = path.join(USER_DATA, getConfigString(['paths', 'settings_file'], 'settings.json'));
+
+const RUNTIME_LOG_FILE = path.join(USER_DATA, 'runtime.log');
 if (!fs.existsSync(SAVES_DIR)) fs.mkdirSync(SAVES_DIR, { recursive: true });
 if (!fs.existsSync(MODS_DIR)) fs.mkdirSync(MODS_DIR, { recursive: true });
 const WORLDS_DIR = path.join(SAVES_DIR, getConfigString(['paths', 'worlds_dir'], 'worlds'));
@@ -744,6 +746,25 @@ ipcMain.handle('load-settings', async () => {
         }
     } catch (e) { return null; }
     return null;
+});
+
+
+ipcMain.handle('runtime-log-append', async (event, entry) => {
+    try {
+        const safeEntry = {
+            ts: new Date().toISOString(),
+            level: typeof entry?.level === 'string' ? entry.level : 'info',
+            scope: typeof entry?.scope === 'string' ? entry.scope : 'runtime',
+            message: typeof entry?.message === 'string' ? entry.message.slice(0, 4000) : String(entry?.message || ''),
+            detail: entry?.detail === undefined ? null : entry.detail
+        };
+        const line = JSON.stringify(safeEntry) + '\n';
+        await fs.promises.appendFile(RUNTIME_LOG_FILE, line, 'utf-8');
+        return { success: true, path: RUNTIME_LOG_FILE };
+    } catch (error) {
+        console.error('[RuntimeLog] Failed to append runtime log:', error.message);
+        return { success: false, error: error.message };
+    }
 });
 
 ipcMain.handle('save-game', async (event, filename, data) => {

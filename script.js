@@ -7741,19 +7741,41 @@ function resetCharacterCreation() {
             if (charEraSelect) charEraSelect.value = backup.era || getRuntimeDefaultEraId();
             charDescInput.value = backup.description || '';
 
-            if (backup.race && backup.class) {
-                statDistributionSection.style.display = 'block';
-                currentCreationStats = backup.stats || {};
-                availableStatPoints = backup.availablePoints !== undefined ? backup.availablePoints : INITIAL_STAT_POINTS;
-
-                baseStatsForDistribution = {};
-                Object.keys(BASE_CLASS_STATS.default).forEach(stat => {
-                    const classData = BASE_CLASS_STATS[backup.class] || BASE_CLASS_STATS.default;
-                    const classStat = classData[stat] !== undefined ? classData[stat] : BASE_CLASS_STATS.default[stat];
-                    const raceData = RACE_MODIFIERS[backup.race] || {};
-                    const raceMod = raceData[stat] || 0;
-                    baseStatsForDistribution[stat] = classStat + raceMod;
+            if (backup.race && backup.class && window.CharacterStatsResolver) {
+                const resolved = window.CharacterStatsResolver.resolveCharacterCreationStats({
+                    raceId: backup.race,
+                    classId: backup.class
                 });
+
+                if (resolved.valid) {
+                    statDistributionSection.style.display = 'block';
+                    baseStatsForDistribution = { ...resolved.baseStatsForDistribution };
+                    currentCreationStats = { ...resolved.finalStats };
+
+                    const restoredStats = backup.stats && typeof backup.stats === 'object' ? backup.stats : {};
+                    Object.keys(baseStatsForDistribution).forEach(stat => {
+                        const restored = Number(restoredStats[stat]);
+                        if (Number.isFinite(restored) && restored >= baseStatsForDistribution[stat]) {
+                            currentCreationStats[stat] = Math.round(restored);
+                        }
+                    });
+
+                    availableStatPoints = backup.availablePoints !== undefined
+                        ? Math.max(0, Math.floor(Number(backup.availablePoints) || 0))
+                        : INITIAL_STAT_POINTS;
+                } else {
+                    statDistributionSection.style.display = 'none';
+                    availableStatPoints = INITIAL_STAT_POINTS;
+                    currentCreationStats = {};
+                    baseStatsForDistribution = {};
+                    if (window.RuntimeLog) {
+                        window.RuntimeLog.error('CharacterCreation', 'Не удалось восстановить статы персонажа из backup/runtime database.', {
+                            raceId: backup.race,
+                            classId: backup.class,
+                            warnings: resolved.warnings
+                        });
+                    }
+                }
             } else {
                 statDistributionSection.style.display = 'none';
                 availableStatPoints = INITIAL_STAT_POINTS;
@@ -7801,20 +7823,30 @@ function handleRaceOrClassChange() {
     const selectedRace = charRaceSelect.value;
     const selectedClass = charClassSelect.value;
 
-    if (selectedRace && selectedClass && RACE_MODIFIERS[selectedRace] && BASE_CLASS_STATS[selectedClass]) {
-        statDistributionSection.style.display = 'block';
-        currentCreationStats = {};
-        baseStatsForDistribution = {};
-
-        Object.keys(BASE_CLASS_STATS.default).forEach(stat => {
-            const classStat = BASE_CLASS_STATS[selectedClass][stat] || BASE_CLASS_STATS.default[stat];
-            const raceMod = RACE_MODIFIERS[selectedRace][stat] || 0;
-            baseStatsForDistribution[stat] = classStat + raceMod;
-            currentCreationStats[stat] = baseStatsForDistribution[stat];
+    if (selectedRace && selectedClass && window.CharacterStatsResolver) {
+        const resolved = window.CharacterStatsResolver.resolveCharacterCreationStats({
+            raceId: selectedRace,
+            classId: selectedClass
         });
 
-        availableStatPoints = INITIAL_STAT_POINTS;
-        updateStatCreationDisplay();
+        if (resolved.valid) {
+            statDistributionSection.style.display = 'block';
+            baseStatsForDistribution = { ...resolved.baseStatsForDistribution };
+            currentCreationStats = { ...resolved.finalStats };
+            availableStatPoints = INITIAL_STAT_POINTS;
+            updateStatCreationDisplay();
+        } else {
+            statDistributionSection.style.display = 'none';
+            currentCreationStats = {};
+            baseStatsForDistribution = {};
+            if (window.RuntimeLog) {
+                window.RuntimeLog.error('CharacterCreation', 'Не удалось рассчитать статы персонажа из runtime database.', {
+                    raceId: selectedRace,
+                    classId: selectedClass,
+                    warnings: resolved.warnings
+                });
+            }
+        }
     } else {
         statDistributionSection.style.display = 'none';
         currentCreationStats = {};
@@ -7872,8 +7904,10 @@ function checkCreationFormValidity() {
     const classValid = charClassSelect.value !== '';
     const descValid = charDescInput.value.trim().length > 0;
 
-    // Кнопка активируется, если все поля просто заполнены
-    startGameButton.disabled = !(nameValid && genderValid && raceValid && classValid && descValid);
+    const statsValid = statDistributionSection && statDistributionSection.style.display !== 'none' && Object.keys(currentCreationStats || {}).length > 0;
+
+    // Кнопка активируется, если все поля заполнены и статы рассчитаны из runtime database.
+    startGameButton.disabled = !(nameValid && genderValid && raceValid && classValid && descValid && statsValid);
 }
 
 
