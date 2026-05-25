@@ -7433,6 +7433,11 @@ function setupEventListeners() {
         });
     }
 
+    // Register hotkeys via KeyMapper (layout-independent)
+    if (window.KeyMapper) {
+        window.KeyMapper.register('ctrl+r', () => repeatLastAction(), { global: false });
+    }
+
     // --- Модальное окно репутации ---
     if (reputationDisplayWrapper && reputationModal) {
         reputationDisplayWrapper.addEventListener('mouseenter', (event) => {

@@ -448,18 +448,23 @@
         _intercept();
 
         // Keyboard shortcut: ~ (backquote)
-        document.addEventListener('keydown', e => {
-            if (e.key === '`' || e.key === '~') {
-                // Don't trigger if typing in game input
-                const tag = document.activeElement?.tagName;
-                if (tag === 'TEXTAREA') return;
-                if (tag === 'INPUT' && document.activeElement.id !== 'dc-search') return;
-                e.preventDefault();
-                toggle();
-            }
-            // Escape closes panel
-            if (e.key === 'Escape' && _visible) toggle();
-        }, true);
+        // Use KeyMapper if available (layout-independent), fallback to manual
+        if (window.KeyMapper) {
+            window.KeyMapper.register('`', () => toggle(), { global: true });
+            window.KeyMapper.register('escape', (e) => { if (_visible) toggle(); }, { global: true });
+        } else {
+            document.addEventListener('keydown', e => {
+                const key = e.key;
+                if (key === '`' || key === '~' || key === 'ё' || key === 'Ё' || e.code === 'Backquote') {
+                    const tag = document.activeElement?.tagName;
+                    if (tag === 'TEXTAREA') return;
+                    if (tag === 'INPUT' && document.activeElement.id !== 'dc-search') return;
+                    e.preventDefault();
+                    toggle();
+                }
+                if ((key === 'Escape' || e.code === 'Escape') && _visible) toggle();
+            }, true);
+        }
 
         // Hook ModAPI when ready
         if (window.ModAPI) {
