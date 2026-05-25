@@ -418,5 +418,98 @@
       "cotton",
       "herbs"
     ]
+  },
+  "simulation": {
+    "npc": {
+      "hunger_critical": 25,
+      "hunger_shopping": 50,
+      "hunger_shopping_extra": 30
+    },
+    "army": {
+      "morale_mutiny_threshold": 50,
+      "morale_collapse_threshold": 20,
+      "morale_exhausted_threshold": 40,
+      "daily_combat_losses": 0.05,
+      "siege_assault_losses": 0.15,
+      "mutiny_size_penalty": 0.9,
+      "threat_npc_avoid": 90
+    },
+    "region": {
+      "stability_trade_min": 40,
+      "stability_revolt_threshold": 30,
+      "stability_collapse": 10,
+      "threat_market_penalty": 50,
+      "threat_dragon_spawn": 50,
+      "threat_bandit_stash": 50,
+      "threat_bandit_base": 70,
+      "threat_pirate_base": 80,
+      "threat_random_event": 60,
+      "threat_dread_gain": 50,
+      "threat_dread_decay": 20,
+      "unrest_dread_gain": 50,
+      "dread_revolt_threshold": 80,
+      "market_threat_mod": -0.2,
+      "siege_pop_attrition": 0.98,
+      "revolt_pop_attrition": 0.95
+    },
+    "population": {
+      "food_reserve_ratio": 0.005,
+      "weapon_reserve_ratio": 0.1,
+      "min_reserve_ratio": 0.05,
+      "food_demand_base_ratio": 0.1,
+      "luxury_demand_base_ratio": 0.01,
+      "food_surplus_for_trade": 0.5,
+      "bootstrap_staple_ratio": 0.15,
+      "bootstrap_preserved_ratio": 0.05,
+      "bootstrap_base_ratio": 0.3,
+      "bootstrap_alt_ratio": 0.2,
+      "merchants_per_pop": 500,
+      "clerics_per_pop": 1000
+    },
+    "facility": {
+      "jobs_per_level": 100,
+      "artisan_jobs_per_level": 50,
+      "market_jobs_per_level": 2000,
+      "business_income_per_level": 250,
+      "business_income_cash_ratio": 0.5
+    },
+    "race_facility_modifiers": {
+      "orc": {
+        "hunting_lodges": 1.5
+      },
+      "dwarf": {
+        "forges": 1.3,
+        "smelters": 1.3
+      },
+      "elf": {
+        "alchemists": 1.2,
+        "jewelers": 1.2
+      }
+    },
+    "race_ecology": {
+      "elf": {
+        "herbivores": 10000,
+        "carnivores": 1000
+      },
+      "default": {
+        "herbivores_base": 500,
+        "herbivores_rand": 2000,
+        "carnivores_base": 50,
+        "carnivores_rand": 200
+      }
+    },
+    "biome_movement": {
+      "water_biomes": [
+        "river",
+        "shallow_water",
+        "ocean",
+        "lake"
+      ],
+      "mountain_biomes": [
+        "mountains",
+        "hills"
+      ],
+      "water_threshold_ferry": 3
+    }
   }
 }

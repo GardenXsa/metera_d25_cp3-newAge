@@ -251,6 +251,60 @@ struct GameplayRuntimeConfig {
     std::string ruins_stash_container_type = "ruins_stash";
     std::string default_era_id;
     std::unordered_map<std::string, double> currency_physical_weights;
+    // ── Simulation config (gameplay_runtime.simulation) ──────────────
+    int    sim_hunger_critical = 25;
+    int    sim_hunger_shopping = 50;
+    int    sim_hunger_shopping_extra = 30;
+    int    sim_army_morale_mutiny = 50;
+    int    sim_army_morale_collapse = 20;
+    int    sim_army_morale_exhausted = 40;
+    double sim_army_daily_losses = 0.05;
+    double sim_army_assault_losses = 0.15;
+    double sim_army_mutiny_penalty = 0.9;
+    int    sim_army_threat_avoid = 90;
+    int    sim_region_stability_trade = 40;
+    int    sim_region_stability_revolt = 30;
+    int    sim_region_stability_collapse = 10;
+    int    sim_region_threat_market = 50;
+    int    sim_region_threat_dragon = 50;
+    int    sim_region_threat_bandit_stash = 50;
+    int    sim_region_threat_bandit_base = 70;
+    int    sim_region_threat_pirate = 80;
+    int    sim_region_threat_random = 60;
+    int    sim_region_threat_dread_gain = 50;
+    int    sim_region_threat_dread_decay = 20;
+    int    sim_region_unrest_dread = 50;
+    int    sim_region_dread_revolt = 80;
+    double sim_region_market_threat_mod = -0.2;
+    double sim_region_siege_attrition = 0.98;
+    double sim_region_revolt_attrition = 0.95;
+    double sim_pop_food_reserve_ratio = 0.005;
+    double sim_pop_weapon_reserve_ratio = 0.1;
+    double sim_pop_min_reserve_ratio = 0.05;
+    double sim_pop_food_demand_ratio = 0.1;
+    double sim_pop_luxury_demand_ratio = 0.01;
+    double sim_pop_food_surplus_trade = 0.5;
+    double sim_pop_bootstrap_staple = 0.15;
+    double sim_pop_bootstrap_preserved = 0.05;
+    double sim_pop_bootstrap_base = 0.3;
+    double sim_pop_bootstrap_alt = 0.2;
+    int    sim_pop_merchants_per_pop = 500;
+    int    sim_pop_clerics_per_pop = 1000;
+    int    sim_fac_jobs_per_level = 100;
+    int    sim_fac_artisan_jobs = 50;
+    int    sim_fac_market_jobs = 2000;
+    int    sim_fac_business_income = 250;
+    double sim_fac_business_cash_ratio = 0.5;
+    std::unordered_map<std::string, std::unordered_map<std::string, double>> sim_race_facility_mods;
+    std::unordered_map<std::string, int> sim_race_ecology_herbivores;
+    std::unordered_map<std::string, int> sim_race_ecology_carnivores;
+    int    sim_default_herbivores_base = 500;
+    int    sim_default_herbivores_rand = 2000;
+    int    sim_default_carnivores_base = 50;
+    int    sim_default_carnivores_rand = 200;
+    std::vector<std::string> sim_water_biomes = {"river","shallow_water","ocean","lake"};
+    std::vector<std::string> sim_mountain_biomes = {"mountains","hills"};
+    int    sim_water_threshold_ferry = 3;
     // Data-driven world events (gameplay_runtime.world_events)
     std::vector<std::string> world_event_harvest_blessing = {"wheat"};
     double world_event_harvest_blessing_mod = 2.0;
@@ -371,6 +425,88 @@ void loadGameplayRuntimeConfig(const JsonValue& gameplayRuntime) {
         }
     }
 
+    // Parse simulation config
+    if (gameplayRuntime.has("simulation") && gameplayRuntime["simulation"].type == JsonValue::OBJECT) {
+        const JsonValue& sim = gameplayRuntime["simulation"];
+        auto ri=[](const JsonValue& o,const std::string& k,int d){return o.has(k)?o[k].asInt():d;};
+        auto rd=[](const JsonValue& o,const std::string& k,double d){return o.has(k)?o[k].asDouble():d;};
+        if(sim.has("npc")&&sim["npc"].type==JsonValue::OBJECT){const JsonValue& n=sim["npc"];
+            g_gameplay_runtime.sim_hunger_critical=ri(n,"hunger_critical",25);
+            g_gameplay_runtime.sim_hunger_shopping=ri(n,"hunger_shopping",50);
+            g_gameplay_runtime.sim_hunger_shopping_extra=ri(n,"hunger_shopping_extra",30);}
+        if(sim.has("army")&&sim["army"].type==JsonValue::OBJECT){const JsonValue& a=sim["army"];
+            g_gameplay_runtime.sim_army_morale_mutiny=ri(a,"morale_mutiny_threshold",50);
+            g_gameplay_runtime.sim_army_morale_collapse=ri(a,"morale_collapse_threshold",20);
+            g_gameplay_runtime.sim_army_morale_exhausted=ri(a,"morale_exhausted_threshold",40);
+            g_gameplay_runtime.sim_army_daily_losses=rd(a,"daily_combat_losses",0.05);
+            g_gameplay_runtime.sim_army_assault_losses=rd(a,"siege_assault_losses",0.15);
+            g_gameplay_runtime.sim_army_mutiny_penalty=rd(a,"mutiny_size_penalty",0.9);
+            g_gameplay_runtime.sim_army_threat_avoid=ri(a,"threat_npc_avoid",90);}
+        if(sim.has("region")&&sim["region"].type==JsonValue::OBJECT){const JsonValue& r=sim["region"];
+            g_gameplay_runtime.sim_region_stability_trade=ri(r,"stability_trade_min",40);
+            g_gameplay_runtime.sim_region_stability_revolt=ri(r,"stability_revolt_threshold",30);
+            g_gameplay_runtime.sim_region_stability_collapse=ri(r,"stability_collapse",10);
+            g_gameplay_runtime.sim_region_threat_market=ri(r,"threat_market_penalty",50);
+            g_gameplay_runtime.sim_region_threat_dragon=ri(r,"threat_dragon_spawn",50);
+            g_gameplay_runtime.sim_region_threat_bandit_stash=ri(r,"threat_bandit_stash",50);
+            g_gameplay_runtime.sim_region_threat_bandit_base=ri(r,"threat_bandit_base",70);
+            g_gameplay_runtime.sim_region_threat_pirate=ri(r,"threat_pirate_base",80);
+            g_gameplay_runtime.sim_region_threat_random=ri(r,"threat_random_event",60);
+            g_gameplay_runtime.sim_region_threat_dread_gain=ri(r,"threat_dread_gain",50);
+            g_gameplay_runtime.sim_region_threat_dread_decay=ri(r,"threat_dread_decay",20);
+            g_gameplay_runtime.sim_region_unrest_dread=ri(r,"unrest_dread_gain",50);
+            g_gameplay_runtime.sim_region_dread_revolt=ri(r,"dread_revolt_threshold",80);
+            g_gameplay_runtime.sim_region_market_threat_mod=rd(r,"market_threat_mod",-0.2);
+            g_gameplay_runtime.sim_region_siege_attrition=rd(r,"siege_pop_attrition",0.98);
+            g_gameplay_runtime.sim_region_revolt_attrition=rd(r,"revolt_pop_attrition",0.95);}
+        if(sim.has("population")&&sim["population"].type==JsonValue::OBJECT){const JsonValue& p=sim["population"];
+            g_gameplay_runtime.sim_pop_food_reserve_ratio=rd(p,"food_reserve_ratio",0.005);
+            g_gameplay_runtime.sim_pop_weapon_reserve_ratio=rd(p,"weapon_reserve_ratio",0.1);
+            g_gameplay_runtime.sim_pop_min_reserve_ratio=rd(p,"min_reserve_ratio",0.05);
+            g_gameplay_runtime.sim_pop_food_demand_ratio=rd(p,"food_demand_base_ratio",0.1);
+            g_gameplay_runtime.sim_pop_luxury_demand_ratio=rd(p,"luxury_demand_base_ratio",0.01);
+            g_gameplay_runtime.sim_pop_food_surplus_trade=rd(p,"food_surplus_for_trade",0.5);
+            g_gameplay_runtime.sim_pop_bootstrap_staple=rd(p,"bootstrap_staple_ratio",0.15);
+            g_gameplay_runtime.sim_pop_bootstrap_preserved=rd(p,"bootstrap_preserved_ratio",0.05);
+            g_gameplay_runtime.sim_pop_bootstrap_base=rd(p,"bootstrap_base_ratio",0.3);
+            g_gameplay_runtime.sim_pop_bootstrap_alt=rd(p,"bootstrap_alt_ratio",0.2);
+            g_gameplay_runtime.sim_pop_merchants_per_pop=ri(p,"merchants_per_pop",500);
+            g_gameplay_runtime.sim_pop_clerics_per_pop=ri(p,"clerics_per_pop",1000);}
+        if(sim.has("facility")&&sim["facility"].type==JsonValue::OBJECT){const JsonValue& f=sim["facility"];
+            g_gameplay_runtime.sim_fac_jobs_per_level=ri(f,"jobs_per_level",100);
+            g_gameplay_runtime.sim_fac_artisan_jobs=ri(f,"artisan_jobs_per_level",50);
+            g_gameplay_runtime.sim_fac_market_jobs=ri(f,"market_jobs_per_level",2000);
+            g_gameplay_runtime.sim_fac_business_income=ri(f,"business_income_per_level",250);
+            g_gameplay_runtime.sim_fac_business_cash_ratio=rd(f,"business_income_cash_ratio",0.5);}
+        if(sim.has("race_facility_modifiers")&&sim["race_facility_modifiers"].type==JsonValue::OBJECT){
+            g_gameplay_runtime.sim_race_facility_mods.clear();
+            for(const auto&[rid,fm]:sim["race_facility_modifiers"].obj_val){
+                if(fm.type!=JsonValue::OBJECT)continue;
+                for(const auto&[fid,mv]:fm.obj_val)g_gameplay_runtime.sim_race_facility_mods[rid][fid]=mv.asDouble();}}
+        if(sim.has("race_ecology")&&sim["race_ecology"].type==JsonValue::OBJECT){
+            g_gameplay_runtime.sim_race_ecology_herbivores.clear();
+            g_gameplay_runtime.sim_race_ecology_carnivores.clear();
+            for(const auto&[rid,ev]:sim["race_ecology"].obj_val){
+                if(ev.type!=JsonValue::OBJECT)continue;
+                if(rid=="default"){
+                    if(ev.has("herbivores_base"))g_gameplay_runtime.sim_default_herbivores_base=ev["herbivores_base"].asInt();
+                    if(ev.has("herbivores_rand"))g_gameplay_runtime.sim_default_herbivores_rand=ev["herbivores_rand"].asInt();
+                    if(ev.has("carnivores_base"))g_gameplay_runtime.sim_default_carnivores_base=ev["carnivores_base"].asInt();
+                    if(ev.has("carnivores_rand"))g_gameplay_runtime.sim_default_carnivores_rand=ev["carnivores_rand"].asInt();
+                } else {
+                    if(ev.has("herbivores"))g_gameplay_runtime.sim_race_ecology_herbivores[rid]=ev["herbivores"].asInt();
+                    if(ev.has("carnivores"))g_gameplay_runtime.sim_race_ecology_carnivores[rid]=ev["carnivores"].asInt();
+                }}}
+        if(sim.has("biome_movement")&&sim["biome_movement"].type==JsonValue::OBJECT){
+            const JsonValue& bm=sim["biome_movement"];
+            if(bm.has("water_biomes")&&bm["water_biomes"].type==JsonValue::ARRAY){
+                g_gameplay_runtime.sim_water_biomes.clear();
+                for(size_t i=0;i<bm["water_biomes"].size();i++)g_gameplay_runtime.sim_water_biomes.push_back(bm["water_biomes"][i].asString());}
+            if(bm.has("mountain_biomes")&&bm["mountain_biomes"].type==JsonValue::ARRAY){
+                g_gameplay_runtime.sim_mountain_biomes.clear();
+                for(size_t i=0;i<bm["mountain_biomes"].size();i++)g_gameplay_runtime.sim_mountain_biomes.push_back(bm["mountain_biomes"][i].asString());}
+            if(bm.has("water_threshold_ferry"))g_gameplay_runtime.sim_water_threshold_ferry=bm["water_threshold_ferry"].asInt();}
+    }
     // Parse world_events from gameplay_runtime
     if (gameplayRuntime.has("world_events") && gameplayRuntime["world_events"].type == JsonValue::OBJECT) {
         const JsonValue& we = gameplayRuntime["world_events"];
@@ -4296,7 +4432,7 @@ void processConsumption() {
                     continue;
                 }
                 
-                if (npc.needs.hunger < 25) {
+                if (npc.needs.hunger < g_gameplay_runtime.sim_hunger_critical) {
                     npc.currentActivity = locStr("engine.npc.searching_food");
                     
                     auto edibleItems = g_itemRegistry.findTemplatesWithTag("food");
@@ -4544,7 +4680,7 @@ void processConsumption() {
         if (destIt != g_world.regions.end() && !caravan.chest_id.empty()) {
             Region& destRegion = destIt->second;
             
-            if (destRegion.threat_level > 90) {
+            if (destRegion.threat_level > g_gameplay_runtime.sim_army_threat_avoid) {
                 if (thread_safe_rand() % 100 < 80) {
                     caravan.destination = caravan.origin;
                     caravan.origin = destRegion.id;
@@ -5773,7 +5909,7 @@ void processServices() {
                 Region& r = g_world.regions[npc.currentLocation];
 
                 if (npcHasProfessionType(npc, {"innkeeper"}) || npcHasProfessionAbility(npc, "hospitality")) {
-                    int visitors = 5 + (r.caravans.size() * 2) + (r.population / 1000);
+                    int visitors = 5 + (r.caravans.size() * 2) + (r.population / g_gameplay_runtime.sim_pop_clerics_per_pop);
                     int foodNeeded = visitors;
                     int foodBought = 0;
                     
@@ -5905,7 +6041,7 @@ void processDailyEconomy() {
                 int totalWorkforce = region.labor_force > 0 ? region.labor_force : (region.population * 0.6);
                 int totalJobs = 0;
                 for (const auto& [fId, fac] : region.facilities) {
-                    totalJobs += fac.level * 100;
+                    totalJobs += fac.level * g_gameplay_runtime.sim_fac_jobs_per_level;
                 }
                 for (const auto& [bId, bus] : g_world.businesses) {
                     if (bus.region_id == rid && bus.is_active) totalJobs += bus.employee_count;
@@ -5932,9 +6068,9 @@ void processDailyEconomy() {
 
                 for (const auto& gt : g_db.all_item_ids) {
                     if (itemHasTag(gt, "food")) {
-                        region.reserveTargets[gt] = static_cast<int>(region.population * 0.005 * getFoodReserveDays(gt));
+                        region.reserveTargets[gt] = static_cast<int>(region.population * g_gameplay_runtime.sim_pop_food_reserve_ratio * getFoodReserveDays(gt));
                     } else if (itemHasTag(gt, "weapon")) {
-                        region.reserveTargets[gt] = region.population * 0.1;
+                        region.reserveTargets[gt] = region.population * g_gameplay_runtime.sim_pop_weapon_reserve_ratio;
                     }
                 }
 
@@ -5949,7 +6085,7 @@ void processDailyEconomy() {
                     
                     int stock = vaultStocks[gtStr];
                     int reserve = region.reserveTargets[gtStr];
-                    if (reserve == 0) reserve = region.population * 0.05;
+                    if (reserve == 0) reserve = region.population * g_gameplay_runtime.sim_pop_min_reserve_ratio;
                     
                     if (stock > reserve * 3) targetMod *= 0.5;
                     if (stock > reserve * 5) targetMod *= 0.2;
@@ -6147,9 +6283,9 @@ void processDailyEconomy() {
                     }
                 }
                 
-                double baseFoodNeed = region.population * 0.005;
+                double baseFoodNeed = region.population * g_gameplay_runtime.sim_pop_food_reserve_ratio;
                 double elasticFactor = std::clamp(foodPerCapita / 1.0, 0.4, 1.2);
-                int reserveFoodTarget = static_cast<int>(region.population * 0.005 * 14);
+                int reserveFoodTarget = static_cast<int>(region.population * g_gameplay_runtime.sim_pop_food_reserve_ratio * 14);
                 if (getFoodAmount(region.vault_id) < reserveFoodTarget) {
                     elasticFactor *= 0.8;
                 }
@@ -6317,9 +6453,9 @@ void processMarkets() {
                     
                     std::string cat = g_db.items[gt].category;
                     if (cat == "consumable" || cat == "raw_food" || cat == "processed_food") {
-                        baseDemand = r.population * 0.1;
+                        baseDemand = r.population * g_gameplay_runtime.sim_pop_food_demand_ratio;
                     } else if (cat == "luxury" || cat == "potion") {
-                        baseDemand = r.population * 0.01;
+                        baseDemand = r.population * g_gameplay_runtime.sim_pop_luxury_demand_ratio;
                     }
                     
                     baseDemand *= getSeasonalDemandMultiplier(gt, r.current_season);
@@ -6355,12 +6491,12 @@ void processMarkets() {
                     if (edibleItems.empty()) {
                         std::string f_id = getCoreIdByTag("food");
                         totalFoodInInv = countItemsInContainer(contId, f_id);
-                        if (npc.needs.hunger < 50 || totalFoodInInv < npc.economy.reserve_food) shoppingList.push_back(f_id);
+                        if (npc.needs.hunger < g_gameplay_runtime.sim_hunger_shopping || totalFoodInInv < npc.economy.reserve_food) shoppingList.push_back(f_id);
                     } else {
-                        if (npc.needs.hunger < 50 || totalFoodInInv < npc.economy.reserve_food) {
+                        if (npc.needs.hunger < g_gameplay_runtime.sim_hunger_shopping || totalFoodInInv < npc.economy.reserve_food) {
                             shoppingList.push_back(edibleItems[0]->id);
                         }
-                        if (npc.needs.hunger < 30 && edibleItems.size() > 1) {
+                        if (npc.needs.hunger < g_gameplay_runtime.sim_hunger_shopping_extra && edibleItems.size() > 1) {
                             shoppingList.push_back(edibleItems[1]->id);
                         }
                     }
@@ -6559,8 +6695,8 @@ void processDailyMilitary() {
                     for (const auto& rId : f.regions) {
                         if (g_world.regions.count(rId)) {
                             Region& r = g_world.regions[rId];
-                            if (r.stability >= 40) {
-                                int recruits = r.population * 0.01;
+                            if (r.stability >= g_gameplay_runtime.sim_region_stability_trade) {
+                                int recruits = r.population * g_gameplay_runtime.sim_pop_luxury_demand_ratio;
                                 r.population = std::max(0, r.population - recruits);
                                 std::string w_id = getCoreIdByTag("weapon");
                                 int wAvail = vaultStocks[rId][w_id];
@@ -6646,14 +6782,14 @@ void processDailyMilitary() {
                         for (auto& mutinousArmy : f.armies) {
                             mutinousArmy.morale -= 5;
                             std::string homeRegion = mutinousArmy.location;
-                        if (mutinousArmy.morale < 50) {
-                            mutinousArmy.size = std::max(0, (int)(mutinousArmy.size * 0.9));
+                        if (mutinousArmy.morale < g_gameplay_runtime.sim_army_morale_mutiny) {
+                            mutinousArmy.size = std::max(0, (int)(mutinousArmy.size * g_gameplay_runtime.sim_army_mutiny_penalty));
                             if (!homeRegion.empty() && g_world.regions.count(homeRegion)) {
                                 g_world.regions[homeRegion].threat_level = std::min(100, g_world.regions[homeRegion].threat_level + 5);
                             }
                             addNews(locStr("engine.news.army_desertion", {{"faction", f.name}}), homeRegion, 3, "war");
                         }
-                        if (mutinousArmy.morale < 20) {
+                        if (mutinousArmy.morale < g_gameplay_runtime.sim_army_morale_collapse) {
                             for (const auto& rId : f.regions) {
                                 if (g_world.regions.count(rId)) {
                                     int weaponsAvailable = vaultStocks[rId][getCoreIdByTag("weapon")];
@@ -6676,7 +6812,7 @@ void processDailyMilitary() {
                     for (const auto& rId : f.regions) {
                         if (g_world.regions.count(rId)) {
                             Region& r = g_world.regions[rId];
-                            int deaths = r.population * 0.01;
+                            int deaths = r.population * g_gameplay_runtime.sim_pop_luxury_demand_ratio;
                             r.population = std::max(0, r.population - deaths);
                             r.threat_level = std::min(100, r.threat_level + 10);
                             if ((thread_safe_rand() % 100) < 10) {
@@ -6793,7 +6929,7 @@ void processDailyMilitary() {
                 if (consumed < dailyNeed && !a.location.empty() && g_world.regions.count(a.location)) {
                     Region& r = g_world.regions[a.location];
                     if (r.factionId != fid && r.threat_level < 100) {
-                        int forageAmount = std::min(dailyNeed - consumed, (int)(r.population * 0.01));
+                        int forageAmount = std::min(dailyNeed - consumed, (int)(r.population * g_gameplay_runtime.sim_pop_luxury_demand_ratio));
                         if (forageAmount > 0) {
                             int fTaken = consumeFood(r.vault_id, forageAmount);
                             consumed += fTaken;
@@ -6811,7 +6947,7 @@ void processDailyMilitary() {
                 a.morale -= 5;
             }
 
-            if (a.morale < 20 && a.morale > 0) {
+            if (a.morale < g_gameplay_runtime.sim_army_morale_collapse && a.morale > 0) {
                 int deserters = std::max(1, (int)(a.size * 0.02));
                 a.size -= deserters;
                 if (!a.location.empty() && g_world.regions.count(a.location)) {
@@ -6991,8 +7127,8 @@ void processDailyMilitary() {
                     defArmy.current_phase = "vanguard_clash";
                     addNews(locStr("engine.news.vanguard_clash", {{"faction1", faction.name}, {"faction2", defender.name}, {"loc", locName}}), targetLoc, 3, "war");
                 } else if (a.current_phase == "vanguard_clash") {
-                    a.size -= a.size * 0.05;
-                    defArmy.size -= defArmy.size * 0.05;
+                    a.size -= a.size * g_gameplay_runtime.sim_army_daily_losses;
+                    defArmy.size -= defArmy.size * g_gameplay_runtime.sim_army_daily_losses;
                     a.current_phase = "main_battle";
                     defArmy.current_phase = "main_battle";
                     addNews(locStr("engine.news.main_battle", {{"faction1", faction.name}, {"faction2", defender.name}, {"loc", locName}}), targetLoc, 4, "war");
@@ -7037,7 +7173,7 @@ void processDailyMilitary() {
 
                     if (atkPower > defPower) {
                         int casualties = std::max(1, (int)(defArmy.size * 0.6));
-                        a.size -= std::max(1, (int)(a.size * 0.15));
+                        a.size -= std::max(1, (int)(a.size * g_gameplay_runtime.sim_army_assault_losses));
                         std::string newsText = locStr("engine.news.army_routed", {{"atkCause", atkCause}, {"faction", faction.name}, {"defCause", defCause}, {"defender", defender.name}, {"loc", locName}, {"casualties", std::to_string(casualties)}});
                         addNews(newsText, targetLoc, 5, "war", !defLink.empty() ? defLink : atkLink);
                         defender.armies.erase(defender.armies.begin() + defArmyIndex);
@@ -7051,7 +7187,7 @@ void processDailyMilitary() {
                         }
                     } else {
                         int casualties = std::max(1, (int)(a.size * 0.6));
-                        defArmy.size -= std::max(1, (int)(defArmy.size * 0.15));
+                        defArmy.size -= std::max(1, (int)(defArmy.size * g_gameplay_runtime.sim_army_assault_losses));
                         std::string newsText = locStr("engine.news.army_defended", {{"defCause", defCause}, {"defender", defender.name}, {"atkCause", atkCause}, {"faction", faction.name}, {"loc", locName}, {"casualties", std::to_string(casualties)}});
                         addNews(newsText, targetLoc, 5, "war", !atkLink.empty() ? atkLink : defLink);
                         faction.armies.erase(faction.armies.begin() + i);
@@ -7097,7 +7233,7 @@ void processDailyMilitary() {
                         if (armySurvived) {
                             std::string enemyCapital = g_world.factions[targetRegion.factionId].regions.empty() ? "" : g_world.factions[targetRegion.factionId].regions[0];
                             if (targetLoc == enemyCapital) {
-                                targetRegion.population = std::max(0, (int)(targetRegion.population * 0.98));
+                                targetRegion.population = std::max(0, (int)(targetRegion.population * g_gameplay_runtime.sim_region_siege_attrition));
                                 int w = vaultStocks[targetLoc][getCoreIdByTag("weapon")];
                                 int f1 = vaultStocks[targetLoc][getCoreIdByTag("food")];
                                 int wLost = w * 0.05; int f1Lost = f1 * 0.05;
@@ -7339,7 +7475,7 @@ void processMonthlyDemographics() {
         r.labor_force = (int)new_labor;
 
         int totalJobs = 0;
-        for (const auto& [fId, fac] : r.facilities) totalJobs += fac.level * 100;
+        for (const auto& [fId, fac] : r.facilities) totalJobs += fac.level * g_gameplay_runtime.sim_fac_jobs_per_level;
         for (const auto& [bId, bus] : g_world.businesses) {
             if (bus.region_id == rid && bus.is_active) totalJobs += bus.employee_count;
         }
@@ -7543,7 +7679,7 @@ void processMonthlyBusinesses() {
         }
         int wage_cost = bus.employee_count * r.average_wage;
         double market_mod = 1.0 + ((rand() % 50) - 15) / 100.0;
-        if (r.threat_level > 50) market_mod -= 0.2;
+        if (r.threat_level > g_gameplay_runtime.sim_region_threat_market) market_mod -= (-g_gameplay_runtime.sim_region_market_threat_mod);
         int revenue = (int)(wage_cost * market_mod);
         
         if (bus.facility_type == "brothels" || bus.facility_type == "bathhouses") {
@@ -7827,9 +7963,9 @@ void processInfrastructureProjects() {
                         int initial_idx = path[0].second * g_world.map.width + path[0].first;
                         uint8_t initial_b_id = g_world.map.grid[initial_idx].biome_id;
                         std::string initial_t = getBiomeStringId(initial_b_id);
-                        if (initial_t == "river" || initial_t == "shallow_water" || initial_t == "ocean" || initial_t == "lake") {
+                        if (std::find(g_gameplay_runtime.sim_water_biomes.begin(), g_gameplay_runtime.sim_water_biomes.end(), initial_t) != g_gameplay_runtime.sim_water_biomes.end()) {
                             current_segment.type = (g_world.map.grid[initial_idx].water_depth >= 3) ? "ferry" : "bridge";
-                        } else if (initial_t == "mountains" || initial_t == "hills") {
+                        } else if (std::find(g_gameplay_runtime.sim_mountain_biomes.begin(), g_gameplay_runtime.sim_mountain_biomes.end(), initial_t) != g_gameplay_runtime.sim_mountain_biomes.end()) {
                             current_segment.type = "tunnel";
                         } else {
                             current_segment.type = "paved";
@@ -7847,7 +7983,7 @@ void processInfrastructureProjects() {
                             if (is_water) {
                                 g_world.map.grid[idx].bridge_flag = 1;
                                 target_type = (g_world.map.grid[idx].water_depth >= 3) ? "ferry" : "bridge";
-                            } else if (t == "mountains" || t == "hills") {
+                            } else if (std::find(g_gameplay_runtime.sim_mountain_biomes.begin(), g_gameplay_runtime.sim_mountain_biomes.end(), t) != g_gameplay_runtime.sim_mountain_biomes.end()) {
                                 target_type = "tunnel";
                             } else {
                                 target_type = "paved";
@@ -8531,7 +8667,7 @@ void processTrekTick() {
                     ev.object_type = "army";
                     ev.sim_object_id = a.id;
                     std::string stateDesc = (a.current_phase == "march") ? locStr("engine.trek.state_march") : locStr("engine.trek.state_combat");
-                    if (a.morale < 40) stateDesc = locStr("engine.trek.state_exhausted");
+                    if (a.morale < g_gameplay_runtime.sim_army_morale_exhausted) stateDesc = locStr("engine.trek.state_exhausted");
                     ev.description = locStr("engine.trek.army_spotted", {{"faction", f.name}, {"size", std::to_string(a.size)}, {"state", stateDesc}});
                     g_world.player_trek.pending_events.push_back(ev);
                     event_triggered = true;
@@ -10215,7 +10351,7 @@ void processDailyThreat() {
         // 1. Безработица
         int totalJobs = 0;
         for (const auto& [fid, fac] : r.facilities) {
-            totalJobs += fac.level * 2000;
+            totalJobs += fac.level * g_gameplay_runtime.sim_fac_market_jobs;
         }
         int employed = std::min(r.population, totalJobs);
         double unemploymentRate = r.population > 0 ? (r.population - employed) / (double)r.population : 0.0;
@@ -10320,7 +10456,7 @@ void processDailyThreat() {
         }
         
         // Разблокировка дорог, если угроза спала (например, игрок убил дракона и снизил threat_level)
-        if (r.threat_level < 50 && g_world.nexusData.count(rid + "_dragon_spawned")) {
+        if (r.threat_level < g_gameplay_runtime.sim_region_threat_dragon && g_world.nexusData.count(rid + "_dragon_spawned")) {
             int blockX = g_world.nexusData.count(rid + "_dragon_x") ? g_world.nexusData[rid + "_dragon_x"].asInt() : -1;
             int blockY = g_world.nexusData.count(rid + "_dragon_y") ? g_world.nexusData[rid + "_dragon_y"].asInt() : -1;
             int radius = 6;
@@ -10378,13 +10514,13 @@ void processDailyThreat() {
         }
         
         // Влияние на население: гибель/миграция при высокой угрозе
-        if (r.threat_level > 70) {
+        if (r.threat_level > g_gameplay_runtime.sim_region_threat_bandit_base) {
             int deaths = (r.threat_level / 10) * 0.005 * r.population;
             r.population = std::max(0, r.population - deaths);
         }
 
         // 5. Зачистка бандитов (возврат награбленного), если угроза упала
-        if (r.threat_level < 50 && !r.bandit_stash_id.empty()) {
+        if (r.threat_level < g_gameplay_runtime.sim_region_threat_bandit_stash && !r.bandit_stash_id.empty()) {
             if (g_containers.count(r.bandit_stash_id)) {
                 Storage& stash = g_containers[r.bandit_stash_id];
                 std::vector<std::string> items_to_move = stash.item_ids;
@@ -10463,10 +10599,10 @@ void processDailyNPCs() {
                         
                         std::map<std::string, int> job_demand;
                         job_demand["farmer"] = ((r.facilities.count("farms") ? r.facilities["farms"].level * 100 : 0) + 50) - current_workers["farmer"];
-                        job_demand["artisan"] = ((r.facilities.count("forges") ? r.facilities["forges"].level * 50 : 0) + (r.facilities.count("weavers") ? r.facilities["weavers"].level * 50 : 0)) - current_workers["artisan"];
-                        job_demand["merchant"] = (r.population / 500) - current_workers["merchant"];
+                        job_demand["artisan"] = ((r.facilities.count("forges") ? r.facilities["forges"].level * g_gameplay_runtime.sim_fac_artisan_jobs : 0) + (r.facilities.count("weavers") ? r.facilities["weavers"].level * 50 : 0)) - current_workers["artisan"];
+                        job_demand["merchant"] = (r.population / g_gameplay_runtime.sim_pop_merchants_per_pop) - current_workers["merchant"];
                         job_demand["mercenary"] = (r.threat_level * 2) - current_workers["mercenary"];
-                        job_demand["cleric"] = (r.population / 1000) - current_workers["cleric"];
+                        job_demand["cleric"] = (r.population / g_gameplay_runtime.sim_pop_clerics_per_pop) - current_workers["cleric"];
                         job_demand["gatherer"] = 20 - current_workers["gatherer"];
 
                         std::string best_prof = "farmer";
@@ -10618,7 +10754,7 @@ void processDailyNPCs() {
                     addNews(locStr("engine.news.business_inherited", {{"facility", getFacilityName(bus.facility_type)}, {"heir", g_world.npcs[heir_id].name}}), bus.region_id, 1, "trade");
                 } else if (bus.owner_ids.empty()) {
                     if (g_world.regions.count(bus.region_id)) {
-                        g_world.regions[bus.region_id].moneySupply += (bus.cash_balance * 0.5) + (bus.level * 250);
+                        g_world.regions[bus.region_id].moneySupply += (bus.cash_balance * g_gameplay_runtime.sim_fac_business_cash_ratio) + (bus.level * g_gameplay_runtime.sim_fac_business_income);
                     }
                     addNews(locStr("engine.news.business_liquidated", {{"facility", getFacilityName(bus.facility_type)}}), bus.region_id, 1, "trade");
                     g_world.businesses.erase(bId);
@@ -10849,10 +10985,10 @@ void processInternalPolitics() {
 
         r.stability = std::clamp(r.stability, 0, 100);
 
-        if (r.stability < 30 && r.unrest < 50 && (thread_safe_rand() % 100) < 3) {
+        if (r.stability < g_gameplay_runtime.sim_region_stability_revolt && r.unrest < g_gameplay_runtime.sim_region_unrest_dread && (thread_safe_rand() % 100) < 3) {
             r.unrest = 100;
             r.productionBlockedDays = 5;
-            r.population = std::max(0, (int)(r.population * 0.95));
+            r.population = std::max(0, (int)(r.population * g_gameplay_runtime.sim_region_revolt_attrition));
             
             std::string w_id = getCoreIdByTag("weapon");
             int foodLost = getFoodAmount(r.vault_id) * 0.1;
@@ -10902,7 +11038,7 @@ void processInternalPolitics() {
             }
         }
 
-        if (r.stability < 10 && !hasGarrison) {
+        if (r.stability < g_gameplay_runtime.sim_region_stability_collapse && !hasGarrison) {
             regionsToRebel.push_back(rid);
         }
     }
@@ -11122,8 +11258,8 @@ void processMonsterHunts() {
 
 void processDreadAndMonsters() {
     for (auto& [rid, r] : g_world.regions) {
-        if (r.threat_level > 50) r.dread += 1;
-        if (r.unrest > 50) r.dread += 1;
+        if (r.threat_level > g_gameplay_runtime.sim_region_threat_dread_gain) r.dread += 1;
+        if (r.unrest > g_gameplay_runtime.sim_region_unrest_dread) r.dread += 1;
         
         if (g_world.map.locations.count(rid)) {
             std::string locType = g_world.map.locations[rid].type;
@@ -11137,10 +11273,10 @@ void processDreadAndMonsters() {
             if (intr.targetFactionId == r.factionId && !intr.isDiscovered) r.dread += 1;
         }
 
-        if (r.threat_level < 20) r.dread = std::max(0, r.dread - 2);
+        if (r.threat_level < g_gameplay_runtime.sim_region_threat_dread_decay) r.dread = std::max(0, r.dread - 2);
         r.dread = std::clamp(r.dread, 0, 100);
 
-        if (r.dread > 80 && (thread_safe_rand() % 100) < (r.dread - 80)) {
+        if (r.dread > g_gameplay_runtime.sim_region_dread_revolt && (thread_safe_rand() % 100) < (r.dread - 80)) {
             int nextSpawnDay = 0;
             if (g_world.nexusData.count("next_epic_monster_spawn_day")) {
                 nextSpawnDay = g_world.nexusData["next_epic_monster_spawn_day"].asInt();
@@ -11252,7 +11388,7 @@ void processDreadAndMonsters() {
 
             if ((thread_safe_rand() % 100) < 20) r.stability = std::max(0, r.stability - 1);
             r.threat_level = std::min(100, r.threat_level + 5);
-            int deaths = r.population * 0.01;
+            int deaths = r.population * g_gameplay_runtime.sim_pop_luxury_demand_ratio;
             r.population = std::max(0, r.population - deaths);
             
             r.fertility = std::max(0.0, r.fertility - 0.05);
@@ -11421,7 +11557,7 @@ void processNavalCombat() {
         if (g_world.regions.count(rid)) {
             Region& r = g_world.regions[rid];
             int pirate_base_chance = (r.weather == "Туман") ? 10 : 2;
-            if (r.threat_level > 80 && (thread_safe_rand() % 100) < pirate_base_chance) {
+            if (r.threat_level > g_gameplay_runtime.sim_region_threat_pirate && (thread_safe_rand() % 100) < pirate_base_chance) {
                 auto loc = g_world.map.locations[rid];
                 int bx = loc.x + (rand()%15 - 7);
                 int by = loc.y + (rand()%15 - 7);
@@ -11441,7 +11577,7 @@ void processNavalCombat() {
                     addNews(locStr("engine.news.pirate_base_found", {{"region", r.name}}), rid, 4, "war");
                 }
             }
-            if (r.threat_level > 60 && (thread_safe_rand() % 100) < 5) {
+            if (r.threat_level > g_gameplay_runtime.sim_region_threat_random && (thread_safe_rand() % 100) < 5) {
                 Ship p;
                 p.id = "ship_" + generateUUID();
                 p.owner_id = "pirates";
@@ -11902,7 +12038,7 @@ void processFactionTrade() {
         // 1. Internal redistribution
         if (foodRatio > 0.3) {
             int capFood = vaultStocks[capitalId][f_id];
-            if (capFood > g_world.regions[capitalId].population * 0.5) {
+            if (capFood > g_world.regions[capitalId].population * g_gameplay_runtime.sim_pop_food_surplus_trade) {
                 for (const auto& rid : f.regions) {
                     if (rid == capitalId) continue;
                     if (g_world.regions.count(rid) && g_world.regions[rid].starvation_days > 3) {
@@ -13433,9 +13569,9 @@ void seedRegionInitialSupplies(Region& region) {
         int baseAmount = 0;
 
         if (region.available_raw_resources.count(itemId)) {
-            baseAmount = (region.population * 0.3) + (thread_safe_rand() % 200);
+            baseAmount = (region.population * g_gameplay_runtime.sim_pop_bootstrap_base) + (thread_safe_rand() % 200);
         } else if (!stapleFoodId.empty() && itemId == stapleFoodId) {
-            baseAmount = region.population * 0.2;
+            baseAmount = region.population * g_gameplay_runtime.sim_pop_bootstrap_alt;
         } else if (!currencyId.empty() && itemId == currencyId) {
             baseAmount = 5000 + (thread_safe_rand() % 5000);
         }
@@ -13573,8 +13709,8 @@ void addBootstrapStarterResources(Region& region) {
     const std::string currencyId = getCoreIdByTag("currency");
     const std::string weaponId = getCoreIdByTag("weapon");
 
-    if (!stapleFoodId.empty()) createItem(stapleFoodId, region.population * 0.15, region.vault_id, 0, "Bootstrap");
-    if (!preservedFoodId.empty() && preservedFoodId != stapleFoodId) createItem(preservedFoodId, region.population * 0.05, region.vault_id, 0, "Bootstrap");
+    if (!stapleFoodId.empty()) createItem(stapleFoodId, region.population * g_gameplay_runtime.sim_pop_bootstrap_staple, region.vault_id, 0, "Bootstrap");
+    if (!preservedFoodId.empty() && preservedFoodId != stapleFoodId) createItem(preservedFoodId, region.population * g_gameplay_runtime.sim_pop_min_reserve_ratio, region.vault_id, 0, "Bootstrap");
     if (!constructionId.empty()) createItem(constructionId, 200 + thread_safe_rand() % 200, region.vault_id, 0, "Bootstrap");
     if (!oreId.empty()) createItem(oreId, 100 + thread_safe_rand() % 200, region.vault_id, 0, "Bootstrap");
     if (!currencyId.empty()) createItem(currencyId, 500 + thread_safe_rand() % 500, region.vault_id, 0, "Bootstrap");
@@ -13685,10 +13821,18 @@ double getNpcFacilityRaceModifier(const NPC& npc, const std::string& facilityId)
         if (it != tpl->race_modifiers.end()) return it->second;
     }
 
-    // Legacy migration path until race affinities are fully data-driven.
-    if (npc.race == "orc" && facilityId == "hunting_lodges") return 1.5;
-    if (npc.race == "dwarf" && (facilityId == "forges" || facilityId == "smelters")) return 1.3;
-    if (npc.race == "elf" && (facilityId == "alchemists" || facilityId == "jewelers")) return 1.2;
+    // Data-driven: race facility modifiers from gameplay_runtime.simulation.race_facility_modifiers
+    auto raceIt = g_gameplay_runtime.sim_race_facility_mods.find(npc.race);
+    if (raceIt != g_gameplay_runtime.sim_race_facility_mods.end()) {
+        auto facIt = raceIt->second.find(facilityId);
+        if (facIt != raceIt->second.end()) return facIt->second;
+    }
+    // Legacy fallback (if simulation.race_facility_modifiers not loaded)
+    if (g_gameplay_runtime.sim_race_facility_mods.empty()) {
+        if (npc.race == "orc" && facilityId == "hunting_lodges") return 1.5;
+        if (npc.race == "dwarf" && (facilityId == "forges" || facilityId == "smelters")) return 1.3;
+        if (npc.race == "elf" && (facilityId == "alchemists" || facilityId == "jewelers")) return 1.2;
+    }
     return 1.0;
 }
 
@@ -13951,8 +14095,17 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
             seedRegionInitialSupplies(r);
         }
 
-        r.animals.herbivores = (ownerRace == "elf") ? 10000 : 500 + (rand() % 2000);
-        r.animals.carnivores = (ownerRace == "elf") ? 1000 : 50 + (rand() % 200);
+        // Data-driven: race ecology from gameplay_runtime.simulation.race_ecology
+        {
+            auto herbIt = g_gameplay_runtime.sim_race_ecology_herbivores.find(ownerRace);
+            auto carnIt = g_gameplay_runtime.sim_race_ecology_carnivores.find(ownerRace);
+            r.animals.herbivores = (herbIt != g_gameplay_runtime.sim_race_ecology_herbivores.end())
+                ? herbIt->second
+                : g_gameplay_runtime.sim_default_herbivores_base + (rand() % g_gameplay_runtime.sim_default_herbivores_rand);
+            r.animals.carnivores = (carnIt != g_gameplay_runtime.sim_race_ecology_carnivores.end())
+                ? carnIt->second
+                : g_gameplay_runtime.sim_default_carnivores_base + (rand() % g_gameplay_runtime.sim_default_carnivores_rand);
+        }
 
         g_world.regions[key] = r;
         if (!is_ruin && !ownerId.empty()) {
@@ -14115,8 +14268,8 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
             b.region_id = capital;
             b.facility_type = facType;
             b.level = 3; // Монополии лордов сразу крупные
-            b.employee_count = b.level * 100; // ФИКС: Назначаем рабочих сразу, чтобы производство началось в 1-й день
-            b.target_employee_count = b.level * 100;
+            b.employee_count = b.level * g_gameplay_runtime.sim_fac_jobs_per_level; // ФИКС: Назначаем рабочих сразу, чтобы производство началось в 1-й день
+            b.target_employee_count = b.level * g_gameplay_runtime.sim_fac_jobs_per_level;
             b.cash_balance = 5000;
             b.is_active = true;
             b.local_storage_id = createContainer("business_storage", faction.rulerId, 999999, 1000, capital);
