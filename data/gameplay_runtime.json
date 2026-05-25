@@ -13,6 +13,9 @@
       "constitution_divisor": 2,
       "level_bonus": 10,
       "minimum": 10
+    },
+    "quest_rewards": {
+      "xp_per_level": 50
     }
   },
   "character_creation": {
@@ -20,6 +23,18 @@
       "base": 10,
       "strength_baseline": 10,
       "strength_divisor": 2
+    },
+    "quick_start": {
+      "name_suffix_min": 100,
+      "name_suffix_range": 900,
+      "starting_gold": 0
+    },
+    "stat_baselines": {
+      "strength": 10,
+      "dexterity": 10,
+      "constitution": 10,
+      "charisma": 10,
+      "resilience": 10
     }
   },
   "calendar": {
@@ -36,6 +51,102 @@
     "minimum_days": 90,
     "base_days": 90,
     "population_divisor": 5000
+  },
+  "survival": {
+    "trauma": {
+      "resilience_baseline": 10
+    },
+    "disease": {
+      "default_severity": 2
+    }
+  },
+  "command_defaults": {
+    "create_container": {
+      "max_weight_kg": 100,
+      "max_slots": 30
+    },
+    "bank_loan": {
+      "default_days": 14
+    },
+    "intrigue": {
+      "required_progress": 60,
+      "progress_per_day": 5,
+      "discovery_chance": 3
+    },
+    "business": {
+      "default_wage_level_percent": 100,
+      "default_maintenance_budget_percent": 100
+    },
+    "ruler_entity": {
+      "stats": {
+        "hp": 80,
+        "strength": 10,
+        "dexterity": 10,
+        "intelligence": 14,
+        "constitution": 12,
+        "charisma": 16,
+        "resilience": 10
+      },
+      "xp_reward": 1000,
+      "health_percent": 100,
+      "personality": {
+        "ambition_min": 40,
+        "ambition_range": 40,
+        "paranoia_min": 30,
+        "paranoia_range": 40,
+        "wisdom_min": 40,
+        "wisdom_range": 40,
+        "wisdom_variance": 10,
+        "cruelty_min": 40,
+        "cruelty_range": 40,
+        "cruelty_variance": 10,
+        "diplomacy_min": 40,
+        "diplomacy_range": 40,
+        "diplomacy_variance": 10,
+        "military_min": 40,
+        "military_range": 40,
+        "military_variance": 10,
+        "stewardship_min": 50,
+        "stewardship_range": 40
+      },
+      "needs": {
+        "hunger": 100,
+        "rest": 100,
+        "social": 100,
+        "safety": 100
+      },
+      "inventory": {
+        "gold": 10000
+      },
+      "economy": {
+        "skill_level": 10,
+        "daily_wage": 500,
+        "savings": 50000
+      },
+      "plot_armor": true
+    },
+    "environment": {
+      "default_xp_reward": 20,
+      "default_hp": 10,
+      "default_stats": {
+        "strength": 10,
+        "dexterity": 10,
+        "constitution": 10,
+        "intelligence": 10
+      },
+      "min_damage_base": 1,
+      "min_damage_hp_divisor": 40,
+      "creature_damage_dice_sides": 8,
+      "default_damage_dice_sides": 6,
+      "high_stat_damage_dice_sides": 10,
+      "high_stat_threshold": 16,
+      "armor_class_base": 10,
+      "armor_class_dexterity_baseline": 10,
+      "journey_enemy_default_hp": 20,
+      "journey_enemy_default_xp_reward": 30,
+      "journey_bandit_default_hp": 25,
+      "journey_bandit_default_xp_reward": 20
+    }
   },
   "inventory_engine": {
     "id_prefixes": {
@@ -57,7 +168,11 @@
     "resource_cost": 5,
     "default_max_weight_kg": 100,
     "default_max_slots": 20,
-    "default_world_coords": [0, 0, 0]
+    "default_world_coords": [
+      0,
+      0,
+      0
+    ]
   },
   "inventory_movement": {
     "full_stack_quantity_sentinel": -1,
@@ -108,6 +223,9 @@
     "event_type": "loot",
     "default_quantity": 1,
     "fallback_item_name": "Loot"
+  },
+  "item_display": {
+    "clock_max_segments": 5
   },
   "inventory_unlock": {
     "lockpick_prototype_id": "lockpicks_common",
@@ -175,6 +293,8 @@
   "inventory": {
     "default_item_weight": 1,
     "default_item_durability": 100,
+    "default_item_quality": 1,
+    "default_stack_quantity": 1,
     "access_distance": 10.0,
     "default_lock_difficulty": 10,
     "default_container_health": 200,
@@ -204,7 +324,61 @@
     "charisma_price_step": 0.05,
     "buy_multiplier": 1.2,
     "sell_multiplier": 0.8,
-    "min_price": 1
+    "min_price": 1,
+    "market_fallback_prices": {
+      "bread": 5,
+      "wood": 2,
+      "iron_ore": 3,
+      "weapons": 40
+    }
+  },
+  "dice": {
+    "d20": {
+      "sides": 20,
+      "minimum": 1
+    }
+  },
+  "engine_economy": {
+    "npc_reserve_gold": 100,
+    "npc_initial_gold_max": 100,
+    "build_port_gold_cost": 5000,
+    "npc_luxury_spend_threshold": 500,
+    "npc_mercenary_medical_threshold": 200,
+    "npc_mercenary_weapon_threshold": 500,
+    "npc_merchant_vehicle_threshold": 1000,
+    "npc_merchant_vehicle_max_owned": 5,
+    "infra_dam_gold_cost": 5000,
+    "infra_dam_wood_cost": 1000,
+    "infra_aqueduct_gold_cost": 8000,
+    "infra_aqueduct_iron_cost": 500,
+    "infra_well_gold_cost": 2000,
+    "infra_road_gold_cost": 10000,
+    "infra_road_wood_cost": 2000,
+    "war_declare_min_desire": 50,
+    "war_declare_min_wealth": 5000,
+    "war_imperialism_wealth_ceiling": 20000,
+    "war_total_food_threshold": 3000,
+    "war_total_weapons_threshold": 1000,
+    "war_total_gold_threshold": 5000,
+    "war_limited_food_threshold": 500,
+    "war_limited_weapons_threshold": 200,
+    "war_limited_gold_threshold": 1000,
+    "war_border_food_threshold": 100,
+    "war_border_weapons_threshold": 50,
+    "war_border_gold_threshold": 200,
+    "gm_sabotage_cost": 3000,
+    "monster_bounty_gold_cost": 5000,
+    "path_impassable_cost_threshold": 9000,
+    "infra_port_stone_cost": 2000,
+    "infra_port_wood_cost": 1000,
+    "infra_port_upgrade_stone_per_level": 1000,
+    "infra_port_upgrade_wood_per_level": 500
+  },
+  "engine_world": {
+    "default_race_id": "human",
+    "faction_vault_container_type": "faction_vault",
+    "ruins_stash_container_type": "ruins_stash",
+    "default_era_id": "rebirth"
   },
   "faction_manpower": {
     "weapon_good_ids": [
@@ -217,6 +391,13 @@
     ],
     "population_soldier_ratio": 0.1,
     "food_per_soldier": 0.5
+  },
+  "infrastructure": {
+    "port": {
+      "build_stone_cost": 2000,
+      "build_wood_cost": 1000,
+      "upgrade_stone_per_level": 1000,
+      "upgrade_wood_per_level": 500
+    }
   }
 }
-

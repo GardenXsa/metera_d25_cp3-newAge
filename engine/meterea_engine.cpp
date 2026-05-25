@@ -206,6 +206,10 @@ struct GameplayRuntimeConfig {
     int npc_reserve_gold = 100;
     int npc_initial_gold_max = 100;
     int build_port_gold_cost = 5000;
+    int infra_port_stone_cost = 2000;
+    int infra_port_wood_cost = 1000;
+    int infra_port_upgrade_stone_per_level = 1000;
+    int infra_port_upgrade_wood_per_level = 500;
     int npc_luxury_spend_threshold = 500;
     int npc_mercenary_medical_threshold = 200;
     int npc_mercenary_weapon_threshold = 500;
@@ -372,6 +376,10 @@ void loadGameplayRuntimeConfig(const JsonValue& gameplayRuntime) {
                 readJsonIntOrDefault(engineEconomy["build_port_gold_cost"], g_gameplay_runtime.build_port_gold_cost)
             );
         }
+        if (engineEconomy.has("infra_port_stone_cost")) g_gameplay_runtime.infra_port_stone_cost = std::max(0, readJsonIntOrDefault(engineEconomy["infra_port_stone_cost"], g_gameplay_runtime.infra_port_stone_cost));
+        if (engineEconomy.has("infra_port_wood_cost")) g_gameplay_runtime.infra_port_wood_cost = std::max(0, readJsonIntOrDefault(engineEconomy["infra_port_wood_cost"], g_gameplay_runtime.infra_port_wood_cost));
+        if (engineEconomy.has("infra_port_upgrade_stone_per_level")) g_gameplay_runtime.infra_port_upgrade_stone_per_level = std::max(0, readJsonIntOrDefault(engineEconomy["infra_port_upgrade_stone_per_level"], g_gameplay_runtime.infra_port_upgrade_stone_per_level));
+        if (engineEconomy.has("infra_port_upgrade_wood_per_level")) g_gameplay_runtime.infra_port_upgrade_wood_per_level = std::max(0, readJsonIntOrDefault(engineEconomy["infra_port_upgrade_wood_per_level"], g_gameplay_runtime.infra_port_upgrade_wood_per_level));
         if (engineEconomy.has("npc_luxury_spend_threshold")) {
             g_gameplay_runtime.npc_luxury_spend_threshold = std::max(0, readJsonIntOrDefault(engineEconomy["npc_luxury_spend_threshold"], g_gameplay_runtime.npc_luxury_spend_threshold));
         }
@@ -9311,8 +9319,8 @@ std::string processGmIntervention(const JsonValue& command) {
                 }
                 std::string vaultToUse = capitalRegionId.empty() ? reg.vault_id : g_world.regions[capitalRegionId].vault_id;
 
-                int stoneCost = 2000;
-                int woodCost = 1000;
+                int stoneCost = g_gameplay_runtime.infra_port_stone_cost;
+                int woodCost = g_gameplay_runtime.infra_port_wood_cost;
                 int goldCost = g_gameplay_runtime.build_port_gold_cost;
 
                 std::string s_id = getCoreIdByTag("stone");
@@ -9366,8 +9374,8 @@ std::string processGmIntervention(const JsonValue& command) {
             }
             std::string vaultToUse = capitalRegionId.empty() ? g_world.regions[regionId].vault_id : g_world.regions[capitalRegionId].vault_id;
 
-            int stoneCost = 1000 * port.level;
-            int woodCost = 500 * port.level;
+            int stoneCost = g_gameplay_runtime.infra_port_upgrade_stone_per_level * port.level;
+            int woodCost = g_gameplay_runtime.infra_port_upgrade_wood_per_level * port.level;
             
             std::string s_id = getCoreIdByTag("stone");
             std::string w_id = getCoreIdByTag("building");
