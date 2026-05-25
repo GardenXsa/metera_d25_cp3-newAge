@@ -202,3 +202,14 @@
 5. ✅ Inventory/economy/prompt/engine flows не ломаются.
 6. ✅ Worklog и план обновлены.
 7. ✅ Финальный push по закрытым migration/UI/engine этапам выполнен; перед следующими push использовать `npm run verify`.
+
+
+
+---
+
+### Character stats architecture cleanup
+
+- [x] Character creation переведён на `CharacterStatsResolver`.
+- [x] Runtime/preflight проверяет character stats contract.
+- [x] `CharacterStatsResolver` покрыт dedicated unit-test.
+- [x] Legacy-глобалы `BASE_CLASS_STATS`, `RACE_MODIFIERS`, `applyDatabaseStats()` удалены из JS runtime после зелёной проверки.

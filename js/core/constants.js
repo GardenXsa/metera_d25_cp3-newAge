@@ -130,63 +130,6 @@ if (typeof window !== 'undefined') {
   window.applyRuntimeConstants = applyRuntimeConstants;
 }
 
-
-// --- Data-driven: BASE_CLASS_STATS and RACE_MODIFIERS are now loaded from races.json ---
-// Hardcoded defaults remain as fallback; applyDatabaseStats() overwrites them at runtime.
-let BASE_CLASS_STATS = {
-    warrior: { str: 13, dex: 10, int: 8, con: 12, cha: 9, res: 12 },
-    mage:    { str: 8,  dex: 11, int: 13, con: 9, cha: 11, res: 8 },
-    rogue:   { str: 10, dex: 13, int: 10, con: 10, cha: 9, res: 10 },
-    bard:    { str: 9,  dex: 12, int: 11, con: 9, cha: 12, res: 9 },
-    default: { str: 10, dex: 10, int: 10, con: 10, cha: 10, res: 10 }
-};
-
-let RACE_MODIFIERS = {
-    human: { str: 1, dex: 1, int: 1, con: 1, cha: 1 },
-    elf: { str: 0, dex: 2, int: 1, con: 0, cha: 0 },
-    dwarf: { str: 1, dex: 0, int: 0, con: 2, cha: 0 }
-};
-
-// Called by loadDatabaseWithModsAndInitEngine after database.races is populated.
-// Replaces the hardcoded defaults with data from races.json.
-// Uses Object.assign on a fresh copy to avoid mutating the const reference.
-function applyDatabaseStats(racesArray) {
-    if (!Array.isArray(racesArray) || racesArray.length === 0) return;
-
-    // Build RACE_MODIFIERS from races[].stat_modifiers
-    const newRaceModifiers = {};
-    for (const race of racesArray) {
-        if (race.id && race.stat_modifiers) {
-            newRaceModifiers[race.id] = { ...race.stat_modifiers };
-        }
-    }
-    // Merge defaults with database entries (database wins)
-    Object.assign(RACE_MODIFIERS, newRaceModifiers);
-
-    // Build BASE_CLASS_STATS from races[].class_stats
-    const newClassStats = {};
-    for (const race of racesArray) {
-        if (race.class_stats) {
-            for (const [className, stats] of Object.entries(race.class_stats)) {
-                if (!newClassStats[className] || race.base_race) {
-                    newClassStats[className] = { ...stats };
-                }
-            }
-        }
-    }
-    Object.assign(BASE_CLASS_STATS, newClassStats);
-
-    // Deep-freeze the stats objects after loading from database to prevent accidental mutation
-    // Note: Use Object.seal() instead of Object.freeze() to allow mod modifications
-    for (const race of Object.values(RACE_MODIFIERS)) Object.seal(race);
-    Object.seal(RACE_MODIFIERS);
-    for (const cls of Object.values(BASE_CLASS_STATS)) Object.seal(cls);
-    Object.seal(BASE_CLASS_STATS);
-
-    console.log('[Constants] BASE_CLASS_STATS and RACE_MODIFIERS loaded from database (frozen).',
-        Object.keys(RACE_MODIFIERS).length, 'races,', Object.keys(BASE_CLASS_STATS).length, 'classes');
-}
-
 let predefinedStatusEffects = (function() {
     // Data-driven: loaded from predefined_effects.json via loadPredefinedEffects()
     if (typeof _loadedPredefinedEffects !== 'undefined' && _loadedPredefinedEffects &&

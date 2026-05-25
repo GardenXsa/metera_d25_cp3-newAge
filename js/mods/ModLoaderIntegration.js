@@ -362,10 +362,6 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         const runtimeDatabase = await ensureRuntimeDataLoaded();
         const database = utils.cloneValue(runtimeDatabase);
 
-        if (typeof applyDatabaseStats === 'function' && database.races) {
-            applyDatabaseStats(database.races);
-        }
-
         if (typeof populateErasUI === 'function') populateErasUI(database.eras);
         if (typeof populateRacesUI === 'function') populateRacesUI(database.races);
         if (typeof populateClassesUI === 'function') populateClassesUI(database.classes);

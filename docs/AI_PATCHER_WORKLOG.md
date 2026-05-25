@@ -3452,3 +3452,124 @@ mod runtime hardening follow-up OK
 ```
 
 **Следующий шаг после push:** продолжать от чистого checkpoint. Legacy `BASE_CLASS_STATS/RACE_MODIFIERS` не удалялись в этом патче; их cleanup делать отдельной проверенной пачкой после поиска всех оставшихся ссылок.
+
+
+
+---
+
+### 66. `cleanup_legacy_character_stat_globals`
+
+**Статус:** подготовлен к применению.
+
+**Причина:** после `CharacterStatsResolver` и contract/preflight character creation больше не должен зависеть от legacy-глобалов `BASE_CLASS_STATS`, `RACE_MODIFIERS` и `applyDatabaseStats()`.
+
+**Что удаляем:**
+
+- `js/core/constants.js`: legacy-глобалы `BASE_CLASS_STATS`, `RACE_MODIFIERS`, `applyDatabaseStats()`;
+- `js/mods/ModLoaderIntegration.js`: вызов `applyDatabaseStats(database.races)`.
+
+**Новая каноническая цепочка:**
+
+```text
+Runtime database
+  -> window.CLASSES_DATA / window.RACES_DATA
+  -> CharacterStatsResolver
+  -> character creation UI
+  -> player.stats
+```
+
+**Почему это безопасно:**
+
+- runtime database уже публикует `window.RACES_DATA` и `window.CLASSES_DATA`;
+- character creation уже использует `CharacterStatsResolver.resolveCharacterCreationStats()`;
+- contract/preflight и `tools/verify_character_stats_contract.js` проверяют корректность `classes/races`;
+- dedicated `tests/character_stats_resolver.test.js` проверяет формулу `class.base_stats + race.stat_modifiers + allocation`.
+
+**Проверки после применения:**
+
+```bash
+node --check js/core/constants.js
+node --check js/mods/ModLoaderIntegration.js
+node tests/character_stats_resolver.test.js
+node tools/verify_character_stats_contract.js
+powershell -NoProfile -Command "$hits = Get-ChildItem -Recurse -File -Include *.js | Where-Object { $_.FullName -notmatch '\\node_modules\\' } | Select-String -Pattern 'BASE_CLASS_STATS|RACE_MODIFIERS|applyDatabaseStats'; if ($hits) { $hits | ForEach-Object { '{0}:{1}: {2}' -f $_.Path,$_.LineNumber,$_.Line.Trim() }; throw 'legacy character stat globals still referenced in JS' } else { Write-Host 'legacy character stat globals removed from JS' }"
+npm run verify
+git status --short
+```
+
+**Ручной тест:** открыть `npm start`, создать персонажа с `neon_siltlands_core`, проверить, что статы всё ещё отображаются и старт игры проходит.
+
+
+
+---
+
+### 67. `retry_legacy_character_stats_cleanup_checks`
+
+**Статус:** подготовлен к применению.
+
+**Причина:** cleanup legacy character stat globals применился, но проверочная команда дала ложный fail: `Select-String` нашёл старые `BASE_CLASS_STATS/RACE_MODIFIERS` внутри `.ai_backups/backup_*`, а не в актуальном JS runtime.
+
+**Что проверяем повторно:**
+
+- `constants.js` и `ModLoaderIntegration.js` синтаксически валидны;
+- `CharacterStatsResolver` unit-test проходит;
+- character stats contract проходит;
+- в актуальных JS-файлах проекта больше нет `BASE_CLASS_STATS`, `RACE_MODIFIERS`, `applyDatabaseStats`, при этом `.ai_backups`, `.git`, `node_modules` и `logs` исключены;
+- полный `npm run verify` зелёный.
+
+**Проверки:**
+
+```bash
+node --check js/core/constants.js
+node --check js/mods/ModLoaderIntegration.js
+node tests/character_stats_resolver.test.js
+node tools/verify_character_stats_contract.js
+powershell -NoProfile -Command "$hits = Get-ChildItem -Recurse -File -Include *.js | Where-Object { $_.FullName -notmatch '\\.ai_backups\\' -and $_.FullName -notmatch '\\node_modules\\' -and $_.FullName -notmatch '\\.git\\' -and $_.FullName -notmatch '\\logs\\' } | Select-String -Pattern 'BASE_CLASS_STATS|RACE_MODIFIERS|applyDatabaseStats'; if ($hits) { $hits | ForEach-Object { '{0}:{1}: {2}' -f $_.Path,$_.LineNumber,$_.Line.Trim() }; throw 'legacy character stat globals still referenced in active JS runtime' } else { Write-Host 'legacy character stat globals removed from active JS runtime' }"
+npm run verify
+git status --short
+```
+
+**Комментарий:** `.ai_backups` не является runtime-кодом проекта и не должна участвовать в проверке удаления legacy globals.
+
+
+
+---
+
+### 68. `git_checkpoint_cleanup_legacy_character_stats_globals`
+
+**Статус:** готово к Git checkpoint.
+
+**Что подтверждено:**
+
+- `BASE_CLASS_STATS`, `RACE_MODIFIERS`, `applyDatabaseStats()` удалены из активного JS runtime;
+- `.ai_backups`, `.git`, `node_modules`, `logs` исключены из проверки, чтобы старые бэкапы не давали ложные совпадения;
+- `CharacterStatsResolver` остаётся каноническим путём расчёта стартовых характеристик;
+- `ModLoaderIntegration` больше не вызывает `applyDatabaseStats(database.races)`;
+- character stats contract и resolver unit-test проходят.
+
+**Зелёная точка перед checkpoint:**
+
+```text
+node --check js/core/constants.js                         OK
+node --check js/mods/ModLoaderIntegration.js              OK
+node tests/character_stats_resolver.test.js               character stats resolver tests OK
+node tools/verify_character_stats_contract.js             Character stats contract OK
+legacy character stat globals removed from active JS runtime
+npm run verify                                             OK
+Smoke-check: 77 checks, 0 failed, 0 warnings
+Stub tests: 80 PASSED, 0 FAILED, 0 WARNINGS
+Python engine regression tests: PASS
+Full verify summary: 0 failed, 0 skipped
+```
+
+**Архитектурный результат:**
+
+```text
+Runtime database
+  -> window.CLASSES_DATA / window.RACES_DATA
+  -> CharacterStatsResolver
+  -> character creation UI
+  -> player.stats
+```
+
+Старый мост `races.class_stats -> BASE_CLASS_STATS/RACE_MODIFIERS` удалён из runtime.
