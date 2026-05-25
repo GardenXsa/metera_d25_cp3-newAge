@@ -12687,6 +12687,57 @@ void generateWorldMapTerrain(WorldMap& map, int seed) {
     for (int i = 0; i < w * h; ++i) map.grid[i].biome_id = new_types[i];
 
     // ====================================================================
+    // PASS 6.5: River mouth — connect rivers to ocean/shallow water
+    // For each river tile adjacent to water, ensure there is no abrupt cutoff.
+    // Also extend river tiles 1 step INTO shallow water so they visually merge.
+    // ====================================================================
+    {
+        uint8_t r_id   = getBiomeIdByTag("river");
+        uint8_t o_id   = getBiomeIdByTag("ocean");
+        uint8_t sh_id  = getBiomeIdByTag("shallow_water");
+        uint8_t rb_id  = getBiomeIdByTag("riverbank");
+
+        // Step 1: Find all river tiles that border water — these are river mouths.
+        // Extend the river one tile into the shallow_water/ocean toward the water.
+        std::vector<uint8_t> mouth_layer(w * h);
+        for (int i = 0; i < w * h; ++i) mouth_layer[i] = map.grid[i].biome_id;
+
+        for (int y = 1; y < h - 1; ++y) {
+            for (int x = 1; x < w - 1; ++x) {
+                if (map.grid[y * w + x].biome_id != r_id) continue;
+
+                // Check 4-connected neighbours for water
+                int ndx[] = {0, 0, 1, -1};
+                int ndy[] = {1, -1, 0,  0};
+                for (int d = 0; d < 4; ++d) {
+                    int nx2 = x + ndx[d];
+                    int ny2 = y + ndy[d];
+                    if (nx2 < 0 || nx2 >= w || ny2 < 0 || ny2 >= h) continue;
+                    uint8_t nb = map.grid[ny2 * w + nx2].biome_id;
+                    if (nb == o_id || nb == sh_id) {
+                        // This water tile is directly adjacent to a river — make it river too
+                        // (visually connects river to the sea)
+                        mouth_layer[ny2 * w + nx2] = r_id;
+                        // And one more step in the same direction (softer merge)
+                        int nx3 = nx2 + ndx[d];
+                        int ny3 = ny2 + ndy[d];
+                        if (nx3 >= 0 && nx3 < w && ny3 >= 0 && ny3 < h) {
+                            uint8_t nb3 = map.grid[ny3 * w + nx3].biome_id;
+                            if (nb3 == o_id) {
+                                // Keep as shallow water (not full river) — softer transition
+                                mouth_layer[ny3 * w + nx3] = sh_id;
+                            }
+                        }
+                    }
+                    // Also: if river tile borders ocean via diagonal, add riverbank
+                    // to prevent harsh coast cliff visually
+                }
+            }
+        }
+        for (int i = 0; i < w * h; ++i) map.grid[i].biome_id = mouth_layer[i];
+    }
+
+    // ====================================================================
     // PASS 7: Volcanoes (data-driven from config)
     // ====================================================================
     int num_volcanoes = cfg.volcanoes.count;
