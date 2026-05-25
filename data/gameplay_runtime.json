@@ -399,5 +399,24 @@
       "upgrade_stone_per_level": 1000,
       "upgrade_wood_per_level": 500
     }
+  },
+  "world_events": {
+    "global_harvest_blessing": {
+      "affected_resources": [
+        "wheat"
+      ],
+      "production_modifier": 2.0
+    },
+    "global_gold_rush": {
+      "affected_resources": [
+        "gold_ore"
+      ],
+      "production_modifier": 3.0
+    },
+    "planned_harvest_resources": [
+      "wheat",
+      "cotton",
+      "herbs"
+    ]
   }
 }

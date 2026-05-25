@@ -1204,7 +1204,7 @@ async function mountTransport(itemId) {
     const item = ItemRegistry.get(itemId);
     if (!item) return "Item not found";
 
-    const transportTypes = ['horse', 'warhorse', 'cart', 'wagon', 'ship_deed'];
+    const transportTypes = TransportSystem.registry ? Object.keys(TransportSystem.registry) : ['horse', 'warhorse', 'cart', 'wagon', 'ship_deed'];
     const isTransportByPrototype = transportTypes.includes(item.prototype_id);
     const isTransportByProperty = item.custom_props?.isTransport === true;
 
@@ -4161,10 +4161,7 @@ function buildFullPlayerSnapshot() {
             worldContextString += `[SYS_VEC | LOC:${r.id} | SEA:${r.current_season} | WTH:${r.weather || "clear"} | FAC:${ownerId} | THR:${r.threat_level} | STAB:${r.stability} | OCC:${r.isOccupied}]\n`;
             
             const marketFallbackPrices = getGameplayRuntimeConfig().economy.market_fallback_prices || {};
-            const _econFmCfg = getGameplayRuntimeConfig().faction_manpower || {};
-                const _foodVecId   = (_econFmCfg.food_good_ids   || ['bread'])[0];
-                const _weapVecId   = (_econFmCfg.weapon_good_ids || ['weapons'])[0];
-                let prices = `food:${Math.round(r.markets[_foodVecId] ?? requireRuntimeNumber(marketFallbackPrices[_foodVecId] ?? marketFallbackPrices.bread, 'gameplay_runtime.economy.market_fallback_prices.food'))},wood:${Math.round(r.markets.wood ?? requireRuntimeNumber(marketFallbackPrices.wood, 'gameplay_runtime.economy.market_fallback_prices.wood'))},ore:${Math.round(r.markets.iron_ore ?? requireRuntimeNumber(marketFallbackPrices.iron_ore, 'gameplay_runtime.economy.market_fallback_prices.iron_ore'))},weap:${Math.round(r.markets[_weapVecId] ?? requireRuntimeNumber(marketFallbackPrices[_weapVecId] ?? marketFallbackPrices.weapons, 'gameplay_runtime.economy.market_fallback_prices.weapons'))}`;
+            let prices = `food:${Math.round(r.markets.bread ?? requireRuntimeNumber(marketFallbackPrices.bread, 'gameplay_runtime.economy.market_fallback_prices.bread'))},wood:${Math.round(r.markets.wood ?? requireRuntimeNumber(marketFallbackPrices.wood, 'gameplay_runtime.economy.market_fallback_prices.wood'))},ore:${Math.round(r.markets.iron_ore ?? requireRuntimeNumber(marketFallbackPrices.iron_ore, 'gameplay_runtime.economy.market_fallback_prices.iron_ore'))},weap:${Math.round(r.markets.weapons ?? requireRuntimeNumber(marketFallbackPrices.weapons, 'gameplay_runtime.economy.market_fallback_prices.weapons'))}`;
             worldContextString += `[ECON_VEC | LOC:${r.id} | PRICES:${prices}]\n`;
             
             if (r.cityLayout && r.cityLayout.length > 0) {
@@ -10052,14 +10049,13 @@ function updateTradeJournalDisplay() {
 
 
 function getResourceIcon(res) {
-    const icons = {
-        "wheat": "рџЊѕ", "meat": "рџҐ©", "fish": "рџђџ", "wood": "рџЊІ",
-        "iron_ore": "в›ЏпёЏ", "gold_ore": "рџ’Ћ", "cotton": "вЃпёЏ", "herbs": "рџЊї",
-        "salt": "рџ§‚", "stone": "рџЄЁ"
-    };
-    return icons[res] || "рџ“¦";
+    // Data-driven: icons from world_assets.json resource_icons
+    const rtAssets = (typeof getLoadedRuntimeManifest === 'function') ? (getLoadedRuntimeManifest()?.world_assets || {}) : {};
+    const rtIcons = rtAssets.resource_icons || {};
+    const fallback = {"wheat":"🌾","meat":"🥩","fish":"🐟","wood":"🌲","iron_ore":"⛏️","gold_ore":"💎","cotton":"⁃️","herbs":"🌿","salt":"🧂","stone":"🪨"};
+    const icons = Object.keys(rtIcons).length > 0 ? rtIcons : fallback;
+    return icons[res] || rtAssets.resource_icon_default || "📦";
 }
-
 
 function updateMapDisplay() {
     if (window.Cartographer) {
@@ -14752,13 +14748,10 @@ if (player.nexusData && player.nexusData[args.id]) {
                     const capitalRegionId = Object.keys(World.regions).find(rid => World.regions[rid].factionId === args.factionId);
                     if (capitalRegionId && World.regions[capitalRegionId]?.vault_id) {
                         const capitalVault = World.regions[capitalRegionId].vault_id;
-                        const _fmCfg = getGameplayRuntimeConfig().faction_manpower || {};
-                        const _weaponId = (_fmCfg.weapon_good_ids || ['weapons'])[0];
-                        const _foodId   = (_fmCfg.food_good_ids   || ['bread'])[0];
-                        const weaponsLost = Math.floor(countRealItems(capitalVault, _weaponId) * 0.3);
-                        const foodLost = Math.floor(countRealItems(capitalVault, _foodId) * 0.5);
-                        consumeRealItems(capitalVault, _weaponId, weaponsLost);
-                        consumeRealItems(capitalVault, _foodId, foodLost);
+                        const weaponsLost = Math.floor(countRealItems(capitalVault, 'weapons') * 0.3);
+                        const foodLost = Math.floor(countRealItems(capitalVault, 'bread') * 0.5);
+                        consumeRealItems(capitalVault, 'weapons', weaponsLost);
+                        consumeRealItems(capitalVault, 'bread', foodLost);
                         generateWorldNews(`РњРЇРўР•Р–! Р’ Р·РµРјР»СЏС… ${World.factions[args.factionId].name} РІСЃРїС‹С…РЅСѓР»Рѕ РІРѕСЃСЃС‚Р°РЅРёРµ! РЈРЅРёС‡С‚РѕР¶РµРЅРѕ Р·Р°РїР°СЃРѕРІ: ${weaponsLost} РѕСЂСѓР¶РёСЏ, ${foodLost} РµРґС‹.`, "global", 5, 'war');
                     } else {
                         generateWorldNews(`РњРЇРўР•Р–! Р’ Р·РµРјР»СЏС… ${World.factions[args.factionId].name} РІСЃРїС‹С…РЅСѓР»Рѕ РІРѕСЃСЃС‚Р°РЅРёРµ!`, "global", 5, 'war');
@@ -14880,13 +14873,10 @@ if (player.nexusData && player.nexusData[args.id]) {
                     const capitalRegionId = Object.keys(World.regions).find(rid => World.regions[rid].factionId === args.factionId);
                     if (capitalRegionId) {
                         const capitalVault = World.regions[capitalRegionId].vault_id;
-                        const _fmCfg = getGameplayRuntimeConfig().faction_manpower || {};
-                        const _weaponId = (_fmCfg.weapon_good_ids || ['weapons'])[0];
-                        const _foodId   = (_fmCfg.food_good_ids   || ['bread'])[0];
-                        const weaponsLost = Math.floor(countRealItems(capitalVault, _weaponId) * 0.3);
-                        const foodLost = Math.floor(countRealItems(capitalVault, _foodId) * 0.5);
-                        consumeRealItems(capitalVault, _weaponId, weaponsLost);
-                        consumeRealItems(capitalVault, _foodId, foodLost);
+                        const weaponsLost = Math.floor(countRealItems(capitalVault, 'weapons') * 0.3);
+                        const foodLost = Math.floor(countRealItems(capitalVault, 'bread') * 0.5);
+                        consumeRealItems(capitalVault, 'weapons', weaponsLost);
+                        consumeRealItems(capitalVault, 'bread', foodLost);
                     }
                     generateWorldNews(`РњРЇРўР•Р–! Р’ Р·РµРјР»СЏС… ${World.factions[args.factionId].name} РІСЃРїС‹С…РЅСѓР»Рѕ РІРѕСЃСЃС‚Р°РЅРёРµ!`, "global", 5, 'war');
                     feedback = `[РњСЏС‚РµР¶] РРЅРёС†РёРёСЂРѕРІР°РЅ Р±СѓРЅС‚ РІРѕ С„СЂР°РєС†РёРё '${args.factionId}'. Р РµСЃСѓСЂСЃС‹ СЃС‚РѕР»РёС†С‹ СЂР°Р·РіСЂР°Р±Р»РµРЅС‹!`;
@@ -17155,14 +17145,10 @@ function checkRulerDeaths() {
                 const capitalRegionId = Object.keys(World.regions).find(rid => World.regions[rid].owner === r.factionId);
                 if (capitalRegionId) {
                     const capitalVault = World.regions[capitalRegionId].vault_id;
-                    const _fmCfg2 = getGameplayRuntimeConfig().faction_manpower || {};
-                    const _curCfg = getGameplayRuntimeConfig().currency || {};
-                    const _weaponId2 = (_fmCfg2.weapon_good_ids || ['weapons'])[0];
-                    const _goldId = (_curCfg.ai_identifiers || ['gold'])[0];
-                    const weaponsLost = Math.floor(countRealItems(capitalVault, _weaponId2) * 0.4);
-                    const goldLost = Math.floor(countRealItems(capitalVault, _goldId) * 0.3);
-                    consumeRealItems(capitalVault, _weaponId2, weaponsLost);
-                    consumeRealItems(capitalVault, _goldId, goldLost);
+                    const weaponsLost = Math.floor(countRealItems(capitalVault, 'weapons') * 0.4);
+                    const goldLost = Math.floor(countRealItems(capitalVault, 'gold') * 0.3);
+                    consumeRealItems(capitalVault, 'weapons', weaponsLost);
+                    consumeRealItems(capitalVault, 'gold', goldLost);
                 }
             }
         } else if (r.alive) {

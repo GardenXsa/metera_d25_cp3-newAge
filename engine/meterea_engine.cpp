@@ -68,11 +68,20 @@ FacilityRegistry g_facilityRegistry;
 
 struct ItemDef { std::string id; int basePrice; std::string category; int shelfLife; JsonValue properties = JsonValue::object(); };
 struct RecipeDef { std::string facility; std::unordered_map<std::string, int> inputs; std::unordered_map<std::string, int> outputs; };
+struct PlacementResourceEntry {
+    int min_slots = 1;
+    int max_slots = 1;
+    int chance = 0; // 0 = always, >0 = percent chance
+    std::vector<std::string> resources;
+};
+
 struct Database {
     std::vector<std::string> all_item_ids;
     std::unordered_map<std::string, ItemDef> items;
     std::vector<RecipeDef> recipes;
     std::unordered_map<std::string, std::string> facility_names;
+    // Data-driven placement resources (facility_names.json placement_resources)
+    std::unordered_map<std::string, std::unordered_map<std::string, PlacementResourceEntry>> placement_resources;
 
     // Data-driven canonical ids by semantic tag, loaded from data/tag_defaults.json
     std::unordered_map<std::string, std::string> tag_defaults;
@@ -82,7 +91,6 @@ struct Database {
     std::vector<BiomeDef> biomes;
     std::unordered_map<std::string, uint8_t> biome_string_to_id;
     std::unordered_map<uint8_t, size_t> biome_numeric_to_index;
-    std::vector<std::string> biome_legacy_numeric_ids; // Data-driven: legacy save migration list
     CityGenDef city_gen_rules;
     std::unordered_map<std::string, MonsterDef> monsters;
     std::unordered_map<std::string, DisasterDef> disasters;
@@ -243,6 +251,12 @@ struct GameplayRuntimeConfig {
     std::string ruins_stash_container_type = "ruins_stash";
     std::string default_era_id;
     std::unordered_map<std::string, double> currency_physical_weights;
+    // Data-driven world events (gameplay_runtime.world_events)
+    std::vector<std::string> world_event_harvest_blessing = {"wheat"};
+    double world_event_harvest_blessing_mod = 2.0;
+    std::vector<std::string> world_event_gold_rush = {"gold_ore"};
+    double world_event_gold_rush_mod = 3.0;
+    std::vector<std::string> planned_harvest_resources = {"wheat", "cotton", "herbs"};
 };
 
 GameplayRuntimeConfig g_gameplay_runtime;
@@ -357,6 +371,31 @@ void loadGameplayRuntimeConfig(const JsonValue& gameplayRuntime) {
         }
     }
 
+    // Parse world_events from gameplay_runtime
+    if (gameplayRuntime.has("world_events") && gameplayRuntime["world_events"].type == JsonValue::OBJECT) {
+        const JsonValue& we = gameplayRuntime["world_events"];
+        if (we.has("global_harvest_blessing") && we["global_harvest_blessing"].type == JsonValue::OBJECT) {
+            const JsonValue& hb = we["global_harvest_blessing"];
+            g_gameplay_runtime.world_event_harvest_blessing.clear();
+            if (hb.has("affected_resources") && hb["affected_resources"].type == JsonValue::ARRAY)
+                for (size_t i=0; i<hb["affected_resources"].size(); i++)
+                    g_gameplay_runtime.world_event_harvest_blessing.push_back(hb["affected_resources"][i].asString());
+            if (hb.has("production_modifier")) g_gameplay_runtime.world_event_harvest_blessing_mod = hb["production_modifier"].asDouble();
+        }
+        if (we.has("global_gold_rush") && we["global_gold_rush"].type == JsonValue::OBJECT) {
+            const JsonValue& gr = we["global_gold_rush"];
+            g_gameplay_runtime.world_event_gold_rush.clear();
+            if (gr.has("affected_resources") && gr["affected_resources"].type == JsonValue::ARRAY)
+                for (size_t i=0; i<gr["affected_resources"].size(); i++)
+                    g_gameplay_runtime.world_event_gold_rush.push_back(gr["affected_resources"][i].asString());
+            if (gr.has("production_modifier")) g_gameplay_runtime.world_event_gold_rush_mod = gr["production_modifier"].asDouble();
+        }
+        if (we.has("planned_harvest_resources") && we["planned_harvest_resources"].type == JsonValue::ARRAY) {
+            g_gameplay_runtime.planned_harvest_resources.clear();
+            for (size_t i=0; i<we["planned_harvest_resources"].size(); i++)
+                g_gameplay_runtime.planned_harvest_resources.push_back(we["planned_harvest_resources"][i].asString());
+        }
+    }
     if (gameplayRuntime.has("engine_economy") && gameplayRuntime["engine_economy"].type == JsonValue::OBJECT) {
         JsonValue engineEconomy = gameplayRuntime["engine_economy"];
         if (engineEconomy.has("npc_reserve_gold")) {
@@ -3519,19 +3558,10 @@ struct WorldMap {
         if (j.has("generation_tick")) m.generation_tick = j["generation_tick"].asInt();
         int version = j.has("version") ? j["version"].asInt() : 1;
         
-        // Data-driven: legacy numeric biome ID list loaded from biomes.json "legacy_numeric_ids"
-        // Fallback inline list kept for saves created before data/biomes.json had this field
-        const std::vector<std::string>* legacy_map_ptr = nullptr;
-        std::vector<std::string> legacy_map_fallback = {
-            "ocean", "shallow_water", "plains", "forest", "mountains", "hills", "desert", "swamp",
+        std::vector<std::string> legacy_map = {
+            "ocean", "shallow_water", "plains", "forest", "mountains", "hills", "desert", "swamp", 
             "tundra", "ruins", "anomaly", "river", "volcano", "riverbank", "lake", "floodplain", "lava", "ash"
         };
-        if (!g_db.biome_legacy_numeric_ids.empty()) {
-            legacy_map_ptr = &g_db.biome_legacy_numeric_ids;
-        } else {
-            legacy_map_ptr = &legacy_map_fallback;
-        }
-        const std::vector<std::string>& legacy_map = *legacy_map_ptr;
 
         if (j.has("grid")) {
             for (size_t i = 0; i < j["grid"].size(); i++) {
@@ -5990,14 +6020,20 @@ void processDailyEconomy() {
                         for (const auto& [res, rate] : facTpl->extraction_rates) {
                             if (region.available_raw_resources.count(res)) {
                                 double modRes = getProdMod(res);
-                                if (res == "wheat" && g_world.nexusData.count("global_harvest_blessing") && g_world.nexusData["global_harvest_blessing"].asInt() > g_world.current_day) modRes *= 1.15;
-                                if (res == "gold_ore" && g_world.nexusData.count("global_gold_rush") && g_world.nexusData["global_gold_rush"].asInt() > g_world.current_day) modRes *= 2.0;
-                                
+                                                                // Data-driven: event modifiers from gameplay_runtime.world_events
+                                if (g_world.nexusData.count("global_harvest_blessing") && g_world.nexusData["global_harvest_blessing"].asBool()) {
+                                    const auto& we = g_gameplay_runtime.world_event_harvest_blessing;
+                                    if (std::find(we.begin(), we.end(), res) != we.end()) modRes *= g_gameplay_runtime.world_event_harvest_blessing_mod;
+                                }
+                                if (g_world.nexusData.count("global_gold_rush") && g_world.nexusData["global_gold_rush"].asBool()) {
+                                    const auto& we = g_gameplay_runtime.world_event_gold_rush;
+                                    if (std::find(we.begin(), we.end(), res) != we.end()) modRes *= g_gameplay_runtime.world_event_gold_rush_mod;
+                                }
+
                                 int amount = workersPerSector * fac.level * rate * wMod * multTypeVal * eff * modRes;
-                                
+
                                 if (amount > 0) {
-                                    if (res == "wheat" || res == "cotton" || res == "herbs") {
-                                        region.planned_harvests.push_back({14, res, amount});
+                                    if (std::find(g_gameplay_runtime.planned_harvest_resources.begin(), g_gameplay_runtime.planned_harvest_resources.end(), res) != g_gameplay_runtime.planned_harvest_resources.end()) {                                       region.planned_harvests.push_back({14, res, amount});
                                     } else {
                                         createItem(res, amount, region.vault_id, g_world.current_day, getFacilityName(fId));
                                         vaultStocks[res] += amount;
@@ -13351,25 +13387,39 @@ std::set<std::string> inferRegionRawResourcesLegacy(const Region& region) {
 
     // Legacy migration path: placement profiles remain implicit until world data
     // provides explicit resource descriptors per location/biome.
-    if (region.placement_type == "mountain") {
-        addFacilityOutputsToResourceSet(resources, "mines", 2, 3, {"iron_ore", "gold_ore", "stone"});
-        addFacilityOutputsToResourceSet(resources, "observatories", 1, 1, {"ether_dust"});
-        if ((thread_safe_rand() % 100) < 20) addFacilityOutputsToResourceSet(resources, "hunting_lodges", 1, 1, {"monster_parts"});
-    } else if (region.placement_type == "forest") {
-        addFacilityOutputsToResourceSet(resources, "lumbermills", 1, 1, {"wood"});
-        addFacilityOutputsToResourceSet(resources, "apiaries", 1, 2, {"honey", "wax"});
-        addFacilityOutputsToResourceSet(resources, "hunting_lodges", 1, 2, {"fur", "meat", "monster_parts"});
-        if ((thread_safe_rand() % 100) < 50) addFacilityOutputsToResourceSet(resources, "farms", 1, 1, {"herbs"});
-    } else if (region.placement_type == "desert") {
-        addFacilityOutputsToResourceSet(resources, "mines", 1, 2, {"iron_ore"});
-        addFacilityOutputsToResourceSet(resources, "observatories", 1, 1, {"ether_dust"});
-        if ((thread_safe_rand() % 100) < 20) addFacilityOutputsToResourceSet(resources, "hunting_lodges", 1, 1, {"monster_parts"});
-    } else if (region.placement_type == "coast" || region.placement_type == "water") {
-        addFacilityOutputsToResourceSet(resources, "fisheries", 1, 1, {"fish"});
-        addFacilityOutputsToResourceSet(resources, "hunting_lodges", 1, 1, {"fur", "monster_parts"});
+    // Data-driven: placement_resources loaded from facility_names.json
+    const std::string ptype = region.placement_type.empty() ? "plains" : region.placement_type;
+    const std::string lookup = (ptype == "water") ? "coast" : ptype;
+    auto prIt = g_db.placement_resources.find(lookup);
+    if (prIt == g_db.placement_resources.end()) prIt = g_db.placement_resources.find("plains");
+
+    if (prIt != g_db.placement_resources.end()) {
+        for (const auto& [facId, entry] : prIt->second) {
+            if (entry.chance > 0 && (thread_safe_rand() % 100) >= entry.chance) continue;
+            addFacilityOutputsToResourceSet(resources, facId, entry.min_slots, entry.max_slots, entry.resources);
+        }
     } else {
-        addFacilityOutputsToResourceSet(resources, "farms", 1, 3, {"wheat", "cotton"});
-        addFacilityOutputsToResourceSet(resources, "apiaries", 1, 2, {"honey", "wax"});
+        // Inline fallback — if placement_resources not loaded from data
+        if (ptype == "mountain") {
+            addFacilityOutputsToResourceSet(resources, "mines", 2, 3, {"iron_ore", "gold_ore", "stone"});
+            addFacilityOutputsToResourceSet(resources, "observatories", 1, 1, {"ether_dust"});
+            if ((thread_safe_rand() % 100) < 20) addFacilityOutputsToResourceSet(resources, "hunting_lodges", 1, 1, {"monster_parts"});
+        } else if (ptype == "forest") {
+            addFacilityOutputsToResourceSet(resources, "lumbermills", 1, 1, {"wood"});
+            addFacilityOutputsToResourceSet(resources, "apiaries", 1, 2, {"honey", "wax"});
+            addFacilityOutputsToResourceSet(resources, "hunting_lodges", 1, 2, {"fur", "meat", "monster_parts"});
+            if ((thread_safe_rand() % 100) < 50) addFacilityOutputsToResourceSet(resources, "farms", 1, 1, {"herbs"});
+        } else if (ptype == "desert") {
+            addFacilityOutputsToResourceSet(resources, "mines", 1, 2, {"iron_ore"});
+            addFacilityOutputsToResourceSet(resources, "observatories", 1, 1, {"ether_dust"});
+            if ((thread_safe_rand() % 100) < 20) addFacilityOutputsToResourceSet(resources, "hunting_lodges", 1, 1, {"monster_parts"});
+        } else if (ptype == "coast") {
+            addFacilityOutputsToResourceSet(resources, "fisheries", 1, 1, {"fish"});
+            addFacilityOutputsToResourceSet(resources, "hunting_lodges", 1, 1, {"fur", "monster_parts"});
+        } else {
+            addFacilityOutputsToResourceSet(resources, "farms", 1, 3, {"wheat", "cotton"});
+            addFacilityOutputsToResourceSet(resources, "apiaries", 1, 2, {"honey", "wax"});
+        }
     }
 
     return resources;
@@ -13516,15 +13566,8 @@ std::string chooseMonopolyProductionFocus(const std::string& facilityId, const R
 void addBootstrapStarterResources(Region& region) {
     if (region.vault_id.empty()) return;
 
-    // Data-driven: priority hint lists loaded from tag_defaults (reserve_priority_hints / army_supply_priority_hints)
-    const std::vector<std::string>& staplePriority = g_db.tag_default_lists.count("reserve_priority_hints")
-        ? g_db.tag_default_lists.at("reserve_priority_hints")
-        : std::vector<std::string>{"bread", "smoked_meat", "meat"};
-    const std::vector<std::string>& preservedPriority = g_db.tag_default_lists.count("army_supply_priority_hints")
-        ? g_db.tag_default_lists.at("army_supply_priority_hints")
-        : std::vector<std::string>{"smoked_meat", "bread", "fish"};
-    const std::string stapleFoodId = getPreferredGlobalItemByTag("food", staplePriority, {"processed_food", "bakery_product", "raw_food"}, "reserve_priority");
-    const std::string preservedFoodId = getPreferredGlobalItemByTag("food", preservedPriority, {"preserved_food", "processed_food", "raw_food"}, "army_supply_priority");
+    const std::string stapleFoodId = getPreferredGlobalItemByTag("food", {"bread", "smoked_meat", "meat"}, {"processed_food", "bakery_product", "raw_food"}, "reserve_priority");
+    const std::string preservedFoodId = getPreferredGlobalItemByTag("food", {"smoked_meat", "bread", "fish"}, {"preserved_food", "processed_food", "raw_food"}, "army_supply_priority");
     const std::string constructionId = getPreferredRegionalItemByTag(region.available_raw_resources, "raw_material", {"wood", "stone"}, {"construction_material", "raw_material"});
     const std::string oreId = getPreferredRegionalOreId(region.available_raw_resources);
     const std::string currencyId = getCoreIdByTag("currency");
@@ -13698,8 +13741,13 @@ std::string getLegacyCraftFacilityForProfession(const NPC& npc) {
         return profIt->second.preferred_facility;
     }
 
-    // All professions now define preferred_facility in professions.json.
-    // Legacy shim removed — fallback to empty string.
+    // Legacy fallback map (migration shim — remove once professions.json has preferred_facility)
+    static const std::unordered_map<std::string, std::string> legacy_map = {
+        {"blacksmith", "forges"}, {"weaver", "weavers"}, {"baker", "bakeries"},
+        {"jeweler", "jewelers"}, {"alchemist", "alchemists"}, {"tailor", "tailors"}
+    };
+    auto it = legacy_map.find(profLower);
+    if (it != legacy_map.end()) return it->second;
     return "";
 }
 
@@ -14615,6 +14663,25 @@ int main() {
                 g_facilityRegistry.addTemplate(tpl);
             }
 
+            // Data-driven: parse placement_resources from facility_names.json
+            g_db.placement_resources.clear();
+            if (facilities.has("placement_resources") && facilities["placement_resources"].type == JsonValue::OBJECT) {
+                for (const auto& [placType, facMap] : facilities["placement_resources"].obj_val) {
+                    if (facMap.type != JsonValue::OBJECT) continue;
+                    for (const auto& [facId, entryVal] : facMap.obj_val) {
+                        if (entryVal.type != JsonValue::OBJECT) continue;
+                        PlacementResourceEntry entry;
+                        if (entryVal.has("min")) entry.min_slots = entryVal["min"].asInt();
+                        if (entryVal.has("max")) entry.max_slots = entryVal["max"].asInt();
+                        if (entryVal.has("chance")) entry.chance = entryVal["chance"].asInt();
+                        if (entryVal.has("resources") && entryVal["resources"].type == JsonValue::ARRAY)
+                            for (size_t ri = 0; ri < entryVal["resources"].size(); ri++)
+                                entry.resources.push_back(entryVal["resources"][ri].asString());
+                        g_db.placement_resources[placType][facId] = entry;
+                    }
+                }
+            }
+
             // Parse Biomes
             g_db.biomes.clear();
             g_db.biome_string_to_id.clear();
@@ -14648,7 +14715,6 @@ int main() {
                     g_db.biome_string_to_id[b.string_id] = b.numeric_id;
                     g_db.biome_numeric_to_index[b.numeric_id] = g_db.biomes.size() - 1;
                 }
-
             }
 
             // Parse CityGen
@@ -14887,12 +14953,6 @@ int main() {
                     if (cc.has("land_bridge_max_gap")) g_db.world_config.continent.land_bridge_max_gap = cc["land_bridge_max_gap"].asInt();
                     if (cc.has("remove_islands_under")) g_db.world_config.continent.remove_islands_under = cc["remove_islands_under"].asInt();
                     if (cc.has("smoothing_passes")) g_db.world_config.continent.smoothing_passes = cc["smoothing_passes"].asInt();
-                }
-                // Data-driven: legacy biome numeric ID list for save migration
-                if (wc.has("biomes_legacy_numeric_ids") && wc["biomes_legacy_numeric_ids"].type == JsonValue::ARRAY) {
-                    g_db.biome_legacy_numeric_ids.clear();
-                    const JsonValue& bArr = wc["biomes_legacy_numeric_ids"];
-                    for (size_t i = 0; i < bArr.size(); i++) g_db.biome_legacy_numeric_ids.push_back(bArr[i].asString());
                 }
                 if (wc.has("rivers") && wc["rivers"].type == JsonValue::OBJECT) {
                     JsonValue rc = wc["rivers"];
