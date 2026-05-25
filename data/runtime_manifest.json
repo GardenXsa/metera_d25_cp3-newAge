@@ -21,11 +21,17 @@
     "total_conversion": {
       "skip_base_database_files_by_default": true,
       "allowed_base_passthrough_keys": [
-        "prompt_pack",
-        "classes",
+        "building_types",
         "narrators",
+        "prompt_pack",
         "tag_defaults",
-        "eras"
+        "map_markers",
+        "tile_dictionary",
+        "citygen_default_rules",
+        "eras",
+        "news_categories",
+        "world_assets",
+        "classes"
       ],
       "required_database_keys": [
         "items",
@@ -138,17 +144,20 @@
     "equipment_slots": {
       "path": "./data/equipment_slots.json",
       "default_type": "array",
-      "merge_policy": "appendUnique"
+      "merge_policy": "appendUnique",
+      "load_in_total_conversion": true
     },
     "container_types": {
       "path": "./data/container_types.json",
       "default_type": "object",
-      "merge_policy": "deepMerge"
+      "merge_policy": "deepMerge",
+      "load_in_total_conversion": true
     },
     "ship_types": {
       "path": "./data/ship_types.json",
       "default_type": "object",
-      "merge_policy": "deepMerge"
+      "merge_policy": "deepMerge",
+      "load_in_total_conversion": true
     },
     "diplomacy": {
       "path": "./data/diplomacy.json",
@@ -168,19 +177,22 @@
     "tag_defaults": {
       "path": "./data/tag_defaults.json",
       "default_type": "object",
-      "merge_policy": "deepMerge"
+      "merge_policy": "deepMerge",
+      "load_in_total_conversion": true
     },
     "transport_registry": {
       "path": "./data/transport_registry.json",
       "default_type": "object",
       "merge_policy": "deepMerge",
-      "replace_on_total_conversion": true
+      "replace_on_total_conversion": true,
+      "load_in_total_conversion": true
     },
     "trek_config": {
       "path": "./data/trek_config.json",
       "default_type": "object",
       "merge_policy": "deepMerge",
-      "replace_on_total_conversion": true
+      "replace_on_total_conversion": true,
+      "load_in_total_conversion": true
     },
     "narrators": {
       "path": "./data/narrators.json",
@@ -209,52 +221,62 @@
     "predefined_effects": {
       "path": "./assets/res/predefined_effects.json",
       "default_type": "object",
-      "merge_policy": "upsertById"
+      "merge_policy": "upsertById",
+      "load_in_total_conversion": true
     },
     "ui_runtime": {
       "path": "./data/ui_runtime.json",
       "default_type": "object",
-      "merge_policy": "deepMerge"
+      "merge_policy": "deepMerge",
+      "load_in_total_conversion": true
     },
     "prompt_runtime": {
       "path": "./data/prompt_runtime.json",
       "default_type": "object",
-      "merge_policy": "deepMerge"
+      "merge_policy": "deepMerge",
+      "load_in_total_conversion": true
     },
     "gameplay_runtime": {
       "path": "./data/gameplay_runtime.json",
       "default_type": "object",
-      "merge_policy": "deepMerge"
+      "merge_policy": "deepMerge",
+      "load_in_total_conversion": true
     },
     "building_types": {
       "path": "./data/building_types.json",
       "default_type": "object",
-      "merge_policy": "deepMerge"
+      "merge_policy": "deepMerge",
+      "load_in_total_conversion": true
     },
     "citygen_default_rules": {
       "path": "./data/citygen_default_rules.json",
       "default_type": "object",
-      "merge_policy": "deepMerge"
+      "merge_policy": "deepMerge",
+      "load_in_total_conversion": true
     },
     "map_markers": {
       "path": "./data/map_markers.json",
       "default_type": "object",
-      "merge_policy": "deepMerge"
+      "merge_policy": "deepMerge",
+      "load_in_total_conversion": true
     },
     "news_categories": {
       "path": "./data/news_categories.json",
       "default_type": "array",
-      "merge_policy": "append"
+      "merge_policy": "append",
+      "load_in_total_conversion": true
     },
     "system_containers": {
       "path": "./data/system_containers.json",
       "default_type": "object",
-      "merge_policy": "deepMerge"
+      "merge_policy": "deepMerge",
+      "load_in_total_conversion": true
     },
     "item_descriptions": {
       "path": "./data/item_descriptions.json",
       "default_type": "object",
-      "merge_policy": "deepMerge"
+      "merge_policy": "deepMerge",
+      "load_in_total_conversion": true
     }
   },
   "era_location_fallback_file": "locations_rebirth.json"
