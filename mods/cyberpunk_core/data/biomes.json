@@ -1,21 +1,404 @@
 [
-  { "id": "toxic_ocean", "name": "Токсичный океан", "numeric_id": 0, "color_hex": "#0a1c1c", "movement_cost": 9999, "is_water": true, "is_impassable": false, "tags": ["water", "ocean"], "gen_rules": { "min_elev": -1.0, "max_elev": -0.25, "min_temp": 0.0, "max_temp": 1.0, "min_moist": 0.0, "max_moist": 1.0 } },
-  { "id": "polluted_water", "name": "Загрязненные воды", "numeric_id": 1, "color_hex": "#1a3c3c", "movement_cost": 9999, "is_water": true, "is_impassable": false, "tags": ["water", "shallow_water"], "gen_rules": { "min_elev": -0.25, "max_elev": -0.05, "min_temp": 0.0, "max_temp": 1.0, "min_moist": 0.0, "max_moist": 1.0 } },
-  { "id": "glass_beach", "name": "Стеклянный берег", "numeric_id": 2, "color_hex": "#3a3c3c", "movement_cost": 1, "is_water": false, "is_impassable": false, "tags": ["land", "beach"], "gen_rules": { "min_elev": -0.05, "max_elev": 0.05, "min_temp": 0.2, "max_temp": 1.0, "min_moist": 0.0, "max_moist": 1.0 } },
-  { "id": "wasteland", "name": "Пустоши", "numeric_id": 3, "color_hex": "#4a4a4a", "movement_cost": 1, "is_water": false, "is_impassable": false, "tags": ["land", "plains"], "gen_rules": { "min_elev": 0.05, "max_elev": 0.45, "min_temp": 0.35, "max_temp": 0.65, "min_moist": 0.0, "max_moist": 0.55 } },
-  { "id": "scrap_forest", "name": "Свалка электроники", "numeric_id": 4, "color_hex": "#2a2a2a", "movement_cost": 2, "is_water": false, "is_impassable": false, "tags": ["land", "forest"], "gen_rules": { "min_elev": 0.0, "max_elev": 0.5, "min_temp": 0.3, "max_temp": 0.7, "min_moist": 0.55, "max_moist": 1.0 } },
-  { "id": "mega_structures", "name": "Мегабашни", "numeric_id": 5, "color_hex": "#111111", "movement_cost": 9999, "is_water": false, "is_impassable": true, "tags": ["land", "mountain", "impassable"], "gen_rules": { "min_elev": 0.7, "max_elev": 1.0, "min_temp": 0.0, "max_temp": 1.0, "min_moist": 0.0, "max_moist": 1.0 } },
-  { "id": "slums", "name": "Трущобы", "numeric_id": 6, "color_hex": "#333333", "movement_cost": 2, "is_water": false, "is_impassable": false, "tags": ["land", "hills"], "gen_rules": { "min_elev": 0.45, "max_elev": 0.7, "min_temp": 0.2, "max_temp": 0.8, "min_moist": 0.0, "max_moist": 1.0 } },
-  { "id": "irradiated_zone", "name": "Радиоактивная зона", "numeric_id": 7, "color_hex": "#556622", "movement_cost": 2, "is_water": false, "is_impassable": false, "tags": ["land", "desert"], "gen_rules": { "min_elev": 0.0, "max_elev": 0.5, "min_temp": 0.65, "max_temp": 1.0, "min_moist": 0.0, "max_moist": 0.3 } },
-  { "id": "chemical_swamp", "name": "Химическое болото", "numeric_id": 8, "color_hex": "#224422", "movement_cost": 3, "is_water": false, "is_impassable": false, "tags": ["land", "swamp"], "gen_rules": { "min_elev": 0.0, "max_elev": 0.2, "min_temp": 0.4, "max_temp": 0.8, "min_moist": 0.8, "max_moist": 1.0 } },
-  { "id": "ash_wastes", "name": "Пепельные пустоши", "numeric_id": 9, "color_hex": "#555555", "movement_cost": 2, "is_water": false, "is_impassable": false, "tags": ["land", "tundra"], "gen_rules": { "min_elev": 0.0, "max_elev": 0.6, "min_temp": 0.0, "max_temp": 0.3, "min_moist": 0.0, "max_moist": 1.0 } },
-  { "id": "combat_zone", "name": "Боевая зона", "numeric_id": 10, "color_hex": "#662222", "movement_cost": 2, "is_water": false, "is_impassable": false, "tags": ["land", "ruins"], "gen_rules": { "min_elev": 2.0, "max_elev": 2.0, "min_temp": 0.0, "max_temp": 0.0, "min_moist": 0.0, "max_moist": 0.0 } },
-  { "id": "data_crash_zone", "name": "Прорыв Сети", "numeric_id": 11, "color_hex": "#222266", "movement_cost": 3, "is_water": false, "is_impassable": false, "tags": ["land", "anomaly"], "gen_rules": { "min_elev": 2.0, "max_elev": 2.0, "min_temp": 0.0, "max_temp": 0.0, "min_moist": 0.0, "max_moist": 0.0 } },
-  { "id": "acid_river", "name": "Кислотная река", "numeric_id": 12, "color_hex": "#115511", "movement_cost": 9999, "is_water": true, "is_impassable": false, "tags": ["water", "river"], "gen_rules": { "min_elev": 2.0, "max_elev": 2.0, "min_temp": 0.0, "max_temp": 0.0, "min_moist": 0.0, "max_moist": 0.0 } },
-  { "id": "reactor_meltdown", "name": "Взрыв реактора", "numeric_id": 13, "color_hex": "#ff2200", "movement_cost": 9999, "is_water": false, "is_impassable": true, "tags": ["land", "volcano", "impassable"], "gen_rules": { "min_elev": 2.0, "max_elev": 2.0, "min_temp": 0.0, "max_temp": 0.0, "min_moist": 0.0, "max_moist": 0.0 } },
-  { "id": "acid_bank", "name": "Кислотный берег", "numeric_id": 14, "color_hex": "#223311", "movement_cost": 1, "is_water": false, "is_impassable": false, "tags": ["land", "riverbank"], "gen_rules": { "min_elev": 2.0, "max_elev": 2.0, "min_temp": 0.0, "max_temp": 0.0, "min_moist": 0.0, "max_moist": 0.0 } },
-  { "id": "cooling_pond", "name": "Охладительный пруд", "numeric_id": 15, "color_hex": "#112233", "movement_cost": 9999, "is_water": true, "is_impassable": false, "tags": ["water", "lake"], "gen_rules": { "min_elev": 2.0, "max_elev": 2.0, "min_temp": 0.0, "max_temp": 0.0, "min_moist": 0.0, "max_moist": 0.0 } },
-  { "id": "toxic_spill", "name": "Токсичный разлив", "numeric_id": 16, "color_hex": "#335522", "movement_cost": 1, "is_water": false, "is_impassable": false, "tags": ["land", "floodplain"], "gen_rules": { "min_elev": 2.0, "max_elev": 2.0, "min_temp": 0.0, "max_temp": 0.0, "min_moist": 0.0, "max_moist": 0.0 } },
-  { "id": "plasma_leak", "name": "Утечка плазмы", "numeric_id": 17, "color_hex": "#ff00ff", "movement_cost": 9999, "is_water": false, "is_impassable": true, "tags": ["land", "lava", "impassable"], "gen_rules": { "min_elev": 2.0, "max_elev": 2.0, "min_temp": 0.0, "max_temp": 0.0, "min_moist": 0.0, "max_moist": 0.0 } },
-  { "id": "smog_zone", "name": "Зона смога", "numeric_id": 18, "color_hex": "#444444", "movement_cost": 2, "is_water": false, "is_impassable": false, "tags": ["land", "ash"], "gen_rules": { "min_elev": 2.0, "max_elev": 2.0, "min_temp": 0.0, "max_temp": 0.0, "min_moist": 0.0, "max_moist": 0.0 } }
+  {
+    "id": "toxic_ocean",
+    "name": "Токсичный океан",
+    "numeric_id": 0,
+    "color_hex": "#050f0f",
+    "movement_cost": 9999,
+    "is_water": true,
+    "is_impassable": false,
+    "tags": [
+      "water",
+      "ocean"
+    ],
+    "gen_rules": {
+      "min_elev": -1.0,
+      "max_elev": -0.25,
+      "min_temp": 0.0,
+      "max_temp": 1.0,
+      "min_moist": 0.0,
+      "max_moist": 1.0
+    }
+  },
+  {
+    "id": "polluted_water",
+    "name": "Загрязненные воды",
+    "numeric_id": 1,
+    "color_hex": "#0f2a2a",
+    "movement_cost": 9999,
+    "is_water": true,
+    "is_impassable": false,
+    "tags": [
+      "water",
+      "shallow_water"
+    ],
+    "gen_rules": {
+      "min_elev": -0.25,
+      "max_elev": -0.05,
+      "min_temp": 0.0,
+      "max_temp": 1.0,
+      "min_moist": 0.0,
+      "max_moist": 1.0
+    }
+  },
+  {
+    "id": "glass_beach",
+    "name": "Стеклянный берег",
+    "numeric_id": 2,
+    "color_hex": "#2a2e2e",
+    "movement_cost": 1,
+    "is_water": false,
+    "is_impassable": false,
+    "tags": [
+      "land",
+      "beach"
+    ],
+    "gen_rules": {
+      "min_elev": -0.05,
+      "max_elev": 0.05,
+      "min_temp": 0.2,
+      "max_temp": 1.0,
+      "min_moist": 0.0,
+      "max_moist": 1.0
+    }
+  },
+  {
+    "id": "wasteland",
+    "name": "Пустоши",
+    "numeric_id": 3,
+    "color_hex": "#3a3830",
+    "movement_cost": 1,
+    "is_water": false,
+    "is_impassable": false,
+    "tags": [
+      "land",
+      "plains"
+    ],
+    "gen_rules": {
+      "min_elev": 0.05,
+      "max_elev": 0.45,
+      "min_temp": 0.35,
+      "max_temp": 0.65,
+      "min_moist": 0.0,
+      "max_moist": 0.55
+    }
+  },
+  {
+    "id": "scrap_forest",
+    "name": "Свалка электроники",
+    "numeric_id": 4,
+    "color_hex": "#1a2a1a",
+    "movement_cost": 2,
+    "is_water": false,
+    "is_impassable": false,
+    "tags": [
+      "land",
+      "forest"
+    ],
+    "gen_rules": {
+      "min_elev": 0.0,
+      "max_elev": 0.5,
+      "min_temp": 0.3,
+      "max_temp": 0.7,
+      "min_moist": 0.55,
+      "max_moist": 1.0
+    }
+  },
+  {
+    "id": "mega_structures",
+    "name": "Мегабашни",
+    "numeric_id": 5,
+    "color_hex": "#0a0a0a",
+    "movement_cost": 9999,
+    "is_water": false,
+    "is_impassable": true,
+    "tags": [
+      "land",
+      "mountain",
+      "impassable"
+    ],
+    "gen_rules": {
+      "min_elev": 0.7,
+      "max_elev": 1.0,
+      "min_temp": 0.0,
+      "max_temp": 1.0,
+      "min_moist": 0.0,
+      "max_moist": 1.0
+    }
+  },
+  {
+    "id": "slums",
+    "name": "Трущобы",
+    "numeric_id": 6,
+    "color_hex": "#222222",
+    "movement_cost": 2,
+    "is_water": false,
+    "is_impassable": false,
+    "tags": [
+      "land",
+      "hills"
+    ],
+    "gen_rules": {
+      "min_elev": 0.45,
+      "max_elev": 0.7,
+      "min_temp": 0.2,
+      "max_temp": 0.8,
+      "min_moist": 0.0,
+      "max_moist": 1.0
+    }
+  },
+  {
+    "id": "irradiated_zone",
+    "name": "Радиоактивная зона",
+    "numeric_id": 7,
+    "color_hex": "#3a4a1a",
+    "movement_cost": 2,
+    "is_water": false,
+    "is_impassable": false,
+    "tags": [
+      "land",
+      "desert"
+    ],
+    "gen_rules": {
+      "min_elev": 0.0,
+      "max_elev": 0.5,
+      "min_temp": 0.65,
+      "max_temp": 1.0,
+      "min_moist": 0.0,
+      "max_moist": 0.3
+    }
+  },
+  {
+    "id": "chemical_swamp",
+    "name": "Химическое болото",
+    "numeric_id": 8,
+    "color_hex": "#0a2a1a",
+    "movement_cost": 3,
+    "is_water": false,
+    "is_impassable": false,
+    "tags": [
+      "land",
+      "swamp"
+    ],
+    "gen_rules": {
+      "min_elev": 0.0,
+      "max_elev": 0.2,
+      "min_temp": 0.4,
+      "max_temp": 0.8,
+      "min_moist": 0.8,
+      "max_moist": 1.0
+    }
+  },
+  {
+    "id": "ash_wastes",
+    "name": "Пепельные пустоши",
+    "numeric_id": 9,
+    "color_hex": "#2a2826",
+    "movement_cost": 2,
+    "is_water": false,
+    "is_impassable": false,
+    "tags": [
+      "land",
+      "tundra"
+    ],
+    "gen_rules": {
+      "min_elev": 0.0,
+      "max_elev": 0.6,
+      "min_temp": 0.0,
+      "max_temp": 0.3,
+      "min_moist": 0.0,
+      "max_moist": 1.0
+    }
+  },
+  {
+    "id": "combat_zone",
+    "name": "Боевая зона",
+    "numeric_id": 10,
+    "color_hex": "#3a1212",
+    "movement_cost": 2,
+    "is_water": false,
+    "is_impassable": false,
+    "tags": [
+      "land",
+      "ruins"
+    ],
+    "gen_rules": {
+      "min_elev": 2.0,
+      "max_elev": 2.0,
+      "min_temp": 0.0,
+      "max_temp": 0.0,
+      "min_moist": 0.0,
+      "max_moist": 0.0
+    }
+  },
+  {
+    "id": "data_crash_zone",
+    "name": "Прорыв Сети",
+    "numeric_id": 11,
+    "color_hex": "#1a1a44",
+    "movement_cost": 3,
+    "is_water": false,
+    "is_impassable": false,
+    "tags": [
+      "land",
+      "anomaly"
+    ],
+    "gen_rules": {
+      "min_elev": 2.0,
+      "max_elev": 2.0,
+      "min_temp": 0.0,
+      "max_temp": 0.0,
+      "min_moist": 0.0,
+      "max_moist": 0.0
+    }
+  },
+  {
+    "id": "acid_river",
+    "name": "Кислотная река",
+    "numeric_id": 12,
+    "color_hex": "#1a6644",
+    "movement_cost": 9999,
+    "is_water": true,
+    "is_impassable": false,
+    "tags": [
+      "water",
+      "river"
+    ],
+    "gen_rules": {
+      "min_elev": 2.0,
+      "max_elev": 2.0,
+      "min_temp": 0.0,
+      "max_temp": 0.0,
+      "min_moist": 0.0,
+      "max_moist": 0.0
+    }
+  },
+  {
+    "id": "reactor_meltdown",
+    "name": "Взрыв реактора",
+    "numeric_id": 13,
+    "color_hex": "#cc2200",
+    "movement_cost": 9999,
+    "is_water": false,
+    "is_impassable": true,
+    "tags": [
+      "land",
+      "volcano",
+      "impassable"
+    ],
+    "gen_rules": {
+      "min_elev": 2.0,
+      "max_elev": 2.0,
+      "min_temp": 0.0,
+      "max_temp": 0.0,
+      "min_moist": 0.0,
+      "max_moist": 0.0
+    }
+  },
+  {
+    "id": "acid_bank",
+    "name": "Кислотный берег",
+    "numeric_id": 14,
+    "color_hex": "#2a4a2a",
+    "movement_cost": 1,
+    "is_water": false,
+    "is_impassable": false,
+    "tags": [
+      "land",
+      "riverbank"
+    ],
+    "gen_rules": {
+      "min_elev": 2.0,
+      "max_elev": 2.0,
+      "min_temp": 0.0,
+      "max_temp": 0.0,
+      "min_moist": 0.0,
+      "max_moist": 0.0
+    }
+  },
+  {
+    "id": "cooling_pond",
+    "name": "Охладительный пруд",
+    "numeric_id": 15,
+    "color_hex": "#0a2233",
+    "movement_cost": 9999,
+    "is_water": true,
+    "is_impassable": false,
+    "tags": [
+      "water",
+      "lake"
+    ],
+    "gen_rules": {
+      "min_elev": 2.0,
+      "max_elev": 2.0,
+      "min_temp": 0.0,
+      "max_temp": 0.0,
+      "min_moist": 0.0,
+      "max_moist": 0.0
+    }
+  },
+  {
+    "id": "toxic_spill",
+    "name": "Токсичный разлив",
+    "numeric_id": 16,
+    "color_hex": "#1a3322",
+    "movement_cost": 1,
+    "is_water": false,
+    "is_impassable": false,
+    "tags": [
+      "land",
+      "floodplain"
+    ],
+    "gen_rules": {
+      "min_elev": 2.0,
+      "max_elev": 2.0,
+      "min_temp": 0.0,
+      "max_temp": 0.0,
+      "min_moist": 0.0,
+      "max_moist": 0.0
+    }
+  },
+  {
+    "id": "plasma_leak",
+    "name": "Утечка плазмы",
+    "numeric_id": 17,
+    "color_hex": "#cc00cc",
+    "movement_cost": 9999,
+    "is_water": false,
+    "is_impassable": true,
+    "tags": [
+      "land",
+      "lava",
+      "impassable"
+    ],
+    "gen_rules": {
+      "min_elev": 2.0,
+      "max_elev": 2.0,
+      "min_temp": 0.0,
+      "max_temp": 0.0,
+      "min_moist": 0.0,
+      "max_moist": 0.0
+    }
+  },
+  {
+    "id": "smog_zone",
+    "name": "Зона смога",
+    "numeric_id": 18,
+    "color_hex": "#1e1e1e",
+    "movement_cost": 2,
+    "is_water": false,
+    "is_impassable": false,
+    "tags": [
+      "land",
+      "ash"
+    ],
+    "gen_rules": {
+      "min_elev": 2.0,
+      "max_elev": 2.0,
+      "min_temp": 0.0,
+      "max_temp": 0.0,
+      "min_moist": 0.0,
+      "max_moist": 0.0
+    }
+  }
 ]

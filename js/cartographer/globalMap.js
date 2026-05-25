@@ -6,9 +6,9 @@ function _escapeHTML(str) {
 window.Cartographer = {
     mapContext: null,
     
-    //    
+    // Рекурсивный построитель дерева локаций
     buildSubLocationsTreeHTML: function(parentId, depth = 0) {
-        if (depth > 15) return ''; //    
+        if (depth > 15) return ''; // Защита от переполнения стека
         let subs = [];
         if (typeof player !== 'undefined' && player && player.subLocations) {
             subs = subs.concat(Object.values(player.subLocations).filter(sub => sub.parentId === parentId));
@@ -30,13 +30,13 @@ window.Cartographer = {
                 displayName = typeof getFacilityName === 'function' ? getFacilityName(sub.type, typeof player !== 'undefined' && player ? player.era : 'rebirth') : sub.name;
             }
             html += `<li class="location-poi-item" title="${_escapeHTML(sub.description || '')}" style="color: #bdc3c7; padding: 2px 0; list-style-type: none; position: relative;">`;
-            html += `<span style="color: #7f8c8d; margin-right: 4px;">${depth === 0 ? '' : ''}</span>${_escapeHTML(displayName)}`;
+            html += `<span style="color: #7f8c8d; margin-right: 4px;">${depth === 0 ? '›' : '└'}</span>${_escapeHTML(displayName)}`;
             html += this.buildSubLocationsTreeHTML(sub.id, depth + 1);
             html += `</li>`;
         });
         
         if (hiddenCount > 0) {
-            html += `<li class="location-poi-item" style="color: #7f8c8d; font-style: italic; padding: 2px 0; list-style-type: none; position: relative;"><span style="color: #7f8c8d; margin-right: 4px;">${depth === 0 ? '' : ''}</span>...  ${hiddenCount} </li>`;
+            html += `<li class="location-poi-item" style="color: #7f8c8d; font-style: italic; padding: 2px 0; list-style-type: none; position: relative;"><span style="color: #7f8c8d; margin-right: 4px;">${depth === 0 ? '›' : '└'}</span>...и ещё ${hiddenCount} объектов</li>`;
         }
         html += '</ul>';
         return html;
@@ -71,7 +71,7 @@ window.Cartographer = {
     TILE_SIZE: 10,
 
     /**
-     *   ,  Canvas   .
+     * Инициализирует модуль картографии, привязывает Canvas и настраивает события.
      */
     init: function() {
         this.mapCanvas = document.getElementById('visual-map');
@@ -84,7 +84,7 @@ window.Cartographer = {
     },
 
     /**
-     *  UI-     .
+     * Настраивает UI-кнопки для переключения фильтров отображения карты.
      */
     setupFilters: function() {
         const btns = document.querySelectorAll('.map-filter-btn');
@@ -103,12 +103,12 @@ window.Cartographer = {
     },
 
     /**
-     *      ,     .
+     * Настраивает обработчики событий мыши для панорамирования, зума и взаимодействия с маркерами.
      */
     setupMapControls: function() {
         if (this.mapControlsInitialized || !this.mapCanvas || !this.mapTooltipElement) return;
 
-        console.log("   (Nexus Cartographer)...");
+        console.log("Инициализация управления картой (Nexus Cartographer)...");
 
         let isClick = false;
         const handleMouseDown = (e) => {
@@ -130,7 +130,7 @@ window.Cartographer = {
                 this.mapState.offsetY = (this.mapCanvas.height / 2) - targetY;
                 this.requestRender();
 
-                //        
+                // Клик по порту теперь обрабатывается через боковую панель
             }
         };
 
@@ -181,7 +181,7 @@ window.Cartographer = {
             const zoomIntensity = 0.1;
             const scroll = e.deltaY < 0 ? 1 : -1;
             const zoomFactor = Math.exp(scroll * zoomIntensity);
-            const newZoom = Math.max(0.5, Math.min(3, this.mapState.zoom * zoomFactor)); //  4.3.2 
+            const newZoom = Math.max(0.5, Math.min(3, this.mapState.zoom * zoomFactor)); // Пункт 4.3.2 ТЗ
             const mouseX = e.offsetX;
             const mouseY = e.offsetY;
             const worldX = (mouseX - this.mapState.offsetX) / this.mapState.zoom;
@@ -210,9 +210,9 @@ window.Cartographer = {
     },
 
     /**
-     *  hover-   (  , ).
-     *   throttle (~30fps)  handleMouseMove.
-     * @param {MouseEvent} e -  
+     * Обрабатывает hover-событие на карте (определение ближайшего маркера, тултип).
+     * Вызывается через throttle (~30fps) из handleMouseMove.
+     * @param {MouseEvent} e - Событие мыши
      */
     _processHover: function(e) {
         let closestDist = 15;
@@ -234,10 +234,10 @@ window.Cartographer = {
             this.hoveredMapPoint = { id: monsterFound.id, isMonster: true, x: monsterFound.lair_x, y: monsterFound.lair_y };
             this.mapCanvas.style.cursor = 'pointer';
             let mHtml = '<h4 style="color:#e74c3c; border-bottom: 1px solid #e74c3c; margin:0 0 5px 0; padding-bottom:5px;"><i class="fas fa-skull"></i> ' + _escapeHTML(monsterFound.name) + '</h4>';
-            mHtml += '<p style="color:#f1c40f; font-weight:bold; margin:0 0 5px 0; font-size:0.9em;">:  (. ' + _escapeHTML(monsterFound.level) + ')</p>';
-            mHtml += '<p style="margin:0 0 5px 0; color:#bdc3c7; font-size:0.9em;">: ' + _escapeHTML(monsterFound.type) + '</p>';
+            mHtml += '<p style="color:#f1c40f; font-weight:bold; margin:0 0 5px 0; font-size:0.9em;">Угроза: Экстремальная (Ур. ' + _escapeHTML(monsterFound.level) + ')</p>';
+            mHtml += '<p style="margin:0 0 5px 0; color:#bdc3c7; font-size:0.9em;">Тип: ' + _escapeHTML(monsterFound.type) + '</p>';
             mHtml += '<div style="width:100%; height:8px; background:rgba(0,0,0,0.5); border-radius:4px; margin-bottom:5px; border:1px solid #e74c3c;"><div style="height:100%; background:#e74c3c; border-radius:3px; width:' + (monsterFound.health/monsterFound.maxHealth)*100 + '%;"></div></div>';
-            mHtml += '<p style="margin:0; font-size:0.85em; color:#ecf0f1;">: <span style="color:#e74c3c">' + _escapeHTML(monsterFound.attack) + '</span> | : <span style="color:#3498db">' + _escapeHTML(monsterFound.defense) + '</span></p>';
+            mHtml += '<p style="margin:0; font-size:0.85em; color:#ecf0f1;">Атака: <span style="color:#e74c3c">' + _escapeHTML(monsterFound.attack) + '</span> | Защита: <span style="color:#3498db">' + _escapeHTML(monsterFound.defense) + '</span></p>';
             this.mapTooltipElement.innerHTML = mHtml;
             this.mapTooltipElement.style.display = 'block';
             this.mapTooltipElement.style.opacity = '1';
@@ -254,7 +254,7 @@ window.Cartographer = {
 
         let pointFound = null;
 
-        //  allPoints       mousemove
+        // Кэшируем allPoints чтобы не пересоздавать массив на каждый mousemove
         const locsKey = (typeof World !== 'undefined' && World && World.map && World.map.locations) ? Object.keys(World.map.locations).length + '_' + (typeof player !== 'undefined' && player && player.mapMarkers ? Object.keys(player.mapMarkers).length : 0) : '0';
         if (!this._cachedAllPoints || this._cachedAllPointsKey !== locsKey) {
             let allPoints = [];
@@ -279,7 +279,7 @@ window.Cartographer = {
             }
         }
 
-        // :        
+        // Оптимизация: если та же точка — не обновляем тултип
         const samePoint = this._lastHoveredMapPoint && pointFound && this._lastHoveredMapPoint.id === pointFound.id && this._lastHoveredMapPoint.x === pointFound.x && this._lastHoveredMapPoint.y === pointFound.y;
         this._lastHoveredMapPoint = pointFound;
         this.hoveredMapPoint = pointFound;
@@ -297,7 +297,7 @@ window.Cartographer = {
                 const treeHtml = this.buildSubLocationsTreeHTML(pointFound.id);
                 if (treeHtml) {
                     subLocsHtml = '<div style="margin-top: 8px; border-top: 1px solid rgba(243, 229, 171, 0.2); padding-top: 5px;">';
-                    subLocsHtml += '<strong style="color: #aeb6bf; font-size: 0.85em;"> :</strong>';
+                    subLocsHtml += '<strong style="color: #aeb6bf; font-size: 0.85em;">Открытые места:</strong>';
                     subLocsHtml += treeHtml;
                     subLocsHtml += '</div>';
                 }
@@ -312,12 +312,12 @@ window.Cartographer = {
                     const hiddenRes = residents.length - MAX_RES;
 
                     residentsHtml = '<div style="margin-top: 8px; border-top: 1px dashed rgba(243, 229, 171, 0.4); padding-top: 5px;">';
-                    residentsHtml += '<strong style="color: #f1c40f; font-size: 0.85em;"> :</strong><ul style="margin: 3px 0 0 0; padding-left: 15px; font-size: 0.85em; color: #ecf0f1;">';
+                    residentsHtml += '<strong style="color: #f1c40f; font-size: 0.85em;">Известные жители:</strong><ul style="margin: 3px 0 0 0; padding-left: 15px; font-size: 0.85em; color: #ecf0f1;">';
                     displayedRes.forEach(res => {
                         residentsHtml += '<li>' + _escapeHTML(res.name) + '</li>';
                     });
                     if (hiddenRes > 0) {
-                        residentsHtml += '<li style="color: #7f8c8d; font-style: italic; list-style-type: none;">...  ' + hiddenRes + '</li>';
+                        residentsHtml += '<li style="color: #7f8c8d; font-style: italic; list-style-type: none;">...и ещё ' + hiddenRes + '</li>';
                     }
                     residentsHtml += '</ul></div>';
                 }
@@ -329,24 +329,24 @@ window.Cartographer = {
                 const reg = World.regions[pointFound.id];
 
                 let actualFactionId = reg.factionId;
-                let factionName = ' ';
+                let factionName = 'Ничья земля';
                 let repText = '';
                 let isPlayerFaction = false;
 
                 if (actualFactionId && World.factions && World.factions[actualFactionId]) {
                     factionName = _escapeHTML(World.factions[actualFactionId].name);
                     if (World.factions[actualFactionId].rulerId === 'player') {
-                        factionName = ' [] ' + factionName;
+                        factionName = '👑 [ВАША] ' + factionName;
                         isPlayerFaction = true;
                     }
                     if (typeof player !== 'undefined' && player && player.stats && player.stats.reputation) {
                         const rep = player.stats.reputation[actualFactionId] || 0;
-                        repText = ' | : <span style="color: ' + (rep >= 0 ? '#2ecc71' : '#e74c3c') + '">' + rep + '</span>';
+                        repText = ' | Реп: <span style="color: ' + (rep >= 0 ? '#2ecc71' : '#e74c3c') + '">' + rep + '</span>';
                     }
                 }
 
-                let popText = reg.population > 0 ? reg.population : '<span style="color:#e74c3c; font-style:italic;"></span>';
-                let occText = reg.isOccupied ? '<div style="color:#e74c3c; font-weight:bold; margin-top:2px;">  (' + _escapeHTML(reg.occupierFactionId) + ')</div>' : '';
+                let popText = reg.population > 0 ? reg.population : '<span style="color:#e74c3c; font-style:italic;">Заброшено</span>';
+                let occText = reg.isOccupied ? '<div style="color:#e74c3c; font-weight:bold; margin-top:2px;">⚠️ Оккупировано (' + _escapeHTML(reg.occupierFactionId) + ')</div>' : '';
 
                 let armyText = '';
                 let armiesHere = [];
@@ -354,39 +354,39 @@ window.Cartographer = {
                     World.factions[fid].armies.forEach(a => {
                         if (a.location === pointFound.id || a.destination === pointFound.id) {
                             let aName = _escapeHTML(World.factions[fid].name);
-                            if (World.factions[fid].rulerId === 'player') aName = '  ';
-                            armiesHere.push(aName + ' (' + a.size + ' .)');
+                            if (World.factions[fid].rulerId === 'player') aName = '👑 Ваша армия';
+                            armiesHere.push(aName + ' (' + a.size + ' чел.)');
                         }
                     });
                 }
                 if (armiesHere.length > 0) {
-                    armyText = '<div style="color:#e67e22; margin-top:4px; padding-top:4px; border-top: 1px dashed rgba(230, 126, 34, 0.3);"><b> :</b> ' + armiesHere.join(', ') + '</div>';
+                    armyText = '<div style="color:#e67e22; margin-top:4px; padding-top:4px; border-top: 1px dashed rgba(230, 126, 34, 0.3);"><b>⚔️ Армии:</b> ' + armiesHere.join(', ') + '</div>';
                 }
 
                 statsHtml = '<div style="margin-top: 8px; font-size: 0.85em; color: #ecf0f1;">' +
-                    '<div><strong style="color: #3498db;">:</strong> <span style="color:' + (isPlayerFaction ? '#2ecc71' : '#ecf0f1') + '">' + factionName + '</span>' + repText + '</div>' +
+                    '<div><strong style="color: #3498db;">Фракция:</strong> <span style="color:' + (isPlayerFaction ? '#2ecc71' : '#ecf0f1') + '">' + factionName + '</span>' + repText + '</div>' +
                     occText +
                     '<div style="display:grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 6px; background: rgba(0,0,0,0.3); padding: 6px; border-radius: 4px;">' +
-                    '<div><strong style="color: #f1c40f;">:</strong> ' + popText + '</div>' +
-                    '<div><strong style="color: #e74c3c;">:</strong> ' + reg.threat_level + '%</div>' +
-                    '<div><strong style="color: #9b59b6;">-:</strong> ' + reg.stability + '%</div>' +
-                    '<div><strong style="color: #e67e22;">:</strong> ' + reg.unrest + '%</div>' +
-                    '<div><strong style="color: #2ecc71;">:</strong> ' + Math.floor(reg.moneySupply) + ' .</div>' +
-                    '<div><strong style="color: #aeb6bf;">:</strong> ' + reg.average_wage + ' .</div>' +
+                    '<div><strong style="color: #f1c40f;">Население:</strong> ' + popText + '</div>' +
+                    '<div><strong style="color: #e74c3c;">Угроза:</strong> ' + reg.threat_level + '%</div>' +
+                    '<div><strong style="color: #9b59b6;">Стаб-ть:</strong> ' + reg.stability + '%</div>' +
+                    '<div><strong style="color: #e67e22;">Волнения:</strong> ' + reg.unrest + '%</div>' +
+                    '<div><strong style="color: #2ecc71;">Казна:</strong> ' + Math.floor(reg.moneySupply) + ' з.</div>' +
+                    '<div><strong style="color: #aeb6bf;">Зарплата:</strong> ' + reg.average_wage + ' з.</div>' +
                     '</div>' +
                     armyText +
                     '</div>';
 
                 if (World.port_facilities && World.port_facilities[pointFound.id]) {
                     const port = World.port_facilities[pointFound.id];
-                    let blockade = port.is_blockaded ? ' <span style="color:#e74c3c">[]</span>' : '';
-                    statsHtml += '<div style="margin-top: 4px; font-size: 0.85em; color: #ecf0f1;"><strong style="color: #3498db;"> :</strong> . ' + port.level + ' (' + port.type + ')' + blockade + '</div>';
+                    let blockade = port.is_blockaded ? ' <span style="color:#e74c3c">[БЛОКАДА]</span>' : '';
+                    statsHtml += '<div style="margin-top: 4px; font-size: 0.85em; color: #ecf0f1;"><strong style="color: #3498db;">⚓ Порт:</strong> Ур. ' + port.level + ' (' + port.type + ')' + blockade + '</div>';
                 }
 
                 if (reg.available_raw_resources && reg.available_raw_resources.length > 0) {
-                    const icons = reg.available_raw_resources.map(r => typeof getResourceIcon === 'function' ? getResourceIcon(r) : '').join(' ');
+                    const icons = reg.available_raw_resources.map(r => typeof getResourceIcon === 'function' ? getResourceIcon(r) : '📦').join(' ');
                     resourcesHtml = '<div style="margin-top: 8px; border-top: 1px dashed rgba(243, 229, 171, 0.4); padding-top: 5px;">' +
-                        '<strong style="color: #2ecc71; font-size: 0.85em;">:</strong> <span style="font-size: 1.1em; letter-spacing: 2px;">' + icons + '</span>' +
+                        '<strong style="color: #2ecc71; font-size: 0.85em;">Сырье:</strong> <span style="font-size: 1.1em; letter-spacing: 2px;">' + icons + '</span>' +
                         '</div>';
                 }
             }
@@ -415,10 +415,10 @@ window.Cartographer = {
     },
 
     /**
-     *       .
-     * @param {number} screenX - X   
-     * @param {number} screenY - Y   
-     * @returns {Object}     {x, y}
+     * Преобразует экранные координаты в мировые координаты тайлов.
+     * @param {number} screenX - X координата на экране
+     * @param {number} screenY - Y координата на экране
+     * @returns {Object} Объект с мировыми координатами {x, y}
      */
     screenToWorld: function(screenX, screenY) {
         return {
@@ -428,12 +428,12 @@ window.Cartographer = {
     },
 
         /**
-     *       .
-     * @param {CanvasRenderingContext2D} ctx -  
-     * @param {Object} pos -   {x, y}
-     * @param {string} type -   (city, village, ruins  ..)
-     * @param {boolean} isPlayer - ,     
-     * @param {string|null} factionId - ID     
+     * Отрисовывает маркер локации или игрока на карте.
+     * @param {CanvasRenderingContext2D} ctx - Контекст отрисовки
+     * @param {Object} pos - Экранные координаты {x, y}
+     * @param {string} type - Тип локации (city, village, ruins и т.д.)
+     * @param {boolean} isPlayer - Флаг, является ли маркер позицией игрока
+     * @param {string|null} factionId - ID фракции для отрисовки политического флага
      */
     drawMapMarker: function(ctx, pos, type, isPlayer, factionId = null) {
         ctx.lineWidth = 2;
@@ -451,7 +451,7 @@ window.Cartographer = {
         }
 
         if (isPlayer) {
-            //    ( 4.4.2 )
+            // Пульсация маркера игрока (Пункт 4.4.2 ТЗ)
             const pulse = (Math.sin(Date.now() / 200) + 1) / 2;
             const currentRadius = 6 + pulse * 3;
             ctx.fillStyle = `rgba(231, 76, 60, ${0.6 + pulse * 0.4})`;
@@ -590,11 +590,11 @@ window.Cartographer = {
     },
 
     /**
-     *    ()   .
-     * @param {CanvasRenderingContext2D} ctx -  
-     * @param {number} x - X  
-     * @param {number} y - Y  
-     * @param {number} radius -  
+     * Отрисовывает розу ветров (компас) в указанных координатах.
+     * @param {CanvasRenderingContext2D} ctx - Контекст отрисовки
+     * @param {number} x - X координата центра
+     * @param {number} y - Y координата центра
+     * @param {number} radius - Радиус компаса
      */
     drawCompassRose: function(ctx, x, y, radius) {
         ctx.strokeStyle = 'rgba(93, 74, 54, 0.7)';
@@ -614,7 +614,7 @@ window.Cartographer = {
     },
 
     /**
-     *         IPC.
+     * Запрашивает актуальные данные карты у нативного движка через IPC.
      * @returns {Promise<void>}
      */
     fetchMapData: async function() {
@@ -622,9 +622,9 @@ window.Cartographer = {
             try {
                 const response = await window.electronAPI.nexusGetWorldMap();
                 if (response && response.status === 'ok' && response.map) {
-                    // :   World.map /  .
-                    //    stdin   (pipe buffer limit 64KB),
-                    //      grid      .
+                    // Защита: не перезаписывать World.map пустыми/неполными данными движка.
+                    // Если синхронизация через stdin не удалась (pipe buffer limit 64KB),
+                    // движок вернёт пустую карту без grid — это затрёт загруженную из сохранения.
                     if (typeof World !== 'undefined' && World) {
                         const hasGrid = response.map.grid && response.map.grid.length > 0;
                         const hasTiles = response.map.tiles && response.map.tiles.length > 0;
@@ -632,25 +632,25 @@ window.Cartographer = {
                         if (hasGrid || hasTiles) {
                             World.map = response.map;
                         } else if (!existingMapHasData) {
-                            //    JS       
+                            // Только если в JS тоже нет карты — берём что есть
                             World.map = response.map;
                         }
-                        // :    ,  JS       JS
+                        // Иначе: движок вернул пустую карту, но JS имеет данные из сохранения — оставляем JS
                     }
                 }
             } catch (e) {
-                console.error("[Nexus Cartographer]   :", e);
+                console.error("[Nexus Cartographer] Ошибка получения карты:", e);
             }
         }
     },
 
 
     /**
-     *     (  )  OffscreenCanvas.
-     * @param {Object} map -    (World.map)
+     * Обновляет кэш фонового слоя (тайлы и дороги) на OffscreenCanvas.
+     * @param {Object} map - Объект глобальной карты (World.map)
      */
     updateBackgroundCache: function(map) {
-        console.log("[Nexus Cartographer]   ...");
+        console.log("[Nexus Cartographer] Обновление кэша карты...");
         if (!this.bgCacheCanvas) {
             if (typeof OffscreenCanvas !== 'undefined') {
                 this.bgCacheCanvas = new OffscreenCanvas(map.width * this.TILE_SIZE, map.height * this.TILE_SIZE);
@@ -669,7 +669,7 @@ window.Cartographer = {
         ctx.fillRect(0, 0, this.bgCacheCanvas.width, this.bgCacheCanvas.height);
 
         // Biome colors loaded from biomes.json data (synchronized with C++ engine)
-        // Previously hardcoded  this caused desync when biomes.json was modified
+        // Previously hardcoded — this caused desync when biomes.json was modified
         const colors = (typeof BIOME_COLORS !== 'undefined' && BIOME_COLORS.length > 0)
             ? BIOME_COLORS
             : [
@@ -687,20 +687,27 @@ window.Cartographer = {
                 let isFlooded = cell ? cell[4] : false;
 
                 let color = colors[tileType] || '#000';
-                //      ,     
+                // Убрана подмена цвета реки на равнину, теперь река рисуется своим цветом
 
                 ctx.fillStyle = color;
                 ctx.fillRect(x * this.TILE_SIZE, y * this.TILE_SIZE, this.TILE_SIZE, this.TILE_SIZE);
                 
                 if (isFlooded) {
-                    ctx.fillStyle = 'rgba(41, 128, 185, 0.6)';
+                    // Use shallow_water biome color if available, else default blue
+                    const floodColor = (typeof BIOME_COLORS !== 'undefined' && BIOME_COLORS[1])
+                        ? BIOME_COLORS[1].replace(')', ', 0.6)').replace('rgb(', 'rgba(').replace('#', '')
+                        : 'rgba(41, 128, 185, 0.6)';
+                    // Simple approach: just use semi-transparent version of shallow_water color
+                    ctx.globalAlpha = 0.55;
+                    ctx.fillStyle = (typeof BIOME_COLORS !== 'undefined' && BIOME_COLORS[1]) || '#0f2a2a';
                     ctx.fillRect(x * this.TILE_SIZE, y * this.TILE_SIZE, this.TILE_SIZE, this.TILE_SIZE);
+                    ctx.globalAlpha = 1.0;
                 }
             }
         }
 
-        //   ,      .
-        //        Pass 1.
+        // Векторные реки удалены, так как они создавали визуальный мусор.
+        // Теперь реки отрисовываются как обычные тайлы в Pass 1.
 
         if (map.roads) {
             map.roads.forEach(road => {
@@ -786,10 +793,10 @@ window.Cartographer = {
     },
 
     /**
-     *     (, , )  .
-     * @param {CanvasRenderingContext2D} ctx -  
-     * @param {Object} map -   
-     * @param {Function} transform -      
+     * Отрисовывает полупрозрачные слои фильтров (политика, экономика, угрозы) поверх карты.
+     * @param {CanvasRenderingContext2D} ctx - Контекст отрисовки
+     * @param {Object} map - Объект глобальной карты
+     * @param {Function} transform - Функция преобразования мировых координат в экранные
      */
     updateFilterCache: function(map) {
         if (this.currentFilter === 'none') return;
@@ -814,7 +821,7 @@ window.Cartographer = {
         if (locs.length === 0) return;
 
         if (this.currentFilter === 'political') {
-            // ---   (CIV 5 STYLE) ---
+            // --- ПОЛИТИЧЕСКАЯ КАРТА (CIV 5 STYLE) ---
             // Optimized with spatial bucketing: O(n + m*B) where B = avg locations per bucket
             // instead of O(n*m) brute-force.
             const locsKey = JSON.stringify(locs.map(l => `${l.id}:${l.x}:${l.y}:${l.faction}`));
@@ -841,7 +848,7 @@ window.Cartographer = {
                 for (let y = 0; y < map.height; y++) {
                     for (let x = 0; x < map.width; x++) {
                         const tileType = map.grid ? map.grid[y * map.width + x][0] : map.tiles[y * map.width + x];
-                        if (tileType === 0) continue; //  (0)   
+                        if (tileType === 0) continue; // Океаны (0) никому не принадлежат
 
                         const by = Math.floor(y / BUCKET_SIZE);
                         const bx = Math.floor(x / BUCKET_SIZE);
@@ -877,7 +884,7 @@ window.Cartographer = {
                 this._politicalCacheKey = locsKey;
             }
 
-            //     
+            // Функция для получения цвета фракции
             const getFactionColor = (factionId) => {
                 let hash = 0;
                 for (let i = 0; i < factionId.length; i++) {
@@ -886,7 +893,7 @@ window.Cartographer = {
                 return Math.abs(hash) % 360;
             };
 
-            // 2.     
+            // 2. Отрисовка заливки и четких границ
             for (let y = 0; y < map.height; y++) {
                 for (let x = 0; x < map.width; x++) {
                     const faction = ownership[y * map.width + x];
@@ -896,28 +903,28 @@ window.Cartographer = {
                     const px = x * this.TILE_SIZE;
                     const py = y * this.TILE_SIZE;
 
-                    //    
+                    // Легкая полупрозрачная заливка территории
                     ctx.fillStyle = `hsla(${hue}, 70%, 50%, 0.25)`;
                     ctx.fillRect(px, py, this.TILE_SIZE, this.TILE_SIZE);
 
-                    //   ( )
+                    // Отрисовка границ (проверяем соседей)
                     ctx.strokeStyle = `hsla(${hue}, 80%, 60%, 0.9)`;
                     ctx.lineWidth = 2;
                     ctx.beginPath();
 
-                    //  
+                    // Верхний сосед
                     if (y === 0 || ownership[(y - 1) * map.width + x] !== faction) {
                         ctx.moveTo(px, py); ctx.lineTo(px + this.TILE_SIZE, py);
                     }
-                    //  
+                    // Нижний сосед
                     if (y === map.height - 1 || ownership[(y + 1) * map.width + x] !== faction) {
                         ctx.moveTo(px, py + this.TILE_SIZE); ctx.lineTo(px + this.TILE_SIZE, py + this.TILE_SIZE);
                     }
-                    //  
+                    // Левый сосед
                     if (x === 0 || ownership[y * map.width + (x - 1)] !== faction) {
                         ctx.moveTo(px, py); ctx.lineTo(px, py + this.TILE_SIZE);
                     }
-                    //  
+                    // Правый сосед
                     if (x === map.width - 1 || ownership[y * map.width + (x + 1)] !== faction) {
                         ctx.moveTo(px + this.TILE_SIZE, py); ctx.lineTo(px + this.TILE_SIZE, py + this.TILE_SIZE);
                     }
@@ -925,8 +932,8 @@ window.Cartographer = {
                 }
             }
         } else if (this.currentFilter === 'economic' || this.currentFilter === 'threat') {
-            // ---    (HEATMAP STYLE) ---
-            //  screen blend mode    
+            // --- ЭКОНОМИКА И УГРОЗА (HEATMAP STYLE) ---
+            // Используем screen blend mode для красивого смешивания градиентов
             ctx.globalCompositeOperation = 'screen';
             
             for (let i = 0; i < locs.length; i++) {
@@ -942,16 +949,16 @@ window.Cartographer = {
 
                 if (this.currentFilter === 'economic') {
                     const wealth = Math.min(1, region.moneySupply / 30000);
-                    radius = 40 + (wealth * 120); //     
+                    radius = 40 + (wealth * 120); // Радиус свечения зависит от богатства
                     colorStops = [
-                        { stop: 0, color: `rgba(241, 196, 15, ${0.4 + wealth * 0.5})` }, //  
-                        { stop: 0.5, color: `rgba(46, 204, 113, ${0.1 + wealth * 0.3})` }, //  
+                        { stop: 0, color: `rgba(241, 196, 15, ${0.4 + wealth * 0.5})` }, // Золотой центр
+                        { stop: 0.5, color: `rgba(46, 204, 113, ${0.1 + wealth * 0.3})` }, // Зеленоватый край
                         { stop: 1, color: 'rgba(0, 0, 0, 0)' }
                     ];
                 } else if (this.currentFilter === 'threat') {
                     const threat = Math.min(1, region.threat_level / 100);
                     radius = 60 + (threat * 100);
-                    //   ()   ()
+                    // От зеленого (безопасно) к красному (опасно)
                     const r = Math.floor(threat * 255);
                     const g = Math.floor((1 - threat) * 255);
                     colorStops = [
@@ -969,14 +976,14 @@ window.Cartographer = {
                 ctx.arc(px, py, radius, 0, Math.PI * 2);
                 ctx.fill();
             }
-            ctx.globalCompositeOperation = 'source-over'; //   
+            ctx.globalCompositeOperation = 'source-over'; // Возвращаем стандартный режим
         }
     },
 
     /**
-     *    .   ,    .
+     * Главный цикл отрисовки карты. Комбинирует кэшированный фон, фильтры и динамические маркеры.
      */
-    /** ,    ,   RAF,     */
+    /** Отмечает, что карту нужно перерисовать, и запускает RAF, если он не активен */
     requestRender: function() {
         this._needsRender = true;
         if (!this.animationFrameId) {
@@ -984,7 +991,7 @@ window.Cartographer = {
         }
     },
 
-    /**    (   ) */
+    /** Останавливает цикл отрисовки (вызывать при скрытии карты) */
     stopRenderLoop: function() {
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
@@ -993,16 +1000,16 @@ window.Cartographer = {
     },
 
     render: function() {
-        this.animationFrameId = null; //   RAF 
+        this.animationFrameId = null; // Сбрасываем — RAF сработал
 
-        //      ,   
+        // Проверка видимости карты — не рендерим, если модалка скрыта
         const mapModal = document.getElementById('global-map-modal');
         if (mapModal && mapModal.style.display === 'none') {
-            return; //      
+            return; // Карта скрыта — не тратим ресурсы
         }
 
         if (!this._needsRender && !this.mapState.isFollowingPlayer && !(typeof player !== 'undefined' && player.travel && player.travel.active)) {
-            //         
+            // Ничего не изменилось и нет активных анимаций — останавливаемся
             return;
         }
         this._needsRender = false;
@@ -1051,10 +1058,10 @@ window.Cartographer = {
                     currY = player.travel.currentY;
                 } else if (map.locations) {
                     let targetId = null;
-                    // 3 :       --
+                    // Т3 ФИКС: Рекурсивный поиск родительского региона для глубоких под-под-локаций
                     if (player.currentSublocation) {
                         let currentId = player.currentSublocation;
-                        let maxDepth = 20; //    
+                        let maxDepth = 20; // Защита от бесконечного цикла
                         while (currentId && maxDepth > 0) {
                             const sub = (player.subLocations && player.subLocations[currentId]) || 
                                         (World && World.subLocations && World.subLocations[currentId]);
@@ -1078,7 +1085,7 @@ window.Cartographer = {
                         currX = map.locations[targetId].x;
                         currY = map.locations[targetId].y;
                     } else {
-                        //    
+                        // Старый фолбэк по имени
                         const currentLocName = (player.location || "").toLowerCase().trim();
                         let playerPoint = Object.values(map.locations).find(p => p.name.toLowerCase().trim().includes(currentLocName) || currentLocName.includes(p.name.toLowerCase().trim()));
                         if (playerPoint) {
@@ -1113,7 +1120,7 @@ window.Cartographer = {
                     const dx = targetOffsetX - this.mapState.offsetX;
                     const dy = targetOffsetY - this.mapState.offsetY;
                     if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
-                        //     
+                        // Достаточно близко — прекращаем следование
                         this.mapState.offsetX = targetOffsetX;
                         this.mapState.offsetY = targetOffsetY;
                         this.mapState.isFollowingPlayer = false;
@@ -1177,15 +1184,15 @@ window.Cartographer = {
                     ctx.font = `${16 * this.mapState.zoom}px Arial`;
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
-                    let icon = '';
-                    if (dis.type === 'flood') icon = '';
-                    if (dis.type === 'wildfire') icon = '';
-                    if (dis.type === 'earthquake') icon = '';
-                    if (dis.type === 'volcano') icon = '';
-                    if (dis.type === 'plague') icon = '';
-                    if (dis.type === 'aether_storm') icon = '';
-                    if (dis.type === 'drought') icon = '';
-                    if (dis.type === 'monster_invasion') icon = '';
+                    let icon = '⚠️';
+                    if (dis.type === 'flood') icon = '🌊';
+                    if (dis.type === 'wildfire') icon = '🔥';
+                    if (dis.type === 'earthquake') icon = '💥';
+                    if (dis.type === 'volcano') icon = '🌋';
+                    if (dis.type === 'plague') icon = '☣️';
+                    if (dis.type === 'aether_storm') icon = '🌀';
+                    if (dis.type === 'drought') icon = '☀️';
+                    if (dis.type === 'monster_invasion') icon = '👹';
                     
                     ctx.fillText(icon, px.x, px.y);
                     ctx.restore();
@@ -1212,7 +1219,7 @@ window.Cartographer = {
             }
 
                         if (typeof World !== 'undefined' && World) {
-                //   ( )
+                // Отрисовка караванов (Желтые маркеры)
                 if (World.regions) {
                     Object.values(World.regions).forEach(r => {
                         if (r.caravans) {
@@ -1232,13 +1239,13 @@ window.Cartographer = {
                         }
                     });
                 }
-                //   ( )
+                // Отрисовка армий (Красные маркеры)
                 if (World.factions) {
                     Object.values(World.factions).forEach(f => {
                         if (f.armies) {
                             f.armies.forEach(a => {
                                 if (a.siegeDays > 0 || (a.current_phase && a.current_phase !== "march")) {
-                                    //      -     
+                                    // Армия ведет бой или осаду - рисуем статичный маркер над городом
                                     const end = map.locations[a.destination];
                                     if (end) {
                                         const pos = transform(end.x + 0.5, end.y + 0.5);
@@ -1252,7 +1259,7 @@ window.Cartographer = {
                                         ctx.stroke();
                                     }
                                 } else if (a.x !== undefined && a.y !== undefined) {
-                                    //    ( )
+                                    // Армия в пути (реальные координаты)
                                     const pos = transform(a.x + 0.5, a.y + 0.5);
                                     if (pos.x < -50 || pos.x > width + 50 || pos.y < -50 || pos.y > height + 50) return;
                                     ctx.fillStyle = '#e74c3c';
@@ -1280,10 +1287,10 @@ window.Cartographer = {
                             const pos = transform(loc.x + 0.5, loc.y + 0.5);
                             if (pos.x < -50 || pos.x > width + 50 || pos.y < -50 || pos.y > height + 50) return;
                             ctx.font = `${12 * this.mapState.zoom}px Arial`;
-                            let icons = "";
-                            if (port.has_shipyard) icons += " ";
-                            if (port.level > 1) icons += " ";
-                            if (port.is_blockaded) icons += " ";
+                            let icons = "⚓";
+                            if (port.has_shipyard) icons += " 🏗️";
+                            if (port.level > 1) icons += " 🗼";
+                            if (port.is_blockaded) icons += " 🚫";
                             ctx.fillText(icons, pos.x + 12 * this.mapState.zoom, pos.y - 12 * this.mapState.zoom);
                         }
                     });
@@ -1293,11 +1300,11 @@ window.Cartographer = {
                         const pos = transform(ship.x + 0.5, ship.y + 0.5);
                         if (pos.x < -50 || pos.x > width + 50 || pos.y < -50 || pos.y > height + 50) return;
                         ctx.font = `${14 * this.mapState.zoom}px Arial`;
-                        let icon = "";
-                        if (ship.type === "WAR_GALLEY" || ship.type === "WAR_FRIGATE") icon = "";
-                        if (ship.type === "PIRATE") icon = "";
-                        if (ship.type === "SEA_MONSTER") icon = "";
-                        if (ship.type === "TRANSPORT") icon = "";
+                        let icon = "⛵";
+                        if (ship.type === "WAR_GALLEY" || ship.type === "WAR_FRIGATE") icon = "⛴️";
+                        if (ship.type === "PIRATE") icon = "🏴‍☠️";
+                        if (ship.type === "SEA_MONSTER") icon = "🦑";
+                        if (ship.type === "TRANSPORT") icon = "🛶";
                         ctx.fillText(icon, pos.x, pos.y);
                     });
                 }
@@ -1307,7 +1314,7 @@ window.Cartographer = {
                         const pos = transform(fleet.x + 0.5, fleet.y + 0.5);
                         if (pos.x < -50 || pos.x > width + 50 || pos.y < -50 || pos.y > height + 50) return;
                         ctx.font = `${18 * this.mapState.zoom}px Arial`;
-                        ctx.fillText("", pos.x, pos.y - 10 * this.mapState.zoom);
+                        ctx.fillText("⚓🛡️", pos.x, pos.y - 10 * this.mapState.zoom);
                     });
                 }
 
@@ -1338,12 +1345,12 @@ window.Cartographer = {
                         ctx.font = `${24 * this.mapState.zoom}px Arial`;
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
-                        let icon = '';
-                        if (m.type === 'DRAGON') icon = '';
-                        if (m.type === 'KRAKEN' || m.type === 'LEVIATHAN') icon = '';
-                        if (m.type === 'LICH_KING' || m.type === 'VAMPIRE_LORD') icon = '';
-                        if (m.type === 'FIRE_ELEMENTAL') icon = '';
-                        if (m.type === 'BEHOLDER') icon = '';
+                        let icon = '👹';
+                        if (m.type === 'DRAGON') icon = '🐉';
+                        if (m.type === 'KRAKEN' || m.type === 'LEVIATHAN') icon = '🦑';
+                        if (m.type === 'LICH_KING' || m.type === 'VAMPIRE_LORD') icon = '💀';
+                        if (m.type === 'FIRE_ELEMENTAL') icon = '🔥';
+                        if (m.type === 'BEHOLDER') icon = '👁️';
                         
                         ctx.shadowColor = 'black';
                         ctx.shadowBlur = 5;
@@ -1412,15 +1419,15 @@ window.Cartographer = {
 
         this.drawCompassRose(ctx, width - 30, 30, 15);
 
-        //       (  / follow)   
+        // Запускаем следующий кадр только если нужно (пульсация игрока / follow) или есть запрос
         if (this.mapState.isFollowingPlayer || (typeof player !== 'undefined' && player.travel && player.travel.active)) {
             this.animationFrameId = requestAnimationFrame(() => this.render());
         }
-        //           
+        // Если ничего не требует постоянной анимации — не планируем следующий кадр
     },
 
     /**
-     *  HTML-  (    ).
+     * Обновляет HTML-списки сайдбара (Известные регионы и Открытые места).
      */
     updateSidebar: function() {
         const globalLocationsList = document.getElementById('global-locations-list');
@@ -1428,11 +1435,11 @@ window.Cartographer = {
         if (!globalLocationsList || !customLocationsList) return;
 
         const mapPanelTitle = document.querySelector('.map-panel .panel-toggle > span:first-child');
-        if (mapPanelTitle) mapPanelTitle.textContent = typeof t === 'function' ? t('gameInterface.mapPanel.title') : '';
+        if (mapPanelTitle) mapPanelTitle.textContent = typeof t === 'function' ? t('gameInterface.mapPanel.title') : 'Карта';
         const globalTitle = document.querySelector('.map-panel h3[data-i18n="gameInterface.mapPanel.globalTitle"]');
         const customTitle = document.querySelector('.map-panel h3[data-i18n="gameInterface.mapPanel.customTitle"]');
-        if (globalTitle) globalTitle.textContent = typeof t === 'function' ? t('gameInterface.mapPanel.globalTitle') : ' :';
-        if (customTitle) customTitle.textContent = typeof t === 'function' ? t('gameInterface.mapPanel.customTitle') : ' :';
+        if (globalTitle) globalTitle.textContent = typeof t === 'function' ? t('gameInterface.mapPanel.globalTitle') : 'Известные регионы:';
+        if (customTitle) customTitle.textContent = typeof t === 'function' ? t('gameInterface.mapPanel.customTitle') : 'Открытые места:';
 
         globalLocationsList.innerHTML = '';
         const locationsData = (typeof globalLocations === 'object' && globalLocations !== null) ? globalLocations : {};
@@ -1450,8 +1457,8 @@ window.Cartographer = {
                 if (typeof World !== 'undefined' && World && World.regions && World.regions[key]) {
                     const reg = World.regions[key];
                     if (reg.available_raw_resources && reg.available_raw_resources.length > 0) {
-                        const icons = reg.available_raw_resources.map(r => typeof getResourceIcon === 'function' ? getResourceIcon(r) : "").join(' ');
-                        resourcesHtml = `<div class="location-resources" style="font-size: 1.0em; margin-top: 4px; margin-left: 10px;" title=" ">${icons}</div>`;
+                        const icons = reg.available_raw_resources.map(r => typeof getResourceIcon === 'function' ? getResourceIcon(r) : "📦").join(' ');
+                        resourcesHtml = `<div class="location-resources" style="font-size: 1.0em; margin-top: 4px; margin-left: 10px;" title="Доступное сырье">${icons}</div>`;
                     }
                 }
                 
@@ -1463,7 +1470,7 @@ window.Cartographer = {
                 globalLocationsList.appendChild(li);
             });
         } else {
-            globalLocationsList.innerHTML = `<li>  </li>`;
+            globalLocationsList.innerHTML = `<li>Нет известных регионов</li>`;
         }
 
         customLocationsList.innerHTML = '';
@@ -1481,10 +1488,10 @@ window.Cartographer = {
                     customLocationsList.appendChild(li);
                 });
             } else {
-                customLocationsList.innerHTML = `<li>   </li>`;
+                customLocationsList.innerHTML = `<li>Пока ничего не открыто</li>`;
             }
         } else {
-            customLocationsList.innerHTML = `<li>   </li>`;
+            customLocationsList.innerHTML = `<li>Пока ничего не открыто</li>`;
         }
     }
 
