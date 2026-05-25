@@ -12616,7 +12616,9 @@ void generateWorldMapTerrain(WorldMap& map, int seed) {
 
             double e = elevation[idx];
             double threshold = cfg.rivers.threshold_default;
-            if (e < 0.2) threshold = cfg.rivers.threshold_plains;
+            // Wider rivers near sea level — they reach the ocean more reliably
+            if (e < 0.05) threshold = cfg.rivers.threshold_plains * 1.5; // Much wider near coast
+            else if (e < 0.2) threshold = cfg.rivers.threshold_plains;
             if (e > 0.6) threshold = cfg.rivers.threshold_mountains;
 
             if (std::abs(r_val) < threshold) {
@@ -13211,13 +13213,14 @@ void generateRoads(WorldMap& map, const World& w) {
             }
             if (is_truly_isolated) continue;
 
-            auto path = findPath(map, rLoc.x, rLoc.y, capLoc.x, capLoc.y, pathfinding_helper, path_status_helper, MovementType::ANY);
+            // LAND path only — no roads through ocean
+            auto path = findPath(map, rLoc.x, rLoc.y, capLoc.x, capLoc.y, pathfinding_helper, path_status_helper, MovementType::LAND);
             if (!path.empty()) {
                 MapRoad road; road.from = rid; road.to = capital; road.condition = "dirt"; road.waypoints = path;
                 auto segments = processRoadSegment(road, 1);
                 map.roads.insert(map.roads.end(), segments.begin(), segments.end());
             } else {
-                // Запоминаем изолированный регион для fallback-пасса
+                // No land path — region is island, skip road
                 isolated_regions.push_back({rid, capital});
             }
         }
@@ -13252,7 +13255,9 @@ void generateRoads(WorldMap& map, const World& w) {
 
         if (!bestTarget.empty()) {
             auto targetLoc = map.locations.at(bestTarget);
-            auto path = findPath(map, isoLoc.x, isoLoc.y, targetLoc.x, targetLoc.y, pathfinding_helper, path_status_helper, MovementType::ANY);
+            // Isolated region fallback: try LAND, then ANY if truly an island
+            // LAND only — no underwater roads
+            auto path = findPath(map, isoLoc.x, isoLoc.y, targetLoc.x, targetLoc.y, pathfinding_helper, path_status_helper, MovementType::LAND);
             if (!path.empty()) {
                 MapRoad road; road.from = isolatedId; road.to = bestTarget; road.condition = "dirt"; road.waypoints = path;
                 auto segments = processRoadSegment(road, 1);
@@ -13286,7 +13291,8 @@ void generateRoads(WorldMap& map, const World& w) {
             }
 
             auto loc1 = map.locations.at(cap1); auto loc2 = map.locations.at(cap2);
-            auto path = findPath(map, loc1.x, loc1.y, loc2.x, loc2.y, pathfinding_helper, path_status_helper, MovementType::ANY);
+            // International roads: LAND only — no roads through ocean
+            auto path = findPath(map, loc1.x, loc1.y, loc2.x, loc2.y, pathfinding_helper, path_status_helper, MovementType::LAND);
             if (!path.empty()) {
                 MapRoad road; road.from = cap1; road.to = cap2; road.condition = "paved"; road.waypoints = path;
                 auto segments = processRoadSegment(road, 2);
