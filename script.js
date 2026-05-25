@@ -5805,26 +5805,6 @@ async function initializeApp() {
         });
     }
 
-    // ── Mod API Engine Hook System ──────────────────────────────
-    // Connects C++ engine hook events to ModAPI.on() subscriptions
-
-    // 1. Legacy hook_request (engine waits for world response)
-    if (window.electronAPI && window.electronAPI.onNexusHookRequest) {
-        window.electronAPI.onNexusHookRequest(async (hookName, world) => {
-            if (window.ModAPI) await ModAPI.emit(hookName, { world });
-            if (window.electronAPI.sendNexusHookResponse) {
-                await window.electronAPI.sendNexusHookResponse(world);
-            }
-        });
-    }
-
-    // 2. New hook_event (fire-and-forget, specific event data only)
-    if (window.electronAPI && window.electronAPI.onNexusHookEvent) {
-        window.electronAPI.onNexusHookEvent(async (hookName, data) => {
-            if (window.ModAPI) await ModAPI.emit(hookName, data);
-        });
-    }
-    // ────────────────────────────────────────────────────────────
 
     console.log("РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РїСЂРёР»РѕР¶РµРЅРёСЏ...");
 
