@@ -315,6 +315,7 @@ function countRealItems(containerId, prototypeId) {
 }
 
 async function addRealItems(containerId, prototypeId, quantity, customProps = {}) {
+    if (window.ModAPI) ModAPI.emit('onInventoryChanged', {action: 'create', prototypeId, containerId, quantity});
     const createdIds = [];
     for (let i = 0; i < quantity; i++) {
         const id = await CoreInventorySystemAsync.createItem(prototypeId, 1, containerId, {
@@ -1016,6 +1017,7 @@ const CoreInventorySystem = new Proxy(OldCoreInventorySystem, {
 });
 
 async function equipItemAsync(itemId, targetSlot = null) {
+    if (window.ModAPI) ModAPI.emit('onPlayerEquipped', {itemId, slot: targetSlot, action: 'equip'});
     if (!player || !player.container_backpack || !player.container_equipment) return null;
     const itemToEquip = ItemRegistry.get(itemId);
     if (!itemToEquip || itemToEquip.container_id !== player.container_backpack) return null;
@@ -1426,6 +1428,7 @@ const TradeSystemAsync = {
 };
 
 async function executeCommand(command, args) {
+    if (window.ModAPI) ModAPI.emit('onCommandExecuted', {command, args});
     if (!command) return null;
     if (!player) return t('gameInterface.commandFeedback.errorPlayerMissing');
 
@@ -1491,6 +1494,7 @@ async function executeCommand(command, args) {
             case 'updateStat':
             case 'setStat':
             case 'addQuest':
+        if (window.ModAPI) ModAPI.emit('onQuestUpdated', {action: 'add', quest: args});
             case 'updateQuest':
             case 'removeQuest':
             case 'editQuest':
@@ -3286,6 +3290,7 @@ async function runWorldSimulationTick() {
         
         const raw = await performAiFetch(prompt, [], modelId, `РђРЅР°Р»РёР· РґР°РЅРЅС‹С… Р·Р° ${daysPassed} РґРЅРµР№.`);
         const res = parseAIResponse(raw);
+    if (window.ModAPI) await ModAPI.emit('onAIResponseReceived', {raw, parsed: res, location: player?.location});
         
         if (loaderDiv) loaderDiv.remove();
         
@@ -7166,6 +7171,7 @@ function setupEventListeners() {
 
     // --- Р“Р»РѕР±Р°Р»СЊРЅР°СЏ РљР°СЂС‚Р° (РњРѕРґР°Р»СЊРЅРѕРµ РѕРєРЅРѕ) ---
     const openMapBtn = document.getElementById('open-map-modal-btn');
+    if (window.ModAPI) ModAPI.emit('onMapOpened', {location: player?.location});
     const closeMapBtn = document.getElementById('close-map-modal-btn');
     const mapModal = document.getElementById('global-map-modal');
     if (openMapBtn && mapModal && closeMapBtn) {
@@ -7461,6 +7467,7 @@ function handleDragLeave(event) {
 
 // --- Р›РѕРіРёРєР° РЎС‚Р°СЂС‚Р° РќРѕРІРѕР№ РРіСЂС‹ ---
 function startNewGameSetup() {
+    if (window.ModAPI) ModAPI.emit('onNewGameStarted', {player: player || {}, world: World || {}});
 
     clearPromptCache(); // РЎР±СЂР°СЃС‹РІР°РµРј РєСЌС€ РїСЂРѕРјРїС‚Р° РїСЂРё РЅРѕРІРѕР№ РёРіСЂРµ
 
@@ -8708,6 +8715,7 @@ function calculateXpForNextLevel(level) {
 }
 
 function levelUp() {
+    const _beforeLevel = player?.level || 1;
     if (!player) return;
 
     let levelsGainedThisCycle = 0;
@@ -8717,6 +8725,7 @@ function levelUp() {
     while (player.stats.xp >= player.stats.xpNext) {
         const excessXp = player.stats.xp - player.stats.xpNext;
         player.stats.level++;
+    const _prevLevel = player.stats.level;
         levelsGainedThisCycle++;
         player.stats.statPoints += POINTS_PER_LEVEL;
         totalStatPointsGainedThisCycle += POINTS_PER_LEVEL;
@@ -11520,6 +11529,7 @@ async function handleUserInput() {
     const effectLogMessages = processStatusEffects();
     
     if (player.stats.hp <= 0 && !player.statusEffects['ghost_form']) {
+        if (window.ModAPI) await ModAPI.emit('onPlayerDied', {cause: 'combat', location: player.location, hp: player.stats.hp});
         updateCharacterSheet();
         effectLogMessages.forEach(msg => addLogMessage(msg, "command-feedback"));
         await handlePlayerDeath();
@@ -12150,6 +12160,7 @@ async function sendApiRequest(promptTextForAI, isInitialPrompt = false, isDiceRo
             updatePortPanel();
             hideLoadingScreen();
 
+            if (window.ModAPI) await ModAPI.emit('onSaveGame', {type: 'auto'});
             await autoSaveGame();
 
         } else if (!isSummarizationRequest) {
@@ -13164,6 +13175,7 @@ async function executeNonInventoryCommand(command, args) {
 
                 if (locId && typeof World !== 'undefined' && World && World.subLocations && World.subLocations[locId]) {
                     player.location = World.subLocations[locId].name;
+    if (window.ModAPI) ModAPI.emit('onLocationChanged', {newLocation: World.subLocations[locId]?.name, oldLocation: player.location});
                     player.currentSublocation = locId;
                     foundLoc = true;
                 } else if (locId && player.subLocations && player.subLocations[locId]) {

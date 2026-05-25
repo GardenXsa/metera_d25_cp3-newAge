@@ -4210,6 +4210,21 @@ void triggerJsHook(const std::string& hookName) {
     // If timeout, continue without hook response — don't block engine
 }
 
+// Overload: triggerJsHook with specific event data
+void triggerJsHook(const std::string& hookName, std::function<JsonValue()> dataBuilder) {
+    if (g_active_hooks.count(hookName) == 0) return;
+    JsonValue req = JsonValue::object();
+    req.set("status", "hook_event");
+    req.set("hook", hookName);
+    try { req.set("data", dataBuilder()); } catch (...) {}
+    {
+        std::lock_guard<std::mutex> outLock(g_output_mutex);
+        std::cout << req.toString() << std::endl;
+        std::cout.flush();
+    }
+}
+
+
 bool moveItem(const std::string& itemId, const std::string& targetContainerId) {
     std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
     if (!g_items.count(itemId)) return false;
@@ -4524,6 +4539,7 @@ void processConsumption() {
                 
                 if (npc.needs.hunger == 0 || npc.hp <= 0) {
                     npc.isAlive = false;
+                triggerJsHook("onNpcDied", [&](){ JsonValue _h=JsonValue::object(); _h.set("npcId",npc.id); _h.set("name",npc.name); _h.set("location",npc.currentLocation); _h.set("race",npc.race); _h.set("profession",npc.profession); return _h; });
                     npc.currentActivity = (npc.needs.hunger == 0) ? locStr("engine.npc.dead_starvation") : locStr("engine.npc.dead_killed");
                 }
             }
@@ -4844,6 +4860,7 @@ void updateWeather() {
             else season = "winter";
         }
         region.current_season = season;
+        triggerJsHook("onSeasonChanged", [&](){ JsonValue _h=JsonValue::object(); _h.set("regionId",rid); _h.set("newSeason",season); return _h; });
         if (region.weatherDaysLeft > 0) region.weatherDaysLeft--;
         else {
             std::vector<std::string> weathers = {"clear", "cloudy"};
@@ -4858,6 +4875,7 @@ void updateWeather() {
             }
             if (thread_safe_rand() % 100 < 1) weathers.push_back("aether_storm");
             region.weather = weathers[thread_safe_rand() % weathers.size()];
+            triggerJsHook("onWeatherChanged", [&](){ JsonValue _h=JsonValue::object(); _h.set("regionId",rid); _h.set("newWeather",region.weather); _h.set("season",season); return _h; });
             region.weatherDaysLeft = 3 + (thread_safe_rand() % 4);
         }
     }
@@ -6197,6 +6215,7 @@ void processDailyEconomy() {
                     if (fac.level > 0) {
                         if (thread_safe_rand() % 100 < 20) fac.durability--;
                         if (fac.durability < 0) fac.durability = 0;
+                        if(fac.level == 0) triggerJsHook("onFacilityDestroyed", [&](){ JsonValue _h=JsonValue::object(); _h.set("regionId",rid); _h.set("facilityId",fId); return _h; });
                         if (fac.durability < 20) fac.level = std::max(0, (int)(fac.level * 0.5));
                         
                         if (fac.durability < 50) {
@@ -6562,6 +6581,7 @@ void processMarkets() {
                                         } else {
                                             std::string buyerCont = npc.economy.storage_id.empty() ? npc.inventory_id : npc.economy.storage_id;
                                             createItem(offer.good, 1, buyerCont, g_world.current_day, "Market purchase");
+                                            triggerJsHook("onTradeCompleted", [&](){ JsonValue _h=JsonValue::object(); _h.set("good",offer.good); _h.set("quantity",1); _h.set("price",offer.price); _h.set("regionId",rid); return _h; });
                                         }
                                         
                                         offer.quantity -= 1;
@@ -6880,6 +6900,7 @@ void processDailyMilitary() {
                 }
             }
             g_world.fleets.push_back(fl);
+            triggerJsHook("onFleetCreated", [&](){ JsonValue _h=JsonValue::object(); _h.set("fleetId",fl.id); _h.set("factionId",fl.owner_id); _h.set("admiralId",fl.admiral_id); return _h; });
         }
     }
 
@@ -6911,6 +6932,7 @@ void processDailyMilitary() {
                         if (s.path.empty() && s.destination == a.destination) {
                             a.embarked_ship_id = "";
                             a.location = a.destination;
+                            triggerJsHook("onArmyMoved", [&](){ JsonValue _h=JsonValue::object(); _h.set("armyId",a.id); _h.set("to",a.destination); _h.set("factionId",fid); return _h; });
                             addNews(locStr("engine.news.naval_invasion", {{"faction", faction.name}, {"dest", g_world.regions[a.destination].name}}), a.destination, 4, "war");
                         }
                         break;
@@ -6959,6 +6981,7 @@ void processDailyMilitary() {
                     g_world.regions[a.location].population += a.size;
                 }
                 faction.armies.erase(faction.armies.begin() + i);
+                triggerJsHook("onArmyDestroyed", [&](){ JsonValue _h=JsonValue::object(); _h.set("factionId",fid); _h.set("location",faction.armies[i].location); return _h; });
                 continue;
             }
 
@@ -7206,6 +7229,7 @@ void processDailyMilitary() {
                     isCombatActive = true;
                     if (a.siegeDays == -1) {
                         a.siegeDays = 3 + thread_safe_rand() % 4;
+                        triggerJsHook("onSiegeStarted", [&](){ JsonValue _h=JsonValue::object(); _h.set("armyId",a.id); _h.set("regionId",a.destination); _h.set("attackerFactionId",fid); _h.set("siegeDays",a.siegeDays); return _h; });
                         addNews(locStr("engine.news.siege_started", {{"faction", faction.name}, {"region", targetRegion.name}}), targetLoc, 4, "war");
                     } else if (a.siegeDays > 0) {
                         a.siegeDays--;
@@ -7258,6 +7282,7 @@ void processDailyMilitary() {
                         int garrisonPower = targetRegion.population / 100;
                         if (a.size > garrisonPower) {
                             std::string oldFactionId = targetRegion.factionId;
+                            triggerJsHook("onRegionCaptured", [&](){ JsonValue _h=JsonValue::object(); _h.set("regionId",targetLoc); _h.set("oldFactionId",targetRegion.factionId); _h.set("armyId",a.id); return _h; });
                             
                             if (targetRegion.isOccupied && targetRegion.factionId == fid) {
                                 targetRegion.isOccupied = false;
@@ -7286,6 +7311,7 @@ void processDailyMilitary() {
                                         if (state == "war") {
                                             faction.diplomacy[otherId] = "neutral";
                                             faction.truceUntil[otherId] = g_world.current_day + 360;
+                                            triggerJsHook("onPeaceMade", [&](){ JsonValue _h=JsonValue::object(); _h.set("factionId1",fid); _h.set("factionId2",otherId); return _h; });
                                             if (g_world.factions.count(otherId)) {
                                                 g_world.factions[otherId].diplomacy[fid] = "neutral";
                                                 g_world.factions[otherId].truceUntil[fid] = g_world.current_day + 360;
@@ -7456,6 +7482,7 @@ void processMonthlyDemographics() {
                     child.race = g_world.npcs[child.father_id].race;
                 }
                 g_world.npcs[child.id] = child;
+                triggerJsHook("onNpcBorn", [&](){ JsonValue _h=JsonValue::object(); _h.set("npcId",child.id); _h.set("location",child.homeLocation); _h.set("race",child.race); _h.set("motherId",child.mother_id); _h.set("fatherId",child.father_id); return _h; });
             }
         }
 
@@ -7731,6 +7758,7 @@ void processMonthlyBusinesses() {
             if (bus.reinvestment_pool > 2000 * bus.level) {
                 bus.reinvestment_pool -= 2000 * bus.level;
                 bus.level++;
+                triggerJsHook("onFacilityUpgraded", [&](){ JsonValue _h=JsonValue::object(); _h.set("businessId",bId); _h.set("regionId",bus.region_id); _h.set("facilityType",bus.facility_type); _h.set("newLevel",bus.level); return _h; });
                 addNews("Facility (" + bus.facility_type + ") prospers and expands to level " + std::to_string(bus.level) + "! New workers hired.", bus.region_id, 1, "business");
                 bus.addLog(g_world.current_day, "⬆️ UPGRADE: Level increased to " + std::to_string(bus.level) + "!");
             }
@@ -8123,6 +8151,7 @@ void processShips() {
                         target->hull -= 30;
                         addNews(locStr("engine.news.naval.sea_monster_battle"), "global", 4, "war");
                         if (ship.hull <= 0) addNews(locStr("engine.news.naval.sea_monster_killed"), "global", 5, "war");
+                        if (ship.hull <= 0) triggerJsHook("onShipDestroyed", [&](){ JsonValue _h=JsonValue::object(); _h.set("shipId",ship.id); _h.set("cause","sea_monster"); return _h; });
                     } else {
                         target->hull -= 50;
                         addNews(locStr("engine.news.naval.sea_monster_attacks_trade"), "global", 4, "disaster");
@@ -8683,6 +8712,7 @@ void processTrekTick() {
             int banditChance = r.threat_level / 10;
             if ((thread_safe_rand() % 100) < banditChance) {
                 g_world.player_trek.hours_since_last_bandit = 0;
+                triggerJsHook("onBanditEncounter", [&](){ JsonValue _h=JsonValue::object(); _h.set("regionId",g_world.player_trek.destination_id); _h.set("threatLevel",r.threat_level); _h.set("playerId",g_playerId); return _h; });
                 TrekEvent ev;
                 ev.id = "evt_" + generateUUID();
                 ev.object_type = "bandit";
@@ -8772,7 +8802,9 @@ void globalHomeostasis() {
     }
 
     if (globalStarvation > 0.20) {
+        if (globalStarvation > 0.20) triggerJsHook("onFamineStarted", [&](){ JsonValue _h=JsonValue::object(); _h.set("starvationRate",globalStarvation); _h.set("day",g_world.current_day); return _h; });
         g_world.nexusData["global_harvest_blessing"] = JsonValue(g_world.current_day + 180);
+        triggerJsHook("onGlobalEvent", [&](){ JsonValue _h=JsonValue::object(); _h.set("eventId","global_harvest_blessing"); _h.set("day",g_world.current_day); return _h; });
         addNews(locStr("engine.news.harvest_blessing"), "global", 5, "misc");
     }
 
@@ -9030,6 +9062,7 @@ void processRulerDiplomacy() {
                 }
                 
                 if (totalFood >= g_gameplay_runtime.war_total_food_threshold && totalWeapons >= g_gameplay_runtime.war_total_weapons_threshold && totalGold >= g_gameplay_runtime.war_total_gold_threshold) newWarType = DiplomaticState::TOTAL_WAR;
+                if(newWarType != DiplomaticState::PEACE && newWarType != faction.warType) triggerJsHook("onWarDeclared");
                 else if (totalFood >= g_gameplay_runtime.war_limited_food_threshold && totalWeapons >= g_gameplay_runtime.war_limited_weapons_threshold && totalGold >= g_gameplay_runtime.war_limited_gold_threshold) newWarType = DiplomaticState::LIMITED_WAR;
                 else if (totalFood >= g_gameplay_runtime.war_border_food_threshold && totalWeapons >= g_gameplay_runtime.war_border_weapons_threshold && totalGold >= g_gameplay_runtime.war_border_gold_threshold) newWarType = DiplomaticState::BORDER_CONFLICT;
                 else newWarType = DiplomaticState::PEACE;
@@ -9086,6 +9119,7 @@ void processRulerDiplomacy() {
             else if (ruler.rulerPersonality.stewardship > 50 && wealth < 10000) {
                 ruler.currentGoal = "trade_pact -> " + targetF;
                 faction.relations[targetF] += 10;
+                triggerJsHook("onRelationsChanged", [&](){ JsonValue _h=JsonValue::object(); _h.set("factionId1",ruler.factionId); _h.set("factionId2",targetF); _h.set("delta",10); _h.set("newValue",faction.relations[targetF]); return _h; });
                 if (!capitalVault.empty()) {
                     createItem(getCoreIdByTag("currency"), 2000, capitalVault, g_world.current_day, "Торговое соглашение");
                     vaultStocks[capitalRegionId][getCoreIdByTag("currency")] += 2000;
@@ -9255,6 +9289,7 @@ void checkRulerDeaths() {
             if ((rand() % 1000) < 2) {
                 npc.isAlive = false;
                 deadRulers.push_back(id);
+                triggerJsHook("onRulerDied", [&](){ JsonValue _h=JsonValue::object(); _h.set("rulerId",id);  return _h; });
                 addNews("Ruler starved", "global", 5, "disaster");
             }
             else if ((rand() % 10000) < 1) {
@@ -9312,6 +9347,7 @@ void processIntrigues() {
         } else if (intr.phase == "execution") {
             if (!intr.isDiscovered && (rand() % 100) < intr.discoveryChance) {
                 intr.isDiscovered = true;
+                triggerJsHook("onIntrigueDiscovered", [&](){ JsonValue _h=JsonValue::object(); _h.set("intrigueId",intr.id); _h.set("initiatorId",intr.initiatorFactionId); _h.set("targetId",intr.targetFactionId); return _h; });
                 std::string cdKey = intr.initiatorFactionId + "_intrigue_cooldown";
                 g_world.nexusData[cdKey] = JsonValue(g_world.current_day + 30);
                 addNews(locStr("engine.news.intrigue_discovered", {{"type", tName}, {"initiator", initName}, {"target", targetName}}), "global", 4, "war");
@@ -9526,6 +9562,7 @@ std::string processGmIntervention(const JsonValue& command) {
                     port.dock_container_id = createContainer("port_dock", factionId, 999999, 1000, regionId);
                     port.has_shipyard = false;
                     g_world.port_facilities[regionId] = port;
+                    triggerJsHook("onPortBuilt", [&](){ JsonValue _h=JsonValue::object(); _h.set("regionId",regionId); _h.set("factionId",factionId); return _h; });
 
                     feedback = locStr("engine.gm.port_built", {{"region", reg.name}});
                     addNews(locStr("engine.news.port_built_news", {{"faction", g_world.factions[factionId].name}, {"region", reg.name}}), regionId, 4, "politics");
@@ -9814,6 +9851,7 @@ std::string processGmIntervention(const JsonValue& command) {
             }
             m.treasure_chest_id = createContainer("monster_lair", "monster", 999999, 100, regionId);
             g_world.monsters.push_back(m);
+            triggerJsHook("onMonsterSpawned", [&](){ JsonValue _h=JsonValue::object(); _h.set("monsterId",m.id); _h.set("regionId",regionId); _h.set("monsterType",m.type); _h.set("level",m.level); return _h; });
             feedback = locStr("engine.gm.spawn_monster", {{"region", g_world.regions[regionId].name}});
             addNews(locStr("engine.news.monster_spawned_news", {{"region", g_world.regions[regionId].name}}), regionId, 5, "disaster");
             g_world.gmInterventionHistory.push_back(cmd);
@@ -9876,6 +9914,7 @@ std::string processGmIntervention(const JsonValue& command) {
             }
             g_world.map.disasters.push_back(d);
             feedback = locStr("engine.gm.disaster_triggered", {{"type", type}, {"region", g_world.regions[regionId].name}});
+            triggerJsHook("onDisasterTriggered", [&](){ JsonValue _h=JsonValue::object(); _h.set("regionId",args["regionId"].asString()); _h.set("disasterId",type); return _h; });
             addNews(locStr("engine.news.disaster_triggered_news", {{"type", type}, {"region", g_world.regions[regionId].name}}), regionId, 5, "disaster");
             g_world.gmInterventionHistory.push_back(cmd);
         } else {
@@ -9997,6 +10036,7 @@ std::string processGmIntervention(const JsonValue& command) {
                     }
                     
                     fac.armies.push_back(army);
+                    triggerJsHook("onArmyCreated", [&](){ JsonValue _h=JsonValue::object(); _h.set("armyId",army.id); _h.set("factionId",fac.id); _h.set("size",army.size); _h.set("location",army.location); return _h; });
                     feedback = locStr("engine.gm.army_raised", {{"size", std::to_string(size)}, {"region", reg.name}, {"id", army.id}});
                     addNews(locStr("engine.news.army_raised_news", {{"faction", fac.name}, {"region", reg.name}}), regionId, 4, "war");
                     g_world.gmInterventionHistory.push_back(cmd);
@@ -10634,6 +10674,7 @@ void processDailyNPCs() {
                         if (wantsJobChange) {
                             npc.economy.skillLevel = 1; 
                             npc.professionChangeTimestamp = g_world.current_day;
+                            triggerJsHook("onNpcJobChanged", [&](){ JsonValue _h=JsonValue::object(); _h.set("npcId",npc.id); _h.set("newProfession",best_prof); _h.set("location",npc.currentLocation); return _h; });
                         }
                     }
                 }
@@ -10987,6 +11028,7 @@ void processInternalPolitics() {
 
         if (r.stability < g_gameplay_runtime.sim_region_stability_revolt && r.unrest < g_gameplay_runtime.sim_region_unrest_dread && (thread_safe_rand() % 100) < 3) {
             r.unrest = 100;
+            triggerJsHook("onRevoltStarted", [&](){ JsonValue _h=JsonValue::object(); _h.set("regionId",rid); _h.set("factionId",r.factionId); _h.set("population",r.population); return _h; });
             r.productionBlockedDays = 5;
             r.population = std::max(0, (int)(r.population * g_gameplay_runtime.sim_region_revolt_attrition));
             
