@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain, protocol, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, shell, Menu } = require('electron');
+Menu.setApplicationMenu(null); // Remove native menu bar
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
