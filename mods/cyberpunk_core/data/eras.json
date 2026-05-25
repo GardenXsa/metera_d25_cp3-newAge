@@ -1,0 +1,10 @@
+[
+  {
+    "id": "rebirth",
+    "name": "2077: Эпоха Корпораций",
+    "start_year": 2077,
+    "default_location_file": "locations_rebirth.json",
+    "display_name_i18n_key": "characterCreation.era.rebirth",
+    "description_i18n_key": "characterCreation.eraDescription.rebirth"
+  }
+]

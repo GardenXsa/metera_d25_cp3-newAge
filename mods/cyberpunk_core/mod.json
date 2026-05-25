@@ -5,25 +5,63 @@
     "author": "AI Engineer",
     "description": "Полная конверсия игры в сеттинг мрачного киберпанка. Корпорации, импланты, неоновые пустоши.",
     "total_conversion": true,
-    "dependencies": ["base_game"],
+    "dependencies": [
+        "base_game"
+    ],
     "scripts": [
         "scripts/main.js"
     ],
     "data": {
-        "items": ["data/items.json", "data/items_expanded.json"],
-        "recipes": ["data/recipes.json"],
-        "facilities": ["data/facilities.json"],
-        "locations": ["data/locations.json", "data/locations_expanded.json"],
-        "lore": ["data/lore.txt", "data/lore_expanded.txt"],
-        "biomes": ["data/biomes.json"],
-        "city_gen": ["data/city_gen.json"],
-        "monsters": ["data/monsters.json"],
-        "disasters": ["data/disasters.json"],
-        "races": ["data/races.json"],
-        "professions": ["data/professions.json"],
-        "traits": ["data/traits.json"],
-        "npc_names": ["data/npc_names.json"],
-        "faction_relations": ["data/faction_relations.json"],
-        "world_config": ["data/world_config.json"]
+        "items": [
+            "data/items.json",
+            "data/items_expanded.json"
+        ],
+        "recipes": [
+            "data/recipes.json"
+        ],
+        "facilities": [
+            "data/facilities.json"
+        ],
+        "locations": [
+            "data/locations.json",
+            "data/locations_expanded.json"
+        ],
+        "lore": [
+            "data/lore.txt",
+            "data/lore_expanded.txt"
+        ],
+        "biomes": [
+            "data/biomes.json"
+        ],
+        "city_gen": [
+            "data/city_gen.json"
+        ],
+        "monsters": [
+            "data/monsters.json"
+        ],
+        "disasters": [
+            "data/disasters.json"
+        ],
+        "races": [
+            "data/races.json"
+        ],
+        "professions": [
+            "data/professions.json"
+        ],
+        "traits": [
+            "data/traits.json"
+        ],
+        "npc_names": [
+            "data/npc_names.json"
+        ],
+        "faction_relations": [
+            "data/faction_relations.json"
+        ],
+        "world_config": [
+            "data/world_config.json"
+        ],
+        "eras": [
+            "data/eras.json"
+        ]
     }
 }

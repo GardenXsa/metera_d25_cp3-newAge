@@ -5836,7 +5836,8 @@ function updateDynamicUIText() {
     if (manualTitleSpan) manualTitleSpan.innerHTML = t('loadGame.manualSavesTitle', { max: `<span id="max-manual-saves">${MAX_MANUAL_SAVES}</span>` });
     if (autoTitleSpan) autoTitleSpan.innerHTML = t('loadGame.autoSavesTitle', { max: `<span id="max-auto-saves">${MAX_AUTO_SAVES}</span>` });
 
-    if (typeof populateRacesUI === 'function' && window.RACES_DATA) populateRacesUI(window.RACES_DATA);
+    if (typeof populateErasUI   === 'function' && window.ERAS_DATA)    populateErasUI(window.ERAS_DATA);
+    if (typeof populateRacesUI  === 'function' && window.RACES_DATA)   populateRacesUI(window.RACES_DATA);
     if (typeof populateClassesUI === 'function' && window.CLASSES_DATA) populateClassesUI(window.CLASSES_DATA);
 
     if (player && gameInterface && gameInterface.classList.contains('active-screen')) {
@@ -6017,6 +6018,10 @@ async function initializeApp() {
     if (typeof window.ensureRuntimeDataLoaded === 'function') {
         await window.ensureRuntimeDataLoaded();
         syncRuntimeRegistries();
+        // Populate character creation UI with runtime data
+        if (typeof populateErasUI    === 'function' && window.ERAS_DATA)    populateErasUI(window.ERAS_DATA);
+        if (typeof populateRacesUI   === 'function' && window.RACES_DATA)   populateRacesUI(window.RACES_DATA);
+        if (typeof populateClassesUI === 'function' && window.CLASSES_DATA) populateClassesUI(window.CLASSES_DATA);
     }
 
     const results = await Promise.allSettled([
