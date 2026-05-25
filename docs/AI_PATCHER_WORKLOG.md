@@ -2619,3 +2619,44 @@ node tests/test_stub_game.js            → 80 PASSED, 0 FAILED, 0 WARNINGS
 
 **Следующий шаг:** Git checkpoint → продолжить Phase 9 (остаток бэклога из remaining_meterea_engine_backlog_2026-05-22.md).
 
+
+
+---
+
+### 47. `phase9_merchant_weapons_food_literals`
+
+**Статус:** применён успешно. Дата: 2026-05-25.
+
+**Изменено:**
+
+- `engine/meterea_engine.cpp`
+
+**Что сделали:**
+
+Три целевых патча на оставшиеся literal-строки в движке:
+
+**Патч 9 — "Merchant" string literal (строки ~8240, 8266):**
+`merchant.profession == "Merchant"` → `npcHasProfessionType(merchant, {"merchant"})`.
+Теперь проверка профессии торговца проходит через data-driven функцию, которая смотрит в
+`g_db.professions` и корректно обрабатывает как старые ID с заглавной буквы, так и новые строчные.
+
+**Патч 10 — `vaultStocks[rid]["weapons"]` (строка ~8943):**
+Заменено на `vaultStocks[rid][getCoreIdByTag("weapon")]`.
+Военная логика размещения армий теперь использует data-driven тег, а не захардкоженный item ID.
+
+**Патч 11 — `breadPrice` variable + hardcoded fallback = 5 (строки ~9050-9054):**
+- Переменная переименована из `breadPrice` в `foodPrice` (устранена семантическая путаница).
+- Fallback цены `5` заменён на `g_db.items.find(f_id)->basePrice` — берётся из данных.
+- Логика: ruler state purchase теперь полностью data-driven.
+
+**Проверки:**
+
+```
+node tools/runtime_smoke_check.js       → 60 checks, 0 failed, 0 warnings
+py -3 engine/test_profession_cluster_refactor.py → PASS
+py -3 engine/test_runtime_bundle.py              → PASS
+node tests/test_stub_game.js            → 80 PASSED, 0 FAILED
+```
+
+**Следующий шаг:** Git push → продолжить оставшиеся пункты бэклога Phase 9.
+

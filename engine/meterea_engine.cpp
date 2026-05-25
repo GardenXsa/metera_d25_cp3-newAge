@@ -8237,7 +8237,7 @@ void processCouriers() {
                     std::string targetInbox = "";
                     std::string targetRegion = "";
                     for (const auto& [nId, merchant] : g_world.npcs) {
-                        if (merchant.profession == "Merchant" && !merchant.economy.workplaceId.empty()) {
+                        if (npcHasProfessionType(merchant, {"merchant"}) && !merchant.economy.workplaceId.empty()) {
                             targetInbox = getSubContainer(merchant.economy.workplaceId, "inbox");
                             targetRegion = merchant.homeLocation;
                             if (!targetInbox.empty()) break;
@@ -8263,7 +8263,7 @@ void processCouriers() {
 
 void processMerchantOrders() {
     for (auto& [npcId, merchant] : g_world.npcs) {
-        if (!merchant.isAlive || merchant.profession != "Merchant" || merchant.economy.workplaceId.empty()) continue;
+        if (!merchant.isAlive || !npcHasProfessionType(merchant, {"merchant"}) || merchant.economy.workplaceId.empty()) continue;
 
         if (!merchant.travelDestination.empty()) {
             merchant.travelHoursLeft--;
@@ -8940,7 +8940,7 @@ void processRulerDiplomacy() {
             std::string homeRegionId = "";
             for (const auto& rid : faction.regions) {
                 if (g_world.regions.count(rid)) {
-                                        int w = vaultStocks[rid]["weapons"];
+                                        int w = vaultStocks[rid][getCoreIdByTag("weapon")];
                     if (w > 10) { homeRegionId = rid; break; }
                 }
             }
@@ -9055,11 +9055,14 @@ void checkRulerDeaths() {
                 
                 if (totalFood < 20) {
                     std::string f_id = getCoreIdByTag("food");
-                    double breadPrice = capReg.markets[f_id];
-                    if (breadPrice <= 0) breadPrice = 5;
+                    double foodPrice = capReg.markets[f_id];
+                    if (foodPrice <= 0) {
+                        auto db_it = g_db.items.find(f_id);
+                        foodPrice = (db_it != g_db.items.end() && db_it->second.basePrice > 0) ? db_it->second.basePrice : 5;
+                    }
                     
-                    if (capReg.moneySupply >= breadPrice * 10) {
-                        capReg.moneySupply -= breadPrice * 10;
+                    if (capReg.moneySupply >= foodPrice * 10) {
+                        capReg.moneySupply -= foodPrice * 10;
                         createItem(f_id, 10, capReg.vault_id, g_world.current_day, "State Purchase");
                         addNews("Ruler supplied", capital, 1, "trade");
                         continue; 
