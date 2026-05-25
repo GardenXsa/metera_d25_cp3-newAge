@@ -6013,10 +6013,13 @@ async function initializeApp() {
 
         await loadTileSet();
 
+    // Load runtime database FIRST — other loaders depend on GAMEPLAY_RUNTIME_CONFIG
+    if (typeof window.ensureRuntimeDataLoaded === 'function') {
+        await window.ensureRuntimeDataLoaded();
+        syncRuntimeRegistries();
+    }
+
     const results = await Promise.allSettled([
-        (typeof window.ensureRuntimeDataLoaded === 'function'
-            ? window.ensureRuntimeDataLoaded().then(() => syncRuntimeRegistries())
-            : Promise.resolve()),
         loadLore(DEFAULT_WORLD_ID, currentLanguage),
         loadGlobalLocations(DEFAULT_WORLD_ID, currentLanguage),
         loadSkillsReference(DEFAULT_WORLD_ID, currentLanguage),
@@ -8402,14 +8405,14 @@ function toRuntimeNumber(value, fallback) {
 }
 
 function getRuntimeDefaultEraId() {
-  const runtimeEraId = getGameplayRuntimeConfig().engine_world?.default_era_id;
-  if (typeof runtimeEraId === 'string' && runtimeEraId.trim()) {
-    return runtimeEraId;
-  }
+  try {
+    const runtimeEraId = getGameplayRuntimeConfig().engine_world?.default_era_id;
+    if (typeof runtimeEraId === 'string' && runtimeEraId.trim()) return runtimeEraId;
+  } catch(e) { /* GAMEPLAY_RUNTIME_CONFIG not yet loaded — use fallbacks below */ }
   if (Array.isArray(window.ERAS_DATA) && window.ERAS_DATA.length > 0 && typeof window.ERAS_DATA[0]?.id === 'string') {
     return window.ERAS_DATA[0].id;
   }
-  throw new Error('[RuntimeData] Unable to resolve default era id.');
+  return 'rebirth'; // safe fallback — never throw during parallel init
 }
 
 function getGameplayCommandDefaults() {
