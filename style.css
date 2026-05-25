@@ -5481,3 +5481,261 @@ button:hover {
 .api-key-status.valid { color: var(--accent-green) !important; }
 .api-key-status.invalid { color: var(--accent-danger) !important; }
 
+
+
+/* ============================================================
+   UI OVERHAUL 2026-05-25 — Visual Polish
+   ============================================================ */
+
+/* --- АНИМАЦИИ --- */
+@keyframes shimmerBar {
+    0%   { background-position: -200% center; }
+    100% { background-position:  200% center; }
+}
+@keyframes damageFlash {
+    0%, 100% { box-shadow: none; }
+    30%       { box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.9), 0 0 20px rgba(231, 76, 60, 0.5); }
+}
+@keyframes healFlash {
+    0%, 100% { box-shadow: none; }
+    30%       { box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.9), 0 0 20px rgba(46, 204, 113, 0.5); }
+}
+@keyframes statChange {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(1.18); color: var(--accent-gold); }
+    100% { transform: scale(1); }
+}
+@keyframes messageSlideIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes panelGlow {
+    0%, 100% { box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    50%       { box-shadow: 0 8px 30px rgba(212,175,55,0.12), 0 0 0 1px rgba(212,175,55,0.08); }
+}
+
+/* --- HP / MP БАРЫ — улучшенные --- */
+.hp-bar-container,
+.mana-bar-container {
+    position: relative;
+    overflow: visible !important;
+}
+.hp-bar-fill::before,
+.mana-bar-fill::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(255,255,255,0.18) 40%,
+        rgba(255,255,255,0.06) 60%,
+        transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmerBar 2.5s linear infinite;
+    border-radius: inherit;
+    pointer-events: none;
+}
+.hp-bar-fill.critical::before {
+    animation: shimmerBar 1s linear infinite;
+}
+
+/* Вспышка при уроне/лечении (JS добавляет класс на 600ms) */
+.hp-bar-container.damaged  { animation: damageFlash 0.6s ease forwards; }
+.hp-bar-container.healed   { animation: healFlash   0.6s ease forwards; }
+
+/* --- STAT LINES — разделители и highlight --- */
+.stat-line {
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    transition: background 0.2s ease;
+}
+.stat-line:last-child { border-bottom: none; }
+.stat-line:hover {
+    background: rgba(212, 175, 55, 0.05);
+    border-radius: 4px;
+}
+
+/* Анимация при изменении значения (JS добавляет .changed на 700ms) */
+.stat-line.changed .stat-value-group,
+#stat-hp.changed, #stat-mana.changed,
+#stat-gold.changed {
+    animation: statChange 0.7s ease;
+    display: inline-block;
+}
+
+/* --- ПАНЕЛИ — тонкий glow на hover --- */
+.panel {
+    transition: box-shadow 0.4s ease, border-color 0.3s ease;
+}
+.panel:hover {
+    box-shadow: 0 8px 28px rgba(0,0,0,0.5), 0 0 0 1px rgba(212,175,55,0.07);
+}
+
+/* Заголовки панелей — чёткий разделитель снизу */
+.panel-toggle {
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+    margin-bottom: 6px;
+    font-size: 0.88em;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--accent-gold);
+}
+.panel-toggle:hover { color: #e8c94a; }
+
+/* --- GAME LOG — типизированные сообщения --- */
+.message-wrapper {
+    animation: messageSlideIn 0.35s ease-out forwards;
+}
+
+/* Боевые сообщения */
+.message-bubble.combat-message {
+    border-left: 3px solid rgba(231, 76, 60, 0.7);
+    background: rgba(231, 76, 60, 0.06) !important;
+}
+.message-bubble.combat-message::before {
+    content: '⚔️ ';
+    font-size: 0.85em;
+}
+
+/* Лут / награды */
+.message-bubble.loot-message {
+    border-left: 3px solid rgba(212, 175, 55, 0.7);
+    background: rgba(212, 175, 55, 0.06) !important;
+    color: #e8c94a;
+}
+.message-bubble.loot-message::before {
+    content: '✨ ';
+    font-size: 0.85em;
+}
+
+/* Квесты */
+.message-bubble.quest-message {
+    border-left: 3px solid rgba(155, 89, 182, 0.7);
+    background: rgba(155, 89, 182, 0.06) !important;
+}
+.message-bubble.quest-message::before {
+    content: '📜 ';
+    font-size: 0.85em;
+}
+
+/* Торговля */
+.message-bubble.trade-message {
+    border-left: 3px solid rgba(39, 174, 96, 0.7);
+    background: rgba(39, 174, 96, 0.06) !important;
+}
+
+/* Опасность / смерть */
+.message-bubble.danger-message {
+    border-left: 3px solid rgba(192, 57, 43, 0.9);
+    background: rgba(192, 57, 43, 0.1) !important;
+    color: #f5b7b1;
+    font-weight: bold;
+}
+
+/* Путешествие */
+.message-bubble.travel-message {
+    border-left: 3px solid rgba(93, 173, 226, 0.5);
+    background: rgba(93, 173, 226, 0.04) !important;
+    color: #aed6f1;
+    font-style: italic;
+}
+
+/* --- INPUT AREA — polish --- */
+.input-area {
+    border-top: 1px solid rgba(212, 175, 55, 0.15) !important;
+    border-radius: 0 0 8px 8px;
+}
+
+#user-input {
+    caret-color: var(--accent-gold);
+}
+#user-input::placeholder {
+    color: rgba(139, 151, 163, 0.5);
+    font-style: italic;
+    letter-spacing: 0.02em;
+}
+
+/* --- CHARACTER SHEET — акцент на секции --- */
+.character-sheet {
+    border-left: 3px solid var(--accent-gold);
+    position: relative;
+}
+.character-sheet::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -3px;
+    width: 3px;
+    height: 100%;
+    background: linear-gradient(180deg,
+        var(--accent-gold) 0%,
+        transparent 60%,
+        var(--accent-gold) 100%);
+    opacity: 0.6;
+    border-radius: 3px 0 0 3px;
+}
+
+/* --- SIDEBAR — тонкая полоска-разделитель сверху панели --- */
+.sidebar .panel + .panel {
+    margin-top: 2px;
+}
+.sidebar .panel {
+    border-top: 1px solid rgba(255,255,255,0.03);
+}
+
+/* --- SCROLL В GAME-LOG --- */
+.game-log::-webkit-scrollbar { width: 4px; }
+.game-log::-webkit-scrollbar-track { background: transparent; }
+.game-log::-webkit-scrollbar-thumb {
+    background: rgba(212, 175, 55, 0.2);
+    border-radius: 2px;
+}
+.game-log::-webkit-scrollbar-thumb:hover {
+    background: rgba(212, 175, 55, 0.4);
+}
+
+/* --- SUGGESTED ACTIONS — кнопки более заметные --- */
+.suggested-actions-bar {
+    gap: 8px !important;
+    padding: 8px 0 !important;
+}
+.suggested-action-btn,
+.action-btn {
+    border-radius: 6px !important;
+    transition: all 0.2s ease !important;
+    font-size: 0.88em !important;
+}
+.suggested-action-btn:hover,
+.action-btn:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 12px rgba(93, 173, 226, 0.25) !important;
+}
+
+/* --- PANEL TOGGLE ICON — плавный поворот --- */
+.toggle-icon {
+    transition: transform 0.25s ease;
+    font-size: 0.8em;
+    opacity: 0.6;
+}
+.collapsible-panel.expanded .toggle-icon {
+    transform: rotate(90deg);
+}
+
+/* --- STAT INCREASE BUTTON --- */
+.stat-increase-button {
+    transition: all 0.15s ease;
+    border-radius: 50% !important;
+    width: 20px !important;
+    height: 20px !important;
+    font-size: 0.8em !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+}
+.stat-increase-button:hover {
+    background: var(--accent-gold) !important;
+    color: #000 !important;
+    transform: scale(1.15);
+}
+
+/* ============================================================
+   END UI OVERHAUL
+   ============================================================ */
