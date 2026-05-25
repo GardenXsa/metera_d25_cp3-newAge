@@ -20,6 +20,7 @@
 #include <set>
 #include <algorithm>
 #include <cmath>
+#include <cctype>
 #include <sstream>
 #include <random>
 #include <cstdint>
@@ -142,6 +143,483 @@ struct Database {
 // Global database instance
 Database g_db;
 
+struct GameplayRuntimeConfig {
+    struct ContainerTypeDescriptor {
+        bool has_is_locked = false;
+        bool is_locked = false;
+        bool has_health = false;
+        int health = 0;
+        bool has_lock_difficulty = false;
+        int lock_difficulty = 0;
+        bool has_flammable = false;
+        bool flammable = true;
+        bool has_capacity = false;
+        int capacity = 0;
+        bool has_max_weight = false;
+        int max_weight = 0;
+    };
+
+    struct TransportDescriptor {
+        std::string id;
+        bool has_speed_multiplier = false;
+        double speed_multiplier = 1.0;
+        bool has_cargo_bonus = false;
+        int cargo_bonus = 0;
+        bool has_water_only = false;
+        bool water_only = false;
+    };
+
+    struct ShipTypeDescriptor {
+        std::string id;
+        bool has_speed = false;
+        double speed = 1.0;
+        bool has_capacity = false;
+        int capacity = 0;
+        bool has_hull = false;
+        int hull = 0;
+        bool has_sailors = false;
+        int sailors = 0;
+        bool has_cannons = false;
+        int cannons = 0;
+        bool has_marines = false;
+        int marines = 0;
+        bool has_combat_power = false;
+        int combat_power = 0;
+        bool has_is_monster = false;
+        bool is_monster = false;
+        bool has_build_days = false;
+        int build_days = 0;
+        std::unordered_map<std::string, int> build_cost;
+    };
+
+    std::string container_id_prefix = "cont_";
+    std::string item_id_prefix = "item_";
+    double default_item_weight = 1.0;
+    int default_lock_difficulty = 10;
+    int default_container_health = 200;
+    std::set<std::string> non_flammable_container_types = {"faction_vault"};
+    std::unordered_map<std::string, ContainerTypeDescriptor> container_types;
+    std::unordered_map<std::string, TransportDescriptor> transport_registry;
+    std::unordered_map<std::string, ShipTypeDescriptor> ship_types;
+    double trek_base_travel_speed = 0.5;
+    int trek_bandit_cooldown_hours = 4;
+    int npc_reserve_gold = 100;
+    int npc_initial_gold_max = 100;
+    int build_port_gold_cost = 5000;
+    int npc_luxury_spend_threshold = 500;
+    int npc_mercenary_medical_threshold = 200;
+    int npc_mercenary_weapon_threshold = 500;
+    int npc_merchant_vehicle_threshold = 1000;
+    int npc_merchant_vehicle_max_owned = 5;
+    int infra_dam_gold_cost = 5000;
+    int infra_dam_wood_cost = 1000;
+    int infra_aqueduct_gold_cost = 8000;
+    int infra_aqueduct_iron_cost = 500;
+    int infra_well_gold_cost = 2000;
+    int infra_road_gold_cost = 10000;
+    int infra_road_wood_cost = 2000;
+    double war_declare_min_desire = 50.0;
+    int war_declare_min_wealth = 5000;
+    int war_imperialism_wealth_ceiling = 20000;
+    int war_total_food_threshold = 3000;
+    int war_total_weapons_threshold = 1000;
+    int war_total_gold_threshold = 5000;
+    int war_limited_food_threshold = 500;
+    int war_limited_weapons_threshold = 200;
+    int war_limited_gold_threshold = 1000;
+    int war_border_food_threshold = 100;
+    int war_border_weapons_threshold = 50;
+    int war_border_gold_threshold = 200;
+    int gm_sabotage_cost = 3000;
+    int monster_bounty_gold_cost = 5000;
+    int path_impassable_cost_threshold = 9000;
+    std::string default_race_id;
+    std::string faction_vault_container_type = "faction_vault";
+    std::string ruins_stash_container_type = "ruins_stash";
+    std::string default_era_id;
+    std::unordered_map<std::string, double> currency_physical_weights;
+};
+
+GameplayRuntimeConfig g_gameplay_runtime;
+
+void resetGameplayRuntimeConfig() {
+    g_gameplay_runtime = GameplayRuntimeConfig{};
+}
+
+double readJsonNumberOrDefault(const JsonValue& value, double fallback) {
+    if (value.type == JsonValue::INT || value.type == JsonValue::DOUBLE) return value.asDouble();
+    return fallback;
+}
+
+int readJsonIntOrDefault(const JsonValue& value, int fallback) {
+    if (value.type == JsonValue::INT || value.type == JsonValue::DOUBLE) return value.asInt();
+    return fallback;
+}
+
+bool readJsonBoolOrDefault(const JsonValue& value, bool fallback) {
+    if (value.type == JsonValue::BOOLEAN || value.type == JsonValue::INT) return value.asBool();
+    return fallback;
+}
+
+std::string normalizeShipTypeRuntimeId(const std::string& value) {
+    std::string normalized = value;
+    std::transform(
+        normalized.begin(),
+        normalized.end(),
+        normalized.begin(),
+        [](unsigned char ch) { return (char)std::tolower(ch); }
+    );
+    return normalized;
+}
+
+const GameplayRuntimeConfig::ContainerTypeDescriptor* getContainerTypeDescriptor(const std::string& type) {
+    auto descriptorIt = g_gameplay_runtime.container_types.find(type);
+    if (descriptorIt == g_gameplay_runtime.container_types.end()) return nullptr;
+    return &descriptorIt->second;
+}
+
+const GameplayRuntimeConfig::TransportDescriptor* getTransportDescriptor(const std::string& prototypeId) {
+    auto descriptorIt = g_gameplay_runtime.transport_registry.find(prototypeId);
+    if (descriptorIt == g_gameplay_runtime.transport_registry.end()) return nullptr;
+    return &descriptorIt->second;
+}
+
+const GameplayRuntimeConfig::ShipTypeDescriptor* getShipTypeDescriptor(const std::string& shipTypeId) {
+    auto descriptorIt = g_gameplay_runtime.ship_types.find(normalizeShipTypeRuntimeId(shipTypeId));
+    if (descriptorIt == g_gameplay_runtime.ship_types.end()) return nullptr;
+    return &descriptorIt->second;
+}
+
+void loadGameplayRuntimeConfig(const JsonValue& gameplayRuntime) {
+    resetGameplayRuntimeConfig();
+    if (gameplayRuntime.type != JsonValue::OBJECT) return;
+
+    if (gameplayRuntime.has("inventory_engine") && gameplayRuntime["inventory_engine"].type == JsonValue::OBJECT) {
+        JsonValue inventoryEngine = gameplayRuntime["inventory_engine"];
+        if (inventoryEngine.has("id_prefixes") && inventoryEngine["id_prefixes"].type == JsonValue::OBJECT) {
+            JsonValue idPrefixes = inventoryEngine["id_prefixes"];
+            if (idPrefixes.has("container") && idPrefixes["container"].type == JsonValue::STRING) {
+                g_gameplay_runtime.container_id_prefix = idPrefixes["container"].asString();
+            }
+            if (idPrefixes.has("item") && idPrefixes["item"].type == JsonValue::STRING) {
+                g_gameplay_runtime.item_id_prefix = idPrefixes["item"].asString();
+            }
+        }
+    }
+
+    if (gameplayRuntime.has("inventory") && gameplayRuntime["inventory"].type == JsonValue::OBJECT) {
+        JsonValue inventory = gameplayRuntime["inventory"];
+        if (inventory.has("default_item_weight")) {
+            g_gameplay_runtime.default_item_weight = readJsonNumberOrDefault(
+                inventory["default_item_weight"],
+                g_gameplay_runtime.default_item_weight
+            );
+        }
+        if (inventory.has("default_lock_difficulty")) {
+            g_gameplay_runtime.default_lock_difficulty = readJsonIntOrDefault(
+                inventory["default_lock_difficulty"],
+                g_gameplay_runtime.default_lock_difficulty
+            );
+        }
+        if (inventory.has("default_container_health")) {
+            g_gameplay_runtime.default_container_health = readJsonIntOrDefault(
+                inventory["default_container_health"],
+                g_gameplay_runtime.default_container_health
+            );
+        }
+        if (inventory.has("non_flammable_container_types") &&
+            inventory["non_flammable_container_types"].type == JsonValue::ARRAY) {
+            g_gameplay_runtime.non_flammable_container_types.clear();
+            for (size_t i = 0; i < inventory["non_flammable_container_types"].size(); ++i) {
+                if (inventory["non_flammable_container_types"][i].type == JsonValue::STRING) {
+                    g_gameplay_runtime.non_flammable_container_types.insert(
+                        inventory["non_flammable_container_types"][i].asString()
+                    );
+                }
+            }
+        }
+    }
+
+    if (gameplayRuntime.has("currency") && gameplayRuntime["currency"].type == JsonValue::OBJECT) {
+        JsonValue currency = gameplayRuntime["currency"];
+        if (currency.has("physical_weights") && currency["physical_weights"].type == JsonValue::OBJECT) {
+            g_gameplay_runtime.currency_physical_weights.clear();
+            for (const auto& [itemId, value] : currency["physical_weights"].obj_val) {
+                if (value.type == JsonValue::INT || value.type == JsonValue::DOUBLE) {
+                    g_gameplay_runtime.currency_physical_weights[itemId] = value.asDouble();
+                }
+            }
+        }
+    }
+
+    if (gameplayRuntime.has("engine_economy") && gameplayRuntime["engine_economy"].type == JsonValue::OBJECT) {
+        JsonValue engineEconomy = gameplayRuntime["engine_economy"];
+        if (engineEconomy.has("npc_reserve_gold")) {
+            g_gameplay_runtime.npc_reserve_gold = std::max(
+                0,
+                readJsonIntOrDefault(engineEconomy["npc_reserve_gold"], g_gameplay_runtime.npc_reserve_gold)
+            );
+        }
+        if (engineEconomy.has("npc_initial_gold_max")) {
+            g_gameplay_runtime.npc_initial_gold_max = std::max(
+                0,
+                readJsonIntOrDefault(engineEconomy["npc_initial_gold_max"], g_gameplay_runtime.npc_initial_gold_max)
+            );
+        }
+        if (engineEconomy.has("build_port_gold_cost")) {
+            g_gameplay_runtime.build_port_gold_cost = std::max(
+                1,
+                readJsonIntOrDefault(engineEconomy["build_port_gold_cost"], g_gameplay_runtime.build_port_gold_cost)
+            );
+        }
+        if (engineEconomy.has("npc_luxury_spend_threshold")) {
+            g_gameplay_runtime.npc_luxury_spend_threshold = std::max(0, readJsonIntOrDefault(engineEconomy["npc_luxury_spend_threshold"], g_gameplay_runtime.npc_luxury_spend_threshold));
+        }
+        if (engineEconomy.has("npc_mercenary_medical_threshold")) {
+            g_gameplay_runtime.npc_mercenary_medical_threshold = std::max(0, readJsonIntOrDefault(engineEconomy["npc_mercenary_medical_threshold"], g_gameplay_runtime.npc_mercenary_medical_threshold));
+        }
+        if (engineEconomy.has("npc_mercenary_weapon_threshold")) {
+            g_gameplay_runtime.npc_mercenary_weapon_threshold = std::max(0, readJsonIntOrDefault(engineEconomy["npc_mercenary_weapon_threshold"], g_gameplay_runtime.npc_mercenary_weapon_threshold));
+        }
+        if (engineEconomy.has("npc_merchant_vehicle_threshold")) {
+            g_gameplay_runtime.npc_merchant_vehicle_threshold = std::max(0, readJsonIntOrDefault(engineEconomy["npc_merchant_vehicle_threshold"], g_gameplay_runtime.npc_merchant_vehicle_threshold));
+        }
+        if (engineEconomy.has("npc_merchant_vehicle_max_owned")) {
+            g_gameplay_runtime.npc_merchant_vehicle_max_owned = std::max(0, readJsonIntOrDefault(engineEconomy["npc_merchant_vehicle_max_owned"], g_gameplay_runtime.npc_merchant_vehicle_max_owned));
+        }
+        if (engineEconomy.has("infra_dam_gold_cost")) {
+            g_gameplay_runtime.infra_dam_gold_cost = std::max(1, readJsonIntOrDefault(engineEconomy["infra_dam_gold_cost"], g_gameplay_runtime.infra_dam_gold_cost));
+        }
+        if (engineEconomy.has("infra_dam_wood_cost")) {
+            g_gameplay_runtime.infra_dam_wood_cost = std::max(1, readJsonIntOrDefault(engineEconomy["infra_dam_wood_cost"], g_gameplay_runtime.infra_dam_wood_cost));
+        }
+        if (engineEconomy.has("infra_aqueduct_gold_cost")) {
+            g_gameplay_runtime.infra_aqueduct_gold_cost = std::max(1, readJsonIntOrDefault(engineEconomy["infra_aqueduct_gold_cost"], g_gameplay_runtime.infra_aqueduct_gold_cost));
+        }
+        if (engineEconomy.has("infra_aqueduct_iron_cost")) {
+            g_gameplay_runtime.infra_aqueduct_iron_cost = std::max(1, readJsonIntOrDefault(engineEconomy["infra_aqueduct_iron_cost"], g_gameplay_runtime.infra_aqueduct_iron_cost));
+        }
+        if (engineEconomy.has("infra_well_gold_cost")) {
+            g_gameplay_runtime.infra_well_gold_cost = std::max(1, readJsonIntOrDefault(engineEconomy["infra_well_gold_cost"], g_gameplay_runtime.infra_well_gold_cost));
+        }
+        if (engineEconomy.has("infra_road_gold_cost")) {
+            g_gameplay_runtime.infra_road_gold_cost = std::max(1, readJsonIntOrDefault(engineEconomy["infra_road_gold_cost"], g_gameplay_runtime.infra_road_gold_cost));
+        }
+        if (engineEconomy.has("infra_road_wood_cost")) {
+            g_gameplay_runtime.infra_road_wood_cost = std::max(1, readJsonIntOrDefault(engineEconomy["infra_road_wood_cost"], g_gameplay_runtime.infra_road_wood_cost));
+        }
+        if (engineEconomy.has("war_declare_min_desire")) g_gameplay_runtime.war_declare_min_desire = readJsonNumberOrDefault(engineEconomy["war_declare_min_desire"], g_gameplay_runtime.war_declare_min_desire);
+        if (engineEconomy.has("war_declare_min_wealth")) g_gameplay_runtime.war_declare_min_wealth = std::max(0, readJsonIntOrDefault(engineEconomy["war_declare_min_wealth"], g_gameplay_runtime.war_declare_min_wealth));
+        if (engineEconomy.has("war_imperialism_wealth_ceiling")) g_gameplay_runtime.war_imperialism_wealth_ceiling = std::max(0, readJsonIntOrDefault(engineEconomy["war_imperialism_wealth_ceiling"], g_gameplay_runtime.war_imperialism_wealth_ceiling));
+        if (engineEconomy.has("war_total_food_threshold")) g_gameplay_runtime.war_total_food_threshold = std::max(0, readJsonIntOrDefault(engineEconomy["war_total_food_threshold"], g_gameplay_runtime.war_total_food_threshold));
+        if (engineEconomy.has("war_total_weapons_threshold")) g_gameplay_runtime.war_total_weapons_threshold = std::max(0, readJsonIntOrDefault(engineEconomy["war_total_weapons_threshold"], g_gameplay_runtime.war_total_weapons_threshold));
+        if (engineEconomy.has("war_total_gold_threshold")) g_gameplay_runtime.war_total_gold_threshold = std::max(0, readJsonIntOrDefault(engineEconomy["war_total_gold_threshold"], g_gameplay_runtime.war_total_gold_threshold));
+        if (engineEconomy.has("war_limited_food_threshold")) g_gameplay_runtime.war_limited_food_threshold = std::max(0, readJsonIntOrDefault(engineEconomy["war_limited_food_threshold"], g_gameplay_runtime.war_limited_food_threshold));
+        if (engineEconomy.has("war_limited_weapons_threshold")) g_gameplay_runtime.war_limited_weapons_threshold = std::max(0, readJsonIntOrDefault(engineEconomy["war_limited_weapons_threshold"], g_gameplay_runtime.war_limited_weapons_threshold));
+        if (engineEconomy.has("war_limited_gold_threshold")) g_gameplay_runtime.war_limited_gold_threshold = std::max(0, readJsonIntOrDefault(engineEconomy["war_limited_gold_threshold"], g_gameplay_runtime.war_limited_gold_threshold));
+        if (engineEconomy.has("war_border_food_threshold")) g_gameplay_runtime.war_border_food_threshold = std::max(0, readJsonIntOrDefault(engineEconomy["war_border_food_threshold"], g_gameplay_runtime.war_border_food_threshold));
+        if (engineEconomy.has("war_border_weapons_threshold")) g_gameplay_runtime.war_border_weapons_threshold = std::max(0, readJsonIntOrDefault(engineEconomy["war_border_weapons_threshold"], g_gameplay_runtime.war_border_weapons_threshold));
+        if (engineEconomy.has("war_border_gold_threshold")) g_gameplay_runtime.war_border_gold_threshold = std::max(0, readJsonIntOrDefault(engineEconomy["war_border_gold_threshold"], g_gameplay_runtime.war_border_gold_threshold));
+        if (engineEconomy.has("gm_sabotage_cost")) g_gameplay_runtime.gm_sabotage_cost = std::max(1, readJsonIntOrDefault(engineEconomy["gm_sabotage_cost"], g_gameplay_runtime.gm_sabotage_cost));
+        if (engineEconomy.has("monster_bounty_gold_cost")) g_gameplay_runtime.monster_bounty_gold_cost = std::max(1, readJsonIntOrDefault(engineEconomy["monster_bounty_gold_cost"], g_gameplay_runtime.monster_bounty_gold_cost));
+        if (engineEconomy.has("path_impassable_cost_threshold")) g_gameplay_runtime.path_impassable_cost_threshold = std::max(1, readJsonIntOrDefault(engineEconomy["path_impassable_cost_threshold"], g_gameplay_runtime.path_impassable_cost_threshold));
+    }
+
+    if (gameplayRuntime.has("engine_world") && gameplayRuntime["engine_world"].type == JsonValue::OBJECT) {
+        JsonValue engineWorld = gameplayRuntime["engine_world"];
+        if (engineWorld.has("default_race_id") && engineWorld["default_race_id"].type == JsonValue::STRING) {
+            g_gameplay_runtime.default_race_id = engineWorld["default_race_id"].asString();
+        }
+        if (engineWorld.has("faction_vault_container_type") && engineWorld["faction_vault_container_type"].type == JsonValue::STRING) {
+            g_gameplay_runtime.faction_vault_container_type = engineWorld["faction_vault_container_type"].asString();
+        }
+        if (engineWorld.has("ruins_stash_container_type") && engineWorld["ruins_stash_container_type"].type == JsonValue::STRING) {
+            g_gameplay_runtime.ruins_stash_container_type = engineWorld["ruins_stash_container_type"].asString();
+        }
+        if (engineWorld.has("default_era_id") && engineWorld["default_era_id"].type == JsonValue::STRING) {
+            g_gameplay_runtime.default_era_id = engineWorld["default_era_id"].asString();
+        }
+    }
+}
+
+void loadContainerTypeRuntimeConfig(const JsonValue& containerTypes) {
+    g_gameplay_runtime.container_types.clear();
+    if (containerTypes.type != JsonValue::OBJECT) return;
+
+    for (const auto& [typeId, descriptorValue] : containerTypes.obj_val) {
+        if (descriptorValue.type != JsonValue::OBJECT) continue;
+        GameplayRuntimeConfig::ContainerTypeDescriptor descriptor;
+
+        if (descriptorValue.has("is_locked")) {
+            descriptor.has_is_locked = true;
+            descriptor.is_locked = readJsonBoolOrDefault(descriptorValue["is_locked"], false);
+        }
+        if (descriptorValue.has("health")) {
+            descriptor.has_health = true;
+            descriptor.health = readJsonIntOrDefault(descriptorValue["health"], 0);
+        }
+        if (descriptorValue.has("lock_difficulty")) {
+            descriptor.has_lock_difficulty = true;
+            descriptor.lock_difficulty = readJsonIntOrDefault(descriptorValue["lock_difficulty"], 0);
+        }
+        if (descriptorValue.has("flammable")) {
+            descriptor.has_flammable = true;
+            descriptor.flammable = readJsonBoolOrDefault(descriptorValue["flammable"], true);
+        }
+        if (descriptorValue.has("capacity")) {
+            descriptor.has_capacity = true;
+            descriptor.capacity = readJsonIntOrDefault(descriptorValue["capacity"], 0);
+        }
+        if (descriptorValue.has("max_weight")) {
+            descriptor.has_max_weight = true;
+            descriptor.max_weight = readJsonIntOrDefault(descriptorValue["max_weight"], 0);
+        } else if (descriptorValue.has("max_weight_kg")) {
+            descriptor.has_max_weight = true;
+            descriptor.max_weight = readJsonIntOrDefault(descriptorValue["max_weight_kg"], 0);
+        } else if (descriptorValue.has("weight_limit")) {
+            descriptor.has_max_weight = true;
+            descriptor.max_weight = readJsonIntOrDefault(descriptorValue["weight_limit"], 0);
+        }
+
+        g_gameplay_runtime.container_types[typeId] = descriptor;
+    }
+}
+
+void loadTransportRuntimeConfig(const JsonValue& transportRegistry) {
+    g_gameplay_runtime.transport_registry.clear();
+    if (transportRegistry.type != JsonValue::OBJECT) return;
+
+    for (const auto& [prototypeId, descriptorValue] : transportRegistry.obj_val) {
+        if (descriptorValue.type != JsonValue::OBJECT) continue;
+        GameplayRuntimeConfig::TransportDescriptor descriptor;
+        descriptor.id = descriptorValue.has("id") && descriptorValue["id"].type == JsonValue::STRING
+            ? descriptorValue["id"].asString()
+            : prototypeId;
+
+        if (descriptorValue.has("speedMultiplier")) {
+            descriptor.has_speed_multiplier = true;
+            descriptor.speed_multiplier = readJsonNumberOrDefault(descriptorValue["speedMultiplier"], 1.0);
+        } else if (descriptorValue.has("speed_mult")) {
+            descriptor.has_speed_multiplier = true;
+            descriptor.speed_multiplier = readJsonNumberOrDefault(descriptorValue["speed_mult"], 1.0);
+        }
+
+        if (descriptorValue.has("cargoBonus")) {
+            descriptor.has_cargo_bonus = true;
+            descriptor.cargo_bonus = readJsonIntOrDefault(descriptorValue["cargoBonus"], 0);
+        } else if (descriptorValue.has("cargo_bonus")) {
+            descriptor.has_cargo_bonus = true;
+            descriptor.cargo_bonus = readJsonIntOrDefault(descriptorValue["cargo_bonus"], 0);
+        }
+
+        if (descriptorValue.has("waterOnly")) {
+            descriptor.has_water_only = true;
+            descriptor.water_only = readJsonBoolOrDefault(descriptorValue["waterOnly"], false);
+        } else if (descriptorValue.has("water_only")) {
+            descriptor.has_water_only = true;
+            descriptor.water_only = readJsonBoolOrDefault(descriptorValue["water_only"], false);
+        }
+
+        g_gameplay_runtime.transport_registry[prototypeId] = descriptor;
+    }
+}
+
+void loadTrekRuntimeConfig(const JsonValue& trekConfig) {
+    if (trekConfig.type != JsonValue::OBJECT) return;
+
+    if (trekConfig.has("base_travel_speed")) {
+        double configuredSpeed = readJsonNumberOrDefault(
+            trekConfig["base_travel_speed"],
+            g_gameplay_runtime.trek_base_travel_speed
+        );
+        if (configuredSpeed > 0.0) {
+            g_gameplay_runtime.trek_base_travel_speed = configuredSpeed;
+        }
+    }
+
+    if (trekConfig.has("bandit_cooldown_hours")) {
+        g_gameplay_runtime.trek_bandit_cooldown_hours = std::max(
+            0,
+            readJsonIntOrDefault(
+                trekConfig["bandit_cooldown_hours"],
+                g_gameplay_runtime.trek_bandit_cooldown_hours
+            )
+        );
+    }
+}
+
+void loadShipTypeRuntimeConfig(const JsonValue& shipTypesValue) {
+    g_gameplay_runtime.ship_types.clear();
+
+    JsonValue descriptors = shipTypesValue;
+    if (shipTypesValue.type == JsonValue::OBJECT && shipTypesValue.has("ship_types")) {
+        descriptors = shipTypesValue["ship_types"];
+    }
+    if (descriptors.type != JsonValue::ARRAY) return;
+
+    for (size_t i = 0; i < descriptors.size(); ++i) {
+        const JsonValue& descriptorValue = descriptors[i];
+        if (descriptorValue.type != JsonValue::OBJECT || !descriptorValue.has("id")) continue;
+
+        GameplayRuntimeConfig::ShipTypeDescriptor descriptor;
+        descriptor.id = normalizeShipTypeRuntimeId(descriptorValue["id"].asString());
+        if (descriptor.id.empty()) continue;
+
+        if (descriptorValue.has("speed")) {
+            descriptor.has_speed = true;
+            descriptor.speed = readJsonNumberOrDefault(descriptorValue["speed"], 1.0);
+        }
+        if (descriptorValue.has("capacity")) {
+            descriptor.has_capacity = true;
+            descriptor.capacity = readJsonIntOrDefault(descriptorValue["capacity"], 0);
+        }
+        if (descriptorValue.has("hull")) {
+            descriptor.has_hull = true;
+            descriptor.hull = readJsonIntOrDefault(descriptorValue["hull"], 0);
+        }
+        if (descriptorValue.has("sailors")) {
+            descriptor.has_sailors = true;
+            descriptor.sailors = readJsonIntOrDefault(descriptorValue["sailors"], 0);
+        }
+        if (descriptorValue.has("cannons")) {
+            descriptor.has_cannons = true;
+            descriptor.cannons = readJsonIntOrDefault(descriptorValue["cannons"], 0);
+        }
+        if (descriptorValue.has("marines")) {
+            descriptor.has_marines = true;
+            descriptor.marines = readJsonIntOrDefault(descriptorValue["marines"], 0);
+        }
+        if (descriptorValue.has("combat_power")) {
+            descriptor.has_combat_power = true;
+            descriptor.combat_power = readJsonIntOrDefault(descriptorValue["combat_power"], 0);
+        }
+        if (descriptorValue.has("is_monster")) {
+            descriptor.has_is_monster = true;
+            descriptor.is_monster = readJsonBoolOrDefault(descriptorValue["is_monster"], false);
+        }
+        if (descriptorValue.has("build_days")) {
+            descriptor.has_build_days = true;
+            descriptor.build_days = readJsonIntOrDefault(descriptorValue["build_days"], 0);
+        }
+        if (descriptorValue.has("build_cost") && descriptorValue["build_cost"].type == JsonValue::OBJECT) {
+            for (const auto& [tagId, costValue] : descriptorValue["build_cost"].obj_val) {
+                if (costValue.type == JsonValue::INT || costValue.type == JsonValue::DOUBLE) {
+                    descriptor.build_cost[tagId] = std::max(0, costValue.asInt());
+                }
+            }
+        }
+
+        g_gameplay_runtime.ship_types[descriptor.id] = descriptor;
+    }
+}
+
+int getShipBuildCost(const GameplayRuntimeConfig::ShipTypeDescriptor* descriptor, const std::string& tagId, int fallback) {
+    if (!descriptor) return fallback;
+    auto it = descriptor->build_cost.find(tagId);
+    if (it == descriptor->build_cost.end()) return fallback;
+    return std::max(0, it->second);
+}
+
 // ============================================================================
 // NpcGen — Data-driven implementation (was in npc_personality.h)
 // ============================================================================
@@ -149,7 +627,7 @@ namespace NpcGen {
 
     std::string generateName(const std::string& factionId, std::mt19937& gen) {
         // Resolve race from faction, or fall back to first available race
-        std::string raceId = "human";
+        std::string raceId = g_gameplay_runtime.default_race_id;
         auto ftrIt = g_db.faction_to_race.find(factionId);
         if (ftrIt != g_db.faction_to_race.end()) raceId = ftrIt->second;
 
@@ -229,7 +707,13 @@ extern FacilityRegistry g_facilityRegistry;
 
 std::string getFacilityName(const std::string& id) {
     const FacilityTemplate* tpl = ::g_facilityRegistry.getTemplate(id);
-    if (tpl && tpl->names.count("rebirth")) return tpl->names.at("rebirth");
+    if (tpl) {
+        if (!g_gameplay_runtime.default_era_id.empty()) {
+            auto it = tpl->names.find(g_gameplay_runtime.default_era_id);
+            if (it != tpl->names.end()) return it->second;
+        }
+        if (!tpl->names.empty()) return tpl->names.begin()->second;
+    }
     return id;
 }
 
@@ -315,23 +799,43 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
 std::string createContainer(const std::string& type, const std::string& ownerId, 
                             int maxWeight, int maxSlots, const std::string& regionId = "",
                             const std::string& parentEntity = "", const std::string& parentContainer = "") {
-    std::string new_id = "cont_" + generateUUID();
+    std::string new_id = g_gameplay_runtime.container_id_prefix + generateUUID();
     std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
+    const GameplayRuntimeConfig::ContainerTypeDescriptor* descriptor = getContainerTypeDescriptor(type);
     Storage cont;
     cont.id = new_id;
     cont.type = type;
     cont.owner_id = ownerId;
-    cont.max_weight_kg = maxWeight;
-    cont.max_slots = maxSlots;
+    cont.max_weight_kg = maxWeight > 0
+        ? maxWeight
+        : ((descriptor && descriptor->has_max_weight) ? descriptor->max_weight : 999999);
+    cont.max_slots = maxSlots > 0
+        ? maxSlots
+        : ((descriptor && descriptor->has_capacity) ? descriptor->capacity : 1000);
     
     if (!regionId.empty()) cont.location.set("region_id", regionId);
     if (!parentEntity.empty()) cont.location.set("parent_entity", parentEntity);
     if (!parentContainer.empty()) cont.location.set("parent_container", parentContainer);
     
-    cont.lock_data.set("is_locked", (type == "faction_vault"));
-    cont.lock_data.set("difficulty", (type == "faction_vault") ? 16 : 10);
-    cont.physical_props.set("health", (type == "faction_vault") ? 400 : 200);
-    cont.physical_props.set("flammable", (type != "faction_vault"));
+    cont.lock_data.set("is_locked", (descriptor && descriptor->has_is_locked) ? descriptor->is_locked : false);
+    cont.lock_data.set(
+        "difficulty",
+        (descriptor && descriptor->has_lock_difficulty)
+            ? descriptor->lock_difficulty
+            : g_gameplay_runtime.default_lock_difficulty
+    );
+    cont.physical_props.set(
+        "health",
+        (descriptor && descriptor->has_health)
+            ? descriptor->health
+            : g_gameplay_runtime.default_container_health
+    );
+    cont.physical_props.set(
+        "flammable",
+        (descriptor && descriptor->has_flammable)
+            ? descriptor->flammable
+            : (g_gameplay_runtime.non_flammable_container_types.count(type) == 0)
+    );
     
     cont.is_dirty = true;
     g_containers[cont.id] = cont;
@@ -487,7 +991,7 @@ std::string getMappedId(const std::string& id) {
 std::string createItem(const std::string& requestedPrototypeId, int quantity, const std::string& containerId,
                        int currentDay = 0, const std::string& event = "Created") {
     std::string prototypeId = getMappedId(requestedPrototypeId);
-    std::string new_id = "item_" + generateUUID();
+    std::string new_id = g_gameplay_runtime.item_id_prefix + generateUUID();
     std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
     
     if (!containerId.empty() && g_containers.count(containerId)) {
@@ -530,10 +1034,15 @@ std::string createItem(const std::string& requestedPrototypeId, int quantity, co
         item.custom_props = g_db.items[prototypeId].properties;
     }
     
-    // Data-driven: gold weight from item properties, fallback to tag-based check
-    const ItemTemplate* goldTpl = g_itemRegistry.getTemplate(prototypeId);
-    if (goldTpl && goldTpl->hasTag("currency")) item.custom_props.set("weight_per_unit", 0.01);
-    else if (!item.custom_props.has("weight_per_unit")) item.custom_props.set("weight_per_unit", 1.0);
+    double baseWeight = g_gameplay_runtime.default_item_weight;
+    if (item.custom_props.has("weight_per_unit")) {
+        baseWeight = readJsonNumberOrDefault(item.custom_props["weight_per_unit"], baseWeight);
+    }
+    auto runtimeWeightIt = g_gameplay_runtime.currency_physical_weights.find(prototypeId);
+    if (runtimeWeightIt != g_gameplay_runtime.currency_physical_weights.end()) {
+        baseWeight = runtimeWeightIt->second;
+    }
+    item.custom_props.set("weight_per_unit", baseWeight);
     
     g_items[item.id] = item;
     
@@ -899,7 +1408,7 @@ struct NPC {
         std::string personal_inventory_id;
         std::string storage_id;
 
-        int reserve_gold = 100;
+        int reserve_gold = g_gameplay_runtime.npc_reserve_gold;
         int reserve_food = 5;
     } economy;
     
@@ -908,7 +1417,7 @@ struct NPC {
     std::string inventory_id; // Container ID for physical items
     
     // Demographics & Life Cycle
-    std::string race = "human"; // human, elf, dwarf, orc
+        std::string race = g_gameplay_runtime.default_race_id;
     int age_days = 0;
     bool is_male = true;
     std::string father_id;
@@ -1843,6 +2352,31 @@ struct Ship {
         return s;
     }
 };
+
+void applyShipTypeRuntimeDescriptor(Ship& ship) {
+    const GameplayRuntimeConfig::ShipTypeDescriptor* descriptor =
+        getShipTypeDescriptor(shipTypeToString(ship.type));
+    if (!descriptor) return;
+
+    if (descriptor->has_capacity) {
+        ship.cargo_capacity = descriptor->capacity;
+    }
+    if (descriptor->has_hull) {
+        ship.hull = std::max(1, descriptor->hull);
+    }
+    if (descriptor->has_sailors) {
+        ship.sailors = std::max(0, descriptor->sailors);
+    }
+    if (descriptor->has_speed && descriptor->speed > 0.0) {
+        ship.speed = descriptor->speed;
+    }
+    if (descriptor->has_cannons) {
+        ship.cannons = std::max(0, descriptor->cannons);
+    }
+    if (descriptor->has_marines) {
+        ship.marines = std::max(0, descriptor->marines);
+    }
+}
 
 struct Fleet {
     std::string id;
@@ -3089,7 +3623,7 @@ struct KnowledgeGraph {
 struct World {
     int tick = 0;
     int current_day = 0;
-    std::string era = "rebirth";
+    std::string era = g_gameplay_runtime.default_era_id;
     
     // Time tracking
     struct Time {
@@ -4796,16 +5330,28 @@ bool isClericSupplyItem(const std::string& itemId);
 
 static bool resolveTransportFromItemData(const std::string& prototypeId, std::string& transport_type, double& speed_mult, int& cargo_bonus, bool& water_only) {
     auto defIt = g_db.items.find(prototypeId);
-    if (defIt == g_db.items.end()) return false;
+    const JsonValue* props = nullptr;
+    if (defIt != g_db.items.end()) {
+        props = &defIt->second.properties;
+    }
 
-    const JsonValue& props = defIt->second.properties;
-    if (!props.has("isTransport") || !props["isTransport"].asBool()) return false;
+    const GameplayRuntimeConfig::TransportDescriptor* descriptor = getTransportDescriptor(prototypeId);
+    const bool propsDeclareTransport = props && props->has("isTransport") && (*props)["isTransport"].asBool();
+    if (!propsDeclareTransport && descriptor == nullptr) return false;
 
-    transport_type = props.has("transport_type") ? props["transport_type"].asString() : prototypeId;
-    speed_mult = props.has("speed_mult") ? props["speed_mult"].asDouble() : 1.0;
-    cargo_bonus = props.has("cargo_bonus") ? props["cargo_bonus"].asInt() : 0;
-    water_only = props.has("water_only") ? props["water_only"].asBool() : false;
-    return true;
+    transport_type = (props && props->has("transport_type"))
+        ? (*props)["transport_type"].asString()
+        : (descriptor ? descriptor->id : prototypeId);
+    speed_mult = (props && props->has("speed_mult"))
+        ? (*props)["speed_mult"].asDouble()
+        : ((descriptor && descriptor->has_speed_multiplier) ? descriptor->speed_multiplier : 1.0);
+    cargo_bonus = (props && props->has("cargo_bonus"))
+        ? (*props)["cargo_bonus"].asInt()
+        : ((descriptor && descriptor->has_cargo_bonus) ? descriptor->cargo_bonus : 0);
+    water_only = (props && props->has("water_only"))
+        ? (*props)["water_only"].asBool()
+        : ((descriptor && descriptor->has_water_only) ? descriptor->water_only : false);
+    return transport_type != "none";
 }
 
 void processFarmers() {
@@ -5774,18 +6320,19 @@ void processMarkets() {
                         }
                     }
                     
-                    if (npc.economy.savings > npc.economy.reserve_gold + 500) {
+                    if (npc.economy.savings > npc.economy.reserve_gold + g_gameplay_runtime.npc_luxury_spend_threshold) {
                         if (thread_safe_rand() % 100 < 15) shoppingList.push_back(getCoreIdByTag("luxury"));
                     }
                     
                     if (npc.economy.profession_type == "mercenary" || npc.economy.profession_type == "mage") {
-                        if (npc.economy.savings > npc.economy.reserve_gold + 200 && thread_safe_rand() % 100 < 10) shoppingList.push_back(getCoreIdByTag("medical"));
-                        if (npc.economy.savings > npc.economy.reserve_gold + 500 && thread_safe_rand() % 100 < 2) shoppingList.push_back(getCoreIdByTag("weapon"));
-                        if (npc.economy.savings > npc.economy.reserve_gold + 500 && thread_safe_rand() % 100 < 2) shoppingList.push_back(getCoreIdByTag("armor"));
+                        if (npc.economy.savings > npc.economy.reserve_gold + g_gameplay_runtime.npc_mercenary_medical_threshold && thread_safe_rand() % 100 < 10) shoppingList.push_back(getCoreIdByTag("medical"));
+                        if (npc.economy.savings > npc.economy.reserve_gold + g_gameplay_runtime.npc_mercenary_weapon_threshold && thread_safe_rand() % 100 < 2) shoppingList.push_back(getCoreIdByTag("weapon"));
+                        if (npc.economy.savings > npc.economy.reserve_gold + g_gameplay_runtime.npc_mercenary_weapon_threshold && thread_safe_rand() % 100 < 2) shoppingList.push_back(getCoreIdByTag("armor"));
                     }
                     
                     if (npc.economy.profession_type == "merchant") {
-                        if (npc.economy.savings > npc.economy.reserve_gold + 1000 && countItemsInContainer(contId, getCoreIdByTag("vehicle")) < 5) shoppingList.push_back(getCoreIdByTag("vehicle"));
+                        if (npc.economy.savings > npc.economy.reserve_gold + g_gameplay_runtime.npc_merchant_vehicle_threshold &&
+                            countItemsInContainer(contId, getCoreIdByTag("vehicle")) < g_gameplay_runtime.npc_merchant_vehicle_max_owned) shoppingList.push_back(getCoreIdByTag("vehicle"));
                     }
                     
                     for (const std::string& neededGood : shoppingList) {
@@ -6507,7 +7054,7 @@ void processDailyMilitary() {
                             } else {
                                 targetRegion.population = std::max(0, targetRegion.population - (thread_safe_rand() % 200));
                             }
-                            int cityBread = vaultStocks[targetLoc]["bread"];
+                            int cityBread = vaultStocks[targetLoc][getCoreIdByTag("food")];
                             if (cityBread > 0) {
                                 int c = consumeItemsFromContainer(targetRegion.vault_id, getCoreIdByTag("food"), cityBread * 0.2);
                                 vaultStocks[targetLoc][getCoreIdByTag("food")] -= c;
@@ -7141,7 +7688,7 @@ void processInfrastructureProjects() {
             Region& r = g_world.regions[rid];
             
             // 1. Дамбы (Dams) - защита от наводнений и осушение пойм
-            if (gold >= 5000 && wood >= 1000 && !r.custom_props.has("has_dam")) {
+            if (gold >= g_gameplay_runtime.infra_dam_gold_cost && wood >= g_gameplay_runtime.infra_dam_wood_cost && !r.custom_props.has("has_dam")) {
                 bool has_river = false;
                 if (g_world.map.locations.count(rid)) {
                     auto loc = g_world.map.locations[rid];
@@ -7156,9 +7703,9 @@ void processInfrastructureProjects() {
                         }
                     }
                     if (has_river) {
-                        consumeItemsFromContainer(g_world.regions[capId].vault_id, g_id, 5000);
-                        consumeItemsFromContainer(g_world.regions[capId].vault_id, w_id, 1000);
-                        gold -= 5000; wood -= 1000;
+                        consumeItemsFromContainer(g_world.regions[capId].vault_id, g_id, g_gameplay_runtime.infra_dam_gold_cost);
+                        consumeItemsFromContainer(g_world.regions[capId].vault_id, w_id, g_gameplay_runtime.infra_dam_wood_cost);
+                        gold -= g_gameplay_runtime.infra_dam_gold_cost; wood -= g_gameplay_runtime.infra_dam_wood_cost;
                         r.custom_props.set("has_dam", true);
                         
                         for (int dy = -3; dy <= 3; dy++) {
@@ -7181,19 +7728,19 @@ void processInfrastructureProjects() {
             }
             
             // 2. Акведуки (Aqueducts) - повышение фертильности
-            if (gold >= 8000 && iron >= 500 && !r.custom_props.has("has_aqueduct")) {
-                consumeItemsFromContainer(g_world.regions[capId].vault_id, g_id, 8000);
-                consumeItemsFromContainer(g_world.regions[capId].vault_id, i_id, 500);
-                gold -= 8000; iron -= 500;
+            if (gold >= g_gameplay_runtime.infra_aqueduct_gold_cost && iron >= g_gameplay_runtime.infra_aqueduct_iron_cost && !r.custom_props.has("has_aqueduct")) {
+                consumeItemsFromContainer(g_world.regions[capId].vault_id, g_id, g_gameplay_runtime.infra_aqueduct_gold_cost);
+                consumeItemsFromContainer(g_world.regions[capId].vault_id, i_id, g_gameplay_runtime.infra_aqueduct_iron_cost);
+                gold -= g_gameplay_runtime.infra_aqueduct_gold_cost; iron -= g_gameplay_runtime.infra_aqueduct_iron_cost;
                 r.custom_props.set("has_aqueduct", true);
                 r.fertility += 0.5;
                 addNews(locStr("engine.news.infrastructure.aqueduct_built", {{"region", r.name}}), rid, 3, "politics");
             }
             
             // 2.5 Колодцы (Санитария) - предотвращение эпидемий
-            if (gold >= 2000 && r.population > r.storage_capacity && !r.custom_props.has("has_well")) {
-                consumeItemsFromContainer(g_world.regions[capId].vault_id, g_id, 2000);
-                gold -= 2000;
+            if (gold >= g_gameplay_runtime.infra_well_gold_cost && r.population > r.storage_capacity && !r.custom_props.has("has_well")) {
+                consumeItemsFromContainer(g_world.regions[capId].vault_id, g_id, g_gameplay_runtime.infra_well_gold_cost);
+                gold -= g_gameplay_runtime.infra_well_gold_cost;
                 r.custom_props.set("has_well", true);
                 addNews(locStr("engine.news.infrastructure.wells_built", {{"region", r.name}}), rid, 2, "politics");
             }
@@ -7201,7 +7748,7 @@ void processInfrastructureProjects() {
         
         // 3. Строительство новых мостов и трактов к изолированным регионам
         for (const auto& rid : f.regions) {
-            if (gold >= 10000 && wood >= 2000) {
+            if (gold >= g_gameplay_runtime.infra_road_gold_cost && wood >= g_gameplay_runtime.infra_road_wood_cost) {
                 if (g_world.map.locations.count(rid) && g_world.map.locations[rid].no_road) {
                     auto loc1 = g_world.map.locations[rid];
                     auto loc2 = g_world.map.locations[capId];
@@ -7212,9 +7759,9 @@ void processInfrastructureProjects() {
                     }
                     auto path = findPath(g_world.map, loc1.x, loc1.y, loc2.x, loc2.y, has_road, path_status, MovementType::ANY);
                     if (!path.empty()) {
-                        consumeItemsFromContainer(g_world.regions[capId].vault_id, g_id, 10000);
-                        consumeItemsFromContainer(g_world.regions[capId].vault_id, w_id, 2000);
-                        gold -= 10000; wood -= 2000;
+                        consumeItemsFromContainer(g_world.regions[capId].vault_id, g_id, g_gameplay_runtime.infra_road_gold_cost);
+                        consumeItemsFromContainer(g_world.regions[capId].vault_id, w_id, g_gameplay_runtime.infra_road_wood_cost);
+                        gold -= g_gameplay_runtime.infra_road_gold_cost; wood -= g_gameplay_runtime.infra_road_wood_cost;
                         g_world.map.locations[rid].no_road = false;
                         
                         std::vector<MapRoad> new_segments;
@@ -7808,7 +8355,7 @@ void processTrekTick() {
     }
 
     // Calculate speed with transport multiplier
-    double base_speed = 0.5;
+    double base_speed = g_gameplay_runtime.trek_base_travel_speed;
     double transport_mult = g_world.player_trek.transport_speed_mult;
 
     // If transport is water-only and we're on land, don't apply speed bonus
@@ -7942,7 +8489,7 @@ void processTrekTick() {
     if (g_world.regions.count(current_region)) {
         Region& r = g_world.regions[current_region];
         
-        if (g_world.player_trek.hours_since_last_bandit >= 12) {
+        if (g_world.player_trek.hours_since_last_bandit >= g_gameplay_runtime.trek_bandit_cooldown_hours) {
             int banditChance = r.threat_level / 10;
             if ((thread_safe_rand() % 100) < banditChance) {
                 g_world.player_trek.hours_since_last_bandit = 0;
@@ -8256,10 +8803,10 @@ void processRulerDiplomacy() {
 
             bool hasTruce = faction.truceUntil.count(targetF) && faction.truceUntil[targetF] > g_world.current_day;
             // Ограничения на войны сняты
-                        if (warDesire > 50.0 && wealth >= 5000 && faction.warType == DiplomaticState::PEACE && faction.diplomacy[targetF] != "war" && !hasTruce) { // Снято ограничение в 360 дней и снижен порог богатства
+                        if (warDesire > g_gameplay_runtime.war_declare_min_desire && wealth >= g_gameplay_runtime.war_declare_min_wealth && faction.warType == DiplomaticState::PEACE && faction.diplomacy[targetF] != "war" && !hasTruce) { // Снято ограничение в 360 дней и снижен порог богатства
                 CasusBelli cb = CasusBelli::BORDER_INCIDENT;
                 std::string motiveText = "Территориальные претензии";
-                if (targetPower < power * 0.5 && wealth < 20000) {
+                if (targetPower < power * 0.5 && wealth < g_gameplay_runtime.war_imperialism_wealth_ceiling) {
                     cb = CasusBelli::IMPERIALISM;
                     motiveText = "Захват ресурсов и расширение границ";
                 } else if (faction.relations[targetF] < -50) {
@@ -8292,9 +8839,9 @@ void processRulerDiplomacy() {
                     }
                 }
                 
-                if (totalFood >= 3000 && totalWeapons >= 1000 && totalGold >= 5000) newWarType = DiplomaticState::TOTAL_WAR;
-                else if (totalFood >= 500 && totalWeapons >= 200 && totalGold >= 1000) newWarType = DiplomaticState::LIMITED_WAR;
-                else if (totalFood >= 100 && totalWeapons >= 50 && totalGold >= 200) newWarType = DiplomaticState::BORDER_CONFLICT;
+                if (totalFood >= g_gameplay_runtime.war_total_food_threshold && totalWeapons >= g_gameplay_runtime.war_total_weapons_threshold && totalGold >= g_gameplay_runtime.war_total_gold_threshold) newWarType = DiplomaticState::TOTAL_WAR;
+                else if (totalFood >= g_gameplay_runtime.war_limited_food_threshold && totalWeapons >= g_gameplay_runtime.war_limited_weapons_threshold && totalGold >= g_gameplay_runtime.war_limited_gold_threshold) newWarType = DiplomaticState::LIMITED_WAR;
+                else if (totalFood >= g_gameplay_runtime.war_border_food_threshold && totalWeapons >= g_gameplay_runtime.war_border_weapons_threshold && totalGold >= g_gameplay_runtime.war_border_gold_threshold) newWarType = DiplomaticState::BORDER_CONFLICT;
                 else newWarType = DiplomaticState::PEACE;
                 
                 if (newWarType != DiplomaticState::PEACE) {
@@ -8685,12 +9232,34 @@ std::string processGmIntervention(const JsonValue& command) {
                     capitalRegionId = g_world.factions[ownerId].regions[0];
                 }
                 std::string vaultToUse = capitalRegionId.empty() ? g_world.regions[regionId].vault_id : g_world.regions[capitalRegionId].vault_id;
-                
-                int woodCost = (sType == ShipType::WAR_GALLEY || sType == ShipType::WAR_FRIGATE) ? 800 : 500;
-                int ironCost = (sType == ShipType::WAR_GALLEY || sType == ShipType::WAR_FRIGATE) ? 300 : 100;
-                int clothCost = (sType == ShipType::MERCHANT || sType == ShipType::TRANSPORT) ? 50 : 0;
-                int weaponCost = (sType == ShipType::WAR_GALLEY || sType == ShipType::WAR_FRIGATE) ? 50 : 0;
-                int goldCost = (sType == ShipType::WAR_GALLEY || sType == ShipType::WAR_FRIGATE) ? 1000 : 0;
+                const GameplayRuntimeConfig::ShipTypeDescriptor* shipDescriptor =
+                    getShipTypeDescriptor(shipTypeToString(sType));
+
+                int woodCost = getShipBuildCost(
+                    shipDescriptor,
+                    "building",
+                    (sType == ShipType::WAR_GALLEY || sType == ShipType::WAR_FRIGATE) ? 800 : 500
+                );
+                int ironCost = getShipBuildCost(
+                    shipDescriptor,
+                    "metal_ingot",
+                    (sType == ShipType::WAR_GALLEY || sType == ShipType::WAR_FRIGATE) ? 300 : 100
+                );
+                int clothCost = getShipBuildCost(
+                    shipDescriptor,
+                    "cloth",
+                    (sType == ShipType::MERCHANT || sType == ShipType::TRANSPORT) ? 50 : 0
+                );
+                int weaponCost = getShipBuildCost(
+                    shipDescriptor,
+                    "weapon",
+                    (sType == ShipType::WAR_GALLEY || sType == ShipType::WAR_FRIGATE) ? 50 : 0
+                );
+                int goldCost = getShipBuildCost(
+                    shipDescriptor,
+                    "currency",
+                    (sType == ShipType::WAR_GALLEY || sType == ShipType::WAR_FRIGATE) ? 1000 : 0
+                );
 
                 std::string w_id = getCoreIdByTag("building");
                 std::string i_id = getCoreIdByTag("metal_ingot");
@@ -8714,7 +9283,10 @@ std::string processGmIntervention(const JsonValue& command) {
                     ShipBuildOrder order;
                     order.id = "build_" + generateUUID();
                     order.type = sType;
-                    order.days_left = (sType == ShipType::WAR_GALLEY || sType == ShipType::WAR_FRIGATE) ? 30 : 14;
+                    order.days_left =
+                        (shipDescriptor && shipDescriptor->has_build_days)
+                            ? std::max(1, shipDescriptor->build_days)
+                            : ((sType == ShipType::WAR_GALLEY || sType == ShipType::WAR_FRIGATE) ? 30 : 14);
                     order.owner_id = ownerId;
                     port.build_queue.push_back(order);
                     
@@ -8741,7 +9313,7 @@ std::string processGmIntervention(const JsonValue& command) {
 
                 int stoneCost = 2000;
                 int woodCost = 1000;
-                int goldCost = 5000;
+                int goldCost = g_gameplay_runtime.build_port_gold_cost;
 
                 std::string s_id = getCoreIdByTag("stone");
                 std::string w_id = getCoreIdByTag("building");
@@ -8829,7 +9401,8 @@ std::string processGmIntervention(const JsonValue& command) {
 
             int supply = countItemsInContainer(reg.vault_id, goodType);
             std::string capitalRegionId = fac.regions.empty() ? "" : fac.regions[0];
-            int goldAvailable = capitalRegionId.empty() ? 0 : countItemsInContainer(g_world.regions[capitalRegionId].vault_id, "gold_ingot");
+            std::string g_id = getCoreIdByTag("currency");
+            int goldAvailable = capitalRegionId.empty() ? 0 : countItemsInContainer(g_world.regions[capitalRegionId].vault_id, g_id);
 
             if (supply < quantity) {
                 feedback = locStr("engine.gm.econ_no_goods", {{"good", goodType}, {"region", reg.name}});
@@ -8837,7 +9410,7 @@ std::string processGmIntervention(const JsonValue& command) {
                 feedback = locStr("engine.gm.econ_no_gold", {{"faction", fac.name}, {"cost", std::to_string(cost)}});
             } else {
                 consumeItemsFromContainer(reg.vault_id, goodType, quantity);
-                consumeItemsFromContainer(g_world.regions[capitalRegionId].vault_id, "gold_ingot", cost);
+                consumeItemsFromContainer(g_world.regions[capitalRegionId].vault_id, g_id, cost);
                 createItem(goodType, quantity, g_world.regions[capitalRegionId].vault_id, g_world.current_day, "Закупка ГМ");
                 reg.moneySupply += cost;
                 if ((double)quantity / (supply + quantity) > 0.2) {
@@ -8980,8 +9553,8 @@ std::string processGmIntervention(const JsonValue& command) {
             std::string g_id = getCoreIdByTag("currency");
             int goldAvailable = capitalRegionId.empty() ? 0 : countItemsInContainer(g_world.regions[capitalRegionId].vault_id, g_id);
 
-            if (goldAvailable >= 3000) {
-                consumeItemsFromContainer(g_world.regions[capitalRegionId].vault_id, g_id, 3000);
+            if (goldAvailable >= g_gameplay_runtime.gm_sabotage_cost) {
+                consumeItemsFromContainer(g_world.regions[capitalRegionId].vault_id, g_id, g_gameplay_runtime.gm_sabotage_cost);
                 reg.moneySupply *= 0.8;
                 if (g_world.factions.count(reg.factionId)) {
                     g_world.factions[reg.factionId].relations[targetFactionId] -= 40;
@@ -9849,26 +10422,21 @@ void processDailyNPCs() {
                         }
 
                         npc.economy.profession_type = best_prof;
-                        if (best_prof == "farmer") {
-                            int r_prof = thread_safe_rand() % 4;
-                            if (r_prof == 0) npc.profession = "Farmer";
-                            else if (r_prof == 1) npc.profession = "Hunter";
-                            else if (r_prof == 2) npc.profession = "Beekeeper";
-                            else npc.profession = "Fisherman";
+                        // Data-driven: pick a random profession ID that matches the target profession_type
+                        {
+                            std::vector<std::string> matching_ids;
+                            for (const auto& pid : g_db.profession_ids) {
+                                auto pit = g_db.professions.find(pid);
+                                if (pit != g_db.professions.end() && pit->second.profession_type == best_prof) {
+                                    matching_ids.push_back(pid);
+                                }
+                            }
+                            if (!matching_ids.empty()) {
+                                npc.profession = matching_ids[thread_safe_rand() % matching_ids.size()];
+                            } else {
+                                npc.profession = best_prof; // fallback: use type as id
+                            }
                         }
-                        else if (best_prof == "artisan") {
-                            int r_prof = thread_safe_rand() % 6;
-                            if (r_prof == 0) npc.profession = "Blacksmith";
-                            else if (r_prof == 1) npc.profession = "Weaver";
-                            else if (r_prof == 2) npc.profession = "Baker";
-                            else if (r_prof == 3) npc.profession = "Jeweler";
-                            else if (r_prof == 4) npc.profession = "Alchemist";
-                            else npc.profession = "Tailor";
-                        }
-                        else if (best_prof == "gatherer") npc.profession = "Astronomer";
-                        else if (best_prof == "merchant") npc.profession = "Merchant";
-                        else if (best_prof == "mercenary") npc.profession = "Mercenary";
-                        else if (best_prof == "cleric") npc.profession = "Cleric";
                         
                         if (wantsJobChange) {
                             npc.economy.skillLevel = 1; 
@@ -10342,6 +10910,7 @@ void processShipyards() {
                 if (it->type == ShipType::WAR_GALLEY || it->type == ShipType::WAR_FRIGATE) {
                     s.cannons = 10; s.marines = 20;
                 }
+                applyShipTypeRuntimeDescriptor(s);
                 if (g_world.map.locations.count(rid)) {
                     s.x = g_world.map.locations[rid].x;
                     s.y = g_world.map.locations[rid].y;
@@ -10656,9 +11225,9 @@ void processDreadAndMonsters() {
             if (!r.factionId.empty() && g_world.factions.count(r.factionId)) {
                 std::string capId = g_world.factions[r.factionId].regions.empty() ? "" : g_world.factions[r.factionId].regions[0];
                 if (!capId.empty() && g_world.regions.count(capId)) {
-                    int gold = countItemsInContainer(g_world.regions[capId].vault_id, "gold_ingot");
-                    if (gold >= 5000 && (thread_safe_rand() % 100) < 10) {
-                        consumeItemsFromContainer(g_world.regions[capId].vault_id, getCoreIdByTag("currency"), 5000);
+                    int gold = countItemsInContainer(g_world.regions[capId].vault_id, getCoreIdByTag("currency"));
+                    if (gold >= g_gameplay_runtime.monster_bounty_gold_cost && (thread_safe_rand() % 100) < 10) {
+                        consumeItemsFromContainer(g_world.regions[capId].vault_id, getCoreIdByTag("currency"), g_gameplay_runtime.monster_bounty_gold_cost);
                         int mercDmg = 500 + (thread_safe_rand() % 500);
                         it->health -= mercDmg;
                         addNews(locStr("engine.news.monster_bounty", {{"faction", g_world.factions[r.factionId].name}, {"monster", it->name}}), it->region_id, 4, "war");
@@ -10827,6 +11396,7 @@ void processNavalCombat() {
                 p.speed = 1.8;
                 p.cannons = 5;
                 p.marines = 15;
+                applyShipTypeRuntimeDescriptor(p);
                 if (g_world.map.locations.count(rid)) {
                     p.x = g_world.map.locations[rid].x;
                     p.y = g_world.map.locations[rid].y;
@@ -10942,7 +11512,9 @@ void processNavalCombat() {
             p.type = ShipType::PIRATE;
             p.hull = 100; p.sailors = 20; p.cargo_capacity = 200;
             p.chest_id = createContainer("ship_hold", "pirates", 999999, 100, lid);
-            p.speed = 1.8; p.cannons = 5; p.marines = 15;
+            p.speed = 1.8;
+            p.cannons = 5; p.marines = 15;
+            applyShipTypeRuntimeDescriptor(p);
             p.x = loc.x; p.y = loc.y;
             for (const auto& target : g_world.ships) {
                 if (target.type == ShipType::MERCHANT && target.owner_id != "pirates") {
@@ -11213,7 +11785,7 @@ void processRoadDegradation() {
     for (auto& [fid, f] : g_world.factions) {
         std::string capId = f.regions.empty() ? "" : f.regions[0];
         if (capId.empty() || !g_world.regions.count(capId)) continue;
-        int gold = countItemsInContainer(g_world.regions[capId].vault_id, "gold_ingot");
+        int gold = countItemsInContainer(g_world.regions[capId].vault_id, getCoreIdByTag("currency"));
         
         for (auto& road : g_world.map.roads) {
             bool from_match = g_world.regions.count(road.from) && g_world.regions[road.from].factionId == fid;
@@ -12069,7 +12641,7 @@ std::vector<std::pair<int,int>> findPath(const WorldMap& map, int startX, int st
                 cost = std::max(cost, 200);
             }
 
-            if (cost >= 9000) {
+            if (cost >= g_gameplay_runtime.path_impassable_cost_threshold) {
                 if (nx == goalX && ny == goalY) cost = 5;
                 else continue;
             }
@@ -13084,12 +13656,27 @@ void upsertNpcMarketOffer(Region& region, const std::string& sellerId, const std
 }
 
 std::string getLegacyCraftFacilityForProfession(const NPC& npc) {
-    if (npc.profession == "blacksmith" || npc.profession == "Blacksmith") return "forges";
-    if (npc.profession == "weaver" || npc.profession == "Weaver") return "weavers";
-    if (npc.profession == "baker" || npc.profession == "Baker") return "bakeries";
-    if (npc.profession == "jeweler" || npc.profession == "Jeweler") return "jewelers";
-    if (npc.profession == "alchemist" || npc.profession == "Alchemist") return "alchemists";
-    if (npc.profession == "tailor" || npc.profession == "Tailor") return "tailors";
+    // Data-driven: look up preferred_facility from professions.json
+    // Fall back to a hardcoded map only if not defined in data
+    std::string profId = npc.profession;
+    // Normalize: lowercase for lookup
+    std::string profLower = profId;
+    std::transform(profLower.begin(), profLower.end(), profLower.begin(), [](unsigned char c){ return std::tolower(c); });
+
+    // Try data-driven lookup first
+    auto profIt = g_db.professions.find(profLower);
+    if (profIt == g_db.professions.end()) profIt = g_db.professions.find(profId);
+    if (profIt != g_db.professions.end() && !profIt->second.preferred_facility.empty()) {
+        return profIt->second.preferred_facility;
+    }
+
+    // Legacy fallback map (migration shim — remove once professions.json has preferred_facility)
+    static const std::unordered_map<std::string, std::string> legacy_map = {
+        {"blacksmith", "forges"}, {"weaver", "weavers"}, {"baker", "bakeries"},
+        {"jeweler", "jewelers"}, {"alchemist", "alchemists"}, {"tailor", "tailors"}
+    };
+    auto it = legacy_map.find(profLower);
+    if (it != legacy_map.end()) return it->second;
     return "";
 }
 
@@ -13117,8 +13704,15 @@ bool isInnkeeperFoodItem(const std::string& itemId) {
 }
 
 bool isClericSupplyItem(const std::string& itemId) {
-    static const std::vector<std::string> preferredIds = {"wax", "herbs"};
-    return std::find(preferredIds.begin(), preferredIds.end(), itemId) != preferredIds.end();
+    // Data-driven: use tag_defaults "cleric_supply_goods" list if present,
+    // otherwise fall back to tag check for "religious" or "medical" category
+    const auto& tagLists = g_db.tag_default_lists;
+    auto it = tagLists.find("cleric_supply_goods");
+    if (it != tagLists.end() && !it->second.empty()) {
+        return std::find(it->second.begin(), it->second.end(), itemId) != it->second.end();
+    }
+    // Fallback: item has religious or medical tag
+    return itemHasTag(itemId, "religious") || itemHasTag(itemId, "medical");
 }
 
 
@@ -13126,7 +13720,7 @@ bool isClericSupplyItem(const std::string& itemId) {
 void buildWorld(const std::string& playerId, const std::string& era, int initialAgents, const JsonValue& globalLocs, int startDay) {
     g_playerId = playerId;
     g_world = World();
-    g_world.era = era.empty() ? "rebirth" : era;
+    g_world.era = era.empty() ? g_gameplay_runtime.default_era_id : era;
     g_world.current_day = startDay;
     
     // Очистка реестров от предыдущих сессий (Fix Memory Leak)
@@ -13230,7 +13824,7 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
         bool is_ruin = (r.base_type == "ruins" || r.base_type == "anomaly");
 
         std::string ownerId = "";
-        std::string ownerRace = "human";
+        std::string ownerRace = g_gameplay_runtime.default_race_id;
 
         if (is_ruin) {
             r.factionId = "";
@@ -13270,7 +13864,13 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
         r.climate = "temperate";
         r.weather = "Ясно";
 
-        r.vault_id = createContainer(is_ruin ? "ruins_stash" : "faction_vault", is_ruin ? "none" : ownerId, 999999, 1000, key);
+        r.vault_id = createContainer(
+            is_ruin ? g_gameplay_runtime.ruins_stash_container_type : g_gameplay_runtime.faction_vault_container_type,
+            is_ruin ? "none" : ownerId,
+            999999,
+            1000,
+            key
+        );
         r.storage_capacity = is_ruin ? 50000 : 100000 + (r.population * 10);
         r.threat_level = is_ruin ? 80 + (rand() % 21) : 10 + (rand() % 20);
 
@@ -13318,7 +13918,7 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
 
         // Data-driven: resolve race from faction or pick random
         std::string homeFaction = g_world.regions.count(homeReg) ? g_world.regions[homeReg].factionId : "";
-        npc.race = "human"; // default
+        npc.race = g_gameplay_runtime.default_race_id; // default
         auto ftrIt = g_db.faction_to_race.find(homeFaction);
         if (ftrIt != g_db.faction_to_race.end()) npc.race = ftrIt->second;
         else if (!g_db.race_ids.empty()) npc.race = g_db.race_ids[rand() % g_db.race_ids.size()];
@@ -13380,7 +13980,8 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
         npc.economy.savings = rand() % 500;
         
         // Inventory
-        npc.gold = rand() % 100;
+        int initialGoldMax = std::max(1, g_gameplay_runtime.npc_initial_gold_max);
+        npc.gold = rand() % initialGoldMax;
         npc.inventory_id = createContainer("npc_inventory", npc.id, 100, 20, npc.homeLocation, npc.id);
         
         if (npc.economy.profession_type == "merchant") {
@@ -13404,7 +14005,7 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
         ruler.type = "ruler";
         ruler.factionId = fid;
         ruler.name = "Ruler of " + faction.name;
-        ruler.race = "humanoid";
+        ruler.race = g_gameplay_runtime.default_race_id;
         
         ruler.homeLocation = g_world.factions[fid].regions.empty() ? "" : g_world.factions[fid].regions[0];
         ruler.currentLocation = ruler.homeLocation;
@@ -13545,6 +14146,7 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
             s.cargo_capacity = 500;
             s.chest_id = createContainer("ship_hold", factionId, 999999, 100, rid);
             s.speed = 1.5;
+            applyShipTypeRuntimeDescriptor(s);
             if (g_world.map.locations.count(rid)) {
                 s.x = g_world.map.locations[rid].x;
                 s.y = g_world.map.locations[rid].y;
@@ -13563,6 +14165,7 @@ void buildWorld(const std::string& playerId, const std::string& era, int initial
                 warship.speed = 1.2;
                 warship.cannons = 10;
                 warship.marines = 20;
+                applyShipTypeRuntimeDescriptor(warship);
                 if (g_world.map.locations.count(rid)) {
                     warship.x = g_world.map.locations[rid].x;
                     warship.y = g_world.map.locations[rid].y;
@@ -13966,7 +14569,8 @@ int main() {
                 if (v.has("names")) {
                     for (const auto& [nk, nv] : v["names"].obj_val) tpl.names[nk] = nv.asString();
                 } else {
-                    tpl.names["rebirth"] = v.has("rebirth") ? v["rebirth"].asString() : k;
+                    const std::string defaultEraId = g_gameplay_runtime.default_era_id.empty() ? std::string("default") : g_gameplay_runtime.default_era_id;
+                    tpl.names[defaultEraId] = v.has(defaultEraId) ? v[defaultEraId].asString() : k;
                 }
                 if (v.has("tags")) {
                     for (size_t i=0; i<v["tags"].size(); ++i) tpl.tags.push_back(v["tags"][i].asString());
@@ -14141,6 +14745,18 @@ int main() {
                     p.profession_type = profArr[i].has("profession_type") ? profArr[i]["profession_type"].asString() : "farmer";
                     p.tool_tag = profArr[i].has("tool_tag") ? profArr[i]["tool_tag"].asString() : "";
                     p.tool_chance = profArr[i].has("tool_chance") ? profArr[i]["tool_chance"].asInt() : 0;
+                    p.production_type = profArr[i].has("production_type") ? profArr[i]["production_type"].asString() : "";
+                    p.job_multiplier = profArr[i].has("job_multiplier") ? (float)profArr[i]["job_multiplier"].asDouble() : 1.0f;
+                    p.preferred_facility = profArr[i].has("preferred_facility") ? profArr[i]["preferred_facility"].asString() : "";
+                    p.display_name_i18n_key = profArr[i].has("display_name_i18n_key") ? profArr[i]["display_name_i18n_key"].asString() : "";
+                    if (profArr[i].has("special_abilities") && profArr[i]["special_abilities"].type == JsonValue::ARRAY) {
+                        const JsonValue& sa = profArr[i]["special_abilities"];
+                        for (size_t j = 0; j < sa.size(); j++) p.special_abilities.push_back(sa[j].asString());
+                    }
+                    if (profArr[i].has("demand_pattern") && profArr[i]["demand_pattern"].type == JsonValue::OBJECT) {
+                        for (const auto& [dk, dv] : profArr[i]["demand_pattern"].obj_val)
+                            p.demand_pattern[dk] = (float)dv.asDouble();
+                    }
                     g_db.professions[p.string_id] = p;
                     g_db.profession_ids.push_back(p.string_id);
                 }
@@ -14264,12 +14880,28 @@ int main() {
                 }
             }
 
+            loadGameplayRuntimeConfig(
+                command.has("gameplay_runtime") ? command["gameplay_runtime"] : JsonValue::object()
+            );
+            loadContainerTypeRuntimeConfig(
+                command.has("container_types") ? command["container_types"] : JsonValue::object()
+            );
+            loadTransportRuntimeConfig(
+                command.has("transport_registry") ? command["transport_registry"] : JsonValue::object()
+            );
+            loadTrekRuntimeConfig(
+                command.has("trek_config") ? command["trek_config"] : JsonValue::object()
+            );
+            loadShipTypeRuntimeConfig(
+                command.has("ship_types") ? command["ship_types"] : JsonValue::array()
+            );
+
             response.set("status", "ok");
             response.set("message", "Database loaded");
         }
         else if (cmd == "buildWorld") {
             std::string playerId = command["player_id"].asString();
-            std::string era = command.has("era") ? command["era"].asString() : "rebirth";
+            std::string era = command.has("era") ? command["era"].asString() : g_gameplay_runtime.default_era_id;
             int initialAgents = command.has("initial_agents") ? command["initial_agents"].asInt() : 100;
             JsonValue globalLocs = command.has("global_locations") ? command["global_locations"] : JsonValue::object();
             int startDay = command.has("start_day") ? command["start_day"].asInt() : 0;
@@ -14433,8 +15065,8 @@ response.set("world", g_world.toJson());
             if (action == "createContainer") {
                 std::string type = args["type"].asString();
                 std::string ownerId = args.has("ownerId") ? args["ownerId"].asString() : "";
-                int maxWeight = args.has("maxWeight") ? args["maxWeight"].asInt() : 999999;
-                int maxSlots = args.has("maxSlots") ? args["maxSlots"].asInt() : 1000;
+                int maxWeight = args.has("maxWeight") ? args["maxWeight"].asInt() : 0;
+                int maxSlots = args.has("maxSlots") ? args["maxSlots"].asInt() : 0;
                 std::string regionId = args.has("location") && args["location"].has("region_id") ? args["location"]["region_id"].asString() : "";
                 
                 std::string contId = createContainer(type, ownerId, maxWeight, maxSlots, regionId);
@@ -15030,7 +15662,7 @@ response.set("world", g_world.toJson());
             g_world.player_trek.paused = false;
             g_world.player_trek.destination_id = dest_id;
             g_world.player_trek.elapsed_hours = 0;
-            g_world.player_trek.hours_since_last_bandit = 4;
+            g_world.player_trek.hours_since_last_bandit = g_gameplay_runtime.trek_bandit_cooldown_hours;
             g_world.player_trek.seen_object_ids.clear();
             g_world.player_trek.pending_events.clear();
             
@@ -15065,7 +15697,9 @@ response.set("world", g_world.toJson());
                 }
 
                 // Calculate travel time considering water-only transport restriction
-                double base_hours = total_dist / 0.5;
+                double base_speed = g_gameplay_runtime.trek_base_travel_speed;
+                if (base_speed <= 0.0) base_speed = 0.5;
+                double base_hours = total_dist / base_speed;
                 double speed_mult = (g_world.player_trek.transport_speed_mult > 0.1) ? g_world.player_trek.transport_speed_mult : 1.0;
 
                 // If transport is water-only, calculate average speed based on terrain mix
@@ -15092,8 +15726,8 @@ response.set("world", g_world.toJson());
                     }
 
                     // Calculate weighted average: water segments use speed_mult, land segments use 1.0
-                    double water_hours = water_distance / (0.5 * speed_mult);
-                    double land_hours = land_distance / 0.5;
+                    double water_hours = water_distance / (base_speed * speed_mult);
+                    double land_hours = land_distance / base_speed;
                     g_world.player_trek.total_hours = std::max(1, (int)(water_hours + land_hours));
                 } else {
                     g_world.player_trek.total_hours = std::max(1, (int)(base_hours / speed_mult));

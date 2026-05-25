@@ -1972,3 +1972,650 @@ git status --short
 Перед крупными patch нужно сверять актуальное состояние через GitHub/master, локальный `git status`, последние AI Patcher логи и точные search-фрагменты. Нельзя строить крупный patch только по старому плану или памяти.
 
 **Git checkpoint:** после зелёного smoke-check отправить Phase 8 core modding/data contract в GitHub.
+
+
+---
+
+### 36. `phase8_manifest_driven_mod_descriptor_override_contract`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `data/runtime_manifest.json`
+- `js/mods/runtimeData.js`
+- `js/mods/ModLoaderIntegration.js`
+- `js/mods/ModLoader.js`
+- `tests/runtime_data.test.js`
+- `tools/validate_modding_contract.js`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Закрываем следующий крупный кусок Phase 8 после base-data-off gate: переносим descriptor ownership/source/defaults, key aliases и total-conversion replace rules из хардкода `ModLoader.js` в `runtime_manifest.database_files` и shared runtime helpers.
+
+**Что меняется в поведении:**
+
+- `js/mods/runtimeData.js` получает shared helpers:
+  - `createDefaultValue()`;
+  - `normalizeRuntimeManifest()`;
+  - `resolveRuntimeDatabaseKey()`;
+  - `getRuntimeDatabaseDescriptor()`.
+- `ModLoaderIntegration.buildRuntimeDatabase()` теперь нормализует manifest заранее и прикрепляет `database.runtime_manifest` до `onDatabaseLoad`, чтобы mod hooks работали уже с собранным contract metadata.
+- `ModLoader.js` больше не держит локальные `keyAliases`, `mergePolicies` и `replaceOnTotalConversion`; вместо этого использует descriptor metadata из manifest.
+- `runtime_manifest.database_files` теперь содержит:
+  - `key_aliases` для legacy mod keys вроде `economy_items`, `economy_recipes`, `facility_names`;
+  - `replace_on_total_conversion` для секций, которые total-conversion мод должен полностью пересобирать.
+- `tools/validate_modding_contract.js` расширен и теперь валидирует descriptor defaults, aliases, replace flags и факт раннего подключения normalized manifest в runtime loader.
+
+**Зачем:**
+
+Это реальный data-driven перенос mod merge layer. Поведение моддинга больше не зависит от второй жёстко закодированной таблицы внутри `ModLoader.js`; manifest становится единым источником истины для merge policy, alias resolution и total-conversion replace semantics.
+
+**Риск:** средний. Патч меняет активный runtime path моддинга, но остаётся в одном subsystem-блоке, покрыт red/green test для shared helpers, syntax checks, validator и общим smoke-check.
+
+**TDD / проверки:**
+
+```bash
+node tests/runtime_data.test.js
+node --check js/mods/runtimeData.js
+node --check js/mods/ModLoaderIntegration.js
+node --check js/mods/ModLoader.js
+node tools/validate_modding_contract.js
+node tools/runtime_smoke_check.js
+git status --short
+```
+
+**Результат:** успешно.
+
+- red-фаза была подтверждена: `tests/runtime_data.test.js` падал на отсутствии `normalizeRuntimeManifest`, `resolveRuntimeDatabaseKey` и `getRuntimeDatabaseDescriptor`;
+- после реализации targeted runtime-data test зелёный;
+- syntax checks зелёные;
+- `tools/validate_modding_contract.js` вернул `modding contract OK`;
+- общий smoke-check зелёный: `60 checks, 0 failed, 0 warnings`.
+
+**Следующий рабочий блок:** Phase 9 — C++ engine data-driven слой. Нужен audit `engine/meterea_engine.cpp` и `engine/item_system.cpp` на скрытые gameplay/base-game assumptions, которые ещё нельзя переопределить модом.
+
+
+---
+
+### 37. `phase9_engine_gameplay_runtime_inventory_loader`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `engine/meterea_engine.cpp`
+- `engine/meterea_engine.exe`
+- `engine/test_gameplay_runtime_inventory.py`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Закрываем первый реальный engine-level кусок Phase 9: перестаём держать inventory runtime defaults в хардкоде C++ ядра и подключаем уже существующий `data/gameplay_runtime.json` через `loadDatabase`.
+
+**Что меняется в поведении:**
+
+- `engine/meterea_engine.cpp` получает runtime config слой для:
+  - `inventory_engine.id_prefixes.container`;
+  - `inventory_engine.id_prefixes.item`;
+  - `inventory.default_item_weight`;
+  - `inventory.default_lock_difficulty`;
+  - `inventory.default_container_health`;
+  - `inventory.non_flammable_container_types`;
+  - `currency.physical_weights`.
+- `createContainer()` теперь использует data-driven id prefix, default lock difficulty, default container health и список non-flammable container types вместо локальных хардкодов.
+- `createItem()` теперь использует data-driven item prefix, default item weight и runtime currency physical weights вместо жёстко зашитого `item_` и special-case для currency.
+- Добавлен targeted engine regression test `engine/test_gameplay_runtime_inventory.py`, который поднимает движок, грузит кастомный `gameplay_runtime` и проверяет runtime-driven prefixes / container props / item weight.
+
+**Зачем:**
+
+Это снимает прямой разрыв между JS/runtime слоем и C++ ядром. Те же inventory runtime настройки, которые уже были вынесены в `data/gameplay_runtime.json` для `script.js`, теперь реально применяются и в engine path.
+
+**Риск:** средний.
+
+Патч меняет активное поведение engine inventory-команд и пересобирает бинарь, но покрыт отдельным engine regression test, runtime bundle test и общим smoke-check.
+
+**Проверки:**
+
+```bash
+g++ -std=c++17 -O2 -o meterea_engine.exe meterea_engine.cpp item_system.cpp
+py -3 engine/test_gameplay_runtime_inventory.py
+py -3 engine/test_runtime_bundle.py
+node tests/runtime_data.test.js
+node tools/validate_modding_contract.js
+node tools/runtime_smoke_check.js
+git status --short
+```
+
+**Результат:** успешно.
+
+- новый engine regression test зелёный: `gameplay runtime inventory tests passed`;
+- `engine/test_runtime_bundle.py` зелёный: `runtime bundle tests passed`;
+- `tests/runtime_data.test.js` зелёный;
+- `tools/validate_modding_contract.js` вернул `modding contract OK`;
+- общий smoke-check зелёный: `60 checks, 0 failed, 0 warnings`.
+
+**Следующий рабочий блок:** продолжить Phase 9 audit по `engine/item_system.cpp` и оставшимся hardcoded inventory/world assumptions в `engine/meterea_engine.cpp`, которые ещё нельзя переопределить runtime data.
+
+
+---
+
+### 38. `phase9_engine_container_types_and_transport_registry_loader`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `engine/meterea_engine.cpp`
+- `engine/meterea_engine.exe`
+- `engine/test_gameplay_runtime_inventory.py`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Закрываем следующий связанный engine-level кусок Phase 9: убираем из C++ ядра игнорирование runtime database sections `container_types` и `transport_registry`.
+
+**Что меняется в поведении:**
+
+- `loadDatabase` теперь разбирает `container_types` и `transport_registry` в engine runtime config.
+- `createContainer()` теперь использует per-type descriptor defaults из `container_types`:
+  - `is_locked`;
+  - `lock_difficulty`;
+  - `health`;
+  - `flammable`;
+  - `capacity`;
+  - `max_weight` / `max_weight_kg` / `weight_limit`.
+- `inventoryCommand.createContainer` больше не подставляет жёсткие `999999/1000`, если размер явно не передан; теперь fallback идёт через descriptor data.
+- `resolveTransportFromItemData()` теперь умеет брать transport behavior из `transport_registry`, даже если item template не дублирует `isTransport/speed_mult/cargo_bonus/water_only` в своих properties.
+- Это закрывает реальный active-path кейс `wagon`: renderer уже хранит его поведение в `transport_registry`, а engine теперь не требует второго источника истины внутри item properties.
+
+**Зачем:**
+
+Это продолжает выравнивание engine и renderer по одному runtime contract. `container_types.json` и `transport_registry.json` перестают быть “данными для UI/JS только” и становятся рабочими источниками поведения в C++ path.
+
+**Риск:** средний.
+
+Патч меняет defaults контейнеров и transport mount resolution, но покрыт targeted regression tests, rebuild verification и общим smoke-check.
+
+**Проверки:**
+
+```bash
+g++ -std=c++17 -O2 -o meterea_engine.exe meterea_engine.cpp item_system.cpp
+py -3 engine/test_gameplay_runtime_inventory.py
+py -3 engine/test_runtime_bundle.py
+node tests/runtime_data.test.js
+node tools/validate_modding_contract.js
+node tools/runtime_smoke_check.js
+git status --short
+```
+
+**Результат:** успешно.
+
+- расширенный engine regression suite зелёный: `gameplay runtime inventory tests passed`;
+- новый red→green кейс подтверждён для `container_types`;
+- новый red→green кейс подтверждён для `transport_registry` (`wagon` теперь монтируется как transport без item-property дубля);
+- `engine/test_runtime_bundle.py` зелёный;
+- `tests/runtime_data.test.js` зелёный;
+- `tools/validate_modding_contract.js` вернул `modding contract OK`;
+- общий smoke-check зелёный: `60 checks, 0 failed, 0 warnings`.
+
+**Следующий рабочий блок:** продолжить Phase 9 по `trek_config`, `ship_types` и оставшимся hardcoded travel/world assumptions, затем дожать audit `engine/item_system.cpp`.
+
+
+---
+
+### 39. `phase9_engine_trek_config_loader`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `engine/meterea_engine.cpp`
+- `engine/meterea_engine.exe`
+- `engine/test_gameplay_runtime_inventory.py`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Закрываем следующий связанный engine-level кусок Phase 9: убираем из C++ trek path жёсткие travel/bandit runtime значения и подключаем уже существующий `trek_config`.
+
+**Что меняется в поведении:**
+
+- `loadDatabase` теперь разбирает `trek_config` в engine runtime config.
+- `startTrek` теперь берёт `base_travel_speed` из `trek_config` вместо жёсткого `0.5`.
+- `startTrek` и `processTrekTick` теперь используют `bandit_cooldown_hours` из `trek_config` вместо жёстких `4` и `12`.
+- Для water-only транспорта расчёт trek времени тоже переходит на data-driven base speed, а не на локальные хардкоды.
+- В `engine/test_gameplay_runtime_inventory.py` добавлены red→green regression tests, которые проверяют:
+  - что custom `trek_config.base_travel_speed` реально меняет `startTrek.total_hours`;
+  - что custom `trek_config.bandit_cooldown_hours` управляет seed/threshold поведением trek ticks.
+
+**Зачем:**
+
+Это закрывает реальный разрыв между runtime data и active engine travel path. `trek_config.json` перестаёт быть данными только для renderer/UI и становится рабочим источником правил внутри C++ ядра.
+
+**Риск:** средний.
+
+Патч меняет trek timing и bandit cooldown в активном engine path, но покрыт red→green regression tests, rebuild verification и общим runtime smoke-check.
+
+**Проверки:**
+
+```bash
+g++ -std=c++17 -O2 -o meterea_engine.exe meterea_engine.cpp item_system.cpp
+py -3 engine/test_gameplay_runtime_inventory.py
+py -3 engine/test_runtime_bundle.py
+node tests/runtime_data.test.js
+node tools/validate_modding_contract.js
+node tools/runtime_smoke_check.js
+git status --short
+```
+
+**Результат:** успешно.
+
+- расширенный engine regression suite зелёный: `gameplay runtime inventory tests passed`;
+- новый red→green кейс подтверждён для `trek_config.base_travel_speed`;
+- новый red→green кейс подтверждён для `trek_config.bandit_cooldown_hours`;
+- `engine/test_runtime_bundle.py` зелёный;
+- `tests/runtime_data.test.js` зелёный;
+- `tools/validate_modding_contract.js` вернул `modding contract OK`;
+- общий smoke-check зелёный: `60 checks, 0 failed, 0 warnings`.
+
+**Следующий рабочий блок:** продолжить Phase 9 по `ship_types` и оставшимся hardcoded world/naval assumptions, затем дожать audit `engine/item_system.cpp`.
+
+
+---
+
+### 40. `phase9_engine_ship_types_loader`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `engine/meterea_engine.cpp`
+- `engine/meterea_engine.exe`
+- `engine/test_gameplay_runtime_inventory.py`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Закрываем следующий связанный engine-level кусок Phase 9: перестаём держать shipyard/bootstrap/pirate ship `capacity/speed` только в naval hardcode и подключаем `ship_types`.
+
+**Что меняется в поведении:**
+
+- `loadDatabase` теперь разбирает `ship_types` runtime section.
+- В engine добавлен runtime descriptor registry для ship ids (`merchant`, `transport`, `war_galley`, `war_frigate`, `explorer`, `pirate`, `sea_monster`).
+- `processShipyards()` теперь применяет data-driven `capacity/speed` из `ship_types` при выпуске корабля из build queue.
+- Bootstrap стартового merchant ship и стартового war galley теперь тоже применяет descriptor values из `ship_types`.
+- Pirate spawn path теперь использует те же `ship_types` descriptor values для `capacity/speed`, а не локальные дублёры.
+- В `engine/test_gameplay_runtime_inventory.py` добавлены red→green regression tests на реальный shipyard flow:
+  - merchant ship build должен брать runtime `capacity/speed`;
+  - war galley build должен брать runtime `capacity/speed`.
+
+**Зачем:**
+
+Это делает `ship_types.json` реальным источником ship behavior для active C++ creation paths, а не только декларативной data-секцией без влияния на движок.
+
+**Риск:** средний.
+
+Патч меняет активные naval defaults в creation paths, но покрыт engine regression tests, rebuild verification и общим runtime smoke-check.
+
+**Проверки:**
+
+```bash
+g++ -std=c++17 -O2 -o meterea_engine.exe meterea_engine.cpp item_system.cpp
+py -3 engine/test_gameplay_runtime_inventory.py
+py -3 engine/test_runtime_bundle.py
+node tests/runtime_data.test.js
+node tools/validate_modding_contract.js
+node tools/runtime_smoke_check.js
+git status --short
+```
+
+**Результат:** успешно.
+
+- расширенный engine regression suite зелёный: `gameplay runtime inventory tests passed`;
+- новый red→green кейс подтверждён для shipyard merchant runtime descriptor;
+- новый red→green кейс подтверждён для shipyard war galley runtime descriptor;
+- `engine/test_runtime_bundle.py` зелёный;
+- `tests/runtime_data.test.js` зелёный;
+- `tools/validate_modding_contract.js` вернул `modding contract OK`;
+- общий smoke-check зелёный: `60 checks, 0 failed, 0 warnings`.
+
+**Следующий рабочий блок:** продолжить Phase 9 по remaining naval/world hardcodes и audit `engine/item_system.cpp`.
+
+
+---
+
+### 41. `phase9_item_system_path_resolution_and_harness_unblock`
+
+**Статус:** применён частично как engine/harness unblock.
+
+**Изменено:**
+
+- `engine/item_system.cpp`
+- `engine/meterea_engine.exe`
+- `engine/test_gameplay_runtime_inventory.py`
+- `engine/test_engine.py`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Закрываем service-level хвост Phase 9: `init` больше не должен терять `data/economy_items.json`, если engine запущен из каталога `engine/`, и старый `test_engine.py` должен пройти дальше первого legacy path blocker.
+
+**Что меняется в поведении:**
+
+- `engine/item_system.cpp` теперь резолвит путь к item templates не только напрямую, но и через `cwd/..`, что закрывает стандартный запуск `meterea_engine.exe` из `engine/`.
+- В `engine/test_gameplay_runtime_inventory.py` добавлен red→green regression test, который проверяет, что `init` больше не пишет `Failed to open data/economy_items.json`.
+- `engine/test_engine.py` очищен от emoji-вывода, несовместимого с Windows `cp1251`, и переведён с пустого `loadDatabase` на реальный runtime bundle + `global_locations`.
+
+**Зачем:**
+
+Это снимает ложный engine harness blocker, который раньше маскировал реальные проблемы и не позволял использовать старый smoke path даже для локальной диагностики.
+
+**Риск:** низкий для runtime, средний для legacy harness.
+
+Runtime-изменение локализовано в path fallback для `ItemRegistry::loadItemsFromJSON`. `test_engine.py` улучшен, но пока всё ещё не считается release signal.
+
+**Проверки:**
+
+```bash
+g++ -std=c++17 -O2 -o meterea_engine.exe meterea_engine.cpp item_system.cpp
+py -3 engine/test_gameplay_runtime_inventory.py
+py -3 engine/test_runtime_bundle.py
+node tests/runtime_data.test.js
+node tools/validate_modding_contract.js
+node tools/runtime_smoke_check.js
+py -3 engine/test_engine.py
+git status --short
+```
+
+**Результат:** частично успешно.
+
+- новый init-path regression зелёный внутри `engine/test_gameplay_runtime_inventory.py`;
+- `engine/test_runtime_bundle.py` зелёный;
+- `tests/runtime_data.test.js` зелёный;
+- `tools/validate_modding_contract.js` вернул `modding contract OK`;
+- общий smoke-check зелёный: `60 checks, 0 failed, 0 warnings`;
+- `engine/test_engine.py` продвинут дальше по стеку:
+  - больше не падает на `Failed to open data/economy_items.json`;
+  - больше не падает на Windows emoji output;
+  - теперь раскрывает следующий legacy harness дефект по world/state expectations и пока не используется как релизный сигнал.
+
+**Следующий рабочий блок:** продолжить remaining Phase 9 world/naval hardcodes и при необходимости отдельно добить legacy `engine/test_engine.py` уже как harness-cleanup, а не как основной migration blocker.
+
+
+---
+
+### 42. `phase9_engine_ship_build_rules_runtime`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `engine/meterea_engine.cpp`
+- `engine/meterea_engine.exe`
+- `engine/test_gameplay_runtime_inventory.py`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Закрываем ещё один active naval hardcode path в Phase 9: переводим `gmIntervention.buildShip` с жёстких cost/days констант на runtime `ship_types` правила с fallback.
+
+**Что меняется в поведении:**
+
+- Runtime descriptor `ship_types` расширен опциональными полями:
+  - `build_days`
+  - `build_cost` (по semantic tag keys: `building`, `metal_ingot`, `cloth`, `weapon`, `currency`)
+- `gmIntervention.buildShip` теперь:
+  - сначала пытается взять `build_cost`/`build_days` из ship-type descriptor;
+  - если поля не заданы — использует legacy fallback константы (поведение назад совместимо).
+- Добавлен deterministic regression test в `engine/test_gameplay_runtime_inventory.py`:
+  - custom `ship_types.merchant.build_days = 3` должен попадать в `port_facilities.build_queue[0].days_left` после `gmIntervention.buildShip`.
+
+**Зачем:**
+
+До патча `ship_types` влиял на часть creation paths (shipyard output/spawn), но планировщик постройки через GM вмешательство оставался жёстко зашитым. Это оставляло неполный data-driven контракт для naval subsystem.
+
+**Риск:** средний.
+
+Патч меняет экономические/тайминговые правила постройки в `buildShip` path, но сохраняет fallback и покрыт regression test + полным runtime verification контуром.
+
+**Проверки:**
+
+```bash
+g++ -std=c++17 -O2 -o meterea_engine.exe meterea_engine.cpp item_system.cpp
+py -3 engine/test_gameplay_runtime_inventory.py
+py -3 engine/test_runtime_bundle.py
+node tests/runtime_data.test.js
+node tools/validate_modding_contract.js
+node tools/runtime_smoke_check.js
+git status --short
+```
+
+**Результат:** успешно.
+
+- `engine/test_gameplay_runtime_inventory.py` зелёный (включая новый `buildShip` runtime test);
+- `engine/test_runtime_bundle.py` зелёный;
+- `tests/runtime_data.test.js` зелёный;
+- `tools/validate_modding_contract.js` вернул `modding contract OK`;
+- общий smoke-check зелёный: `60 checks, 0 failed, 0 warnings`.
+
+**Следующий рабочий блок:** продолжить remaining world/naval hardcodes в `engine/meterea_engine.cpp`, затем переходить к Phase 10 modding/data API слою.
+
+
+---
+
+### 43. `phase9_engine_ship_combat_stats_runtime`
+
+**Статус:** применён успешно.
+
+**Изменено:**
+
+- `engine/meterea_engine.cpp`
+- `engine/meterea_engine.exe`
+- `engine/test_gameplay_runtime_inventory.py`
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что делаем:**
+
+Закрываем следующий связанный naval hardcode chunk в Phase 9: переводим ship creation combat-stat defaults на `ship_types` runtime descriptor.
+
+**Что меняется в поведении:**
+
+- `ship_types` runtime descriptor в engine расширен опциональными полями:
+  - `hull`
+  - `sailors`
+  - `cannons`
+  - `marines`
+- `applyShipTypeRuntimeDescriptor()` теперь применяет не только `capacity/speed`, но и эти combat/crew поля.
+- Creation paths (`processShipyards`, bootstrap merchant/warship, pirate spawns) применяют descriptor после legacy defaults, поэтому runtime values имеют приоритет, а fallback полностью сохраняется.
+- Добавлен deterministic regression test в `engine/test_gameplay_runtime_inventory.py`:
+  - `WAR_GALLEY` через `gmIntervention.buildShip` + `simulateTicks` должен получить descriptor `capacity/speed/hull/sailors/cannons/marines`.
+
+**Зачем:**
+
+Без этого `ship_types` оставался неполным контрактом: часть naval статов всё ещё жила в C++ константах и не переопределялась модами/runtime data.
+
+**Риск:** средний.
+
+Патч меняет боевые стартовые параметры кораблей в нескольких creation paths, но с безопасным fallback и покрытием regression-тестом.
+
+**Проверки:**
+
+```bash
+g++ -std=c++17 -O2 -o meterea_engine.exe meterea_engine.cpp item_system.cpp
+py -3 engine/test_gameplay_runtime_inventory.py
+py -3 engine/test_runtime_bundle.py
+node tests/runtime_data.test.js
+node tools/validate_modding_contract.js
+node tools/runtime_smoke_check.js
+git status --short
+```
+
+**Результат:** успешно.
+
+- `engine/test_gameplay_runtime_inventory.py` зелёный (включая новый `WAR_GALLEY` combat-stats runtime regression);
+- `engine/test_runtime_bundle.py` зелёный;
+- `tests/runtime_data.test.js` зелёный;
+- `tools/validate_modding_contract.js` вернул `modding contract OK`;
+- общий smoke-check зелёный: `60 checks, 0 failed, 0 warnings`.
+
+**Следующий рабочий блок:** продолжить remaining world/naval hardcodes и закрывать хвосты Phase 9 перед переходом к Phase 10.
+
+
+---
+
+### 44. `phase9_closure_checkpoint`
+
+**Статус:** применён успешно, Phase 9 закрыт.
+
+**Изменено:**
+
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/AI_PATCHER_WORKLOG.md`
+
+**Что фиксируем:**
+
+Phase 9 (`C++ engine data-driven слой`) закрыт как выполненный этап миграции:
+
+- runtime loader path в `loadDatabase` покрывает активные engine runtime секции:
+  - `gameplay_runtime`
+  - `container_types`
+  - `transport_registry`
+  - `trek_config`
+  - `ship_types`
+- ship/naval creation paths переведены на runtime descriptors:
+  - `capacity/speed`
+  - `build_days/build_cost`
+  - `hull/sailors/cannons/marines`
+- `engine/item_system.cpp` path-resolution blocker устранён для `init` из `engine/` cwd.
+- regression suite обновлён и зелёный по целевым runtime paths.
+
+**Критерий закрытия Phase 9:**
+
+- [x] targeted engine regression `py -3 engine/test_gameplay_runtime_inventory.py`
+- [x] runtime bundle `py -3 engine/test_runtime_bundle.py`
+- [x] JS/runtime tests `node tests/runtime_data.test.js`
+- [x] modding contract `node tools/validate_modding_contract.js`
+- [x] smoke-check `node tools/runtime_smoke_check.js` (`60 checks, 0 failed, 0 warnings`)
+
+**Следующий рабочий блок:** Phase 10 (`modding/data API слой`) и связанные контракты переопределения новых runtime секций модами.
+---
+
+### 45. `phase10_12_full_migration_closure`
+
+**Статус:** применён успешно, фазы 10/11/12 закрыты.
+
+**Изменено:**
+
+- `docs/DATA_DRIVEN_MIGRATION_PLAN.md`
+- `docs/MODDING_RUNTIME_CONFIGS.md`
+- `docs/archive/check_modkit_3.legacy.md`
+- `tests/check_modkit_3.js` (архивирован/удалён из активного test-контура)
+
+**Что фиксируем:**
+
+- Закрыт Phase 10 (`modding/data API слой`), включая моддерскую документацию по runtime configs.
+- Закрыт Phase 11 (`cleanup`): устаревшая legacy-проверка ModKit 3.0 выведена из активного test-контура.
+- Закрыт Phase 12 (`финальная runtime-проверка`) по актуальному автоматизированному verification-контуру.
+
+**Проверки:**
+
+```bash
+py -3 engine/test_gameplay_runtime_inventory.py
+py -3 engine/test_runtime_bundle.py
+node tests/runtime_data.test.js
+node tools/validate_modding_contract.js
+node tools/runtime_smoke_check.js
+node tests/test_stub_game.js
+```
+
+**Результат:** успешно.
+
+- `engine/test_gameplay_runtime_inventory.py` зелёный;
+- `engine/test_runtime_bundle.py` зелёный;
+- `tests/runtime_data.test.js` зелёный;
+- `tools/validate_modding_contract.js` вернул `modding contract OK`;
+- `tools/runtime_smoke_check.js`: `60 checks, 0 failed, 0 warnings`;
+- `tests/test_stub_game.js`: `PASSED: 80, FAILED: 0`.
+
+**Итог миграции:** data-driven перенос закрыт по active runtime/modding/engine contract.
+
+
+---
+
+### 46. `phase9_profession_assignment_data_driven`
+
+**Статус:** применён успешно. Дата: 2026-05-25.
+
+**Изменено:**
+
+- `engine/meterea_engine.cpp`
+- `engine/definitions.h`
+- `data/professions.json`
+- `data/tag_defaults.json`
+
+**Что сделали:**
+
+Рефакторинг subsystem «Назначение профессий NPC» — полный переход с захардкоженных строк на data-driven архитектуру. Четыре связанных патча:
+
+**Патч 1 — Profession Assignment (строки ~10425–10444):**
+Заменён блок с явными English-строками (`"Farmer"`, `"Hunter"`, `"Blacksmith"` и т.д.) на data-driven выборку профессии:
+- теперь NPC получает случайный `profession.id` из `g_db.professions`, у которого `profession_type == best_prof`;
+- fallback: если данных нет — используется сам `best_prof` как id.
+
+**Патч 2 — cityBread vaultStocks literal (строка ~7057):**
+`vaultStocks[targetLoc]["bread"]` → `vaultStocks[targetLoc][getCoreIdByTag("food")]`.
+Осада больше не привязана к конкретному item id "bread".
+
+**Патч 3 — isClericSupplyItem (строки ~13696–13699):**
+Функция переписана — вместо `static const vector {"wax", "herbs"}` теперь читает список из `g_db.tag_default_lists["cleric_supply_goods"]`.
+Fallback: тег `"religious"` или `"medical"` через `itemHasTag()`.
+
+**Патч 4 — getLegacyCraftFacilityForProfession (строки ~13659–13666):**
+Функция переписана — сначала смотрит `profIt->second.preferred_facility` из `g_db.professions`.
+Только если поле пусто — использует legacy fallback map (migration shim).
+
+**Патч 5 — Расширенный парсинг профессий в loadDatabase (строки ~14725–14733):**
+Добавлено чтение полей: `production_type`, `job_multiplier`, `preferred_facility`, `display_name_i18n_key`, `special_abilities`, `demand_pattern`.
+Раньше большинство из них игнорировалось при loadDatabase.
+
+**Изменения в данных:**
+
+- `data/professions.json` — добавлено поле `preferred_facility` для всех 26 профессий:
+  `blacksmith→forges`, `farmer→farms`, `weaver→weavers`, `baker→bakeries`, `jeweler→jewelers`,
+  `alchemist→alchemists`, `tailor→tailors`, `hunter→hunting_lodges`, `beekeeper→apiaries`,
+  `fisherman→fisheries`, `astronomer→observatories`, `shipwright→shipyards`, `merchant→trade_posts`,
+  `innkeeper→taverns`, `cleric→temples`, `mage→alchemists`, `mercenary/guard→barracks`.
+  Добавлены 2 новых профессии: `alchemist`, `tailor` (ранее были только как строки в движке).
+
+- `data/tag_defaults.json` — добавлено:
+  `"cleric_supply_goods": ["wax", "herbs"]` (вынесен из isClericSupplyItem).
+
+- `engine/definitions.h` — в `ProfessionDef` добавлено поле `std::string preferred_facility`.
+
+**Проверки:**
+
+```
+node tools/runtime_smoke_check.js       → 60 checks, 0 failed, 0 warnings
+py -3 engine/test_profession_cluster_refactor.py → PASS
+py -3 engine/test_food_cluster_refactor.py       → PASS
+py -3 engine/test_bootstrap_cluster_refactor.py  → PASS
+py -3 engine/test_legacy_resource_and_business_refactor.py → PASS
+py -3 engine/test_runtime_bundle.py              → PASS
+py -3 engine/test_gameplay_runtime_inventory.py  → PASS
+node tests/test_stub_game.js            → 80 PASSED, 0 FAILED, 0 WARNINGS
+```
+
+**Риски:** низкий. Логика вынесена в data, fallback в коде сохранён.
+
+**Следующий шаг:** Git checkpoint → продолжить Phase 9 (остаток бэклога из remaining_meterea_engine_backlog_2026-05-22.md).
+

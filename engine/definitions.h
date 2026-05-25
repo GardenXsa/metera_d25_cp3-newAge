@@ -90,6 +90,7 @@ struct ProfessionDef {
     float job_multiplier = 1.0f;
     std::vector<std::string> special_abilities;  // "farming", "gathering", "crafting", "spellcasting", etc.
     std::string display_name_i18n_key;
+    std::string preferred_facility;  // Data-driven: facility type this profession prefers for production
 };
 
 // 2.7. Реестр Черт Характера (Trait Registry)
