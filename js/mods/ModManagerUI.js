@@ -193,15 +193,38 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         document.getElementById('mods-restart-now').addEventListener('click', async () => {
-            // Save final settings before relaunch
-            await saveModSettings();
-            // Clear session cache so fresh snapshot is taken on next launch
-            try { sessionStorage.removeItem(SESSION_KEY); } catch(_) {}
-            // Relaunch
-            if (window.electronAPI && window.electronAPI.appRelaunch) {
-                window.electronAPI.appRelaunch();
-            } else {
+            const restartButton = document.getElementById('mods-restart-now');
+            try {
+                restartButton.disabled = true;
+                restartButton.textContent = 'Перезапуск...';
+
+                // Save final settings before relaunch
+                await saveModSettings();
+                // Clear session cache so fresh snapshot is taken on next launch
+                try { sessionStorage.removeItem(SESSION_KEY); } catch(_) {}
+
+                if (window.RuntimeLog) {
+                    window.RuntimeLog.info('ModManagerUI', 'Пользователь подтвердил перезапуск после изменения списка модов.', { activeModIds });
+                }
+
+                // Relaunch through Electron main process. Browser reload is only a dev fallback.
+                if (window.electronAPI && typeof window.electronAPI.appRelaunch === 'function') {
+                    const result = await window.electronAPI.appRelaunch();
+                    if (result && result.success === false) {
+                        throw new Error(result.error || 'appRelaunch returned success=false');
+                    }
+                    return;
+                }
+
                 location.reload();
+            } catch (error) {
+                console.error('[ModManagerUI] Relaunch failed:', error);
+                if (window.RuntimeLog) {
+                    window.RuntimeLog.error('ModManagerUI', 'Не удалось перезапустить игру после изменения списка модов.', error);
+                }
+                restartButton.disabled = false;
+                restartButton.textContent = 'Перезапуск не удался';
+                setTimeout(() => { restartButton.textContent = 'Перезапустить →'; }, 2000);
             }
         });
 

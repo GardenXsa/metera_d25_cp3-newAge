@@ -732,6 +732,21 @@ app.whenReady().then(createWindow);
 // Expose HTTP session token to renderer (needed for fetch calls from game)
 ipcMain.handle('get-http-token', () => HTTP_SESSION_TOKEN);
 
+
+ipcMain.handle('app-relaunch', async () => {
+    try {
+        console.log('[App] Relaunch requested from renderer.');
+        setImmediate(() => {
+            app.relaunch();
+            app.exit(0);
+        });
+        return { success: true };
+    } catch (error) {
+        console.error('[App] Relaunch failed:', error.message);
+        return { success: false, error: error.message };
+    }
+});
+
 ipcMain.handle('save-settings', async (event, data) => {
     try {
         fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2));

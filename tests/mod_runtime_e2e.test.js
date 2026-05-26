@@ -193,6 +193,20 @@ function assertDisabledModResetUiIsPresent() {
   assert(uiSource.includes('Сбросить блокировку и включить'), 'Mod Manager reset button text is missing');
 }
 
+
+function assertAppRelaunchIpcWiringIsPresent() {
+  const preloadSource = fs.readFileSync(projectPath('preload.js'), 'utf8');
+  const mainSource = fs.readFileSync(projectPath('main.js'), 'utf8');
+  const uiSource = fs.readFileSync(projectPath('js/mods/ModManagerUI.js'), 'utf8');
+
+  assert(preloadSource.includes("appRelaunch: () => ipcRenderer.invoke('app-relaunch')"), 'preload appRelaunch must use invoke so renderer can detect IPC failure');
+  assert(mainSource.includes("ipcMain.handle('app-relaunch'"), 'main process must handle app-relaunch IPC');
+  assert(mainSource.includes('app.relaunch()'), 'app-relaunch handler must call app.relaunch()');
+  assert(mainSource.includes('app.exit(0)'), 'app-relaunch handler must exit current app instance');
+  assert(uiSource.includes("typeof window.electronAPI.appRelaunch === 'function'"), 'Mod Manager restart button must call appRelaunch defensively');
+  assert(uiSource.includes('Перезапуск...'), 'Mod Manager restart button must show restart progress');
+}
+
 function assertNoAggressiveRiverbankTags(database) {
   const bad = (database.biomes || []).filter(biome =>
     biome && Array.isArray(biome.tags) && (biome.tags.includes('riverbank') || biome.tags.includes('floodplain'))
@@ -227,6 +241,7 @@ function main() {
   assertCharacterCreationRuntimeFlow(database);
   assertWorldStartupGuardIsPresent();
   assertDisabledModResetUiIsPresent();
+  assertAppRelaunchIpcWiringIsPresent();
 
   console.log('mod runtime E2E flow tests OK');
 }

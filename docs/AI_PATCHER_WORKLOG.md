@@ -3713,3 +3713,66 @@ mod runtime E2E vm assert fix OK
 ```
 
 **Архитектурный результат:** теперь есть автоматическая проверка не только JSON/static contracts, но и ключевого runtime-flow модовой total-conversion загрузки.
+
+
+
+---
+
+### 72. `fix_mod_manager_restart_button_ipc`
+
+**Статус:** подготовлен к применению.
+
+**Причина:** кнопка `Перезапустить` в Mod Manager визуально нажималась, но ничего не происходило. UI вызывал `window.electronAPI.appRelaunch()`, preload отправлял `ipcRenderer.send('app-relaunch')`, но main process не имел обработчика `app-relaunch`.
+
+**Что меняется:**
+
+- `preload.js`: `appRelaunch` переведён с fire-and-forget `send` на `invoke`;
+- `main.js`: добавлен `ipcMain.handle('app-relaunch')`, который вызывает `app.relaunch()` и `app.exit(0)`;
+- `ModManagerUI.js`: кнопка перезапуска теперь показывает `Перезапуск...`, логирует действие и отображает ошибку, если IPC не сработал;
+- `tests/mod_runtime_e2e.test.js`: добавлена проверка IPC wiring для restart flow.
+
+**Проверки после применения:**
+
+```bash
+node --check preload.js
+node --check main.js
+node --check js/mods/ModManagerUI.js
+node --check tests/mod_runtime_e2e.test.js
+node tests/mod_runtime_e2e.test.js
+npm run verify
+node -e "const fs=require('fs'); const main=fs.readFileSync('main.js','utf8'); const preload=fs.readFileSync('preload.js','utf8'); const ui=fs.readFileSync('js/mods/ModManagerUI.js','utf8'); if(!main.includes(\"ipcMain.handle('app-relaunch'\")) throw new Error('main app-relaunch handler missing'); if(!main.includes('app.relaunch()')) throw new Error('app.relaunch call missing'); if(!preload.includes(\"appRelaunch: () => ipcRenderer.invoke('app-relaunch')\")) throw new Error('preload appRelaunch invoke bridge missing'); if(!ui.includes('Перезапуск...')) throw new Error('restart progress UI missing'); console.log('mod manager restart IPC OK')"
+git status --short
+```
+
+**Ручной тест:** открыть менеджер модов, изменить список/порядок модов, нажать назад, затем `Перезапустить`. Окно должно закрыться и открыться заново. Если Electron relaunch не сработает, кнопка должна показать ошибку вместо молчаливого бездействия.
+
+
+
+---
+
+### 73. `git_checkpoint_fix_mod_manager_restart_button_ipc`
+
+**Статус:** готово к Git checkpoint.
+
+**Что исправлено:**
+
+- кнопка `Перезапустить` в Mod Manager больше не отправляет IPC-сообщение в пустоту;
+- `preload.js`: `appRelaunch` переведён на `ipcRenderer.invoke('app-relaunch')`;
+- `main.js`: добавлен `ipcMain.handle('app-relaunch')`, который вызывает `app.relaunch()` и `app.exit(0)`;
+- `ModManagerUI.js`: кнопка показывает `Перезапуск...`, логирует действие и показывает ошибку, если relaunch не сработал;
+- `tests/mod_runtime_e2e.test.js`: E2E теперь проверяет wiring restart IPC.
+
+**Зелёная точка перед checkpoint:**
+
+```text
+node --check preload.js                         OK
+node --check main.js                            OK
+node --check js/mods/ModManagerUI.js            OK
+node --check tests/mod_runtime_e2e.test.js      OK
+node tests/mod_runtime_e2e.test.js              mod runtime E2E flow tests OK
+npm run verify                                  OK
+Smoke-check: 80 checks, 0 failed, 0 warnings
+Full verify summary: 0 failed, 0 skipped
+```
+
+**Примечание:** последняя inline `node -e` проверка упала из-за shell/quoting на Windows, но все реальные синтаксические, E2E и full verify проверки зелёные.
