@@ -3573,3 +3573,48 @@ Runtime database
 ```
 
 Старый мост `races.class_stats -> BASE_CLASS_STATS/RACE_MODIFIERS` удалён из runtime.
+
+
+
+---
+
+### 68. `git_checkpoint_cleanup_legacy_character_stats_globals`
+
+**Статус:** готово к Git checkpoint.
+
+**Что подтверждено:**
+
+- `BASE_CLASS_STATS`, `RACE_MODIFIERS`, `applyDatabaseStats()` удалены из активного JS runtime;
+- `.ai_backups`, `.git`, `node_modules`, `logs` исключены из проверки, чтобы старые бэкапы не давали ложные совпадения;
+- `CharacterStatsResolver` остаётся каноническим путём расчёта стартовых характеристик;
+- `ModLoaderIntegration` больше не вызывает `applyDatabaseStats(database.races)`;
+- character stats contract и resolver unit-test проходят.
+
+**Зелёная точка перед checkpoint:**
+
+```text
+node --check js/core/constants.js                         OK
+node --check js/mods/ModLoaderIntegration.js              OK
+node tests/character_stats_resolver.test.js               character stats resolver tests OK
+node tools/verify_character_stats_contract.js             Character stats contract OK
+legacy character stat globals removed from active JS runtime
+npm run verify                                             OK
+Smoke-check: 77 checks, 0 failed, 0 warnings
+Stub tests: 80 PASSED, 0 FAILED, 0 WARNINGS
+Python engine regression tests: PASS
+Full verify summary: 0 failed, 0 skipped
+```
+
+**Архитектурный результат:**
+
+```text
+Runtime database
+  -> window.CLASSES_DATA / window.RACES_DATA
+  -> CharacterStatsResolver
+  -> character creation UI
+  -> player.stats
+```
+
+Старый мост `races.class_stats -> BASE_CLASS_STATS/RACE_MODIFIERS` удалён из runtime.
+
+**Следующий шаг после push:** идти дальше к runtime E2E-проверке модовой загрузки: проверять не только JSON/static contracts, но и сценарий `active mods -> runtime database -> character creation data -> world startup guard`.
