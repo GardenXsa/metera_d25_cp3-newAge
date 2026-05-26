@@ -138,6 +138,7 @@ function checkExpectedFiles() {
     'tools/validate_modding_contract.js',
     'tools/verify_character_stats_contract.js',
     'tests/character_stats_resolver.test.js',
+    'tests/mod_runtime_e2e.test.js',
     'data/runtime_manifest.json',
     'data/ui_runtime.json',
     'data/electron_runtime.json',
@@ -195,7 +196,8 @@ function main() {
     'tools/validate_data_integrity.js',
     'tools/validate_modding_contract.js',
     'tools/verify_character_stats_contract.js',
-    'tests/character_stats_resolver.test.js'
+    'tests/character_stats_resolver.test.js',
+    'tests/mod_runtime_e2e.test.js'
   ].forEach(checkJsSyntax);
 
   runNodeTool('tools/validate_runtime_configs.js', 'runtime config contracts');
@@ -203,6 +205,7 @@ function main() {
   runNodeTool('tools/validate_modding_contract.js', 'modding contract');
   runNodeTool('tools/verify_character_stats_contract.js', 'character stats contract');
   runNodeTool('tests/character_stats_resolver.test.js', 'character stats resolver tests');
+  runNodeTool('tests/mod_runtime_e2e.test.js', 'mod runtime E2E flow tests');
   printResults();
 }
 

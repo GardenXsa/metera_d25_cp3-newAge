@@ -3618,3 +3618,98 @@ Runtime database
 Старый мост `races.class_stats -> BASE_CLASS_STATS/RACE_MODIFIERS` удалён из runtime.
 
 **Следующий шаг после push:** идти дальше к runtime E2E-проверке модовой загрузки: проверять не только JSON/static contracts, но и сценарий `active mods -> runtime database -> character creation data -> world startup guard`.
+
+
+
+---
+
+### 69. `add_mod_runtime_e2e_flow_test`
+
+**Статус:** подготовлен к применению.
+
+**Причина:** после стабилизации модов, runtime log, watchdog, character stats resolver и удаления legacy stat globals нужен тест выше уровня JSON/static contracts. Он должен ловить сценарии, где мод формально валиден, но полный runtime-flow ломается.
+
+**Что добавляем:**
+
+- `tests/mod_runtime_e2e.test.js`: Node E2E-smoke для активного набора `base_game -> neon_siltlands_core`;
+- тест моделирует total-conversion runtime database build по `data/runtime_manifest.json` и declarative data мода;
+- проверяет required total-conversion keys, era location files, tag defaults -> items, отсутствие `riverbank/floodplain` visual-loop tags, character creation resolver flow, наличие world startup watchdog и UI-сброса runtime-disabled модов;
+- `tools/runtime_smoke_check.js` запускает новый тест;
+- `tools/full_verify.js` запускает новый тест;
+- smoke baseline обновляется до `80 checks, 0 failed, 0 warnings`.
+
+**Проверки после применения:**
+
+```bash
+node --check tests/mod_runtime_e2e.test.js
+node tests/mod_runtime_e2e.test.js
+node tests/character_stats_resolver.test.js
+node tools/verify_character_stats_contract.js
+npm run verify
+node -e "const fs=require('fs'); const test=fs.readFileSync('tests/mod_runtime_e2e.test.js','utf8'); if(!test.includes('mod runtime E2E flow tests OK')) throw new Error('mod runtime E2E test missing'); const smoke=fs.readFileSync('tools/runtime_smoke_check.js','utf8'); if(!smoke.includes('mod runtime E2E flow tests')) throw new Error('smoke-check does not run E2E test'); const full=fs.readFileSync('tools/full_verify.js','utf8'); if(!full.includes('mod runtime E2E flow tests')) throw new Error('full verify does not run E2E test'); console.log('mod runtime E2E flow test wired OK')"
+git status --short
+```
+
+**Комментарий:** это не заменяет ручной `npm start`, но закрывает важную дыру между “JSON валиден” и “runtime database + mod + character creation + safeguards связаны в одну цепочку”.
+
+
+
+---
+
+### 70. `retry_mod_runtime_e2e_vm_array_assert_fix`
+
+**Статус:** подготовлен к применению.
+
+**Причина:** `tests/mod_runtime_e2e.test.js` упал не из-за runtime-flow, а из-за некорректного assert по массиву из `vm`-контекста. Лог показывал `actual: []` и `expected: []`, но `assert.deepStrictEqual()` всё равно падал из-за другого realm/prototype массива.
+
+**Что меняется:**
+
+- `contractErrors` приводится через `Array.from(...)`;
+- вместо `assert.deepStrictEqual(contractErrors, [])` используется `assert.strictEqual(contractErrors.length, 0, ...)`.
+
+**Проверки после применения:**
+
+```bash
+node --check tests/mod_runtime_e2e.test.js
+node tests/mod_runtime_e2e.test.js
+node tests/character_stats_resolver.test.js
+node tools/verify_character_stats_contract.js
+npm run verify
+node -e "const fs=require('fs'); const test=fs.readFileSync('tests/mod_runtime_e2e.test.js','utf8'); if(!test.includes('Array.from(resolver.validateCharacterStatsContract(database))')) throw new Error('vm array assert fix missing'); if(test.includes('assert.deepStrictEqual(contractErrors, []')) throw new Error('old cross-realm array assert still present'); console.log('mod runtime E2E vm assert fix OK')"
+git status --short
+```
+
+
+
+---
+
+### 71. `git_checkpoint_mod_runtime_e2e_flow_test`
+
+**Статус:** готово к Git checkpoint.
+
+**Что подтверждено:**
+
+- добавлен `tests/mod_runtime_e2e.test.js`;
+- тест моделирует runtime-flow `base_game -> neon_siltlands_core`;
+- проверяется total-conversion runtime database build;
+- проверяются required database keys, era location contract, `tag_defaults -> items`, отсутствие агрессивных `riverbank/floodplain` tags;
+- проверяется связка `runtime database -> CharacterStatsResolver -> character creation stats`;
+- проверяется наличие world startup watchdog и UI-сброса runtime-disabled модов;
+- E2E-тест подключён к `runtime_smoke_check.js` и `full_verify.js`.
+
+**Зелёная точка перед checkpoint:**
+
+```text
+node --check tests/mod_runtime_e2e.test.js              OK
+node tests/mod_runtime_e2e.test.js                      mod runtime E2E flow tests OK
+node tests/character_stats_resolver.test.js             character stats resolver tests OK
+node tools/verify_character_stats_contract.js           Character stats contract OK
+npm run verify                                           OK
+Smoke-check: 80 checks, 0 failed, 0 warnings
+Stub tests: 80 PASSED, 0 FAILED, 0 WARNINGS
+Python engine regression tests: PASS
+Full verify summary: 0 failed, 0 skipped
+mod runtime E2E vm assert fix OK
+```
+
+**Архитектурный результат:** теперь есть автоматическая проверка не только JSON/static contracts, но и ключевого runtime-flow модовой total-conversion загрузки.
