@@ -4,6 +4,7 @@
     "version": "1.0.0",
     "author": "MrKins",
     "description": "Тотальная конверсия. Превращает фэнтези Метеры в мрачный подземный киберпанк. Добавляет неон, импланты, хакерство и корпорации.",
+    "total_conversion": true,
     "dependencies": ["base_game"],
     "scripts": ["main.js"],
     "data": {

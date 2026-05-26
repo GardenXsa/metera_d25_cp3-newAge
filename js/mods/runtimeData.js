@@ -88,8 +88,10 @@
 
     function appendUnique(current, incoming) {
         const base = Array.isArray(current) ? current.map(cloneValue) : [];
+        const seen = new Set(base);
         (Array.isArray(incoming) ? incoming : []).forEach((item) => {
-            if (!base.includes(item)) {
+            if (!seen.has(item)) {
+                seen.add(item);
                 base.push(cloneValue(item));
             }
         });

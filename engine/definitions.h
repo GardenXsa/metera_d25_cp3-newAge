@@ -27,10 +27,7 @@ struct BiomeDef {
     double max_moisture;
 };
 
-// 2.2. CityGen Registry — УДАЛЕНО (система CityGen вырезана из проекта)
-// struct CityGenDef { ... }; — более не используется
-
-// 2.3. Реестр Эпических Монстров (Monster Registry)
+// 2.2. Реестр Эпических Монстров (Monster Registry)
 struct MonsterDef {
     std::string string_id;
     std::string name;

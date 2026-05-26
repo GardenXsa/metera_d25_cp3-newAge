@@ -35,8 +35,6 @@
 #include <memory>
 #include <type_traits>
 #include <stdexcept>
-
-#include <thread>
 #include <mutex>
 #include <atomic>
 #include <filesystem>
@@ -91,7 +89,6 @@ struct Database {
     std::vector<BiomeDef> biomes;
     std::unordered_map<std::string, uint8_t> biome_string_to_id;
     std::unordered_map<uint8_t, size_t> biome_numeric_to_index;
-    // CityGenDef city_gen_rules; — УДАЛЕНО (CityGen вырезан)
     std::unordered_map<std::string, MonsterDef> monsters;
     std::unordered_map<std::string, DisasterDef> disasters;
 
@@ -340,7 +337,7 @@ std::string normalizeShipTypeRuntimeId(const std::string& value) {
         normalized.begin(),
         normalized.end(),
         normalized.begin(),
-        [](unsigned char ch) { return (char)std::tolower(ch); }
+        [](unsigned char ch) { return std::tolower(ch); }
     );
     return normalized;
 }
@@ -13364,11 +13361,9 @@ void generateCityLayout(Region& r, World& w) {
             std::string roadName = "Road";
 
             auto getRoadName = [&](const std::string& defaultName) {
-                // CityGen удалён — используем дефолтные имена
                 return defaultName;
             };
             auto getSquareName = [&](const std::string& defaultName) {
-                // CityGen удалён — используем дефолтные имена
                 return defaultName;
             };
 
@@ -13437,7 +13432,6 @@ void generateCityLayout(Region& r, World& w) {
     };
 
     auto getFacName = [&](const std::string& type, const std::string& defaultName) -> std::string {
-        // CityGen удалён — используем дефолтные имена
         return defaultName;
     };
 
@@ -14971,9 +14965,6 @@ int main() {
                     g_db.biome_numeric_to_index[b.numeric_id] = g_db.biomes.size() - 1;
                 }
             }
-
-            // Parse CityGen — УДАЛЕНО (система CityGen вырезана из проекта)
-            // city_gen JSON более не парсится; ключ "city_gen" в данных игнорируется
 
             // Parse Monsters
             g_db.monsters.clear();

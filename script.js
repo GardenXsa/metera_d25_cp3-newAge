@@ -29,7 +29,9 @@ if (typeof marked === 'undefined') {
 // --- SEEDED PRNG (deterministic rolls for game mechanics) ---
 // ======================================================================
 const GameRNG = {
-    _seed: Date.now(),
+    _seed: (typeof crypto !== 'undefined' && crypto.getRandomValues)
+        ? crypto.getRandomValues(new Uint32Array(1))[0]
+        : (Date.now() ^ (Math.random() * 0x100000000 | 0)),
     /**
      * Seed the RNG. Call once at game start or on load.
      * @param {number} seed

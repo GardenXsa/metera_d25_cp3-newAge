@@ -223,9 +223,6 @@ async function buildRuntimeDatabase() {
   await window.ModAPI.emit('onDatabaseLoad', database);
   validateRuntimeDatabaseContract(database, normalizedManifest);
   validateRuntimeCharacterStatsContract(database);
-  if (database.prompt_pack) {
-    database.prompt_pack = await hydratePromptPack(database.prompt_pack);
-  }
   return database;
 }
 

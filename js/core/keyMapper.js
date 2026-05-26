@@ -194,12 +194,15 @@ window.KeyMapper = (function () {
         };
     }
 
-    // Wait for ModAPI
+    // Wait for ModAPI (with 10s timeout)
     if (window.ModAPI) {
         patchModAPI();
     } else {
+        let _elapsed = 0;
         const _t = setInterval(() => {
+            _elapsed += 100;
             if (window.ModAPI) { patchModAPI(); clearInterval(_t); }
+            else if (_elapsed >= 10000) { clearInterval(_t); }
         }, 100);
     }
 
