@@ -9381,11 +9381,7 @@ async function initializeGameInterface() {
     updateTradeJournalDisplay();
     updatePortPanel();
 
-    // Локальная карта (CityGen) отключена согласно ТЗ Nexus Cartographer
-    const localMapPanel = document.getElementById('local-map-panel');
-    if (localMapPanel) {
-        localMapPanel.style.display = 'none';
-    }
+    // Локальная карта удалена (CityGen вырезан из проекта)
 
     // Даем время CSS-анимациям завершиться, чтобы канвас получил реальный размер
     setTimeout(() => {
@@ -13286,8 +13282,8 @@ function validateGMCommand(command, args) {
             if (!testArgs.type || !['npc', 'creature', 'enemy'].includes(testArgs.type)) return { valid: false, error: "Тип (type) должен быть npc, creature или enemy." };
             break;
         case 'renderLocation':
-            // CityGen удален. Заглушка для обратной совместимости.
-            break;
+            // CityGen вырезан из проекта. Команда игнорируется.
+            return { valid: true, warning: "renderLocation: CityGen удалён, команда проигнорирована." };
     }
     return { valid: true };
 }

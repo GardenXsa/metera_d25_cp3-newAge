@@ -28,9 +28,6 @@
     "biomes": [
       "data/biomes.json"
     ],
-    "city_gen": [
-      "data/city_gen.json"
-    ],
     "monsters": [
       "data/monsters.json"
     ],

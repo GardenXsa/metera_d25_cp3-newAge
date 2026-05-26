@@ -110,7 +110,7 @@ const WINDOW_WIDTH = getConfigNumber(['window', 'width'], 1280);
 const WINDOW_HEIGHT = getConfigNumber(['window', 'height'], 800);
 const WINDOW_NODE_INTEGRATION = getConfigBoolean(['window', 'node_integration'], false);
 const WINDOW_CONTEXT_ISOLATION = getConfigBoolean(['window', 'context_isolation'], true);
-const WINDOW_DISABLE_WEB_SECURITY_IN_DEVELOPMENT = getConfigBoolean(['window', 'disable_web_security_in_development'], true);
+const WINDOW_DISABLE_WEB_SECURITY_IN_DEVELOPMENT = getConfigBoolean(['window', 'disable_web_security_in_development'], false); // SECURITY: default false
 const WINDOW_PRELOAD_FILE = getConfigString(['window', 'preload_file'], 'preload.js');
 const EXTERNAL_LINK_PROTOCOLS = getConfigArray(['window', 'external_link_protocols'], ['http://', 'https://']);
 

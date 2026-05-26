@@ -91,7 +91,7 @@ struct Database {
     std::vector<BiomeDef> biomes;
     std::unordered_map<std::string, uint8_t> biome_string_to_id;
     std::unordered_map<uint8_t, size_t> biome_numeric_to_index;
-    CityGenDef city_gen_rules;
+    // CityGenDef city_gen_rules; — УДАЛЕНО (CityGen вырезан)
     std::unordered_map<std::string, MonsterDef> monsters;
     std::unordered_map<std::string, DisasterDef> disasters;
 
@@ -2841,7 +2841,7 @@ struct Region {
     // Available raw resources based on geography/climate
     std::set<std::string> available_raw_resources;
 
-    // City Layout (CityGen)
+    // City Layout (генерация городов)
     std::vector<CityBlock> cityLayout;
     std::unordered_map<std::string, PriceHistory> priceHistory;
     int starvation_days = 0;
@@ -3845,7 +3845,7 @@ struct World {
     std::vector<EpicMonster> monsters;
     std::map<std::string, PortFacility> port_facilities;
 
-        std::map<std::string, JsonValue> subLocations; // CityGen sublocations
+        std::map<std::string, JsonValue> subLocations; // подлокации
     WorldMap map; // Global World Map
     TrekState player_trek;
     
@@ -13364,11 +13364,11 @@ void generateCityLayout(Region& r, World& w) {
             std::string roadName = "Road";
 
             auto getRoadName = [&](const std::string& defaultName) {
-                if (!g_db.city_gen_rules.road_names.empty()) return g_db.city_gen_rules.road_names[thread_safe_rand() % g_db.city_gen_rules.road_names.size()];
+                // CityGen удалён — используем дефолтные имена
                 return defaultName;
             };
             auto getSquareName = [&](const std::string& defaultName) {
-                if (!g_db.city_gen_rules.square_names.empty()) return g_db.city_gen_rules.square_names[thread_safe_rand() % g_db.city_gen_rules.square_names.size()];
+                // CityGen удалён — используем дефолтные имена
                 return defaultName;
             };
 
@@ -13437,10 +13437,7 @@ void generateCityLayout(Region& r, World& w) {
     };
 
     auto getFacName = [&](const std::string& type, const std::string& defaultName) -> std::string {
-        if (g_db.city_gen_rules.facility_names.count(type) && !g_db.city_gen_rules.facility_names[type].empty()) {
-            const auto& names = g_db.city_gen_rules.facility_names[type];
-            return names[thread_safe_rand() % names.size()];
-        }
+        // CityGen удалён — используем дефолтные имена
         return defaultName;
     };
 
@@ -14975,26 +14972,8 @@ int main() {
                 }
             }
 
-            // Parse CityGen
-            g_db.city_gen_rules.facility_names.clear();
-            g_db.city_gen_rules.road_names.clear();
-            g_db.city_gen_rules.square_names.clear();
-            if (command.has("city_gen")) {
-                JsonValue cg = command["city_gen"];
-                if (cg.has("facilities")) {
-                    for (const auto& [k, v] : cg["facilities"].obj_val) {
-                        std::vector<std::string> names;
-                        for (size_t i = 0; i < v.size(); i++) names.push_back(v[i].asString());
-                        g_db.city_gen_rules.facility_names[k] = names;
-                    }
-                }
-                if (cg.has("roads")) {
-                    for (size_t i = 0; i < cg["roads"].size(); i++) g_db.city_gen_rules.road_names.push_back(cg["roads"][i].asString());
-                }
-                if (cg.has("squares")) {
-                    for (size_t i = 0; i < cg["squares"].size(); i++) g_db.city_gen_rules.square_names.push_back(cg["squares"][i].asString());
-                }
-            }
+            // Parse CityGen — УДАЛЕНО (система CityGen вырезана из проекта)
+            // city_gen JSON более не парсится; ключ "city_gen" в данных игнорируется
 
             // Parse Monsters
             g_db.monsters.clear();

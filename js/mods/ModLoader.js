@@ -875,10 +875,33 @@ function createModSandbox(modAPI, modId, modMeta) {
 async function executeModInSandbox(code, modAPI, modId, modMeta) {
     const sandboxProxy = createModSandbox(modAPI, modId, modMeta);
 
+    // SECURITY: Patch constructor chain to prevent sandbox escape.
+    // Without this, a mod could do: ({}).constructor.constructor('return fetch')()
+    // We wrap the code to override .constructor on Object.prototype locally.
+    const constructorChainDefense = `
+        // Anti-escape: override constructor on commonly used prototypes
+        const _origObjCtor = Object.prototype.constructor;
+        const _origArrCtor = Array.prototype.constructor;
+        const _origFuncCtor = Function.prototype.constructor;
+        try { Object.defineProperty(Object.prototype, 'constructor', { get: () => { console.error('[ModLoader SANDBOX] Blocked Object.prototype.constructor access from mod ${modId}'); return undefined; }, configurable: true }); } catch(e) {}
+        try { Object.defineProperty(Array.prototype, 'constructor', { get: () => { console.error('[ModLoader SANDBOX] Blocked Array.prototype.constructor access from mod ${modId}'); return undefined; }, configurable: true }); } catch(e) {}
+    `;
+
+    const constructorChainRestore = `
+        // Restore original constructors
+        try { Object.defineProperty(Object.prototype, 'constructor', { value: _origObjCtor, writable: true, configurable: true }); } catch(e) {}
+        try { Object.defineProperty(Array.prototype, 'constructor', { value: _origArrCtor, writable: true, configurable: true }); } catch(e) {}
+    `;
+
     // Wrap mod code in with(sandboxProxy) to redirect ALL global lookups
     const wrappedCode = `
-        with(this) {
-            ${code}
+        ${constructorChainDefense}
+        try {
+            with(this) {
+                ${code}
+            }
+        } finally {
+            ${constructorChainRestore}
         }
     `;
 

@@ -64,7 +64,7 @@ def minimal_trek_database(trek_config=None):
                 "tags": []
             }
         ],
-        "city_gen": {},
+        "city_gen": {},  # CityGen удалён; ключ оставлен для совместимости с парсером
         "monsters": [],
         "disasters": [],
         "races": [],
@@ -402,7 +402,7 @@ def test_gameplay_runtime_drives_inventory_defaults():
             "recipes": [],
             "facilities": {},
             "biomes": [],
-            "city_gen": {},
+            "city_gen": {},  # CityGen удалён; ключ оставлен для совместимости с парсером
             "monsters": [],
             "disasters": [],
             "races": [],
@@ -516,7 +516,7 @@ def test_container_type_descriptors_drive_container_defaults():
             "recipes": [],
             "facilities": {},
             "biomes": [],
-            "city_gen": {},
+            "city_gen": {},  # CityGen удалён; ключ оставлен для совместимости с парсером
             "monsters": [],
             "disasters": [],
             "races": [],
@@ -593,7 +593,7 @@ def test_transport_registry_resolves_transport_without_item_properties():
             "recipes": [],
             "facilities": {},
             "biomes": [],
-            "city_gen": {},
+            "city_gen": {},  # CityGen удалён; ключ оставлен для совместимости с парсером
             "monsters": [],
             "disasters": [],
             "races": [],

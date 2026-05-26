@@ -27,7 +27,6 @@
         "tag_defaults",
         "map_markers",
         "tile_dictionary",
-        "citygen_default_rules",
         "news_categories",
         "world_assets",
         "classes"
@@ -94,11 +93,6 @@
       "path": "./data/biomes.json",
       "default_type": "array",
       "merge_policy": "upsertById"
-    },
-    "city_gen": {
-      "path": "./data/city_gen.json",
-      "default_type": "object",
-      "merge_policy": "deepMerge"
     },
     "monsters": {
       "path": "./data/monsters.json",
@@ -243,12 +237,6 @@
     },
     "building_types": {
       "path": "./data/building_types.json",
-      "default_type": "object",
-      "merge_policy": "deepMerge",
-      "load_in_total_conversion": true
-    },
-    "citygen_default_rules": {
-      "path": "./data/citygen_default_rules.json",
       "default_type": "object",
       "merge_policy": "deepMerge",
       "load_in_total_conversion": true

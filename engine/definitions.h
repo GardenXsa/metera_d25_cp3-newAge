@@ -27,12 +27,8 @@ struct BiomeDef {
     double max_moisture;
 };
 
-// 2.2. Реестр Генерации Городов (CityGen Registry)
-struct CityGenDef {
-    std::unordered_map<std::string, std::vector<std::string>> facility_names;
-    std::vector<std::string> road_names;
-    std::vector<std::string> square_names;
-};
+// 2.2. CityGen Registry — УДАЛЕНО (система CityGen вырезана из проекта)
+// struct CityGenDef { ... }; — более не используется
 
 // 2.3. Реестр Эпических Монстров (Monster Registry)
 struct MonsterDef {

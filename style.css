@@ -2741,59 +2741,7 @@ input, textarea, select, button {
     color: #d7c89a;
 }
 
-/* --- ЛОКАЛЬНАЯ КАРТА (CITYGEN) --- */
-.local-map-panel .panel-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-.local-map-container {
-    background: #050505;
-    border: 2px solid #34495e;
-    border-radius: 4px;
-    padding: 2px;
-    max-width: 100%;
-    overflow-x: auto;
-    box-shadow: inset 0 0 20px rgba(0,0,0,0.9);
-}
-.local-map-grid {
-    display: grid;
-    gap: 0;
-    image-rendering: pixelated;
-}
-.local-map-grid .tile {
-    width: 32px; /* Уменьшено для сайдбара */
-    height: 32px;
-    box-sizing: border-box;
-    cursor: crosshair;
-    position: relative;
-    transition: filter 0.2s;
-}
-.local-map-grid .tile:hover::after {
-    content: ''; position: absolute; inset: 0;
-    background: rgba(255, 255, 255, 0.15);
-    z-index: 40;
-}
-.local-map-grid .tile.selected::after {
-    content: ''; position: absolute; inset: 0;
-    border: 2px solid #f1c40f;
-    background: rgba(241, 196, 15, 0.3);
-    z-index: 40;
-}
-.local-map-inspector {
-    margin-top: 10px;
-    width: 100%;
-    background: rgba(0,0,0,0.4);
-    border: 1px solid rgba(93, 173, 226, 0.3);
-    padding: 8px;
-    border-radius: 4px;
-    font-size: 0.85em;
-    min-height: 60px;
-}
-.local-map-inspector .info-row { margin-bottom: 4px; }
-.local-map-inspector .info-label { color: #aeb6bf; font-weight: bold; }
-
-/* --- MASTERPIECE АССЕТЫ (CITYGEN 2.0) --- */
+/* --- CITYGEN УДАЛЕН ИЗ ПРОЕКТА --- */
 
 /* Полы: Грязь, Трава, Камень */
 .type-dirt { 
@@ -4605,7 +4553,7 @@ button:hover {
     transition: none;
 }
 
-/* --- ИНДУСТРИЯ И ГОРОДСКИЕ ЗДАНИЯ (CITYGEN C++ OVERHAUL) --- */
+/* --- ИНДУСТРИЯ И ГОРОДСКИЕ ЗДАНИЯ --- */
 .type-temple { background-color: #f0f0f0; border-top: 8px solid #d4af37; border-bottom: 8px solid #d4af37; box-shadow: inset 0 0 10px #fff; }
 .type-office { background-color: #34495e; border: 4px solid #2c3e50; background-image: linear-gradient(45deg, #2980b9 25%, transparent 25%); }
 .type-farms { background-color: #f1c40f; background-image: repeating-linear-gradient(90deg, #e67e22, #e67e22 4px, transparent 4px, transparent 8px); border: 2px solid #d35400; }

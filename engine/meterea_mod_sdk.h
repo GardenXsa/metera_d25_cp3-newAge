@@ -5,6 +5,17 @@
  * All interaction between the engine core and mods goes through
  * strictly typed extern "C" functions — NO raw pointers to C++ objects.
  *
+ * ⚠️ SECURITY WARNING: Native plugins (DLL/SO) run with FULL process
+ * privileges. There is NO sandbox for native code. Only load plugins
+ * from trusted sources. A malicious plugin can:
+ *   - Access all memory (read/write)
+ *   - Execute arbitrary system commands
+ *   - Access the filesystem without restrictions
+ *   - Modify the engine's internal state directly
+ *
+ * Mitigation: Engine should implement a plugin allowlist (whitelist)
+ * that only loads signed/verified DLLs. See METERA_PLUGIN_ALLOWLIST below.
+ *
  * Version: 3.0.0
  *
  * === PLUGIN LIFECYCLE ===
