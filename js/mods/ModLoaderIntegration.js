@@ -75,10 +75,25 @@ function attachRuntimeDatabaseContractMetadata(database, manifest) {
 }
 
 
+// FIX (Issue #15): renderTemplate() was vulnerable to regex injection — the key
+// from replacements was interpolated directly into new RegExp() without escaping,
+// allowing adversarial keys like `[^]+` to create ReDoS or unexpected matches.
+// Also, the replacement value's special patterns ($&, $', $`) were not escaped,
+// enabling content injection. Now both are properly escaped.
+function escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function escapeReplacement(str) {
+    return str.replace(/\$/g, '$$$$'); // Escape $ → $$ for .replace() replacement string
+}
+
 function renderTemplate(template, replacements) {
     let output = template || '';
     Object.entries(replacements || {}).forEach(([key, value]) => {
-        output = output.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
+        const safeKey = escapeRegExp(String(key));
+        const safeValue = escapeReplacement(String(value));
+        output = output.replace(new RegExp(`\\{${safeKey}\\}`, 'g'), safeValue);
     });
     return output;
 }

@@ -60,6 +60,11 @@ struct PhysicalItem {
     std::string slot_index;
     std::string state = "idle";
     PhysicalItemFlags flags;
+    // FIX (Issue #8): Legacy direct fields now delegate to flags struct via sync().
+    // Previously, C++ used these direct fields for game logic while JS used flags.*,
+    // causing a desync: C++ mutations to direct fields were invisible to JS.
+    // Now: syncFlags() ensures bidirectional consistency. Direct fields are kept
+    // for legacy API compatibility but always synced to/from flags struct.
     bool quest_item = false;
     bool bound = false;
     bool stolen = false;
@@ -73,7 +78,34 @@ struct PhysicalItem {
     bool is_dirty = false;
     std::optional<OrderData> order_data;
 
+    // Sync flags struct → direct fields (ensures C++ engine reads latest flag state)
+    void syncDirectFromFlags() {
+        quest_item = flags.quest_item;
+        bound = flags.bound;
+        stolen = flags.stolen;
+        magical = flags.magical;
+    }
+
+    // Sync direct fields → flags struct (ensures legacy C++ mutations are visible to JS)
+    void syncFlagsFromDirect() {
+        flags.quest_item = flags.quest_item || quest_item;
+        flags.bound = flags.bound || bound;
+        flags.stolen = flags.stolen || stolen;
+        flags.magical = flags.magical || magical;
+    }
+
+    // Full bidirectional sync — call after any mutation to either set of fields
+    void syncFlags() {
+        syncFlagsFromDirect();
+        syncDirectFromFlags();
+    }
+
     JsonValue toJson() const {
+        // Ensure consistency before serialization: direct fields → flags
+        // (mutating in toJson is not ideal, but the direct fields are legacy and
+        // this is the safest place to guarantee JS sees the correct state)
+        const_cast<PhysicalItem*>(this)->syncFlags();
+
         JsonValue obj = JsonValue::object();
         obj.set("id", id);
         obj.set("prototype_id", prototype_id);
@@ -88,7 +120,7 @@ struct PhysicalItem {
         obj.set("last_moved_at", last_moved_at);
         obj.set("batch_day", batch_day);
         obj.set("is_dirty", is_dirty);
-        // Flags
+        // Flags (authoritative source of truth)
         JsonValue flagsObj = JsonValue::object();
         flagsObj.set("quest_item", flags.quest_item);
         flagsObj.set("bound", flags.bound);
@@ -96,7 +128,7 @@ struct PhysicalItem {
         flagsObj.set("magical", flags.magical);
         flagsObj.set("bound_to_owner", flags.bound_to_owner);
         obj.set("flags", flagsObj);
-        // Legacy direct fields for compatibility
+        // Legacy direct fields (kept for backward compatibility with old JS code)
         obj.set("quest_item", quest_item);
         obj.set("bound", bound);
         obj.set("stolen", stolen);
@@ -139,7 +171,7 @@ struct PhysicalItem {
         if(j.has("last_moved_at")) item.last_moved_at = j["last_moved_at"].asInt();
         if(j.has("batch_day")) item.batch_day = j["batch_day"].asInt();
         if(j.has("is_dirty")) item.is_dirty = j["is_dirty"].asBool();
-        // Flags
+        // Flags (authoritative source)
         if(j.has("flags")) {
             item.flags.quest_item = j["flags"]["quest_item"].asBool();
             item.flags.bound = j["flags"]["bound"].asBool();
@@ -152,11 +184,8 @@ struct PhysicalItem {
         if(j.has("bound")) item.bound = j["bound"].asBool();
         if(j.has("stolen")) item.stolen = j["stolen"].asBool();
         if(j.has("magical")) item.magical = j["magical"].asBool();
-        // Sync flags with direct fields
-        item.flags.quest_item = item.flags.quest_item || item.quest_item;
-        item.flags.bound = item.flags.bound || item.bound;
-        item.flags.stolen = item.flags.stolen || item.stolen;
-        item.flags.magical = item.flags.magical || item.magical;
+        // FIX (Issue #8): Bidirectional sync — ensures both sets are consistent
+        item.syncFlags();
         // Order data
         if(j.has("order_data")) {
             OrderData od;

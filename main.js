@@ -529,24 +529,51 @@ ipcMain.handle('nexus-sync-state', async (event, world, items, containers) => {
 });
 
 ipcMain.handle('nexus-load-world-file', async (event, filePath) => {
-    // Validate filePath is within SAVES_DIR to prevent path traversal
+    // FIX (Issue #72): Path traversal — validate AND use the resolved path.
+    // Previously passed the original unvalidated `filePath` to loadWorldFile(),
+    // which sent it to the C++ engine. Now we use the canonical `resolvedPath`.
+    if (typeof filePath !== 'string' || filePath.length === 0) {
+        return { status: 'error', message: 'Invalid file path: must be a non-empty string' };
+    }
     const resolvedPath = path.resolve(filePath);
-    if (!resolvedPath.startsWith(path.resolve(SAVES_DIR))) {
+    const resolvedSavesDir = path.resolve(SAVES_DIR);
+    // On case-insensitive filesystems (Windows), normalize both to lower case
+    if (!resolvedPath.toLowerCase().startsWith(resolvedSavesDir.toLowerCase())) {
         return { status: 'error', message: 'Invalid file path: must be within saves directory' };
     }
-    return await loadWorldFile(filePath);
+    // Only allow .json files
+    if (!resolvedPath.endsWith('.json')) {
+        return { status: 'error', message: 'Invalid file path: only .json files are allowed' };
+    }
+    return await loadWorldFile(resolvedPath);
 });
 
 ipcMain.handle('nexus-write-sync-file', async (event, worldData) => {
-    // Write world data to a temp file for the engine to read via loadWorldFile.
-    // Returns the full file path on success.
+    // FIX (Issue #4): Input validation for IPC nexus-write-sync-file.
+    // Previously had ZERO validation — any renderer could write arbitrary
+    // data to disk with no type/size checks, no origin verification.
     try {
+        // Validate input type
+        if (worldData === null || worldData === undefined) {
+            return { status: 'error', message: 'Invalid input: worldData is required' };
+        }
+        if (typeof worldData !== 'object' || Array.isArray(worldData)) {
+            return { status: 'error', message: 'Invalid input: worldData must be a plain object' };
+        }
+        // Serialize and check size limit (64MB max to prevent OOM/disk fill)
+        const serialized = JSON.stringify(worldData);
+        const MAX_SYNC_FILE_SIZE = 64 * 1024 * 1024; // 64MB
+        if (serialized.length > MAX_SYNC_FILE_SIZE) {
+            return { status: 'error', message: `Data too large: ${serialized.length} bytes exceeds ${MAX_SYNC_FILE_SIZE} limit` };
+        }
         const tempFileName = SYNC_TEMP_FILE_NAME;
         const tempFilePath = path.join(SAVES_DIR, tempFileName);
-        fs.writeFileSync(tempFilePath, JSON.stringify(worldData));
-        return { status: 'ok', path: tempFilePath };
+        fs.writeFileSync(tempFilePath, serialized);
+        return { status: 'ok' }; // Don't leak internal path in response
     } catch (error) {
-        return { status: 'error', message: error.message };
+        // Don't leak internal error details — just return a generic message
+        console.error('[nexus-write-sync-file] Error:', error.message);
+        return { status: 'error', message: 'Failed to write sync file' };
     }
 });
 

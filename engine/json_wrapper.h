@@ -102,6 +102,7 @@ struct JsonValue {
         return b_val;
     }
 
+    // Const access — returns a copy for read-only usage
     JsonValue operator[](const std::string& key) const {
         if (has(key)) return obj_val.at(key);
         return JsonValue();
@@ -112,35 +113,67 @@ struct JsonValue {
         return JsonValue();
     }
 
-    // FIX: set() no longer re-creates JsonValue from _data[key] — that caused
-    // recursive duplication (parsing the entire subtree again from nlohmann::json).
-    // Now we store directly in obj_val and update _data from it in toString().
+    // Non-const reference access — allows mutation via subscript: j["key"]["sub"] = val
+    // FIX (Issue #6): Previously only const by-value operator[] existed, so nested
+    // mutations like j["flags"]["quest_item"] = true silently created temporary copies.
+    JsonValue& operator[](const std::string& key) {
+        if (type != OBJECT) {
+            // Auto-convert NULL_VAL to OBJECT so set()/operator[] chain works
+            type = OBJECT;
+            obj_val.clear();
+        }
+        return obj_val[key];
+    }
+
+    JsonValue& operator[](size_t index) {
+        if (type == ARRAY && index < arr_val.size()) {
+            return arr_val[index];
+        }
+        static JsonValue null_val;
+        null_val = JsonValue(); // Reset to avoid stale data
+        return null_val;
+    }
+
+    // FIX (Issue #77): Cached serialization with dirty flag.
+    // Previously, toString() called rebuildData() on EVERY invocation, which
+    // recursively rebuilds the entire nlohmann::json tree. For a 256x256 world
+    // (65536+ tiles), each toString() was O(n) with massive allocations.
+    // Now: _dirty flag tracks mutations; toString() only rebuilds when dirty.
+    mutable bool _dirty = true;  // mutable so toString() (const) can clear it
+    mutable nlohmann::json _cached_data;  // cached serialization result
+
+    void markDirty() { _dirty = true; }
+
+    // Mark dirty on all mutations
     template<typename T>
     void set(const std::string& key, const T& value) {
+        if (type == NULL_VAL) { type = OBJECT; obj_val.clear(); }
         if (type != OBJECT) return;
         obj_val[key] = JsonValue(value);
-        // Keep _data in sync for toString() — but only set the scalar/array/object value
-        // We rebuild _data lazily in rebuildData() called by toString()
+        markDirty();
     }
     
     void set(const std::string& key, const JsonValue& value) {
+        if (type == NULL_VAL) { type = OBJECT; obj_val.clear(); }
         if (type != OBJECT) return;
         obj_val[key] = value;
+        markDirty();
     }
 
     template<typename T>
     void push(const T& value) {
         if (type != ARRAY) return;
         arr_val.push_back(JsonValue(value));
+        markDirty();
     }
 
     void push(const JsonValue& value) {
         if (type != ARRAY) return;
         arr_val.push_back(value);
+        markDirty();
     }
 
     // Rebuild nlohmann::json _data from obj_val/arr_val for serialization
-    // This is called lazily by toString() — avoids redundant _data maintenance
     nlohmann::json rebuildData() const {
         switch (type) {
             case NULL_VAL: return nullptr;
@@ -168,7 +201,11 @@ struct JsonValue {
 
     std::string toString() const { 
         if (type == OBJECT || type == ARRAY) {
-            return rebuildData().dump();
+            if (_dirty) {
+                _cached_data = rebuildData();
+                _dirty = false;
+            }
+            return _cached_data.dump();
         }
         return _data.dump(); 
     }

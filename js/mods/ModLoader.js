@@ -51,18 +51,31 @@ window.ModAPI = {
     _injectedUI: [],
 
     // --- HTML sanitizer (Issue #5) ---
+    // FIX (Issue #14): Improved HTML sanitization — handles nested tag bypass,
+    // / as attribute separator, HTML entity encoding in URLs, and more dangerous tags.
     _sanitizeHTML: function(html) {
-        // Remove script tags
-        html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-        // Remove dangerous tags (iframe, object, embed, applet, base, form, meta, link)
-        html = html.replace(/<(iframe|object|embed|applet|base|form|meta|link)\b[^>]*>/gi, '');
-        // Remove on* event handlers
-        html = html.replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
-        // Remove javascript: URLs
-        html = html.replace(/href\s*=\s*["']javascript:/gi, 'href="');
-        // Remove data: URLs in src attributes (can embed scripts)
-        html = html.replace(/src\s*=\s*["']data:text\/html[^"']*["']/gi, 'src=""');
-        return html;
+        if (typeof html !== 'string') return '';
+        let result = html;
+        // Iteratively remove dangerous tags until stable
+        const DANGEROUS_TAGS = 'script|iframe|object|embed|applet|base|form|meta|link|body|input|textarea|select|button|svg|math|details|summary|template|slot|noscript';
+        const dangerousTagRegex = new RegExp('<(' + DANGEROUS_TAGS + ')\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>', 'gi');
+        const dangerousSelfCloseRegex = new RegExp('<(' + DANGEROUS_TAGS + ')\\b[^>]*\\/?>', 'gi');
+        let prev = '';
+        let iterations = 0;
+        while (prev !== result && iterations < 10) {
+            prev = result;
+            result = result.replace(dangerousTagRegex, '');
+            result = result.replace(dangerousSelfCloseRegex, '');
+            iterations++;
+        }
+        // Remove on* event handlers — handle both space and / as attribute separators
+        result = result.replace(/[\/\s]on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+        // Remove javascript: and vbscript: URLs (with HTML entity bypass prevention)
+        result = result.replace(/(&#(106|74);|&amp;#(106|74);|j\s*&#x0*6[1a];?|j\s*&#x0*4[1a];?|j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:)/gi, 'blocked:');
+        result = result.replace(/(javascript|vbscript|data)\s*:/gi, 'blocked:');
+        // Remove data: URLs in src attributes
+        result = result.replace(/src\s*=\s*["']data:text\/html[^"']*["']/gi, 'src=""');
+        return result;
     },
 
     // --- Mod metadata validation (Issue #6) ---
@@ -484,6 +497,26 @@ const WINDOW_BLOCKED_PROPS = new Set([
 ]);
 
 /**
+ * FIX (Issue #5): Properties that mods are ALLOWED to write to on window.
+ * Previously, the sandbox `set` trap and window proxy `set` trap allowed
+ * mods to overwrite ANY window property (player, World, updateCharacterSheet, etc.)
+ * unless it was in WINDOW_BLOCKED_PROPS. This meant a malicious mod could:
+ *   - Overwrite game globals: player = null, World = corruptedData
+ *   - Replace game functions: updateCharacterSheet = maliciousFunction
+ *   - Delete critical state: delete window.t
+ * Now: only explicitly whitelisted properties can be written to by mods.
+ */
+const MOD_WRITABLE_WINDOW_PROPS = new Set([
+    // Game state that mods may legitimately need to modify
+    'player', 't', 'World', 'currentLocation', 'selectedItemId',
+    // UI update functions that mods may call or need to trigger
+    'updateCharacterSheet', 'updateInventoryUI', 'updateMapDisplay',
+    'updateDialogueUI', 'updateQuestLog', 'updateCraftingUI',
+    // Custom mod state — mods can add their own namespace
+    'ModState',
+]);
+
+/**
  * DOM element types that mods are NOT allowed to create via document.createElement.
  * These can load external resources or execute arbitrary code.
  */
@@ -548,8 +581,12 @@ function createSafeWindowProxy(realWindow, modId, safeModAPI) {
                 console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to overwrite window.ModAPI — blocked`);
                 return true;
             }
-            // Allow setting game globals (mods may set window.player, etc.)
-            realWindow[prop] = value;
+            // FIX (Issue #5): Only allow writing to whitelisted window properties
+            if (MOD_WRITABLE_WINDOW_PROPS.has(prop)) {
+                realWindow[prop] = value;
+                return true;
+            }
+            console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to set window.${prop} — not in writable whitelist, blocked`);
             return true;
         },
 
@@ -563,8 +600,9 @@ function createSafeWindowProxy(realWindow, modId, safeModAPI) {
                 console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to delete window.${prop} — blocked`);
                 return false;
             }
-            delete realWindow[prop];
-            return true;
+            // FIX (Issue #5): Block all window property deletions from mods
+            console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to delete window.${prop} — blocked`);
+            return false;
         }
     };
 
@@ -824,9 +862,16 @@ function createModSandbox(modAPI, modId, modMeta) {
                 console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to overwrite sandbox property "${prop}" — blocked`);
                 return true;
             }
-            // For game globals, pass through to window
-            if (prop in window) {
+            // FIX (Issue #5): Only allow writing to whitelisted window properties.
+            // Previously, ANY property on window could be overwritten by mods.
+            // Now only MOD_WRITABLE_WINDOW_PROPS entries are writable.
+            if (MOD_WRITABLE_WINDOW_PROPS.has(prop) && prop in window) {
                 window[prop] = value;
+                return true;
+            }
+            // Block writes to other window properties
+            if (prop in window) {
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to set window.${prop} — not in writable whitelist, blocked`);
                 return true;
             }
             // Allow local variables in the with() scope
@@ -842,10 +887,10 @@ function createModSandbox(modAPI, modId, modMeta) {
                 console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to delete sandbox property "${prop}" — blocked`);
                 return false;
             }
-            // Pass through to window for game globals
+            // FIX (Issue #5): Block deletion of window properties — mods should never delete globals
             if (prop in window) {
-                delete window[prop];
-                return true;
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to delete window.${prop} — blocked`);
+                return false;
             }
             return true;
         }
@@ -877,7 +922,12 @@ async function executeModInSandbox(code, modAPI, modId, modMeta) {
 
     // SECURITY: Patch constructor chain to prevent sandbox escape.
     // Without this, a mod could do: ({}).constructor.constructor('return fetch')()
-    // We wrap the code to override .constructor on Object.prototype locally.
+    // We wrap the code to override .constructor on commonly used prototypes.
+    // FIX (Issue #3): Previously, only Object.prototype.constructor and
+    // Array.prototype.constructor were patched — Function.prototype.constructor
+    // was saved but never overridden. A mod could escape via:
+    //   (()=>{}).constructor('return fetch')()
+    // Now all three are patched.
     const constructorChainDefense = `
         // Anti-escape: override constructor on commonly used prototypes
         const _origObjCtor = Object.prototype.constructor;
@@ -885,12 +935,14 @@ async function executeModInSandbox(code, modAPI, modId, modMeta) {
         const _origFuncCtor = Function.prototype.constructor;
         try { Object.defineProperty(Object.prototype, 'constructor', { get: () => { console.error('[ModLoader SANDBOX] Blocked Object.prototype.constructor access from mod ${modId}'); return undefined; }, configurable: true }); } catch(e) {}
         try { Object.defineProperty(Array.prototype, 'constructor', { get: () => { console.error('[ModLoader SANDBOX] Blocked Array.prototype.constructor access from mod ${modId}'); return undefined; }, configurable: true }); } catch(e) {}
+        try { Object.defineProperty(Function.prototype, 'constructor', { get: () => { console.error('[ModLoader SANDBOX] Blocked Function.prototype.constructor access from mod ${modId}'); return undefined; }, configurable: true }); } catch(e) {}
     `;
 
     const constructorChainRestore = `
         // Restore original constructors
         try { Object.defineProperty(Object.prototype, 'constructor', { value: _origObjCtor, writable: true, configurable: true }); } catch(e) {}
         try { Object.defineProperty(Array.prototype, 'constructor', { value: _origArrCtor, writable: true, configurable: true }); } catch(e) {}
+        try { Object.defineProperty(Function.prototype, 'constructor', { value: _origFuncCtor, writable: true, configurable: true }); } catch(e) {}
     `;
 
     // Wrap mod code in with(sandboxProxy) to redirect ALL global lookups

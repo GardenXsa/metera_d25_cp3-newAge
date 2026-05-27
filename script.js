@@ -3588,24 +3588,43 @@ function escapeHTML(str) {
               .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 // Sanitize HTML content — strip dangerous tags while preserving safe formatting
+// FIX (Issue #14): The previous regex fallback was bypassable via:
+// 1. Nested tags: <scr<script>ipt> — after removing inner <script>, outer reassembles
+// 2. No-space event handlers: <img/onerror=...> — \s+ before on\w+ missed / separator
+// 3. HTML entity encoding: &#106;avascript: bypasses plain "javascript:" filter
+// 4. Missing dangerous tags: <body>, <input>, <textarea>, <select>, <details>, <math>
+// Now: iteratively strip dangerous tags until stable, handle / as attribute separator,
+// decode HTML entities before checking for javascript: URLs, and cover more tags.
 function sanitizeHTML(html) {
     if (typeof html !== 'string') return '';
     // Use DOMPurify if available (loaded in index.html), otherwise fallback to basic sanitization
     if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
         return DOMPurify.sanitize(html, { ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'span', 'br', 'p', 'div', 'ul', 'ol', 'li', 'a'], ALLOWED_ATTR: ['class', 'href', 'style', 'title'] });
     }
-    // Fallback: basic regex sanitization (less secure than DOMPurify)
-    return html
-        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-        .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
-        .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
-        .replace(/<embed\b[^>]*>/gi, '')
-        .replace(/on\w+\s*=\s*"[^"]*"/gi, '')
-        .replace(/on\w+\s*=\s*'[^']*'/gi, '')
-        .replace(/on\w+\s*=\s*[^\s>]+/gi, '')
-        .replace(/javascript:/gi, '')
-        .replace(/<svg\b[^>]*>/gi, '')
-        .replace(/<img\b[^>]*onerror\b[^>]*>/gi, '');
+    // Fallback: robust regex sanitization (improved security)
+    let result = html;
+    // Iteratively remove dangerous tags until no more changes (handles nested tag bypass)
+    const DANGEROUS_TAGS = 'script|iframe|object|embed|applet|base|form|meta|link|body|input|textarea|select|button|svg|math|details|summary|template|slot|noscript';
+    const dangerousTagRegex = new RegExp(`<(${DANGEROUS_TAGS})\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>`, 'gi');
+    const dangerousSelfCloseRegex = new RegExp(`<(${DANGEROUS_TAGS})\\b[^>]*\\/?>`, 'gi');
+    let prev = '';
+    let iterations = 0;
+    while (prev !== result && iterations < 10) {
+        prev = result;
+        result = result.replace(dangerousTagRegex, '');
+        result = result.replace(dangerousSelfCloseRegex, '');
+        iterations++;
+    }
+    // Remove on* event handlers — handle both space and / as attribute separators
+    // Catches: onerror=, onerror =, /onerror=, etc.
+    result = result.replace(/[\/\s]on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+    // Remove javascript: and vbscript: URLs (with optional HTML entities)
+    // Decode common HTML entities that could bypass the filter
+    result = result.replace(/(&#(106|74);|&amp;#(106|74);|j\s*&#x0*6[1a];?|j\s*&#x0*4[1a];?|j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:)/gi, 'blocked:');
+    result = result.replace(/(javascript|vbscript|data)\s*:/gi, 'blocked:');
+    // Remove data: URLs in src attributes
+    result = result.replace(/src\s*=\s*["']data:text\/html[^"']*["']/gi, 'src=""');
+    return result;
 }
 
 // --- УНИВЕРСАЛЬНЫЙ КРАСИВЫЙ ТУЛТИП ---
