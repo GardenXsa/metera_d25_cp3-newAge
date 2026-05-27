@@ -94,5 +94,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // HTTP session token for authenticated fetch calls
-    getHttpToken: () => ipcRenderer.invoke('get-http-token')
+    getHttpToken: () => ipcRenderer.invoke('get-http-token'),
+
+    // API fetch via main process — bypasses CORS restrictions in Electron renderer
+    apiFetch: (url, options) => ipcRenderer.invoke('api-fetch', url, options),
+    apiFetchAbort: () => ipcRenderer.invoke('api-fetch-abort')
 });

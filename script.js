@@ -6735,7 +6735,7 @@ async function pingProvider() {
                 return;
         }
 
-        const response = await fetch(url, { method: 'GET', headers: headers });
+        const response = await apiFetch(url, { method: 'GET', headers: headers });
         if (response.ok) {
             resultDiv.innerHTML = `<span style="color: #2ecc71;"><i class="fas fa-check"></i> Соединение установлено! Ключ валиден.</span>`;
         } else {
@@ -6804,7 +6804,7 @@ async function fetchModels() {
                 return;
         }
 
-        const response = await fetch(url, { method: 'GET', headers: headers });
+        const response = await apiFetch(url, { method: 'GET', headers: headers });
         if (response.ok) {
             const data = await response.json();
             let models = [];
@@ -6971,7 +6971,7 @@ async function testApiConnection() {
                 return;
         }
 
-        const response = await fetch(url, { method: 'GET', headers: headers });
+        const response = await apiFetch(url, { method: 'GET', headers: headers });
 
         if (response.ok) {
             const data = await response.json();
@@ -12246,6 +12246,52 @@ let lastApiRequestTime = 0;
 const API_DELAY_MS = 3500; // 3.5 секунды задержки между любыми запросами
 let apiRequestQueue = Promise.resolve();
 
+/**
+ * Обёртка для fetch(), маршрутизирующая запросы через Electron main process.
+ * В Electron renderer process (Chromium) действует CORS — cross-origin запросы
+ * к API провайдерам блокируются с TypeError: Failed to fetch.
+ * Маршрутизация через IPC/main process обходит CORS, т.к. Node.js не подчиняется
+ * same-origin policy. В браузере (без Electron) используется обычный fetch().
+ */
+async function apiFetch(url, options = {}) {
+    if (window.electronAPI && window.electronAPI.apiFetch) {
+        // Настроить пересылку сигнала abort в main process
+        if (options.signal) {
+            options.signal.addEventListener('abort', () => {
+                try { window.electronAPI.apiFetchAbort(); } catch (e) {}
+            }, { once: true });
+        }
+
+        const result = await window.electronAPI.apiFetch(url, {
+            method: options.method || 'GET',
+            headers: options.headers || {},
+            body: options.body || null,
+            timeout: options.timeout || 120000
+        });
+
+        // Сетевая ошибка (DNS, соединение, таймаут, abort и т.д.)
+        if (result.error && result.status === 0) {
+            const err = new Error(result.error);
+            err.name = 'TypeError';
+            throw err;
+        }
+
+        // Сконструировать Response-подобный объект для совместимости с остальным кодом
+        return {
+            ok: result.ok,
+            status: result.status,
+            statusText: result.statusText,
+            text: async () => result.body,
+            json: async () => { try { return JSON.parse(result.body); } catch (e) { throw new SyntaxError('Invalid JSON in API response'); } },
+            headers: { get: () => null },
+            url: url
+        };
+    }
+
+    // Fallback: обычный fetch (браузерный режим, без Electron)
+    return await fetch(url, options);
+}
+
 async function performAiFetch(systemInstruction, history, providerModel, currentInput = "") {
     return new Promise((resolve, reject) => {
         // Fix #116: Add .catch(() => {}) to prevent deadlock — if the .then() callback
@@ -12264,6 +12310,19 @@ async function performAiFetch(systemInstruction, history, providerModel, current
         }).catch(() => {}); // ensure chain always resolves, preventing deadlock
     });
 }
+
+/**
+ * Отмена текущего API-запроса. Вызывается кнопкой «Прервать связь» и data-action="cancel-api".
+ * Абортит как renderer-side AbortController, так и main process IPC fetch.
+ */
+window.cancelCurrentApiRequest = function() {
+    if (currentApiAbortController) {
+        currentApiAbortController.abort();
+    }
+    if (window.electronAPI && window.electronAPI.apiFetchAbort) {
+        window.electronAPI.apiFetchAbort();
+    }
+};
 
 async function _internalPerformAiFetch(systemInstruction, history, providerModel, currentInput = "") {
     if (currentApiAbortController) {
@@ -12526,7 +12585,7 @@ async function _internalPerformAiFetch(systemInstruction, history, providerModel
         // 3. Отправка запроса
         let response;
         try {
-            response = await fetch(targetUrl, {
+            response = await apiFetch(targetUrl, {
                 method: 'POST',
                 headers: headers,
                 body: JSON.stringify(requestBody),
@@ -12946,7 +13005,7 @@ if (!isInitialPrompt && !isSummarizationRequest && player.stats.turnCount > 0 &&
             return sendApiRequest(validationErrorPrompt, isInitialPrompt, isDiceRollResponse, expiredEffects, isSummarizationRequest, timeRetryCount + 1);
         }
 
-        console.error("Ошибка API:", error);
+        console.error("Ошибка API:", error?.message || error?.toString?.() || String(error), error?.stack || '');
         removeEtherLoader();
 
         const oldRetryBtn = document.getElementById('retry-request-btn');
@@ -16865,7 +16924,7 @@ async function generateVisionImage(prompt) {
             enhance: 'true'
         });
 
-        const response = await fetch(`https://image.pollinations.ai/prompt?${params}`);
+        const response = await apiFetch(`https://image.pollinations.ai/prompt?${params}`);
         if (!response.ok) throw new Error(`Pollinations ${response.status}`);
 
         return {
@@ -16883,7 +16942,7 @@ async function generateVisionImage(prompt) {
 
     // ====================== ОБЩИЙ POST-запрос для LLMost и OpenRouter ======================
     if (imgProvider !== 'pollinations') {
-        const response = await fetch(url, {
+        const response = await apiFetch(url, {
             method: 'POST',
             headers: headers,
             body: JSON.stringify(body)
@@ -18489,7 +18548,7 @@ async function performAiPlayerFetch(systemInstruction, history, providerModel, c
         isGeminiFormat = true;
     }
 
-    const response = await fetch(targetUrl, { method: 'POST', headers: headers, body: JSON.stringify(requestBody) });
+    const response = await apiFetch(targetUrl, { method: 'POST', headers: headers, body: JSON.stringify(requestBody) });
     if (!response.ok) {
         const errText = await response.text();
         throw new Error(`AI Player API Error (${response.status}): ${errText}`);

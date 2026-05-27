@@ -1202,6 +1202,134 @@ ipcMain.handle('speak-text', async (event, text, voiceModel) => {
     });
 });
 
+// ============================================================================
+// API FETCH VIA IPC — BYPASSES CORS RESTRICTIONS IN ELECTRON RENDERER
+// The renderer process (Chromium) enforces CORS, which blocks cross-origin
+// API requests. By routing through the main process (Node.js), we bypass CORS
+// entirely while keeping the renderer sandboxed.
+// ============================================================================
+let currentApiFetchRequest = null;
+
+// Allowed API domains — derived from CSP connect_src config + known providers
+const ALLOWED_API_DOMAINS = new Set([
+    ...getConfigArray(['server', 'csp_external_sources', 'connect_src'], []).map(u => {
+        try { return new URL(u).hostname; } catch { return u.replace(/^https?:\/\//, '').replace(/:$/, ''); }
+    }).filter(h => h && h !== 'cdnjs.cloudflare.com' && h !== 'cdn.jsdelivr.net'),
+    'llmost.ru', 'api.deepseek.com', 'openrouter.ai', 'api.omniroute.ai',
+    'generativelanguage.googleapis.com', 'image.pollinations.ai',
+    'api.openai.com', 'api.anthropic.com', 'localhost', '127.0.0.1'
+]);
+
+ipcMain.handle('api-fetch', async (event, url, options) => {
+    const { net } = require('electron');
+
+    // Validate URL
+    if (typeof url !== 'string' || url.length === 0) {
+        return { ok: false, status: 0, statusText: 'Invalid URL', body: '', error: 'URL must be a non-empty string' };
+    }
+    let parsedUrl;
+    try {
+        parsedUrl = new URL(url);
+    } catch (e) {
+        return { ok: false, status: 0, statusText: 'Invalid URL', body: '', error: 'Malformed URL: ' + e.message };
+    }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        return { ok: false, status: 0, statusText: 'Invalid protocol', body: '', error: 'Only http:// and https:// protocols are allowed' };
+    }
+
+    // Security: validate domain against allowed list
+    const hostname = parsedUrl.hostname;
+    const isDomainAllowed = ALLOWED_API_DOMAINS.has(hostname) ||
+        [...ALLOWED_API_DOMAINS].some(d => hostname.endsWith('.' + d));
+    if (!isDomainAllowed) {
+        console.error(`[Security] Blocked api-fetch to disallowed domain: ${hostname}`);
+        return { ok: false, status: 0, statusText: 'Domain not allowed', body: '', error: `Domain ${hostname} is not in the allowed API domains list` };
+    }
+
+    // Abort previous request if still in flight
+    if (currentApiFetchRequest) {
+        try { currentApiFetchRequest.abort(); } catch (e) {}
+        currentApiFetchRequest = null;
+    }
+
+    const method = (options && options.method) || 'GET';
+    const headers = (options && options.headers) || {};
+    const body = (options && options.body) || null;
+    const timeoutMs = (options && options.timeout) || 120000; // 2 minute default
+
+    // Payload size limit (5MB)
+    if (body && body.length > 5 * 1024 * 1024) {
+        return { ok: false, status: 0, statusText: 'Payload too large', body: '', error: 'Request body exceeds 5MB limit' };
+    }
+
+    return new Promise((resolve) => {
+        try {
+            const request = net.request({ method, url });
+            currentApiFetchRequest = request;
+
+            // Set headers
+            for (const [key, value] of Object.entries(headers)) {
+                try { request.setHeader(key, String(value)); } catch (e) {
+                    console.warn(`[api-fetch] Failed to set header ${key}:`, e.message);
+                }
+            }
+
+            // Timeout
+            const timeoutId = setTimeout(() => {
+                try { request.abort(); } catch (e) {}
+                currentApiFetchRequest = null;
+                resolve({ ok: false, status: 0, statusText: 'Timeout', body: '', error: `Request timed out after ${timeoutMs / 1000}s` });
+            }, timeoutMs);
+
+            // Handle response
+            request.on('response', (res) => {
+                let responseBody = '';
+                res.on('data', (chunk) => { responseBody += chunk.toString(); });
+                res.on('end', () => {
+                    clearTimeout(timeoutId);
+                    currentApiFetchRequest = null;
+                    resolve({
+                        ok: res.statusCode >= 200 && res.statusCode < 300,
+                        status: res.statusCode,
+                        statusText: res.statusMessage || '',
+                        body: responseBody,
+                        error: null
+                    });
+                });
+            });
+
+            request.on('error', (err) => {
+                clearTimeout(timeoutId);
+                currentApiFetchRequest = null;
+                resolve({ ok: false, status: 0, statusText: 'Network error', body: '', error: err.message || String(err) });
+            });
+
+            request.on('abort', () => {
+                clearTimeout(timeoutId);
+                currentApiFetchRequest = null;
+                resolve({ ok: false, status: 0, statusText: 'Aborted', body: '', error: 'Request was aborted' });
+            });
+
+            // Send body
+            if (body) {
+                request.write(body);
+            }
+            request.end();
+        } catch (err) {
+            currentApiFetchRequest = null;
+            resolve({ ok: false, status: 0, statusText: 'Internal error', body: '', error: err.message || String(err) });
+        }
+    });
+});
+
+ipcMain.handle('api-fetch-abort', async () => {
+    if (currentApiFetchRequest) {
+        try { currentApiFetchRequest.abort(); } catch (e) {}
+        currentApiFetchRequest = null;
+    }
+    return { ok: true };
+});
+
 ipcMain.handle('gemini-request', async (event, model, contents) => {
     const { net } = require('electron');
     return new Promise((resolve, reject) => {
