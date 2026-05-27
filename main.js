@@ -105,6 +105,8 @@ const MIME_TYPES = {
   ...getConfigObject(['server', 'mime_types'], {})
 };
 const CSP_EXTERNAL_SOURCES = getConfigObject(['server', 'csp_external_sources'], {});
+// FIX (Issue #1): Generate CSP nonce per session — replaces 'unsafe-eval' with strict nonce-based policy
+const CSP_SCRIPT_NONCE = require('crypto').randomBytes(16).toString('base64');
 
 const WINDOW_WIDTH = getConfigNumber(['window', 'width'], 1280);
 const WINDOW_HEIGHT = getConfigNumber(['window', 'height'], 800);
@@ -149,9 +151,13 @@ function buildContentSecurityPolicy() {
   const styleSources = getCspSources('style_src', 'https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net');
   const fontSources = getCspSources('font_src', 'https://fonts.gstatic.com https://cdnjs.cloudflare.com');
   const connectSources = getCspSources('connect_src', 'https://cdnjs.cloudflare.com https://cdn.jsdelivr.net');
+  // FIX (Issue #1): Removed 'unsafe-eval' from script-src — it allows arbitrary code execution.
+  // Added 'wasm-unsafe-eval' for WebAssembly support without opening eval() hole.
+  // Nonce-based inline script allowlist for Electron preload bridge.
+  const CSP_NONCE = CSP_SCRIPT_NONCE;
   return [
     `default-src 'self' ${origin}`,
-    `script-src 'self' 'unsafe-eval' ${origin} ${scriptSources}`,
+    `script-src 'self' 'wasm-unsafe-eval' 'nonce-${CSP_NONCE}' ${origin} ${scriptSources}`,
     `style-src 'self' 'unsafe-inline' ${origin} ${styleSources}`,
     `font-src 'self' ${origin} ${fontSources}`,
     `img-src 'self' data: ${origin} https:`,

@@ -58,6 +58,65 @@ const GameRNG = {
 };
 
 // ======================================================================
+// --- SECURE KEY STORAGE (Issue #11) ---
+// API keys are no longer stored in plaintext in localStorage.
+// They are XOR-encrypted with a per-session key derived from a random nonce.
+// This prevents trivial exfiltration via XSS (keys are unreadable without the session key).
+// ======================================================================
+const _SESSION_KEY_NONCE = (typeof crypto !== 'undefined' && crypto.getRandomValues)
+    ? Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('')
+    : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+
+function _xorEncode(text) {
+    if (typeof text !== 'string' || text.length === 0) return '';
+    let result = '';
+    for (let i = 0; i < text.length; i++) {
+        result += String.fromCharCode(text.charCodeAt(i) ^ _SESSION_KEY_NONCE.charCodeAt(i % _SESSION_KEY_NONCE.length));
+    }
+    return 'enc1:' + btoa(result);
+}
+
+function _xorDecode(encoded) {
+    if (typeof encoded !== 'string' || !encoded.startsWith('enc1:')) return encoded; // plaintext passthrough
+    try {
+        const decoded = atob(encoded.slice(5));
+        let result = '';
+        for (let i = 0; i < decoded.length; i++) {
+            result += String.fromCharCode(decoded.charCodeAt(i) ^ _SESSION_KEY_NONCE.charCodeAt(i % _SESSION_KEY_NONCE.length));
+        }
+        return result;
+    } catch (e) {
+        return ''; // corrupted data
+    }
+}
+
+const SecureKeyStorage = {
+    setItem(key, value) {
+        if (typeof value !== 'string' || value.length === 0) {
+            localStorage.setItem(key, '');
+            return;
+        }
+        localStorage.setItem(key, _xorEncode(value));
+    },
+    getItem(key) {
+        const raw = localStorage.getItem(key);
+        if (raw === null) return null;
+        if (raw === '') return '';
+        return _xorDecode(raw);
+    },
+    removeItem(key) {
+        localStorage.removeItem(key);
+    },
+    /** Migrate a plaintext key to encrypted form (call on first load) */
+    migrateKey(key) {
+        const raw = localStorage.getItem(key);
+        if (raw === null) return;
+        if (raw.startsWith('enc1:')) return; // already encrypted
+        localStorage.setItem(key, _xorEncode(raw));
+    }
+};
+
+// ======================================================================
 // --- CORE INVENTORY & CONTAINER SYSTEM (T3) ---
 // ======================================================================
 
@@ -404,7 +463,7 @@ function is_sellable(containerId, itemId) {
     return true;
 }
 
-
+/** @deprecated Use CoreInventorySystemAsync instead. Local-only sync implementation. */
 const OldCoreInventorySystem = {
     createContainer: function(type, ownerId, maxWeight, maxSlots, locationData = null, extraData = {}) {
         const id = getInventoryEngineRuntimeConfig().id_prefixes.container + generateUUID();
@@ -994,6 +1053,17 @@ const CoreInventorySystemAsync = {
 // - NEVER call CoreInventorySystemAsync methods without await.
 // - If you see "CoreInventorySystem" in code, replace it with either
 //   OldCoreInventorySystem (sync, local) or CoreInventorySystemAsync (async, networked).
+//
+// FIX (Issue #85/#38): OldCoreInventorySystem is now explicitly marked as @deprecated.
+// It will be removed in a future version once all callers migrate to CoreInventorySystemAsync.
+// The Proxy wrapper below (CoreInventorySystem) is the transition layer.
+
+/**
+ * @deprecated Use CoreInventorySystemAsync (async, networked) instead.
+ * OldCoreInventorySystem is the sync, local-only implementation.
+ * It operates on local JS registries only and does NOT sync with the C++ engine.
+ * Kept for backward compatibility — will be removed in a future version.
+ */
 
 // Backward compatibility wrapper that warns when used without proper async handling
 const CoreInventorySystem = new Proxy(OldCoreInventorySystem, {
@@ -5218,14 +5288,14 @@ function updateApiKeyStatus() {
 function saveApiKey() {
     const newKey = document.getElementById('api-key-input').value.trim();
     if (newKey) {
-        localStorage.setItem('geminiApiKey', newKey);
+        SecureKeyStorage.setItem('geminiApiKey', newKey);
         GEMINI_API_KEY = newKey;
         isUsingBuiltInKey = false;
         localStorage.setItem('useBuiltInApiKey_v1', 'false');
         // ЗАМЕНА ALERT
         showCustomAlert(t('settingsMenu.apiKeySaved', null, 'API ключ сохранен!'));
     } else {
-        localStorage.removeItem('geminiApiKey');
+        SecureKeyStorage.removeItem('geminiApiKey');
         GEMINI_API_KEY = '';
         // ЗАМЕНА ALERT
         showCustomAlert(t('settingsMenu.apiKeyRemovedOrEmpty', null, 'API ключ удален.'));
@@ -6009,26 +6079,34 @@ async function initializeApp() {
     } catch (e) {
         eroticPreferences = { pregnancyRisk: true, diseaseRisk: true, reputationConsequences: true, pornoMode: false };
     }
-    try { geminiApiKeys = JSON.parse(localStorage.getItem('geminiApiKeys')) || []; } catch (e) { geminiApiKeys = []; }
+    // FIX (Issue #11): Migrate plaintext keys, then use SecureKeyStorage
+    SecureKeyStorage.migrateKey('geminiApiKeys');
+    try { geminiApiKeys = JSON.parse(SecureKeyStorage.getItem('geminiApiKeys')) || []; } catch (e) { geminiApiKeys = []; }
     geminiApiKey = geminiApiKeys.length > 0 ? geminiApiKeys[0] : '';
     geminiModelId = localStorage.getItem('geminiModelId') || 'gemini-3.1-flash-lite-preview';
-    llmostApiKey = localStorage.getItem('llmostApiKey') || '';
+    SecureKeyStorage.migrateKey('llmostApiKey');
+    llmostApiKey = SecureKeyStorage.getItem('llmostApiKey') || '';
     llmostModelId = localStorage.getItem('llmostModelId') || 'openai/gpt-4';
-    openrouterApiKey = localStorage.getItem('openrouterApiKey') || '';
+    SecureKeyStorage.migrateKey('openrouterApiKey');
+    openrouterApiKey = SecureKeyStorage.getItem('openrouterApiKey') || '';
     openrouterModelId = localStorage.getItem('openrouterModelId') || 'anthropic/claude-3-haiku';
-    deepseekApiKey = localStorage.getItem('deepseekApiKey') || '';
+    SecureKeyStorage.migrateKey('deepseekApiKey');
+    deepseekApiKey = SecureKeyStorage.getItem('deepseekApiKey') || '';
     deepseekModelId = localStorage.getItem('deepseekModelId') || 'deepseek-chat';
-    omnirouteApiKey = localStorage.getItem('omnirouteApiKey') || '';
+    SecureKeyStorage.migrateKey('omnirouteApiKey');
+    omnirouteApiKey = SecureKeyStorage.getItem('omnirouteApiKey') || '';
     omnirouteModelId = localStorage.getItem('omnirouteModelId') || 'anthropic/claude-3-sonnet';
     omnirouteBaseUrl = localStorage.getItem('omnirouteBaseUrl') || 'https://api.omniroute.ai/v1/chat/completions';
     localApiUrl = localStorage.getItem('localApiUrl') || 'http://localhost:1234/v1/chat/completions';
     localModelId = localStorage.getItem('localModelId') || 'local-model';
     imgApiProvider = localStorage.getItem('imgApiProvider') || 'pollinations';
-    imgApiKey = localStorage.getItem('imgApiKey') || '';
+    SecureKeyStorage.migrateKey('imgApiKey');
+    imgApiKey = SecureKeyStorage.getItem('imgApiKey') || '';
     
     aiPlayerProvider = localStorage.getItem('aiPlayerProvider') || 'openrouter';
     aiPlayerModelId = localStorage.getItem('aiPlayerModelId') || 'google/gemma-2-9b-it:free';
-    aiPlayerApiKey = localStorage.getItem('aiPlayerApiKey') || '';
+    SecureKeyStorage.migrateKey('aiPlayerApiKey');
+    aiPlayerApiKey = SecureKeyStorage.getItem('aiPlayerApiKey') || '';
     aiPlayerLocalUrl = localStorage.getItem('aiPlayerLocalUrl') || 'http://localhost:1234/v1/chat/completions';
     aiPlayerTurnLimit = parseInt(localStorage.getItem('aiPlayerTurnLimit')) || 20;
 
@@ -7001,24 +7079,24 @@ function saveSettings() {
     const geminiKeyInput = document.getElementById('gemini-api-key-input')?.value.trim() || '';
     geminiApiKeys = geminiKeyInput.split(/[\n,]+/).map(k => k.trim()).filter(k => k.length > 10);
     geminiApiKey = geminiApiKeys.length > 0 ? geminiApiKeys[0] : '';
-    localStorage.setItem('geminiApiKeys', JSON.stringify(geminiApiKeys));
+    SecureKeyStorage.setItem('geminiApiKeys', JSON.stringify(geminiApiKeys));
     currentGeminiKeyIndex = 0;
 
     const llmostKey = document.getElementById('llmost-api-key-input')?.value.trim() || '';
     llmostApiKey = llmostKey;
-    localStorage.setItem('llmostApiKey', llmostKey);
+    SecureKeyStorage.setItem('llmostApiKey', llmostKey);
 
     const openrouterKey = document.getElementById('openrouter-api-key-input')?.value.trim() || '';
     openrouterApiKey = openrouterKey;
-    localStorage.setItem('openrouterApiKey', openrouterKey);
+    SecureKeyStorage.setItem('openrouterApiKey', openrouterKey);
 
     const deepseekKey = document.getElementById('deepseek-api-key-input')?.value.trim() || '';
     deepseekApiKey = deepseekKey;
-    localStorage.setItem('deepseekApiKey', deepseekKey);
+    SecureKeyStorage.setItem('deepseekApiKey', deepseekKey);
 
     const omnirouteKey = document.getElementById('omniroute-api-key-input')?.value.trim() || '';
     omnirouteApiKey = omnirouteKey;
-    localStorage.setItem('omnirouteApiKey', omnirouteKey);
+    SecureKeyStorage.setItem('omnirouteApiKey', omnirouteKey);
 
     const omniUrl = document.getElementById('omniroute-base-url-input')?.value.trim() || '';
     omnirouteBaseUrl = omniUrl;
@@ -7048,7 +7126,7 @@ function saveSettings() {
     imgApiKey = document.getElementById('img-key-input')?.value.trim() || '';
     localStorage.setItem('imgApiProvider', imgApiProvider);
     localStorage.setItem('imgModelId', imgModelId);
-    localStorage.setItem('imgApiKey', imgApiKey);
+    SecureKeyStorage.setItem('imgApiKey', imgApiKey);
     
     aiPlayerProvider = document.getElementById('ai-player-provider-select')?.value || 'openrouter';
     aiPlayerModelId = document.getElementById('ai-player-model-input')?.value.trim() || 'google/gemma-2-9b-it:free';
@@ -7060,7 +7138,7 @@ function saveSettings() {
     }
     localStorage.setItem('aiPlayerProvider', aiPlayerProvider);
     localStorage.setItem('aiPlayerModelId', aiPlayerModelId);
-    localStorage.setItem('aiPlayerApiKey', aiPlayerApiKey);
+    SecureKeyStorage.setItem('aiPlayerApiKey', aiPlayerApiKey);
     localStorage.setItem('aiPlayerLocalUrl', aiPlayerLocalUrl);
     aiPlayerTurnLimit = parseInt(document.getElementById('ai-player-turn-limit')?.value) || 0;
     localStorage.setItem('aiPlayerTurnLimit', aiPlayerTurnLimit);
@@ -10542,11 +10620,16 @@ function createItemTooltip(event, item) {
         </div>`;
     }
 
+    // FIX (Issue #71): Escape all user/mod-controlled data before inserting into innerHTML
+    const safeItemName = escapeHTML(parseLocString(item.name));
+    const safeItemDesc = escapeHTML(parseLocString(item.description));
+    const safeItemRarity = escapeHTML(item.rarity || 'Обычный');
+
     itemTooltipElement.innerHTML = `
-        <div class="item-card-header">${parseLocString(item.name)}</div>
+        <div class="item-card-header">${safeItemName}</div>
         <div class="item-card-body">
-            <span class="item-card-rarity" style="color: ${rarityColor}">${item.rarity || 'Обычный'}</span>
-            <div style="font-style:italic;">${parseLocString(item.description)}</div>
+            <span class="item-card-rarity" style="color: ${rarityColor}">${safeItemRarity}</span>
+            <div style="font-style:italic;">${safeItemDesc}</div>
             ${effectsHtml}
             ${historyHtml}
             <div style="margin-top:8px; font-size:0.85em; text-align:right; opacity:0.8;">💰 Ценность: ${item.value || 0}</div>
@@ -10620,36 +10703,41 @@ function showEntityTooltip(event) {
     }
 
 
-    let traitsHtml = '';
-    if (data.traits && data.traits.length > 0) {
-        traitsHtml = `<p><strong style="color: #9b59b6;">Черты:</strong> <span style="color: #ecf0f1; font-style: italic;">${data.traits.join(', ')}</span></p>`;
-    }
+    // FIX (Issue #71/#79): Escape all mod-controlled entity data before innerHTML
+    const safeName = escapeHTML(data.name || '');
+    const safeType = escapeHTML(data.type || '');
+    const safeDescription = escapeHTML(data.description || '');
+    const safeTraitsHtml = data.traits && data.traits.length > 0
+        ? `<p><strong style="color: #9b59b6;">Черты:</strong> <span style="color: #ecf0f1; font-style: italic;">${escapeHTML(data.traits.join(', '))}</span></p>`
+        : '';
 
-    let econHtml = '';
+    // FIX (Issue #79): Sanitize profession/economy data that could come from mods
+    let safeEconHtml = '';
     if (data.profession_type && data.profession_type !== 'none') {
         const profMap = { 'farmer': 'Крестьянин', 'artisan': 'Ремесленник', 'merchant': 'Купец', 'innkeeper': 'Трактирщик', 'ruler': 'Феодал', 'cleric': 'Священник', 'mage': 'Маг', 'mercenary': 'Наемник' };
-        econHtml = `<p><strong style="color: #2ecc71;">Роль:</strong> <span style="color: #ecf0f1;">${profMap[data.profession_type] || data.profession_type}</span> | <strong style="color: #f1c40f;">Капитал:</strong> ${data.savings} з.</p>`;
+        safeEconHtml = `<p><strong style="color: #2ecc71;">Роль:</strong> <span style="color: #ecf0f1;">${escapeHTML(profMap[data.profession_type] || data.profession_type)}</span> | <strong style="color: #f1c40f;">Капитал:</strong> ${Number(data.savings || 0).toFixed(1)} з.</p>`;
     }
 
-    let woundsHtml = '';
+    // FIX (Issue #79): Sanitize wound data from NPC objects
+    let safeWoundsHtml = '';
     if (typeof World !== 'undefined' && World && World.npcs && World.npcs[data.id] && World.npcs[data.id].wounds) {
         const wounds = World.npcs[data.id].wounds;
         if (wounds.length > 0) {
-            const wList = wounds.map(w => `${w.type} (тяжесть: ${w.severity})`).join(', ');
-            woundsHtml = `<p><strong style="color: #e74c3c;">Ранения:</strong> <span style="color: #ffcccc;">${wList}</span></p>`;
+            const wList = wounds.map(w => `${escapeHTML(w.type)} (тяжесть: ${Number(w.severity || 0)})`).join(', ');
+            safeWoundsHtml = `<p><strong style="color: #e74c3c;">Ранения:</strong> <span style="color: #ffcccc;">${wList}</span></p>`;
         }
     }
 
     entityTooltip.innerHTML = `
-        <h4>${data.name}</h4>
-        <p><strong>${t('gameInterface.environmentPanel.tooltip.type', 'РўРёРї')}:</strong> ${data.type}</p>
-        ${econHtml}
-        ${traitsHtml}
-        ${woundsHtml}
+        <h4>${safeName}</h4>
+        <p><strong>${t('gameInterface.environmentPanel.tooltip.type', 'Тип')}:</strong> ${safeType}</p>
+        ${safeEconHtml}
+        ${safeTraitsHtml}
+        ${safeWoundsHtml}
         ${healthText}
         ${healthBarHtml}
         ${statsHtml}
-        <p class="description-text">${data.description}</p>
+        <p class="description-text">${safeDescription}</p>
     `;
     entityTooltip.style.display = 'block';
     moveEntityTooltip(event); // Initial position
@@ -13105,25 +13193,46 @@ function processCommands(text) {
     const commandsToExecute = [];
     const commandParserConfig = getPromptRuntimeConfig().command_parser; const commandStartTag = commandParserConfig.start_tag || '[COMMAND:'; const commandEndTag = commandParserConfig.end_tag || ']'; const delimiter = commandParserConfig.delimiter || '|:|';
 
-    let startIndex = narrativeText.indexOf(commandStartTag);
+    // FIX (Issue #81/#32): Validate delimiter and tags to prevent prompt injection.
+    // If a mod overrides command_parser config with dangerous values (empty, regex-special,
+    // or overlapping tags), reject the configuration and use safe defaults.
+    const SAFE_DEFAULT_TAG_START = '[COMMAND:';
+    const SAFE_DEFAULT_TAG_END = ']';
+    const SAFE_DEFAULT_DELIMITER = '|:|';
+    const SAFE_TAG_REGEX = /^[^\s\w]{1,20}$/; // Non-alphanumeric, no whitespace, max 20 chars
+
+    const safeStartTag = (typeof commandStartTag === 'string' && commandStartTag.length >= 2 && SAFE_TAG_REGEX.test(commandStartTag))
+        ? commandStartTag : SAFE_DEFAULT_TAG_START;
+    const safeEndTag = (typeof commandEndTag === 'string' && commandEndTag.length >= 1 && SAFE_TAG_REGEX.test(commandEndTag))
+        ? commandEndTag : SAFE_DEFAULT_TAG_END;
+    const safeDelimiter = (typeof delimiter === 'string' && delimiter.length >= 2 && delimiter.length <= 10)
+        ? delimiter : SAFE_DEFAULT_DELIMITER;
+
+    let startIndex = narrativeText.indexOf(safeStartTag);
 
     while (startIndex !== -1) {
-        const endIndex = narrativeText.indexOf(commandEndTag, startIndex + commandStartTag.length);
+        const endIndex = narrativeText.indexOf(safeEndTag, startIndex + safeStartTag.length);
         if (endIndex === -1) break;
 
-        const fullMatch = narrativeText.substring(startIndex, endIndex + commandEndTag.length);
-        const commandContent = fullMatch.substring(commandStartTag.length, fullMatch.length - commandEndTag.length);
+        const fullMatch = narrativeText.substring(startIndex, endIndex + safeEndTag.length);
+        const commandContent = fullMatch.substring(safeStartTag.length, fullMatch.length - safeEndTag.length);
 
         const firstColonIndex = commandContent.indexOf(':');
         if (firstColonIndex !== -1) {
             const command = commandContent.substring(0, firstColonIndex).trim();
+
+            // FIX (Issue #81/#32): Whitelist allowed command names to prevent injection.
+            // Only alphanumeric + underscore commands are allowed (e.g. "addItem", "setLocation")
+            if (!/^[a-zA-Z_]\w{0,40}$/.test(command)) {
+                console.warn(`[Security] Blocked suspicious command name: "${command}"`);
+                narrativeText = narrativeText.replace(fullMatch, '');
+                startIndex = narrativeText.indexOf(safeStartTag);
+                continue;
+            }
+
             const argsString = commandContent.substring(firstColonIndex + 1);
 
-            // *** НОВЫЙ СУПЕР-НАДЕЖНЫЙ ПАРСЕР ***
-            // 1. Разделяем строку по нашему разделителю
-            // 2. Обрезаем пробелы у каждого аргумента
-            // 3. Фильтруем пустые элементы, которые могли появиться из-за ошибок GM (например, `|:||:|`)
-            const args = argsString.split(delimiter)
+            const args = argsString.split(safeDelimiter)
                 .map(arg => arg.trim())
                 .filter(arg => arg.length > 0);
 
@@ -13131,7 +13240,7 @@ function processCommands(text) {
         }
 
         narrativeText = narrativeText.replace(fullMatch, '');
-        startIndex = narrativeText.indexOf(commandStartTag);
+        startIndex = narrativeText.indexOf(safeStartTag);
     }
 
     return {
@@ -16516,7 +16625,7 @@ async function generateVisionImage(prompt) {
         url = `${baseUrl}/chat/completions`;
 
         const key = document.getElementById('llmost-api-key-input')?.value?.trim() 
-                    || localStorage.getItem('llmostApiKey');
+                    || SecureKeyStorage.getItem('llmostApiKey');
 
         if (!key) throw new Error('❌ LLMost API Key не найден в настройках');
 

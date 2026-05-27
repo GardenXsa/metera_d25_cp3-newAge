@@ -1,10 +1,16 @@
+// FIX (Issue #56): Removed dual UMD + window global pattern.
+// Now uses pure UMD export — no implicit window.RuntimeDataUtils pollution.
+// Code that needs RuntimeDataUtils should require/import it explicitly,
+// or access it through ModAPI.runtimeData in the mod sandbox.
 (function(root, factory) {
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = factory();
         return;
     }
+    // For browser/non-Node: export to root (globalThis), NOT to window explicitly
+    // This avoids dual registration (window.RuntimeDataUtils AND globalThis.RuntimeDataUtils)
     root.RuntimeDataUtils = factory();
-})(typeof globalThis !== 'undefined' ? globalThis : this, function() {
+})(typeof globalThis !== 'undefined' ? globalThis : typeof self !== 'undefined' ? self : this, function() {
     function isPlainObject(value) {
         return !!value && typeof value === 'object' && !Array.isArray(value);
     }

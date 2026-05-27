@@ -11,5 +11,16 @@
   "offices": { "mini_char": "O", "color": "#3498db", "name_i18n_key": "facilities.office" },
   "temple": { "mini_char": "+", "color": "#9b59b6", "name_i18n_key": "facilities.temple" },
   "temples": { "mini_char": "+", "color": "#9b59b6", "name_i18n_key": "facilities.temple" },
-  "barracks": { "mini_char": "B", "color": "#c0392b", "name_i18n_key": "facilities.barracks" }
+  "barracks": { "mini_char": "B", "color": "#c0392b", "name_i18n_key": "facilities.barracks" },
+  "farms": { "mini_char": "A", "color": "#27ae60", "name_i18n_key": "facilities.farms" },
+  "weavers": { "mini_char": "W", "color": "#8e44ad", "name_i18n_key": "facilities.weavers" },
+  "bakeries": { "mini_char": "K", "color": "#d35400", "name_i18n_key": "facilities.bakeries" },
+  "jewelers": { "mini_char": "J", "color": "#f39c12", "name_i18n_key": "facilities.jewelers" },
+  "observatories": { "mini_char": "S", "color": "#2c3e50", "name_i18n_key": "facilities.observatories" },
+  "hunting_lodges": { "mini_char": "L", "color": "#16a085", "name_i18n_key": "facilities.hunting_lodges" },
+  "apiaries": { "mini_char": "Y", "color": "#f1c40f", "name_i18n_key": "facilities.apiaries" },
+  "shipyards": { "mini_char": "P", "color": "#2980b9", "name_i18n_key": "facilities.shipyards" },
+  "fisheries": { "mini_char": "N", "color": "#1abc9c", "name_i18n_key": "facilities.fisheries" },
+  "alchemists": { "mini_char": "X", "color": "#8e44ad", "name_i18n_key": "facilities.alchemists" },
+  "tailors": { "mini_char": "C", "color": "#e91e63", "name_i18n_key": "facilities.tailors" }
 }

@@ -7,7 +7,12 @@
     "base_defense": 30,
     "spawn_biome_tag": "mountain",
     "corrupt_biome_to": "ash",
-    "loot_table_id": "dragon_hoard" 
+    "loot_table_id": "dragon_hoard",
+    "loot_drops": [
+      { "item_id": "dragon_scale", "min": 2, "max": 5, "chance": 1.0 },
+      { "item_id": "dragon_bone", "min": 1, "max": 3, "chance": 0.8 },
+      { "item_id": "gold_coins", "min": 200, "max": 500, "chance": 1.0 }
+    ]
   },
   { 
     "id": "kraken", 
@@ -17,7 +22,12 @@
     "base_defense": 20,
     "spawn_biome_tag": "ocean",
     "corrupt_biome_to": "shallow_water",
-    "loot_table_id": "kraken_hoard" 
+    "loot_table_id": "kraken_hoard",
+    "loot_drops": [
+      { "item_id": "kraken_ink", "min": 1, "max": 3, "chance": 0.9 },
+      { "item_id": "sea_gem", "min": 1, "max": 2, "chance": 0.6 },
+      { "item_id": "gold_coins", "min": 150, "max": 400, "chance": 1.0 }
+    ]
   },
   { 
     "id": "lich_king", 
@@ -27,7 +37,12 @@
     "base_defense": 40,
     "spawn_biome_tag": "ruins",
     "corrupt_biome_to": "swamp",
-    "loot_table_id": "undead_hoard" 
+    "loot_table_id": "undead_hoard",
+    "loot_drops": [
+      { "item_id": "lich_phylactery", "min": 1, "max": 1, "chance": 0.3 },
+      { "item_id": "ancient_scroll", "min": 1, "max": 2, "chance": 0.7 },
+      { "item_id": "gold_coins", "min": 300, "max": 600, "chance": 1.0 }
+    ]
   },
   { 
     "id": "fire_elemental", 
@@ -37,6 +52,11 @@
     "base_defense": 10,
     "spawn_biome_tag": "desert",
     "corrupt_biome_to": "volcano",
-    "loot_table_id": "fire_hoard" 
+    "loot_table_id": "fire_hoard",
+    "loot_drops": [
+      { "item_id": "fire_essence", "min": 2, "max": 4, "chance": 0.9 },
+      { "item_id": "magma_core", "min": 1, "max": 1, "chance": 0.4 },
+      { "item_id": "gold_coins", "min": 100, "max": 350, "chance": 1.0 }
+    ]
   }
 ]
