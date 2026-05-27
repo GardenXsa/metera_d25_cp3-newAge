@@ -372,7 +372,8 @@
     "infra_port_stone_cost": 2000,
     "infra_port_wood_cost": 1000,
     "infra_port_upgrade_stone_per_level": 1000,
-    "infra_port_upgrade_wood_per_level": 500
+    "infra_port_upgrade_wood_per_level": 500,
+    "_port_cost_note": "DEPRECATED: Port costs are now in infrastructure.port. These keys are kept for backward compatibility but will be removed in a future version."
   },
   "engine_world": {
     "default_race_id": "human",
@@ -397,7 +398,8 @@
       "build_stone_cost": 2000,
       "build_wood_cost": 1000,
       "upgrade_stone_per_level": 1000,
-      "upgrade_wood_per_level": 500
+      "upgrade_wood_per_level": 500,
+      "build_gold_cost": 5000
     }
   },
   "world_events": {

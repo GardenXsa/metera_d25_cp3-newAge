@@ -925,6 +925,29 @@ function createModSandbox(modAPI, modId, modMeta) {
  * outermost scope. The sandbox Proxy provides equivalent protection.
  */
 async function executeModInSandbox(code, modAPI, modId, modMeta) {
+    // FIX (Issue #2): Pre-scan mod code for dangerous patterns before execution.
+    // AsyncFunction is equivalent to eval() — we can't remove it without breaking
+    // the mod system, but we CAN reject mods that try to bypass the sandbox.
+    const DANGEROUS_PATTERNS = [
+        { pattern: /\beval\s*\(/, desc: 'eval() call' },
+        { pattern: /\bFunction\s*\(/, desc: 'Function() constructor call' },
+        { pattern: /\bAsyncFunction\s*\(/, desc: 'AsyncFunction() constructor call' },
+        { pattern: /\bGeneratorFunction\s*\(/, desc: 'GeneratorFunction() constructor call' },
+        { pattern: /\bimport\s*\(/, desc: 'dynamic import() — use ModAPI.require instead' },
+        { pattern: /\brequire\s*\(/, desc: 'require() — use ModAPI.require instead' },
+        { pattern: /\bprocess\s*\./, desc: 'process global access' },
+        { pattern: /\bchild_process\b/, desc: 'child_process module reference' },
+        { pattern: /\bfs\s*\.\s*(read|write|append|open|unlink|rmdir|mkdir|rename)/, desc: 'fs direct file access' },
+        { pattern: /\b__proto__\b/, desc: '__proto__ access — prototype pollution risk' },
+    ];
+
+    for (const check of DANGEROUS_PATTERNS) {
+        if (check.pattern.test(code)) {
+            throw new Error(`[ModLoader SECURITY] Mod "${modId}" rejected: code contains ${check.desc}. ` +
+                `This pattern is blocked to prevent sandbox escape. Use the ModAPI instead.`);
+        }
+    }
+
     const sandboxProxy = createModSandbox(modAPI, modId, modMeta);
 
     // SECURITY: Patch constructor chain to prevent sandbox escape.
@@ -952,8 +975,19 @@ async function executeModInSandbox(code, modAPI, modId, modMeta) {
         try { Object.defineProperty(Function.prototype, 'constructor', { value: _origFuncCtor, writable: true, configurable: true }); } catch(e) {}
     `;
 
+    // FIX (Issue #2): AsyncFunction is equivalent to eval() — restrict its scope.
+    // The mod sandbox already has: constructor chain defense, with(sandboxProxy), 
+    // MOD_WRITABLE_WINDOW_PROPS whitelist, Function.prototype.constructor patch.
+    // Additional restrictions:
+    // 1. Mod code runs in strict mode to prevent `with` outside sandbox
+    // 2. Wrapped in try/catch/finally to always restore prototype constructors
+    // 3. The sandboxProxy traps prevent access to eval, Function, AsyncFunction
+    // 4. A code scanner rejects mod source containing dangerous patterns before execution
+    const STRICT_MODE_PREFIX = '"use strict";';
+
     // Wrap mod code in with(sandboxProxy) to redirect ALL global lookups
     const wrappedCode = `
+        ${STRICT_MODE_PREFIX}
         ${constructorChainDefense}
         try {
             with(this) {

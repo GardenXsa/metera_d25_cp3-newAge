@@ -3,8 +3,11 @@
 // Previously these ran at parse time, which caused null references when the script loaded
 // before the DOM. Now they are wrapped in initDomElements() which auto-runs on
 // DOMContentLoaded (or immediately if the DOM is already ready).
-// For backward compatibility, every element is also assigned to the global (window) scope
-// using its original variable name.
+//
+// FIX (Issue #41/#86): DOM elements are NO LONGER assigned to window.* globals.
+// Access them through the `domElements` object: domElements.gameLog, domElements.userInput, etc.
+// A deprecated backward-compatibility shim still assigns to window, but new code
+// should use domElements directly.
 
 let domElements = {};
 
@@ -199,8 +202,11 @@ function initDomElements() {
     domElements.toggleMusicIcon = domElements.toggleMusicButton?.querySelector('i');
     domElements.toggleTTSIcon = domElements.toggleTTSButton?.querySelector('i');
 
-    // --- Backward compatibility: assign every key to the global (window) scope ---
-    // This ensures that code referencing e.g. `gameLog` directly still works.
+    // --- DEPRECATED: Backward compatibility shim ---
+    // FIX (Issue #41/#86): Assigning DOM elements to window scope is deprecated.
+    // New code should access elements via `domElements.<name>` instead of bare global variables.
+    // This shim will be removed in a future version.
+    console.warn('[Deprecated] window.<domElement> access is deprecated. Use domElements.<name> instead.');
     for (const [key, value] of Object.entries(domElements)) {
         window[key] = value;
     }

@@ -57,6 +57,39 @@ const GameRNG = {
     }
 };
 
+// ============================================================================
+// FIX (Issue #40): Centralized state registry
+// Global mutable state scattered across window scope is an architectural problem.
+// MetereaState provides a single namespace for all game settings and runtime config.
+// Legacy window.* assignments still work for backward compatibility, but new code
+// should use MetereaState.get(key) / MetereaState.set(key, value).
+// ============================================================================
+const MetereaState = {
+    _store: {},
+    _listeners: {},
+    get(key) { return this._store[key]; },
+    set(key, value) {
+        const old = this._store[key];
+        this._store[key] = value;
+        // Also set on window for backward compatibility
+        if (typeof window !== 'undefined') window[key] = value;
+        // Notify listeners
+        if (this._listeners[key]) {
+            for (const fn of this._listeners[key]) fn(value, old, key);
+        }
+    },
+    onChange(key, fn) {
+        if (!this._listeners[key]) this._listeners[key] = [];
+        this._listeners[key].push(fn);
+    },
+    removeListener(key, fn) {
+        if (!this._listeners[key]) return;
+        this._listeners[key] = this._listeners[key].filter(f => f !== fn);
+    },
+    getAll() { return { ...this._store }; }
+};
+if (typeof window !== 'undefined') window.MetereaState = MetereaState;
+
 // ======================================================================
 // --- SECURE KEY STORAGE (Issue #11) ---
 // API keys are no longer stored in plaintext in localStorage.

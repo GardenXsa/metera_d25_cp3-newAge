@@ -75,6 +75,9 @@ struct PlacementResourceEntry {
 
 struct Database {
     std::vector<std::string> all_item_ids;
+    // FIX (Issue #18): g_db.items is DEPRECATED — new code should use g_itemRegistry instead.
+    // g_db.items is kept for backward compatibility with existing code that reads item properties.
+    // When all g_db.items access is migrated to g_itemRegistry, this map can be removed.
     std::unordered_map<std::string, ItemDef> items;
     std::vector<RecipeDef> recipes;
     std::unordered_map<std::string, std::string> facility_names;
@@ -1073,6 +1076,26 @@ std::vector<std::string> getCoreIdsByTagList(const std::string& listKey) {
     }
 
     return ids;
+}
+
+// FIX (Issue #18): Unified item lookup — checks both g_itemRegistry (new) and g_db.items (legacy).
+// All new code should use this function instead of directly accessing g_db.items.
+bool itemExists(const std::string& itemId) {
+    return g_itemRegistry.getTemplate(itemId) != nullptr || g_db.items.count(itemId) > 0;
+}
+
+const ItemTemplate* getItemTemplate(const std::string& itemId) {
+    const ItemTemplate* tpl = g_itemRegistry.getTemplate(itemId);
+    if (tpl) return tpl;
+    // Legacy fallback: check g_db.items
+    if (g_db.items.count(itemId)) return nullptr; // ItemDef is not ItemTemplate; caller should use getItemDef()
+    return nullptr;
+}
+
+bool getItemDef(const std::string& itemId, ItemDef*& outDef) {
+    auto it = g_db.items.find(itemId);
+    if (it != g_db.items.end()) { outDef = &(it->second); return true; }
+    return false;
 }
 
 double getItemNumericProperty(const std::string& itemId, const std::string& propertyKey, double defaultValue = 0.0) {

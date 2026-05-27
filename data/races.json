@@ -22,7 +22,12 @@
     "biome_preference": "forest",
     "stat_modifiers": { "str": 0, "dex": 2, "int": 1, "con": 0, "cha": 0 },
     "class_stats": {
-      "default": { "str": 10, "dex": 10, "int": 10, "con": 10, "cha": 10, "res": 10 }
+      "warrior": { "str": 10, "dex": 13, "int": 8, "con": 10, "cha": 9, "res": 10 },
+      "mage": { "str": 7, "dex": 12, "int": 14, "con": 8, "cha": 11, "res": 8 },
+      "rogue": { "str": 9, "dex": 15, "int": 10, "con": 9, "cha": 9, "res": 10 },
+      "bard": { "str": 8, "dex": 13, "int": 12, "con": 9, "cha": 12, "res": 9 },
+      "ranger": { "str": 10, "dex": 14, "int": 10, "con": 9, "cha": 10, "res": 11 },
+      "default": { "str": 9, "dex": 12, "int": 11, "con": 9, "cha": 10, "res": 9 }
     }
   },
   {
@@ -33,7 +38,12 @@
     "biome_preference": "mountains",
     "stat_modifiers": { "str": 1, "dex": 0, "int": 0, "con": 2, "cha": 0 },
     "class_stats": {
-      "default": { "str": 10, "dex": 10, "int": 10, "con": 10, "cha": 10, "res": 10 }
+      "warrior": { "str": 14, "dex": 9, "int": 7, "con": 14, "cha": 8, "res": 14 },
+      "mage": { "str": 9, "dex": 9, "int": 11, "con": 12, "cha": 9, "res": 10 },
+      "rogue": { "str": 11, "dex": 11, "int": 9, "con": 12, "cha": 9, "res": 10 },
+      "bard": { "str": 10, "dex": 10, "int": 10, "con": 12, "cha": 10, "res": 9 },
+      "runesmith": { "str": 12, "dex": 9, "int": 12, "con": 13, "cha": 8, "res": 12 },
+      "default": { "str": 11, "dex": 9, "int": 9, "con": 13, "cha": 9, "res": 11 }
     }
   },
   {
@@ -44,7 +54,12 @@
     "biome_preference": "desert",
     "stat_modifiers": { "str": 2, "dex": 0, "int": 0, "con": 1, "cha": -1 },
     "class_stats": {
-      "default": { "str": 10, "dex": 10, "int": 10, "con": 10, "cha": 10, "res": 10 }
+      "warrior": { "str": 15, "dex": 10, "int": 6, "con": 13, "cha": 7, "res": 13 },
+      "mage": { "str": 9, "dex": 9, "int": 11, "con": 10, "cha": 8, "res": 8 },
+      "rogue": { "str": 12, "dex": 12, "int": 8, "con": 11, "cha": 8, "res": 9 },
+      "shaman": { "str": 11, "dex": 9, "int": 12, "con": 11, "cha": 9, "res": 10 },
+      "berserker": { "str": 16, "dex": 11, "int": 5, "con": 12, "cha": 6, "res": 12 },
+      "default": { "str": 13, "dex": 10, "int": 8, "con": 12, "cha": 8, "res": 11 }
     }
   }
 ]
