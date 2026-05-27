@@ -458,7 +458,7 @@
         "chance": 20
       }
     },
-    "coast": {
+    "beach": {
       "fisheries": {
         "min": 1,
         "max": 1,

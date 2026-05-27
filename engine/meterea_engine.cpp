@@ -4483,7 +4483,7 @@ void processConsumption() {
                         for (const auto* item : edibleItems) {
                             if (countItemsInContainer(region.vault_id, item->id) > 0) {
                                 chosenFood = item->id;
-                                foodPrice = (int)region.markets[getMappedId(chosenFood)];
+                                foodPrice = region.markets.count(getMappedId(chosenFood)) ? (int)region.markets.at(getMappedId(chosenFood)) : 0;
                                 if (foodPrice == 0) foodPrice = item->basePrice;
                                 foundFood = true;
                                 break;
@@ -4492,7 +4492,7 @@ void processConsumption() {
                     } else {
                         if (!chosenFood.empty() && countItemsInContainer(region.vault_id, chosenFood) > 0) {
                             chosenFood = getCoreIdByTag("food");
-                            foodPrice = (int)region.markets[getMappedId(chosenFood)];
+                            foodPrice = region.markets.count(getMappedId(chosenFood)) ? (int)region.markets.at(getMappedId(chosenFood)) : 0;
                             if (foodPrice == 0) foodPrice = 5;
                             foundFood = true;
                         }
@@ -4537,7 +4537,7 @@ void processConsumption() {
                                                 j++;
                                             }
                                             if (!good.empty()) {
-                                                int price = (int)region.markets[good];
+                                                int price = region.markets.count(good) ? (int)region.markets.at(good) : 0;
                                                 int available = countItemsInContainer(region.vault_id, good);
                                                 if (npc.gold >= price && available > 0) {
                                                     npc.gold -= price;
@@ -5775,7 +5775,7 @@ void processArtisans() {
                         int avail = countItemsInContainer(contId, inStr);
                         if (avail < in.second) {
                             canCraft = false;
-                            double price = r.markets[inStr];
+                            double price = r.markets.count(inStr) ? r.markets.at(inStr) : 0.0;
                             if (price <= 0) {
                                 auto it = g_db.items.find(inStr);
                                 price = (it != g_db.items.end()) ? it->second.basePrice : 1;
@@ -5869,7 +5869,7 @@ void processMages() {
                     std::lock_guard<std::mutex> lock(*r_locks.at(r.id));
                     for (auto it = r.market_square.begin(); it != r.market_square.end(); ++it) {
                         if (it->good == inputId && it->quantity >= inputQty) {
-                            double price = r.markets[inputId];
+                            double price = r.markets.count(inputId) ? r.markets.at(inputId) : 0.0;
                             if (price <= 0) {
                                 auto db_it = g_db.items.find(inputId);
                                 price = (db_it != g_db.items.end()) ? db_it->second.basePrice : 1;
@@ -6117,7 +6117,7 @@ void processDailyEconomy() {
                 }
 
                 auto getProdMod = [&](const std::string& gtStr) -> double {
-                    double curPrice = region.markets[gtStr];
+                    double curPrice = region.markets.count(gtStr) ? region.markets.at(gtStr) : 0.0;
                     double basePrice = 1.0;
                     auto it = g_db.items.find(gtStr);
                     if (it != g_db.items.end()) basePrice = it->second.basePrice;
@@ -6239,8 +6239,8 @@ void processDailyEconomy() {
                     if (fac.level > 0) {
                         if (thread_safe_rand() % 100 < 20) fac.durability--;
                         if (fac.durability < 0) fac.durability = 0;
-                        if(fac.level == 0) triggerJsHook("onFacilityDestroyed", [&](){ JsonValue _h=JsonValue::object(); _h.set("regionId",rid); _h.set("facilityId",fId); return _h; });
                         if (fac.durability < 20) fac.level = std::max(0, (int)(fac.level * 0.5));
+                        if(fac.level == 0) triggerJsHook("onFacilityDestroyed", [&](){ JsonValue _h=JsonValue::object(); _h.set("regionId",rid); _h.set("facilityId",fId); return _h; });
                         
                         if (fac.durability < 50) {
                             int woodAvailable = vaultStocks[getCoreIdByTag("building")];
@@ -6442,12 +6442,14 @@ void processDailyEconomy() {
                     else if (npc.economy.isEmployed && (thread_safe_rand() % 100) < 2) npc.economy.isEmployed = false;
 
                     if (npc.economy.isEmployed) {
-                        int wage = std::max(1, (int)((r.moneySupply / std::max(1, r.population)) * npc.economy.skillLevel * 0.1));
+                        double localMoneySupply;
+                        { std::lock_guard<std::mutex> lock(g_npc_state_mutex); localMoneySupply = r.moneySupply; }
+                        int wage = std::max(1, (int)((localMoneySupply / std::max(1, r.population)) * npc.economy.skillLevel * 0.1));
                         npc.economy.savings += wage;
                     }
                     
                     std::string marketFoodId = getPreferredAvailableFoodId(r.vault_id);
-                    int foodPrice = (!marketFoodId.empty() && r.markets.count(marketFoodId)) ? (int)r.markets[marketFoodId] : 5;
+                    int foodPrice = (!marketFoodId.empty() && r.markets.count(marketFoodId)) ? (int)r.markets.at(marketFoodId) : 5;
                     int availableFood = marketFoodId.empty() ? 0 : countItemsInContainer(r.vault_id, marketFoodId);
                     if (!marketFoodId.empty() && npc.economy.savings >= foodPrice && availableFood > 0) {
                         npc.economy.savings -= foodPrice;
@@ -6572,7 +6574,7 @@ void processMarkets() {
                         for (auto it = r.market_square.begin(); it != r.market_square.end(); ) {
                             MarketOffer& offer = *it;
                             if (offer.good == neededGood && offer.quantity > 0) {
-                                double price = r.markets[offer.good];
+                                double price = r.markets.count(offer.good) ? r.markets.at(offer.good) : 0.0;
                                 if (price <= 0) {
                                     auto db_it = g_db.items.find(offer.good);
                                     price = (db_it != g_db.items.end()) ? db_it->second.basePrice : 1;
@@ -6624,7 +6626,7 @@ void processMarkets() {
                     int buy_qty = std::min(offer.quantity, demand[offer.good]);
                     
                     if (buy_qty > 0 && r.moneySupply > 0) {
-                        double price = r.markets[offer.good];
+                        double price = r.markets.count(offer.good) ? r.markets.at(offer.good) : 0.0;
                         if (price <= 0) {
                             auto db_it = g_db.items.find(offer.good);
                             price = (db_it != g_db.items.end()) ? db_it->second.basePrice : 1;
@@ -6780,7 +6782,7 @@ void processDailyMilitary() {
                     int goldAvailable = vaultStocks[capitalRegionId][g_id];
                     
                     if (goldAvailable > 500) {
-                        double wPrice = cap.markets[w_id];
+                        double wPrice = cap.markets.count(w_id) ? cap.markets.at(w_id) : 0.0;
                         if (wPrice <= 0) {
                             auto it = g_db.items.find(w_id);
                             wPrice = (it != g_db.items.end()) ? it->second.basePrice : 1;
@@ -6794,7 +6796,7 @@ void processDailyMilitary() {
                             goldAvailable -= wToBuy * wPrice;
                         }
                         
-                        double lPrice = cap.markets[l_id];
+                        double lPrice = cap.markets.count(l_id) ? cap.markets.at(l_id) : 0.0;
                         if (lPrice <= 0) {
                             auto it = g_db.items.find(l_id);
                             lPrice = (it != g_db.items.end()) ? it->second.basePrice : 1;
@@ -9296,7 +9298,7 @@ void checkRulerDeaths() {
                 
                 if (totalFood < 20) {
                     std::string f_id = getCoreIdByTag("food");
-                    double foodPrice = capReg.markets[f_id];
+                    double foodPrice = capReg.markets.count(f_id) ? capReg.markets.at(f_id) : 0.0;
                     if (foodPrice <= 0) {
                         auto db_it = g_db.items.find(f_id);
                         foodPrice = (db_it != g_db.items.end() && db_it->second.basePrice > 0) ? db_it->second.basePrice : 5;

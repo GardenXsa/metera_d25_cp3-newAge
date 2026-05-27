@@ -1293,7 +1293,7 @@ document.addEventListener('click', (e) => {
     if (act === 'cancel-api' && typeof window.cancelCurrentApiRequest === 'function') {
         window.cancelCurrentApiRequest();
     } else if (act === 'dismount-transport') {
-        dismountTransport();
+        dismountTransport().catch(e => console.error('[dismountTransport]', e));
     } else if (act === 'admin-add-gold') {
         adminAddGold();
     } else if (act === 'admin-heal') {
@@ -4293,33 +4293,7 @@ function populateClassesUI(classesData) {
     });
 }
 
-function updateEraDescription() {
-    if (!charEraSelect || !eraDescriptionBox) return;
-
-    // Находим выбранный элемент <option>
-    const selectedOption = charEraSelect.options[charEraSelect.selectedIndex];
-    if (!selectedOption) {
-        eraDescriptionBox.classList.remove('visible');
-        eraDescriptionBox.innerHTML = '';
-        return;
-    }
-
-    // Получаем ключ для текста напрямую из data-атрибута
-    const descriptionKey = selectedOption.dataset.descriptionKey;
-    const descriptionText = t(descriptionKey, null, '');
-
-    // Прячем блок, чтобы сменить текст и запустить анимацию заново
-    eraDescriptionBox.classList.remove('visible');
-
-    setTimeout(() => {
-        if (descriptionText) {
-            eraDescriptionBox.innerHTML = sanitizeHTML(descriptionText);
-            eraDescriptionBox.classList.add('visible');
-        } else {
-            eraDescriptionBox.innerHTML = '';
-        }
-    }, 200); // Небольшая задержка для плавной анимации
-}
+// V1 updateEraDescription removed — duplicate, V2 definition is active. See GitHub #167.
 
 // --- Функции File System Access API ---
 
@@ -6627,28 +6601,7 @@ const musicSlider = document.getElementById('music-volume-slider');
 
 // --- СОХРАНЕНИЕ НАСТРОЕК ---
 // Замени старую функцию saveApiKey на эту (или обнови слушатель события)
-function getFriendlyApiErrorMessage(status, rawText) {
-    // Хардкодный словарь на случай сбоя системы локализации (t())
-    const fallbacks = {
-        400: "Неверный запрос. Возможно, контекст слишком велик или модель не поддерживает выбранные параметры.",
-        401: "Ошибка авторизации. Проверьте правильность API ключа.",
-        402: "Недостаточно средств на балансе провайдера. Пополните счёт или смените модель.",
-        403: "Доступ запрещен. Проверьте API ключ или ограничения провайдера.",
-        429: "Слишком много запросов (Лимит исчерпан). Если это бесплатная модель, подождите немного или смените модель.",
-        500: "Внутренняя ошибка сервера провайдера ИИ.",
-        502: "Плохой шлюз. Сервер провайдера ИИ временно недоступен.",
-        503: "Сервер провайдера ИИ перегружен. Повторите попытку позже.",
-        504: "Время ожидания ответа от сервера ИИ истекло.",
-        'network': "Ошибка сети. Проверьте подключение к интернету или отключите VPN/AdBlock."
-    };
-    
-    let friendlyText = t(`apiErrors.${status}`, null, "");
-    // Если перевод не найден или вернул сам ключ
-    if (!friendlyText || friendlyText === `apiErrors.${status}`) {
-        friendlyText = fallbacks[status] || t('apiErrors.unknown', null, "Неизвестная ошибка API.");
-    }
-    return `${friendlyText}\n\n[Код: ${status}] Детали: ${rawText}`;
-}
+// V1 getFriendlyApiErrorMessage removed — duplicate, V2 definition is active. See GitHub #167.
 
 
 async function pingProvider() {
@@ -7084,22 +7037,7 @@ function showModelSelector(models) {
     };
 }
 
-function applyModelFilters() {
-    const query = document.getElementById('model-search-input').value.toLowerCase();
-    
-    const filtered = currentModelsList.filter(m => {
-        // 1. Поиск по тексту
-        const matchesSearch = m.id.toLowerCase().includes(query) || (m.name && m.name.toLowerCase().includes(query));
-        if (!matchesSearch) return false;
-        
-        // 2. Фильтр по категории
-        if (currentModelFilter === 'all') return true;
-        if (currentModelFilter === 'free') return m.free === true;
-        return m.type === currentModelFilter;
-    });
-    
-    renderModelList(filtered);
-}
+// V1 applyModelFilters removed — duplicate, V2 definition is active. See GitHub #167.
 
 function applyModelFilters() {
     const query = document.getElementById('model-search-input').value.toLowerCase();
@@ -9892,10 +9830,10 @@ function updateCharacterSheet() {
 
                         let safeDesc = description.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                         htmlText += `<div class="journey-event-row">
-                                        <div class="journey-event-text-container"><strong>[Событие]</strong> ${description}</div>`;
+                                        <div class="journey-event-text-container"><strong>[Событие]</strong> ${escapeHTML(description)}</div>`;
                         if (ev.can_interact) {
                             htmlText += `<div class="journey-event-btn-container">
-                                            <button class="travel-action-btn" onclick="LivingRoads.interact('${ev.object_type}', '${ev.sim_object_id}', '${safeDesc}')"><i class="fas fa-search"></i> Исследовать</button>
+                                            <button class="travel-action-btn" onclick="LivingRoads.interact('${escapeHTML(ev.object_type).replace(/'/g,"\\'")}', '${escapeHTML(ev.sim_object_id).replace(/'/g,"\\'")}', '${safeDesc}')"><i class="fas fa-search"></i> Исследовать</button>
                                          </div>`;
                         }
                         htmlText += `</div>`;
@@ -12671,7 +12609,7 @@ function renderSuggestedActions(actions) {
         if (act.roll_stat) icon = '<i class="fas fa-dice-d20"></i>';
         else icon = '<i class="fas fa-location-arrow"></i>';
         
-        btn.innerHTML = `${icon} <span>${act.text}</span>`;
+        btn.innerHTML = `${icon} <span>${escapeHTML(act.text)}</span>`;
         
         btn.onclick = () => {
             if (act.roll_stat) {
@@ -15408,43 +15346,9 @@ if (player.nexusData && player.nexusData[args.id]) {
                     else { feedback = `[ERROR] Интрига '${args.id}' не найдена.`; }
                 }
                 break;
-            case 'revealIntrigue':
-                if (args.id && World.intrigues) {
-                    const intrigue = World.intrigues.find(i => i.id === args.id);
-                    if (intrigue) { intrigue.isDiscovered = true; feedback = `[Интрига] Заговор '${args.id}' принудительно раскрыт!`; generateWorldNews(`ШОК! Раскрыт заговор фракции ${World.factions[intrigue.initiatorFactionId]?.name} против ${World.factions[intrigue.targetFactionId]?.name}!`, "global", 5, 'misc'); }
-                }
-                break;
-            case 'assassinateRuler':
-                if (args.id && World.rulers && World.rulers[args.id]) {
-                    World.rulers[args.id].health = 0; World.rulers[args.id].stats.hp = 0;
-                    feedback = `[Убийство] Правитель '${args.id}' убит по воле GM.`;
-                    checkRulerDeaths();
-                } else { feedback = `[ERROR] Правитель '${args.id}' не найден.`; }
-                break;
-            case 'overthrowRuler':
-                if (args.factionId && World.factions[args.factionId]) {
-                    // Вместо стабильности - физическое последствие: бунт уничтожает ресурсы столицы
-                    const capitalRegionId = Object.keys(World.regions).find(rid => World.regions[rid].factionId === args.factionId);
-                    if (capitalRegionId && World.regions[capitalRegionId]?.vault_id) {
-                        const capitalVault = World.regions[capitalRegionId].vault_id;
-                        const weaponsLost = Math.floor(countRealItems(capitalVault, 'weapons') * 0.3);
-                        const foodLost = Math.floor(countRealItems(capitalVault, 'bread') * 0.5);
-                        consumeRealItems(capitalVault, 'weapons', weaponsLost);
-                        consumeRealItems(capitalVault, 'bread', foodLost);
-                        generateWorldNews(`МЯТЕЖ! В землях ${World.factions[args.factionId].name} вспыхнуло восстание! Уничтожено запасов: ${weaponsLost} оружия, ${foodLost} еды.`, "global", 5, 'war');
-                    } else {
-                        generateWorldNews(`МЯТЕЖ! В землях ${World.factions[args.factionId].name} вспыхнуло восстание!`, "global", 5, 'war');
-                    }
-                    generateWorldNews(`МЯТЕЖ! В землях ${World.factions[args.factionId].name} вспыхнуло восстание!`, "global", 5, 'war');
-                    feedback = `[Мятеж] Инициирован бунт во фракции '${args.factionId}'.`;
-                }
-                break;
-            case 'setFactionGoal':
-                if (args.rulerId && World.rulers && World.rulers[args.rulerId]) {
-                    World.rulers[args.rulerId].gmOverride = args.goal;
-                    feedback = `[Дипломатия] Цель правителя '${args.rulerId}' принудительно изменена на: ${args.goal}.`;
-                }
-                break;
+            // V1 revealIntrigue/assassinateRuler/overthrowRuler/setFactionGoal removed —
+            // duplicate cases (JS only executes first match). V2 definitions at line ~15536 are active.
+            // See GitHub #164.
 
             case 'setCombatState':
                 // СУПЕР-ПРЕДОХРАНИТЕЛЬ: Если ИИ забыл isActive, но передал участников, считаем что бой начался
@@ -15554,10 +15458,12 @@ if (player.nexusData && player.nexusData[args.id]) {
                         const capitalVault = World.regions[capitalRegionId].vault_id;
                         const weaponsLost = Math.floor(countRealItems(capitalVault, 'weapons') * 0.3);
                         const foodLost = Math.floor(countRealItems(capitalVault, 'bread') * 0.5);
-                        consumeRealItems(capitalVault, 'weapons', weaponsLost);
-                        consumeRealItems(capitalVault, 'bread', foodLost);
+                        await consumeRealItemsAsync(capitalVault, 'weapons', weaponsLost); // #163: use async version
+                        await consumeRealItemsAsync(capitalVault, 'bread', foodLost); // #163
+                        generateWorldNews(`МЯТЕЖ! В землях ${World.factions[args.factionId].name} вспыхнуло восстание! Уничтожено: ${weaponsLost} оружия, ${foodLost} еды.`, "global", 5, 'war');
+                    } else {
+                        generateWorldNews(`МЯТЕЖ! В землях ${World.factions[args.factionId].name} вспыхнуло восстание!`, "global", 5, 'war');
                     }
-                    generateWorldNews(`МЯТЕЖ! В землях ${World.factions[args.factionId].name} вспыхнуло восстание!`, "global", 5, 'war');
                     feedback = `[Мятеж] Инициирован бунт во фракции '${args.factionId}'. Ресурсы столицы разграблены!`;
                 }
                 break;
@@ -17759,82 +17665,11 @@ function updateWorldSimDebugDisplay() {
 // --- СИСТЕМА ПРАВИТЕЛЕЙ, ДИПЛОМАТИИ И ИНТРИГ ---
 // ======================================================================
 
-function createRulerForFaction(id, faction, era, isHeir = false) {
-    const names = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta", "Iota", "Kappa"];
-    let name = (isHeir ? "Heir " : "Ruler ") + names[GameRNG.roll(0, names.length - 1)];
-    const personalityDefaults = getRulerEntityPersonalityDefaults();
-    let baseWisdom = getRulerEntityPersonalityNumber('wisdom_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('wisdom_range') - 1);
-    let baseCruelty = getRulerEntityPersonalityNumber('cruelty_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('cruelty_range') - 1);
-    let baseDiplomacy = getRulerEntityPersonalityNumber('diplomacy_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('diplomacy_range') - 1);
-    let baseMilitary = getRulerEntityPersonalityNumber('military_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('military_range') - 1);
-
-    return {
-        id: id,
-        name: name,
-        factionId: faction.id || id.replace("_heir", ""),
-        type: "ruler",
-        stats: { hp: getRulerEntityDefaultStat('hp'), maxHp: getRulerEntityDefaultStat('hp'), str: getRulerEntityDefaultStat('strength'), dex: getRulerEntityDefaultStat('dexterity'), int: getRulerEntityDefaultStat('intelligence'), con: getRulerEntityDefaultStat('constitution'), cha: getRulerEntityDefaultStat('charisma'), res: getRulerEntityDefaultStat('resilience') },
-        personality: {
-            ambition: getRulerEntityPersonalityNumber('ambition_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('ambition_range') - 1),
-            paranoia: getRulerEntityPersonalityNumber('paranoia_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('paranoia_range') - 1),
-            wisdom: baseWisdom + GameRNG.roll(0, (getRulerEntityPersonalityNumber('wisdom_variance') * 2)) - getRulerEntityPersonalityNumber('wisdom_variance'),
-            cruelty: baseCruelty + GameRNG.roll(0, (getRulerEntityPersonalityNumber('cruelty_variance') * 2)) - getRulerEntityPersonalityNumber('cruelty_variance'),
-            diplomacy: baseDiplomacy + GameRNG.roll(0, (getRulerEntityPersonalityNumber('diplomacy_variance') * 2)) - getRulerEntityPersonalityNumber('diplomacy_variance'),
-            military: baseMilitary + GameRNG.roll(0, (getRulerEntityPersonalityNumber('military_variance') * 2)) - getRulerEntityPersonalityNumber('military_variance'),
-            stewardship: getRulerEntityPersonalityNumber('stewardship_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('stewardship_range') - 1)
-        },
-        traits: ["Амбициозный", "Хитрый"],
-        health: requireRuntimeNumber(getRulerEntityCommandDefaults().health_percent, 'gameplay_runtime.command_defaults.ruler_entity.health_percent'),
-        alive: true,
-        heir: isHeir ? null : id + "_heir",
-        currentGoal: null,
-        gmOverride: null,
-        lastTickDay: 0
-    };
-}
+// V1 createRulerForFaction removed — duplicate, V2 definition is active. See GitHub #167.
 
 
 
-
-function checkRulerDeaths() {
-    for (let rId in World.rulers) {
-        let r = World.rulers[rId];
-        if (r.alive && (r.health <= 0 || r.stats.hp <= 0)) {
-            r.alive = false;
-            if (r.heir && World.rulers[r.heir]) {
-                let heir = World.rulers[r.heir];
-                World.factions[r.factionId].rulerId = heir.id;
-                generateWorldNews(`СМЕНА ВЛАСТИ: ${r.name} мертв. Трон занимает ${heir.name}.`, "global", 5, 'misc');
-                
-                // Наследник становится правителем
-                let newRulerId = r.factionId + "_ruler_" + Date.now();
-                heir.id = newRulerId;
-                World.rulers[newRulerId] = heir;
-                World.factions[r.factionId].rulerId = newRulerId;
-                
-                // Создаем нового наследника
-                let newHeirId = r.factionId + "_heir_" + Date.now();
-                World.rulers[newHeirId] = createRulerForFaction(newHeirId, World.factions[r.factionId], player?.era || getRuntimeDefaultEraId(), true);
-                heir.heir = newHeirId;
-                
-                delete World.rulers[r.heir]; // Удаляем старую запись наследника
-            } else {
-                generateWorldNews(`КРИЗИС: ${r.name} мертв, и наследников нет! Фракция погружается в хаос.`, "global", 5, 'disaster');
-                // Вместо стабильности - физическое последствие: бунт уничтожает ресурсы столицы
-                const capitalRegionId = Object.keys(World.regions).find(rid => World.regions[rid].owner === r.factionId);
-                if (capitalRegionId) {
-                    const capitalVault = World.regions[capitalRegionId].vault_id;
-                    const weaponsLost = Math.floor(countRealItems(capitalVault, 'weapons') * 0.4);
-                    const goldLost = Math.floor(countRealItems(capitalVault, 'gold') * 0.3);
-                    consumeRealItems(capitalVault, 'weapons', weaponsLost);
-                    consumeRealItems(capitalVault, 'gold', goldLost);
-                }
-            }
-        } else if (r.alive) {
-            // Правитель больше не теряет здоровье от старения в main thread - это обрабатывается в world_worker.js
-        }
-    }
-}
+// V1 checkRulerDeaths removed — duplicate, V2 definition is active. See GitHub #167.
 
 
 // ======================================================================
