@@ -359,6 +359,20 @@
       "service"
     ]
   },
+  "guardhouse": {
+    "names": {
+      "rebirth": "Казарма стражи",
+      "architects": "Сектор безопасности",
+      "sundering": "Палата дисциплины",
+      "silence": "Дозорная"
+    },
+    "tags": [
+      "service",
+      "military"
+    ],
+    "build_cost": 800,
+    "max_employees_per_level": 50
+  },
   "placement_resources": {
     "mountain": {
       "mines": {

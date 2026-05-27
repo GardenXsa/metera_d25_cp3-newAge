@@ -2705,8 +2705,8 @@ const LivingRoads = {
                 id: destinationId,
                 name: capitalizedName,
                 description: "Неизведанное место, упомянутое в пути.",
-                x: startX + (Math.random() * 20 - 10),
-                y: startY + (Math.random() * 20 - 10)
+                x: startX + (GameRNG.next() * 20 - 10),
+                y: startY + (GameRNG.next() * 20 - 10)
             });
             
             dest = player.mapMarkers[destinationId];
@@ -4060,16 +4060,16 @@ function handleQuickStart() {
     charClassSelect.value = defaultClass;
     charEraSelect.value = defaultEra;
     const genderSelect = document.getElementById('char-gender-select');
-    if (genderSelect) genderSelect.value = Math.random() > 0.5 ? 'male' : 'female';
+    if (genderSelect) genderSelect.value = GameRNG.next() > 0.5 ? 'male' : 'female';
 
     handleRaceOrClassChange();
 
-    charNameInput.value = names[Math.floor(Math.random() * names.length)] + " " + (Math.floor(Math.random() * Math.max(1, requireRuntimeNumber(quickStart.name_suffix_range, 'gameplay_runtime.character_creation.quick_start.name_suffix_range'))) + requireRuntimeNumber(quickStart.name_suffix_min, 'gameplay_runtime.character_creation.quick_start.name_suffix_min'));
+    charNameInput.value = names[GameRNG.roll(0, names.length - 1)] + " " + (GameRNG.roll(0, Math.max(0, requireRuntimeNumber(quickStart.name_suffix_range, 'gameplay_runtime.character_creation.quick_start.name_suffix_range') - 1)) + requireRuntimeNumber(quickStart.name_suffix_min, 'gameplay_runtime.character_creation.quick_start.name_suffix_min'));
     charDescInput.value = "Авантюрист, прибывший из старой деревни на севере.";
 
     const statKeys = ['str', 'dex', 'int', 'con', 'cha', 'res'];
     while (availableStatPoints > 0) {
-        const randomStat = statKeys[Math.floor(Math.random() * statKeys.length)];
+        const randomStat = statKeys[GameRNG.roll(0, statKeys.length - 1)];
         currentCreationStats[randomStat]++;
         availableStatPoints--;
     }
@@ -5399,7 +5399,7 @@ async function fetchAndSelectBuiltInKey() {
         return false;
     }
 
-    const randomIndex = Math.floor(Math.random() * keys.length);
+    const randomIndex = GameRNG.roll(0, keys.length - 1);
     currentBuiltInKey = keys[randomIndex];
     GEMINI_API_KEY = currentBuiltInKey;
     isUsingBuiltInKey = true;
@@ -9296,7 +9296,7 @@ function calculateMaxMana(intelligence, level) {
 
 function calculateMaxHp(constitution) { const hpConfig = getGameplayRuntimeConfig().progression.hp; const currentLevel = player ? requireRuntimeNumber(player.stats.level, 'player.stats.level') : 1; const baseHp = requireRuntimeNumber(hpConfig.base, 'gameplay_runtime.progression.hp.base'); const divisor = Math.max(1, requireRuntimeNumber(hpConfig.constitution_divisor, 'gameplay_runtime.progression.hp.constitution_divisor')); const baseline = requireRuntimeNumber(hpConfig.constitution_baseline, 'gameplay_runtime.progression.hp.constitution_baseline'); const conModifier = Math.floor((requireRuntimeNumber(constitution, 'player.stats.con') - baseline) / divisor); const levelBonus = requireRuntimeNumber(hpConfig.level_bonus, 'gameplay_runtime.progression.hp.level_bonus'); const minimum = requireRuntimeNumber(hpConfig.minimum, 'gameplay_runtime.progression.hp.minimum'); return Math.max(minimum, baseHp + (conModifier * currentLevel) + (currentLevel * levelBonus)); }
 function getInitialInventoryCapacity(strength) { const capacityConfig = getGameplayRuntimeConfig().character_creation?.inventory_capacity || {}; const base = requireRuntimeNumber(capacityConfig.base, 'gameplay_runtime.character_creation.inventory_capacity.base'); const strengthBaseline = requireRuntimeNumber(capacityConfig.strength_baseline, 'gameplay_runtime.character_creation.inventory_capacity.strength_baseline'); const strengthDivisor = Math.max(1, requireRuntimeNumber(capacityConfig.strength_divisor, 'gameplay_runtime.character_creation.inventory_capacity.strength_divisor')); return base + Math.floor((requireRuntimeNumber(strength, 'player.stats.str') - strengthBaseline) / strengthDivisor); }
-function buildInitialGameTime(selectedEra) { const calendar = getGameplayRuntimeConfig().calendar || {}; const eraStartYear = window.ERAS_DATA && window.ERAS_DATA.find(e => e.id === selectedEra)?.start_year; const fallbackYear = requireRuntimeNumber(calendar.fallback_start_year, 'gameplay_runtime.calendar.fallback_start_year'); const monthsPerYear = Math.max(1, requireRuntimeNumber(calendar.months_per_year, 'gameplay_runtime.calendar.months_per_year')); const maxInitialDay = Math.max(1, requireRuntimeNumber(calendar.max_initial_day, 'gameplay_runtime.calendar.max_initial_day')); return { year: eraStartYear || fallbackYear, month: Math.floor(Math.random() * monthsPerYear) + 1, day: Math.floor(Math.random() * maxInitialDay) + 1, hour: requireRuntimeNumber(calendar.initial_hour, 'gameplay_runtime.calendar.initial_hour'), minute: requireRuntimeNumber(calendar.initial_minute, 'gameplay_runtime.calendar.initial_minute'), totalPulses: requireRuntimeNumber(calendar.initial_total_pulses, 'gameplay_runtime.calendar.initial_total_pulses') }; }
+function buildInitialGameTime(selectedEra) { const calendar = getGameplayRuntimeConfig().calendar || {}; const eraStartYear = window.ERAS_DATA && window.ERAS_DATA.find(e => e.id === selectedEra)?.start_year; const fallbackYear = requireRuntimeNumber(calendar.fallback_start_year, 'gameplay_runtime.calendar.fallback_start_year'); const monthsPerYear = Math.max(1, requireRuntimeNumber(calendar.months_per_year, 'gameplay_runtime.calendar.months_per_year')); const maxInitialDay = Math.max(1, requireRuntimeNumber(calendar.max_initial_day, 'gameplay_runtime.calendar.max_initial_day')); return { year: eraStartYear || fallbackYear, month: GameRNG.roll(1, monthsPerYear), day: GameRNG.roll(1, maxInitialDay), hour: requireRuntimeNumber(calendar.initial_hour, 'gameplay_runtime.calendar.initial_hour'), minute: requireRuntimeNumber(calendar.initial_minute, 'gameplay_runtime.calendar.initial_minute'), totalPulses: requireRuntimeNumber(calendar.initial_total_pulses, 'gameplay_runtime.calendar.initial_total_pulses') }; }
 function calculateAbsoluteStartDay(gameTime) { const calendar = getGameplayRuntimeConfig().calendar || {}; const daysPerYear = Math.max(1, requireRuntimeNumber(calendar.days_per_year, 'gameplay_runtime.calendar.days_per_year')); const daysPerMonth = Math.max(1, requireRuntimeNumber(calendar.days_per_month, 'gameplay_runtime.calendar.days_per_month')); return gameTime.year * daysPerYear + (gameTime.month - 1) * daysPerMonth + (gameTime.day - 1); }
 function calculateBootstrapDays(totalPopulation) { const bootstrap = getGameplayRuntimeConfig().world_bootstrap || {}; const minimumDays = Math.max(0, requireRuntimeNumber(bootstrap.minimum_days, 'gameplay_runtime.world_bootstrap.minimum_days')); const baseDays = Math.max(0, requireRuntimeNumber(bootstrap.base_days, 'gameplay_runtime.world_bootstrap.base_days')); const populationDivisor = Math.max(1, requireRuntimeNumber(bootstrap.population_divisor, 'gameplay_runtime.world_bootstrap.population_divisor')); return Math.max(minimumDays, baseDays + Math.floor(requireRuntimeNumber(totalPopulation, 'world.totalPopulation') / populationDivisor)); }
 function getStartingInventory(playerClass) {
@@ -9648,7 +9648,7 @@ async function initializeGameInterface() {
         }
 
         // Рандомный выбор события скриптом
-        const randomIndex = Math.floor(Math.random() * options.length);
+        const randomIndex = GameRNG.roll(0, options.length - 1);
         const selectedEvent = options[randomIndex];
 
         // Отрисовка текста события
@@ -10145,7 +10145,7 @@ function updateInventoryDisplay() {
                                props.isTransport === true;
 
             li.innerHTML = `
-                <span class="item-name ${rarityClass}">${itemName}</span>
+                <span class="item-name ${rarityClass}">${escapeHTML(itemName)}</span>
                 <span class="item-quantity">(x${item.stack_size})</span>
             `;
 
@@ -14508,11 +14508,11 @@ async function executeNonInventoryCommand(command, args) {
                             pLoc = Object.values(World.map.locations).find(l => player.location && player.location.includes(l.name));
                         }
                         if (pLoc) {
-                            newX = pLoc.x + (Math.random() * 20 - 10);
-                            newY = pLoc.y + (Math.random() * 20 - 10);
+                            newX = pLoc.x + (GameRNG.next() * 20 - 10);
+                            newY = pLoc.y + (GameRNG.next() * 20 - 10);
                         } else {
-                            newX = 128 + (Math.random() * 40 - 20);
-                            newY = 128 + (Math.random() * 40 - 20);
+                            newX = 128 + (GameRNG.next() * 40 - 20);
+                            newY = 128 + (GameRNG.next() * 40 - 20);
                         }
                     }
                     const MIN_DISTANCE = 45; // Увеличено расстояние отталкивания меток друг от друга
@@ -14538,7 +14538,7 @@ async function executeNonInventoryCommand(command, args) {
                                 if (distance < MIN_DISTANCE) {
                                     collisionDetected = true;
                                     // Если нашли коллизию, сдвигаем новую точку в случайном направлении по спирали
-                                    const angle = Math.random() * 2 * Math.PI;
+                                    const angle = GameRNG.next() * 2 * Math.PI;
                                     newX += Math.cos(angle) * (MIN_DISTANCE * 0.75);
                                     newY += Math.sin(angle) * (MIN_DISTANCE * 0.75);
                                     attempts++;
@@ -16645,7 +16645,7 @@ function changeBackground() {
 
     let randomIndex;
     if (backgroundFiles.length > 1) {
-        do { randomIndex = Math.floor(Math.random() * backgroundFiles.length); }
+        do { randomIndex = GameRNG.roll(0, backgroundFiles.length - 1); }
         while (randomIndex === lastBackgroundIndex);
     } else { randomIndex = 0; }
     lastBackgroundIndex = randomIndex;
@@ -17761,12 +17761,12 @@ function updateWorldSimDebugDisplay() {
 
 function createRulerForFaction(id, faction, era, isHeir = false) {
     const names = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta", "Iota", "Kappa"];
-    let name = (isHeir ? "Heir " : "Ruler ") + names[Math.floor(Math.random() * names.length)];
+    let name = (isHeir ? "Heir " : "Ruler ") + names[GameRNG.roll(0, names.length - 1)];
     const personalityDefaults = getRulerEntityPersonalityDefaults();
-    let baseWisdom = getRulerEntityPersonalityNumber('wisdom_min') + Math.floor(Math.random() * getRulerEntityPersonalityNumber('wisdom_range'));
-    let baseCruelty = getRulerEntityPersonalityNumber('cruelty_min') + Math.floor(Math.random() * getRulerEntityPersonalityNumber('cruelty_range'));
-    let baseDiplomacy = getRulerEntityPersonalityNumber('diplomacy_min') + Math.floor(Math.random() * getRulerEntityPersonalityNumber('diplomacy_range'));
-    let baseMilitary = getRulerEntityPersonalityNumber('military_min') + Math.floor(Math.random() * getRulerEntityPersonalityNumber('military_range'));
+    let baseWisdom = getRulerEntityPersonalityNumber('wisdom_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('wisdom_range') - 1);
+    let baseCruelty = getRulerEntityPersonalityNumber('cruelty_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('cruelty_range') - 1);
+    let baseDiplomacy = getRulerEntityPersonalityNumber('diplomacy_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('diplomacy_range') - 1);
+    let baseMilitary = getRulerEntityPersonalityNumber('military_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('military_range') - 1);
 
     return {
         id: id,
@@ -17775,13 +17775,13 @@ function createRulerForFaction(id, faction, era, isHeir = false) {
         type: "ruler",
         stats: { hp: getRulerEntityDefaultStat('hp'), maxHp: getRulerEntityDefaultStat('hp'), str: getRulerEntityDefaultStat('strength'), dex: getRulerEntityDefaultStat('dexterity'), int: getRulerEntityDefaultStat('intelligence'), con: getRulerEntityDefaultStat('constitution'), cha: getRulerEntityDefaultStat('charisma'), res: getRulerEntityDefaultStat('resilience') },
         personality: {
-            ambition: getRulerEntityPersonalityNumber('ambition_min') + Math.floor(Math.random() * getRulerEntityPersonalityNumber('ambition_range')),
-            paranoia: getRulerEntityPersonalityNumber('paranoia_min') + Math.floor(Math.random() * getRulerEntityPersonalityNumber('paranoia_range')),
-            wisdom: baseWisdom + Math.floor(Math.random() * ((getRulerEntityPersonalityNumber('wisdom_variance') * 2) + 1)) - getRulerEntityPersonalityNumber('wisdom_variance'),
-            cruelty: baseCruelty + Math.floor(Math.random() * ((getRulerEntityPersonalityNumber('cruelty_variance') * 2) + 1)) - getRulerEntityPersonalityNumber('cruelty_variance'),
-            diplomacy: baseDiplomacy + Math.floor(Math.random() * ((getRulerEntityPersonalityNumber('diplomacy_variance') * 2) + 1)) - getRulerEntityPersonalityNumber('diplomacy_variance'),
-            military: baseMilitary + Math.floor(Math.random() * ((getRulerEntityPersonalityNumber('military_variance') * 2) + 1)) - getRulerEntityPersonalityNumber('military_variance'),
-            stewardship: getRulerEntityPersonalityNumber('stewardship_min') + Math.floor(Math.random() * getRulerEntityPersonalityNumber('stewardship_range'))
+            ambition: getRulerEntityPersonalityNumber('ambition_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('ambition_range') - 1),
+            paranoia: getRulerEntityPersonalityNumber('paranoia_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('paranoia_range') - 1),
+            wisdom: baseWisdom + GameRNG.roll(0, (getRulerEntityPersonalityNumber('wisdom_variance') * 2)) - getRulerEntityPersonalityNumber('wisdom_variance'),
+            cruelty: baseCruelty + GameRNG.roll(0, (getRulerEntityPersonalityNumber('cruelty_variance') * 2)) - getRulerEntityPersonalityNumber('cruelty_variance'),
+            diplomacy: baseDiplomacy + GameRNG.roll(0, (getRulerEntityPersonalityNumber('diplomacy_variance') * 2)) - getRulerEntityPersonalityNumber('diplomacy_variance'),
+            military: baseMilitary + GameRNG.roll(0, (getRulerEntityPersonalityNumber('military_variance') * 2)) - getRulerEntityPersonalityNumber('military_variance'),
+            stewardship: getRulerEntityPersonalityNumber('stewardship_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('stewardship_range') - 1)
         },
         traits: ["Амбициозный", "Хитрый"],
         health: requireRuntimeNumber(getRulerEntityCommandDefaults().health_percent, 'gameplay_runtime.command_defaults.ruler_entity.health_percent'),
@@ -17843,14 +17843,14 @@ function checkRulerDeaths() {
 
 function createRulerForFaction(id, faction, era, isHeir = false) {
     const names = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta", "Iota", "Kappa"];
-    let name = (isHeir ? "Heir " : "Ruler ") + names[Math.floor(Math.random() * names.length)];
+    let name = (isHeir ? "Heir " : "Ruler ") + names[GameRNG.roll(0, names.length - 1)];
     const personalityDefaults = getRulerEntityPersonalityDefaults();
     const rulerNeedsDefaults = getRulerEntityNeedsDefaults();
     const rulerEconomyDefaults = getRulerEntityEconomyDefaults();
-    let baseWisdom = getRulerEntityPersonalityNumber('wisdom_min') + Math.floor(Math.random() * getRulerEntityPersonalityNumber('wisdom_range'));
-    let baseCruelty = getRulerEntityPersonalityNumber('cruelty_min') + Math.floor(Math.random() * getRulerEntityPersonalityNumber('cruelty_range'));
-    let baseDiplomacy = getRulerEntityPersonalityNumber('diplomacy_min') + Math.floor(Math.random() * getRulerEntityPersonalityNumber('diplomacy_range'));
-    let baseMilitary = getRulerEntityPersonalityNumber('military_min') + Math.floor(Math.random() * getRulerEntityPersonalityNumber('military_range'));
+    let baseWisdom = getRulerEntityPersonalityNumber('wisdom_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('wisdom_range') - 1);
+    let baseCruelty = getRulerEntityPersonalityNumber('cruelty_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('cruelty_range') - 1);
+    let baseDiplomacy = getRulerEntityPersonalityNumber('diplomacy_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('diplomacy_range') - 1);
+    let baseMilitary = getRulerEntityPersonalityNumber('military_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('military_range') - 1);
 
     return {
         id: id,
@@ -17859,13 +17859,13 @@ function createRulerForFaction(id, faction, era, isHeir = false) {
         type: "ruler",
         stats: { hp: getRulerEntityDefaultStat('hp'), maxHp: getRulerEntityDefaultStat('hp'), str: getRulerEntityDefaultStat('strength'), dex: getRulerEntityDefaultStat('dexterity'), int: getRulerEntityDefaultStat('intelligence'), con: getRulerEntityDefaultStat('constitution'), cha: getRulerEntityDefaultStat('charisma'), res: getRulerEntityDefaultStat('resilience') },
         personality: {
-            ambition: getRulerEntityPersonalityNumber('ambition_min') + Math.floor(Math.random() * getRulerEntityPersonalityNumber('ambition_range')),
-            paranoia: getRulerEntityPersonalityNumber('paranoia_min') + Math.floor(Math.random() * getRulerEntityPersonalityNumber('paranoia_range')),
-            wisdom: baseWisdom + Math.floor(Math.random() * ((getRulerEntityPersonalityNumber('wisdom_variance') * 2) + 1)) - getRulerEntityPersonalityNumber('wisdom_variance'),
-            cruelty: baseCruelty + Math.floor(Math.random() * ((getRulerEntityPersonalityNumber('cruelty_variance') * 2) + 1)) - getRulerEntityPersonalityNumber('cruelty_variance'),
-            diplomacy: baseDiplomacy + Math.floor(Math.random() * ((getRulerEntityPersonalityNumber('diplomacy_variance') * 2) + 1)) - getRulerEntityPersonalityNumber('diplomacy_variance'),
-            military: baseMilitary + Math.floor(Math.random() * ((getRulerEntityPersonalityNumber('military_variance') * 2) + 1)) - getRulerEntityPersonalityNumber('military_variance'),
-            stewardship: getRulerEntityPersonalityNumber('stewardship_min') + Math.floor(Math.random() * getRulerEntityPersonalityNumber('stewardship_range'))
+            ambition: getRulerEntityPersonalityNumber('ambition_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('ambition_range') - 1),
+            paranoia: getRulerEntityPersonalityNumber('paranoia_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('paranoia_range') - 1),
+            wisdom: baseWisdom + GameRNG.roll(0, (getRulerEntityPersonalityNumber('wisdom_variance') * 2)) - getRulerEntityPersonalityNumber('wisdom_variance'),
+            cruelty: baseCruelty + GameRNG.roll(0, (getRulerEntityPersonalityNumber('cruelty_variance') * 2)) - getRulerEntityPersonalityNumber('cruelty_variance'),
+            diplomacy: baseDiplomacy + GameRNG.roll(0, (getRulerEntityPersonalityNumber('diplomacy_variance') * 2)) - getRulerEntityPersonalityNumber('diplomacy_variance'),
+            military: baseMilitary + GameRNG.roll(0, (getRulerEntityPersonalityNumber('military_variance') * 2)) - getRulerEntityPersonalityNumber('military_variance'),
+            stewardship: getRulerEntityPersonalityNumber('stewardship_min') + GameRNG.roll(0, getRulerEntityPersonalityNumber('stewardship_range') - 1)
         },
         traits: ["Амбициозный", "Хитрый"],
         health: requireRuntimeNumber(getRulerEntityCommandDefaults().health_percent, 'gameplay_runtime.command_defaults.ruler_entity.health_percent'),
@@ -17925,7 +17925,7 @@ function checkRulerDeaths() {
                 World.factions[r.factionId].stability -= 40;
             }
         } else if (r.alive) {
-            if (Math.random() < 0.02) {
+            if (GameRNG.next() < 0.02) {
                 r.health -= 1;
                 r.stats.hp -= 1;
             }

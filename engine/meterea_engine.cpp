@@ -9326,6 +9326,7 @@ void checkRulerDeaths() {
     }
     for (const auto& id : deadRulers) {
         NPC& r = g_world.npcs[id];
+        if (!g_world.factions.count(r.factionId)) continue; // #161: guard against missing faction
         if (!r.heir.empty() && g_world.npcs.count(r.heir)) {
             NPC& heir = g_world.npcs[r.heir];
             g_world.factions[r.factionId].rulerId = heir.id;
