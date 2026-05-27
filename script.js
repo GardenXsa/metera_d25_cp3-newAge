@@ -12625,7 +12625,7 @@ async function runBackgroundSummarization() {
     if (sendButton) sendButton.disabled = true;
 
     try {
-        const promptTemplate = await loadPromptFromFile('assets/promts/summarize_memory_prompt.txt');
+        const promptTemplate = await loadPromptFromFile('assets/prompts/summarize_memory_prompt.txt');
         const historyText = conversationHistory.map(m => `${m.role === 'model' ? 'GM' : 'Player'}: ${m.parts[0].text}`).join('\n\n');
         const notesText = JSON.stringify(player.gmNotes, null, 2);
 
@@ -12879,15 +12879,15 @@ function buildDynamicContext(expiredEffects) {
 function getPromptRuntimeConfig() {
   const defaults = {
     prompt_files: {
-      logic_rules: 'assets/promts/logic_rules.txt',
-      narrative_rules: 'assets/promts/narrative_rules.txt',
-      master_instructions: 'assets/promts/1.txt',
-      rules_and_instructions: 'assets/promts/rules_and_instructions.txt',
-      combat_rules: 'assets/promts/combat_system_rules.txt',
-      environment_commands_guide: 'assets/promts/environment_commands_guide.txt',
-      skills_reference: 'assets/promts/skills_reference_prompt.txt',
-      supreme_gm_style: 'assets/promts/supreme_gm_style.txt',
-      nsfw_rules_advanced: 'assets/promts/nsfw_rules_advanced.txt'
+      logic_rules: 'assets/prompts/logic_rules.txt',
+      narrative_rules: 'assets/prompts/narrative_rules.txt',
+      master_instructions: 'assets/prompts/1.txt',
+      rules_and_instructions: 'assets/prompts/rules_and_instructions.txt',
+      combat_rules: 'assets/prompts/combat_system_rules.txt',
+      environment_commands_guide: 'assets/prompts/environment_commands_guide.txt',
+      skills_reference: 'assets/prompts/skills_reference_prompt.txt',
+      supreme_gm_style: 'assets/prompts/supreme_gm_style.txt',
+      nsfw_rules_advanced: 'assets/prompts/nsfw_rules_advanced.txt'
     },
     image_generation: {
       prompt_field_template: '"image_prompt": "ОБЯЗАТЕЛЬНО! Описание ТЕКУЩЕЙ сцены СТРОГО НА АНГЛИЙСКОМ ЯЗЫКЕ для нейросети генерации картинок. Пиши тегами через запятую. Укажи персонажей и детали. Обязательно добавляй в конце: \'Ado music video aesthetic, monochrome anime style with one spot color, dark gothic, creepy vibe, extreme contrast, inverted colors, masterpiece, highly detailed\'.",',
@@ -16797,7 +16797,7 @@ window.adminForceSummary = async function () {
     showLoadingScreen('loadingScreen.generatingWorld', 'Сжатие памяти...');
 
     try {
-        const promptTemplate = await loadPromptFromFile('assets/promts/summarize_memory_prompt.txt');
+        const promptTemplate = await loadPromptFromFile('assets/prompts/summarize_memory_prompt.txt');
         const historyText = conversationHistory.map(m => `${m.role === 'model' ? 'GM' : 'Player'}: ${m.parts[0].text}`).join('\n\n');
         const notesText = JSON.stringify(player.gmNotes, null, 2);
 
@@ -17026,7 +17026,7 @@ async function runDeepSetupPipeline(narratorStyleGuide) {
 
         // --- STAGE 1 ---
         updateLoader("Этап 1/5: Нити Судьбы", "Создание биографии и мотивов...");
-        let p1 = await loadPromptFromFile('assets/promts/deep_setup/stage1_lore.txt');
+        let p1 = await loadPromptFromFile('assets/prompts/deep_setup/stage1_lore.txt');
         p1 = p1.replace('{base_context}', getBaseContext()).replace('{lore}', worldLore);
         let r1 = await performAiFetch(p1, [], modelIdForRequest, "Сгенерируй биографию и константы (JSON).");
         let res1 = parseAIResponse(r1);
@@ -17035,7 +17035,7 @@ async function runDeepSetupPipeline(narratorStyleGuide) {
 
         // --- STAGE 2 ---
         updateLoader("Этап 2/5: Материальное наследие", "Ковка снаряжения и навыков...");
-        let p2 = await loadPromptFromFile('assets/promts/deep_setup/stage2_loot.txt');
+        let p2 = await loadPromptFromFile('assets/prompts/deep_setup/stage2_loot.txt');
         p2 = p2.replace('{base_context}', getBaseContext())
                .replace('{itemsReference}', JSON.stringify(itemsReferenceData.slice(0, 50)))
                .replace('{skillsReference}', skillsReferenceData)
@@ -17047,7 +17047,7 @@ async function runDeepSetupPipeline(narratorStyleGuide) {
 
         // --- STAGE 3 ---
         updateLoader("Этап 3/5: Сцена и Актеры", "Возведение декораций и NPC...");
-        let p3 = await loadPromptFromFile('assets/promts/deep_setup/stage3_environment.txt');
+        let p3 = await loadPromptFromFile('assets/prompts/deep_setup/stage3_environment.txt');
         const mapCoordsString = Object.keys(globalLocations || {}).map(k => `${globalLocations[k].name} [ID: ${k}] (x:${Math.round(globalLocations[k].x)}, y:${Math.round(globalLocations[k].y)})`).join('; ');
         p3 = p3.replace('{base_context}', getBaseContext())
                .replace('{globalLocationsList}', mapCoordsString)
@@ -17071,7 +17071,7 @@ async function runDeepSetupPipeline(narratorStyleGuide) {
 
         // --- STAGE 4 ---
         updateLoader("Этап 4/5: Зов Судьбы", "Формирование сюжета и квестов...");
-        let p4 = await loadPromptFromFile('assets/promts/deep_setup/stage4_quests.txt');
+        let p4 = await loadPromptFromFile('assets/prompts/deep_setup/stage4_quests.txt');
         p4 = p4.replace('{base_context}', getBaseContext())
                .replace('{stage_1_results}', stage_1_results)
                .replace('{stage_2_results}', stage_2_results)
@@ -17084,7 +17084,7 @@ async function runDeepSetupPipeline(narratorStyleGuide) {
 
         // --- STAGE 5 ---
         updateLoader("Этап 5/5: Пролог", "Ожидание Рассказчика...");
-                let p5 = await loadPromptFromFile('assets/promts/deep_setup/stage5_prologue.txt');
+                let p5 = await loadPromptFromFile('assets/prompts/deep_setup/stage5_prologue.txt');
         let imgExample = enableImageGeneration ? '"image_prompt": "Ado music video aesthetic, monochrome with red accent...",' : '';
 
         window.smartDeepContextStr = "";

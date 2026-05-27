@@ -4,7 +4,7 @@
 #include <vector>
 #include <unordered_map>
 #include <variant>
-#include "../vendor/nlohmann/json.hpp" // Use corrected path from Task 1 fix
+#include "../vendor/nlohmann/json.hpp" // nlohmann/json — used by json_wrapper.h and item_system
 
 using json = nlohmann::json;
 

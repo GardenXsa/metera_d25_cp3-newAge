@@ -1,12 +1,4 @@
 {
-    "bread": {
-        "name": "Хлеб",
-        "basePrice": 5,
-        "tags": ["food", "consumable", "processed_food", "bakery_product"],
-        "properties": {
-            "nutrition": 25.0,
-            "spoil_rate": 0.1,
-            "weight": 0.5
-        }
-    }
+  "_comment": "DEPRECATED: This file is a redirect. The canonical item database is economy_items.json. Loaded via runtime_manifest.json -> items.path",
+  "_redirect": "./data/economy_items.json"
 }

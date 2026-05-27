@@ -40,6 +40,9 @@ function processSaveBlock(parsed, rawWorld) {
                 }
             }
             break;
+        case 'rng_seed':
+            if (rawWorld && parsed.data?.seed !== undefined) rawWorld._rng_seed = parsed.data.seed;
+            break;
     }
     return {};
 }
@@ -107,6 +110,10 @@ async function saveGame(slotType, slotId) {
         };
         
         await addBlock("Метаданные", "meta", metaData);
+        // Save RNG seed for deterministic replay
+        if (typeof GameRNG !== 'undefined') {
+            await addBlock("RNG Seed", "rng_seed", { seed: GameRNG._seed });
+        }
         await addBlock("Данные персонажа", "player", player);
         await addBlock("История диалогов", "history", conversationHistory);
         await addBlock("Реестр предметов", "item_registry", Array.from(ItemRegistry.entries()));
@@ -281,6 +288,12 @@ async function loadGame(slotType, slotId) {
 
     try {
         player = structuredClone(rawPlayer);
+
+        // Restore RNG seed from save for deterministic replay
+        if (rawWorld && rawWorld._rng_seed !== undefined && typeof GameRNG !== 'undefined') {
+            GameRNG.seed(rawWorld._rng_seed);
+            console.log('[SaveManager] RNG seed restored from save:', rawWorld._rng_seed);
+        }
 
         updateLoadingText('Инициализация симуляции мира...');
         await yieldThread();

@@ -749,7 +749,16 @@ ipcMain.handle('app-relaunch', async () => {
 
 ipcMain.handle('save-settings', async (event, data) => {
     try {
-        fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2));
+        if (!data || typeof data !== 'object' || Array.isArray(data)) {
+            return false;
+        }
+        const serialized = JSON.stringify(data, null, 2);
+        const MAX_SETTINGS_SIZE = 512 * 1024; // 512 KB limit
+        if (serialized.length > MAX_SETTINGS_SIZE) {
+            console.warn('[IPC] save-settings rejected: payload exceeds 512KB limit');
+            return false;
+        }
+        fs.writeFileSync(SETTINGS_FILE, serialized);
         return true;
     } catch (e) { return false; }
 });

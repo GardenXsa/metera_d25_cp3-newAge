@@ -4,6 +4,7 @@ const path = require('path');
 const { exec } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
+const ALLOWED_DIR = path.resolve(__dirname); // Only serve files from tools/ directory
 const PORT = Number(process.env.WORKLOG_VIEWER_PORT || 45173);
 const HOST = '127.0.0.1';
 
@@ -34,15 +35,26 @@ function openBrowser(url) {
   exec(command, () => {});
 }
 
+const SENSITIVE_FILES = ['.env', '.env.', 'credentials', 'secret', 'api_key', 'apikey'];
+
+function isSensitive(filepath) {
+  const lower = path.basename(filepath).toLowerCase();
+  return SENSITIVE_FILES.some(s => lower.startsWith(s) || lower.includes(s));
+}
+
 const server = http.createServer((req, res) => {
   try {
     const parsed = new URL(req.url, `http://${HOST}:${PORT}`);
     let pathname = decodeURIComponent(parsed.pathname);
-    if (pathname === '/') pathname = '/tools/worklog_viewer.html';
+    if (pathname === '/') pathname = '/worklog_viewer.html';
 
-    const requested = path.resolve(ROOT, '.' + pathname);
-    if (!requested.startsWith(ROOT + path.sep) && requested !== ROOT) {
-      return send(res, 403, 'Forbidden');
+    const requested = path.resolve(ALLOWED_DIR, '.' + pathname);
+    // Restrict to ALLOWED_DIR (tools/) only — no project root traversal
+    if (!requested.startsWith(ALLOWED_DIR + path.sep) && requested !== ALLOWED_DIR) {
+      return send(res, 403, 'Forbidden: access restricted to tools/ directory');
+    }
+    if (isSensitive(requested)) {
+      return send(res, 403, 'Forbidden: sensitive file');
     }
 
     fs.readFile(requested, (error, data) => {

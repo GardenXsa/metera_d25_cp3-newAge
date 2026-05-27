@@ -18,6 +18,8 @@ tts/
 *.dll
 *.onnx
 *.ort
+*.so
+*.exe
 
 # Системные файлы
 .DS_Store
@@ -27,13 +29,17 @@ engine/debug_test
 engine/debug_test.exe
 engine/raw_test
 engine/raw_test.exe
+engine/meterea_engine
+engine/meterea_engine.exe
+engine/meterea_engine.lib
+engine/*.lib
+engine/*.pdb
+
+# Compiler binaries (should use system g++)
+g++
 
 # Electron build artifacts
 dist/
-*.exe
-engine/*.lib
-engine/*.pdb
-engine/meterea_engine.lib
 
 # IDE / Editor files
 .idea/
@@ -45,17 +51,14 @@ engine/meterea_engine.lib
 conversation-*.txt
 .env
 .env.*
+settings.json
+project_scan.txt
 
 # OS artifacts
 desktop.ini
 
 # Claude Code settings (development tool)
 .claude/
-
-# Sensitive files with API keys and user data
-settings.json
-conversation-*.txt
-project_scan.txt
 
 # Never commit secrets or push scripts
 .ssh/
@@ -67,7 +70,9 @@ pssh.py
 pssh_sh.sh
 ssh-paramiko.sh
 
-
+# Saves (user data)
+saves/
+*.log
 
 # Project scans / local dumps
 *_scan_full.txt

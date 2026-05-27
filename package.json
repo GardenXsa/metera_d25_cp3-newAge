@@ -6,7 +6,10 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder",
-    "verify": "node tools/full_verify.js"
+    "verify": "node tools/full_verify.js",
+    "test": "bash test_runner.sh",
+    "test:unit": "node tests/character_stats_resolver.test.js && node tests/runtime_data.test.js",
+    "test:smoke": "bash test_runner.sh --smoke-only"
   },
   "author": "MrKins_XP",
   "license": "MIT",

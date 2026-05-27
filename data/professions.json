@@ -83,23 +83,23 @@
   {
     "id": "courier",
     "name": "Курьер",
-    "profession_type": "farmer",
-    "preferred_facility": "",
-    "production_type": "food",
+    "profession_type": "courier",
+    "preferred_facility": "trade_posts",
+    "production_type": "logistics",
     "demand_pattern": { "base_demand": 5 },
     "job_multiplier": 0.8,
-    "special_abilities": ["farming", "delivery"],
+    "special_abilities": ["delivery", "logistics"],
     "display_name_i18n_key": "professions.courier"
   },
   {
     "id": "clerk",
     "name": "Клерк",
-    "profession_type": "farmer",
-    "preferred_facility": "",
-    "production_type": "food",
+    "profession_type": "clerk",
+    "preferred_facility": "offices",
+    "production_type": "services",
     "demand_pattern": { "base_demand": 3 },
     "job_multiplier": 0.8,
-    "special_abilities": ["farming", "administration"],
+    "special_abilities": ["administration", "bureaucracy"],
     "display_name_i18n_key": "professions.clerk"
   },
   {

@@ -62,7 +62,7 @@ test('resolvePromptEntry accepts semantic keys and legacy paths', () => {
             summarize_memory: { content: 'SUMMARIZE' }
         },
         aliases: {
-            'assets/promts/summarize_memory_prompt.txt': 'summarize_memory'
+            'assets/prompts/summarize_memory_prompt.txt': 'summarize_memory'
         }
     };
 
@@ -71,7 +71,7 @@ test('resolvePromptEntry accepts semantic keys and legacy paths', () => {
         'SUMMARIZE'
     );
     assert.strictEqual(
-        runtimeData.resolvePromptEntry(promptPack, 'assets/promts/summarize_memory_prompt.txt').content,
+        runtimeData.resolvePromptEntry(promptPack, 'assets/prompts/summarize_memory_prompt.txt').content,
         'SUMMARIZE'
     );
 });

@@ -1,15 +1,15 @@
 {
   "version": 1,
   "prompt_files": {
-    "logic_rules": "assets/promts/logic_rules.txt",
-    "narrative_rules": "assets/promts/narrative_rules.txt",
-    "master_instructions": "assets/promts/1.txt",
-    "rules_and_instructions": "assets/promts/rules_and_instructions.txt",
-    "combat_rules": "assets/promts/combat_system_rules.txt",
-    "environment_commands_guide": "assets/promts/environment_commands_guide.txt",
-    "skills_reference": "assets/promts/skills_reference_prompt.txt",
-    "supreme_gm_style": "assets/promts/supreme_gm_style.txt",
-    "nsfw_rules_advanced": "assets/promts/nsfw_rules_advanced.txt"
+    "logic_rules": "assets/prompts/logic_rules.txt",
+    "narrative_rules": "assets/prompts/narrative_rules.txt",
+    "master_instructions": "assets/prompts/1.txt",
+    "rules_and_instructions": "assets/prompts/rules_and_instructions.txt",
+    "combat_rules": "assets/prompts/combat_system_rules.txt",
+    "environment_commands_guide": "assets/prompts/environment_commands_guide.txt",
+    "skills_reference": "assets/prompts/skills_reference_prompt.txt",
+    "supreme_gm_style": "assets/prompts/supreme_gm_style.txt",
+    "nsfw_rules_advanced": "assets/prompts/nsfw_rules_advanced.txt"
   },
   "image_generation": {
     "prompt_field_template": "\"image_prompt\": \"ОБЯЗАТЕЛЬНО! Описание ТЕКУЩЕЙ сцены СТРОГО НА АНГЛИЙСКОМ ЯЗЫКЕ для нейросети генерации картинок. Пиши тегами через запятую. Укажи персонажей и детали. Обязательно добавляй в конце: 'Ado music video aesthetic, monochrome anime style with one spot color, dark gothic, creepy vibe, extreme contrast, inverted colors, masterpiece, highly detailed'.\",",
