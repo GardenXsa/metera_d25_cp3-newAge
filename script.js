@@ -3110,6 +3110,149 @@ function mutateWorld(mutator) {
     return true;
 }
 
+// ======================================================================
+// --- AUTOSAVE & LOAD SCREEN SYSTEM (Fix #134, #137) ---
+// ======================================================================
+const MAX_MANUAL_SAVES = 5;
+const MAX_AUTO_SAVES = 3;
+let autoSaveIntervalMs = parseInt(localStorage.getItem('autoSaveInterval')) || 300000; // 5 min default
+let _autoSaveTimerId = null;
+
+/**
+ * Auto-save the current game state via the Electron save-game IPC.
+ * Called on a timer and at key game events (exit, deep setup completion).
+ */
+async function autoSaveGame() {
+    try {
+        if (!window.electronAPI || typeof window.electronAPI.saveGame !== 'function') {
+            console.warn('[AutoSave] electronAPI.saveGame not available — skipping.');
+            return;
+        }
+        if (!player || !World) {
+            console.warn('[AutoSave] No active game to save — skipping.');
+            return;
+        }
+
+        const saveData = {
+            player: JSON.parse(JSON.stringify(player)),
+            world: World,
+            conversationHistory: conversationHistory || [],
+            timestamp: new Date().toISOString(),
+            type: 'auto'
+        };
+
+        const filename = `autosave_${Date.now()}.json`;
+        const result = await window.electronAPI.saveGame(filename, saveData);
+        if (result && result.success) {
+            console.log(`[AutoSave] Saved: ${filename}`);
+            // Rotate auto-saves: keep only MAX_AUTO_SAVES
+            if (window.electronAPI.listSaves) {
+                const saves = await window.electronAPI.listSaves();
+                const autoSaves = (saves || [])
+                    .filter(s => s.filename && s.filename.startsWith('autosave_'))
+                    .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+                for (let i = MAX_AUTO_SAVES; i < autoSaves.length; i++) {
+                    if (window.electronAPI.deleteSave) {
+                        await window.electronAPI.deleteSave(autoSaves[i].filename);
+                    }
+                }
+            }
+        } else {
+            console.warn('[AutoSave] Save failed:', result);
+        }
+    } catch (err) {
+        console.error('[AutoSave] Error:', err);
+    }
+}
+
+/**
+ * Start (or restart) the auto-save timer.
+ * Called after settings change and on game start.
+ */
+function startAutoSaveTimer() {
+    if (_autoSaveTimerId) {
+        clearInterval(_autoSaveTimerId);
+        _autoSaveTimerId = null;
+    }
+    if (!autoSaveIntervalMs || autoSaveIntervalMs <= 0) return;
+    _autoSaveTimerId = setInterval(() => {
+        autoSaveGame().catch(err => console.error('[AutoSave Timer]', err));
+    }, autoSaveIntervalMs);
+    console.log(`[AutoSave] Timer started: every ${autoSaveIntervalMs}ms`);
+}
+
+/**
+ * Show the load-game screen with save slots populated.
+ * Bound to the "Load Game" button in the main menu.
+ */
+async function showLoadGameScreen() {
+    try {
+        setActiveScreen('load-game-screen');
+
+        const manualList = document.getElementById('manual-save-slots');
+        const autoList = document.getElementById('auto-save-slots');
+        if (!manualList || !autoList) return;
+
+        manualList.innerHTML = '<li style="text-align:center;color:#7f8c8d;padding:10px;"><i class="fas fa-spinner fa-spin"></i> Загрузка...</li>';
+        autoList.innerHTML = '<li style="text-align:center;color:#7f8c8d;padding:10px;"><i class="fas fa-spinner fa-spin"></i> Загрузка...</li>';
+
+        if (!window.electronAPI || typeof window.electronAPI.listSaves !== 'function') {
+            manualList.innerHTML = '<li style="text-align:center;color:#e74c3c;padding:10px;">Недоступно в браузере</li>';
+            autoList.innerHTML = '';
+            return;
+        }
+
+        const saves = await window.electronAPI.listSaves() || [];
+        const manualSaves = saves.filter(s => !s.filename.startsWith('autosave_'))
+            .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+        const autoSaves = saves.filter(s => s.filename.startsWith('autosave_'))
+            .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+
+        const renderList = (ul, items, maxCount) => {
+            ul.innerHTML = '';
+            if (items.length === 0) {
+                ul.innerHTML = `<li style="text-align:center;color:#7f8c8d;padding:10px;">Нет сохранений</li>`;
+                return;
+            }
+            items.slice(0, maxCount).forEach(save => {
+                const li = document.createElement('li');
+                li.className = 'save-slot-btn';
+                const name = escapeHTML(save.name || save.filename || 'Сохранение');
+                const date = save.timestamp ? new Date(save.timestamp).toLocaleString() : '';
+                li.innerHTML = `<span class="save-slot-id">${name}</span><span class="save-slot-date" style="float:right;color:#7f8c8d;font-size:0.85em;">${escapeHTML(date)}</span>`;
+                li.addEventListener('click', async () => {
+                    try {
+                        const data = await window.electronAPI.loadGame(save.filename);
+                        if (data && data.player) {
+                            player = data.player;
+                            if (data.world) setWorld(data.world);
+                            if (data.conversationHistory) conversationHistory = data.conversationHistory;
+                            setActiveScreen('game-interface');
+                            updateCharacterSheet();
+                            updateMapDisplay();
+                            updateInventoryDisplay();
+                            updateEnvironmentPanel();
+                            console.log(`[LoadGame] Loaded: ${save.filename}`);
+                        } else {
+                            showCustomAlert('Не удалось загрузить сохранение — данные повреждены.');
+                        }
+                    } catch (err) {
+                        console.error('[LoadGame] Error:', err);
+                        showCustomAlert('Ошибка при загрузке: ' + err.message);
+                    }
+                });
+                ul.appendChild(li);
+            });
+        };
+
+        renderList(manualList, manualSaves, MAX_MANUAL_SAVES);
+        renderList(autoList, autoSaves, MAX_AUTO_SAVES);
+
+    } catch (err) {
+        console.error('[showLoadGameScreen] Error:', err);
+    }
+}
+
 // worldWorker удален, используется нативный C++ Nexus Engine
 
 async function initWorldSimulator(initialAgents = 100, startDay = 0, isLoadMode = false) {
@@ -5090,7 +5233,7 @@ function showAiErrorModal(errorText, isInitial, onRetry, customTitle = null, cus
 
     const titleH3 = aiErrorModal.querySelector('h3');
     if (customTitle && titleH3) {
-        titleH3.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${customTitle}`;
+        titleH3.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${escapeHTML(customTitle)}`;
     } else if (titleH3) {
         titleH3.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Ошибка Мастера Игры`;
     }
@@ -6569,11 +6712,11 @@ async function pingProvider() {
         } else {
             const errText = await response.text();
             let shortMsg = t(`apiErrors.${response.status}`, null, `Ошибка ${response.status}`);
-            resultDiv.innerHTML = `<span style="color: #e74c3c;" title="${errText.replace(/"/g, '&quot;')}"><i class="fas fa-times"></i> ${shortMsg} (РљРѕРґ: ${response.status})</span>`;
+            resultDiv.innerHTML = `<span style="color: #e74c3c;" title="${escapeHTML(errText)}"><i class="fas fa-times"></i> ${escapeHTML(shortMsg)} (РљРѕРґ: ${response.status})</span>`;
         }
     } catch (e) {
         let shortMsg = e.message.includes('fetch') ? t('apiErrors.network', null, 'Ошибка сети') : e.message;
-        resultDiv.innerHTML = `<span style="color: #e74c3c;"><i class="fas fa-times"></i> ${shortMsg}</span>`;
+        resultDiv.innerHTML = `<span style="color: #e74c3c;"><i class="fas fa-times"></i> ${escapeHTML(shortMsg)}</span>`;
     } finally {
         btn.disabled = false;
     }
@@ -6877,12 +7020,12 @@ async function testApiConnection() {
         } else {
             const errText = await response.text();
             let shortMsg = t(`apiErrors.${response.status}`, null, `Ошибка ${response.status}`);
-            resultDiv.innerHTML = `<span style="color: #e74c3c;" title="${errText.replace(/"/g, '&quot;')}"><i class="fas fa-times"></i> ${shortMsg} (РљРѕРґ: ${response.status})</span>`;
+            resultDiv.innerHTML = `<span style="color: #e74c3c;" title="${escapeHTML(errText)}"><i class="fas fa-times"></i> ${escapeHTML(shortMsg)} (РљРѕРґ: ${response.status})</span>`;
             console.error("Ping error:", errText);
         }
     } catch (e) {
         let shortMsg = e.message.includes('fetch') ? t('apiErrors.network', null, 'Ошибка сети') : e.message;
-        resultDiv.innerHTML = `<span style="color: #e74c3c;"><i class="fas fa-times"></i> ${shortMsg}</span>`;
+        resultDiv.innerHTML = `<span style="color: #e74c3c;"><i class="fas fa-times"></i> ${escapeHTML(shortMsg)}</span>`;
     } finally {
         btn.disabled = false;
     }
@@ -7701,9 +7844,9 @@ function setupEventListeners() {
             
             try {
                 const response = await performAiPlayerFetch("Ты тестовый ИИ. Ответь 'Тест пройден успешно, системы в норме.'", [], mod, "Проверка связи.");
-                resultDiv.innerHTML = `<span style="color: #2ecc71;">✅ Успех:</span><br>${response}`;
+                resultDiv.innerHTML = `<span style="color: #2ecc71;">✅ Успех:</span><br>${escapeHTML(response)}`;
             } catch (e) {
-                resultDiv.innerHTML = `<span style="color: #e74c3c;">❌ Ошибка:</span><br>${e.message}`;
+                resultDiv.innerHTML = `<span style="color: #e74c3c;">❌ Ошибка:</span><br>${escapeHTML(e.message)}`;
             } finally {
                 aiPlayerProvider = oldProv;
                 aiPlayerModelId = oldMod;
@@ -8915,7 +9058,7 @@ function rollRuntimeD20() {
   );
   const sides = Math.max(1, requireRuntimeNumber(d20.sides, 'gameplay_runtime.dice.d20.sides'));
   const minimum = requireRuntimeNumber(d20.minimum, 'gameplay_runtime.dice.d20.minimum');
-  return Math.floor(Math.random() * sides) + minimum;
+  return Math.floor(GameRNG.next() * sides) + minimum; // Fix #155: Use deterministic RNG
 }
 
 function requireRuntimeNumber(value, path) {
@@ -9812,7 +9955,7 @@ function updateCharacterSheet() {
             journeyContainer.style.display = 'flex';
             // Визуальная индикация боя в путешествии
             if (player.currentCombat && player.currentCombat.isActive) {
-                journeyDest.innerHTML = `Р’ пути: ${player.currentJourney.destination} <span style="color: #e74c3c;">[БОЙ!]</span>`;
+                journeyDest.innerHTML = `Р’ пути: ${escapeHTML(player.currentJourney.destination)} <span style="color: #e74c3c;">[БОЙ!]</span>`;
             } else {
                 journeyDest.textContent = `Р’ пути: ${player.currentJourney.destination}`;
             }
@@ -10073,7 +10216,7 @@ function showItemExamineModal(item) {
 
     const historyEl = document.getElementById('examine-history-content');
     if (item.history && item.history.length > 0) {
-        historyEl.innerHTML = item.history.map(h => `<div style="margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 2px;"><span style="color:#f39c12;">[День ${h.day}]</span> ${parseLocString(h.event)}</div>`).join('');
+        historyEl.innerHTML = item.history.map(h => `<div style="margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 2px;"><span style="color:#f39c12;">[День ${h.day}]</span> ${escapeHTML(parseLocString(h.event))}</div>`).join('');
     } else {
         historyEl.innerHTML = '<div style="font-style:italic;">История этого предмета скрыта во тьме веков...</div>';
     }
@@ -12053,7 +12196,7 @@ async function handleUserInput() {
     if (currentHP > 0 && currentHP <= 15) {
         let baseChance = currentHP <= 5 ? 70 : 40;
         let finalChance = Math.max(5, baseChance - (resilience - resilienceBaseline) * 2.5);
-        if (Math.random() * 100 < finalChance) {
+        if (GameRNG.next() * 100 < finalChance) { // Fix #155: Use deterministic RNG
             traumaInstruction = `\n\n[SYSTEM CRITICAL: Персонаж получил ТЯЖЕЛУЮ ТРАВМУ. Опиши это и наложи дебафф командой addStatusEffect.]`;
         }
     }
@@ -16336,7 +16479,7 @@ function updateTraitsDisplay() {
             } else if (trait.type === 'text') {
                 valueDisplay = `: ${trait.value}`;
             }
-            li.innerHTML = `<span class="trait-name">${trait.name}</span><span class="trait-value">${valueDisplay}</span>`;
+            li.innerHTML = `<span class="trait-name">${escapeHTML(trait.name)}</span><span class="trait-value">${escapeHTML(valueDisplay)}</span>`;
             traitsList.appendChild(li);
         });
     }
@@ -16386,7 +16529,7 @@ function updateHoldingsDisplay() {
             if (block && block.name !== block.type) bName = block.name;
         }
         let statusText = bus.is_active ? `<span style="color:#f1c40f">${bus.cash_balance} 💰</span>` : (bus.construction_days_left > 0 ? `<span style="color:#e67e22" title="Идет строительство">🏗️ ${bus.construction_days_left} дн.</span>` : `<span style="color:#e74c3c">Закрыто</span>`);
-        li.innerHTML = `<span class="holding-name" style="color:#3498db; text-decoration:underline;">${bName}</span><span class="holding-value">${statusText}</span>`;
+        li.innerHTML = `<span class="holding-name" style="color:#3498db; text-decoration:underline;">${escapeHTML(bName)}</span><span class="holding-value">${statusText}</span>`;
         holdingsList.appendChild(li);
     });
 }

@@ -9376,7 +9376,8 @@ void processIntrigues() {
                 std::string cdKey = intr.initiatorFactionId + "_intrigue_cooldown";
                 g_world.nexusData[cdKey] = JsonValue(g_world.current_day + 30);
                 addNews(locStr("engine.news.intrigue_discovered", {{"type", tName}, {"initiator", initName}, {"target", targetName}}), "global", 4, "war");
-                g_world.factions[intr.targetFactionId].relations[intr.initiatorFactionId] -= 60;
+                if (g_world.factions.count(intr.targetFactionId))
+                    g_world.factions[intr.targetFactionId].relations[intr.initiatorFactionId] -= 60;
                 
                 if (!intr.agent_id.empty() && g_world.npcs.count(intr.agent_id)) {
                     NPC& agent = g_world.npcs[intr.agent_id];
@@ -9386,7 +9387,7 @@ void processIntrigues() {
                     addNews(locStr("engine.news.agent_captured", {{"agent", agent.name}, {"type", tName}}), "global", 3, "misc");
                 }
 
-                if (g_world.factions[intr.targetFactionId].relations[intr.initiatorFactionId] < -50) {
+                if (g_world.factions.count(intr.targetFactionId) && g_world.factions.count(intr.initiatorFactionId) && g_world.factions[intr.targetFactionId].relations[intr.initiatorFactionId] < -50) {
                     if (g_world.current_day > 180) { 
                         g_world.factions[intr.targetFactionId].diplomacy[intr.initiatorFactionId] = "war";
                         g_world.factions[intr.initiatorFactionId].diplomacy[intr.targetFactionId] = "war";
