@@ -93,10 +93,10 @@ const MAX_READ_SAVE_CHUNK_BYTES = getConfigNumber(['server', 'max_read_save_chun
 const WORLD_PREVIEW_BYTES = getConfigNumber(['server', 'world_preview_bytes'], 512);
 const SAVE_PREVIEW_BYTES = getConfigNumber(['server', 'save_preview_bytes'], 1024);
 const MIME_TYPES = {
-  '.html': 'text/html',
-  '.js': 'text/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpg',
   '.jpeg': 'image/jpeg',

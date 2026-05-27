@@ -8261,8 +8261,28 @@ async function disableActiveModsAfterWorldStartupFailure(reason, detail = null) 
     return true;
 }
 
-function armWorldGenerationWatchdog(phase) {
-    const timeoutMs = 45000;
+function shouldWorldStartupWatchdogAutoDisable(detail) {
+    const screen = String(detail && detail.screen || '');
+    const loadingText = String(detail && detail.loadingText || '');
+    const worldObject = (typeof World !== 'undefined' && World && typeof World === 'object') ? World : null;
+    const worldHasRegions = !!(worldObject && worldObject.regions && Object.keys(worldObject.regions).length > 0);
+    const lateStageText = /заверш|final|настрой|setup/i.test(loadingText);
+
+    if (screen === 'game-interface' || worldHasRegions || lateStageText) {
+        return {
+            autoDisable: false,
+            reason: 'late-stage startup already reached game interface/world state'
+        };
+    }
+
+    return {
+        autoDisable: true,
+        reason: 'early startup stall before game interface/world state'
+    };
+}
+
+function armWorldGenerationWatchdog(phase, options = {}) {
+    const timeoutMs = Number.isFinite(Number(options.timeoutMs)) ? Number(options.timeoutMs) : 180000;
     const armedAt = Date.now();
 
     if (window.RuntimeLog) {
@@ -8278,8 +8298,24 @@ function armWorldGenerationWatchdog(phase) {
             loadingText: document.getElementById('loading-text')?.textContent || null
         };
 
+        const decision = shouldWorldStartupWatchdogAutoDisable(detail);
+        detail.decision = decision;
+
+        if (!decision.autoDisable) {
+            if (window.RuntimeLog) {
+                window.RuntimeLog.warn(
+                    'WorldStartupWatchdog',
+                    'Watchdog сработал на поздней стадии запуска мира; моды НЕ отключены, чтобы не ломать уже созданный runtime.',
+                    detail
+                );
+            } else {
+                console.warn('[WorldStartupWatchdog] Late-stage timeout ignored:', detail);
+            }
+            return;
+        }
+
         if (window.RuntimeLog) {
-            window.RuntimeLog.error('WorldStartupWatchdog', 'Запуск мира не завершился в отведённое время. Активные пользовательские моды будут отключены.', detail);
+            window.RuntimeLog.error('WorldStartupWatchdog', 'Запуск мира не завершился в отведённое время до создания мира. Активные пользовательские моды будут отключены.', detail);
         } else {
             console.error('[WorldStartupWatchdog] World startup timeout:', detail);
         }
@@ -8288,13 +8324,13 @@ function armWorldGenerationWatchdog(phase) {
 
         try {
             hideLoadingScreen();
-            showCustomAlert('Запуск мира завис или занял слишком много времени. Активные пользовательские моды автоотключены. Перезапусти игру и попробуй снова.');
+            showCustomAlert('Запуск мира завис или занял слишком много времени до создания мира. Активные пользовательские моды автоотключены. Перезапусти игру и попробуй снова.');
         } catch (error) {
             console.error('[WorldStartupWatchdog] Failed to show timeout alert:', error);
         }
     }, timeoutMs);
 
-    return { timer, phase, armedAt };
+    return { timer, phase, armedAt, timeoutMs };
 }
 
 function disarmWorldGenerationWatchdog(watchdog, reason = 'completed') {
