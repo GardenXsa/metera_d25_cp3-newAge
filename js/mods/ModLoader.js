@@ -310,6 +310,13 @@ window.ModAPI = {
             callback.__modId = this._currentRegisteringModId;
         }
         this.hooks[eventName].push(callback);
+        // FIX (Issue #24): If a mod registers for 'onModsInitialized' after the
+        // event has already been emitted (e.g. late-loaded mod), call the callback
+        // immediately so the mod's initialization code still runs.
+        if (eventName === 'onModsInitialized' && window._modsInitialized) {
+            console.warn(`[ModAPI] Mod registered onModsInitialized after event was emitted — calling callback immediately`);
+            try { callback(); } catch(e) { console.error('[ModAPI] Error in late onModsInitialized callback:', e); }
+        }
     },
 
     // Issue #2: unregisterHook
@@ -1345,7 +1352,12 @@ return errors;
                     const runtimeManifest = db.runtime_manifest || {};
 
                     for (const [rawKey, fileList] of Object.entries(mod.data)) {
-                        if (!Array.isArray(fileList) || rawKey === 'lore' || rawKey === 'locations') {
+                        // FIX (Issue #93): Removed 'locations' from skip list.
+                        // Previously, locations were skipped in onDatabaseLoad and relied
+                        // solely on onLocationsLoad (emitted only during world generation).
+                        // This meant mods loaded AFTER world generation silently dropped
+                        // their location data. Now locations load via onDatabaseLoad too.
+                        if (!Array.isArray(fileList) || rawKey === 'lore') {
                             continue;
                         }
 
@@ -1424,6 +1436,10 @@ return errors;
             await window.electronAPI.nexusRegisterHooks(activeHooks);
         }
 
+        // FIX (Issue #24): Emit onModsInitialized AFTER all mod scripts have executed.
+        // Also store the initialization state so late-loaded mods can check if
+        // they missed the event and run their initialization immediately.
+        window._modsInitialized = true;
         await window.ModAPI.emit('onModsInitialized');
         return true;
     }

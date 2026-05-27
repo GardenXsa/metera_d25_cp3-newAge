@@ -134,13 +134,20 @@ def load_json(path, default=None):
     IMPORTANT: Array-type fields (recipes, biomes, monsters, disasters, races,
     professions, traits) MUST use default=[] to prevent C++ engine crashes.
     Object-type fields use default={} (the original behavior).
+
+    FIX (Issue #84): Previously `if not data:` returned `default` for valid but
+    empty JSON values ({}, [], 0, false). Python's truthiness treats empty
+    containers as falsy. Now only returns default on actual parse failures,
+    not on valid empty values.
     """
     if default is None:
         default = {}
     try:
         with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            if not data:
+            # FIX: Only return default if parsing produced None (invalid),
+            # NOT for valid empty values ({}, [], 0, false, "")
+            if data is None:
                 return default
             return data
     except FileNotFoundError:

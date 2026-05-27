@@ -1,9 +1,15 @@
 from pathlib import Path
 import re
+import shutil
 
 path = Path('engine/meterea_engine.cpp')
 text = path.read_text(encoding='utf-8')
 original = text
+
+# FIX (Issue #12): Create backup before modifying C++ source files.
+backup_path = path.with_suffix(path.suffix + '.bak')
+shutil.copy2(path, backup_path)
+print(f'Backup created: {backup_path}')
 
 # 1) Ensure Database has tag_defaults field.
 if 'std::unordered_map<std::string, std::string> tag_defaults;' not in text:

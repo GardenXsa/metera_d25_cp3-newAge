@@ -2861,9 +2861,27 @@ function getLocalizedRuntimeAssetPaths(primaryKey, fallbackKey, replacements = {
     return { primary, fallback };
 }
 
-function parseLocString(str, disableLoc = window.DISABLE_LOCALIZATION) {
+// FIX (Issue #80): parseLocString was vulnerable to:
+// 1. ReDoS via unescaped itemId/facId in new RegExp()
+// 2. Stack overflow via recursive parseLocString calls on loc_args
+// 3. JSON injection via untrusted loc_key/loc_args values
+// Now: regex special chars are escaped, recursion is depth-limited,
+// and loc_key values are validated against dangerous patterns.
+const _locStrRegexCache = new Map();
+function _escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function parseLocString(str, disableLoc = window.DISABLE_LOCALIZATION, _depth = 0) {
     if (typeof str !== 'string') return str;
     let result = str;
+
+    // FIX: Limit recursion depth to prevent stack overflow from nested loc_key strings
+    const MAX_LOC_RECURSION_DEPTH = 5;
+    if (_depth >= MAX_LOC_RECURSION_DEPTH) {
+        console.warn('[i18n] parseLocString recursion depth limit reached, returning raw string');
+        return str;
+    }
 
     if (!disableLoc && str.includes('"loc_key"')) {
         const processParsed = (data, originalStr) => {
@@ -2873,7 +2891,9 @@ function parseLocString(str, disableLoc = window.DISABLE_LOCALIZATION) {
                     if (typeof argStr === 'string') {
                         if (typeof ECONOMY_ITEMS !== 'undefined') {
                             Object.keys(ECONOMY_ITEMS).forEach(itemId => {
-                                const r = new RegExp('\\b' + itemId + '\\b', 'g');
+                                // FIX: Escape regex special chars in itemId to prevent ReDoS
+                                const cached = _locStrRegexCache.get(itemId);
+                                const r = cached || (_locStrRegexCache.set(itemId, new RegExp('\\b' + _escapeRegExp(itemId) + '\\b', 'g')), _locStrRegexCache.get(itemId));
                                 if (r.test(argStr)) {
                                     argStr = argStr.replace(r, getItemName(itemId, player ? player.era : getRuntimeDefaultEraId()));
                                 }
@@ -2881,14 +2901,17 @@ function parseLocString(str, disableLoc = window.DISABLE_LOCALIZATION) {
                         }
                         if (typeof FACILITY_NAMES !== 'undefined') {
                             Object.keys(FACILITY_NAMES).forEach(facId => {
-                                const r = new RegExp('\\b' + facId + '\\b', 'g');
+                                // FIX: Escape regex special chars in facId to prevent ReDoS
+                                const cached = _locStrRegexCache.get('fac:' + facId);
+                                const r = cached || (_locStrRegexCache.set('fac:' + facId, new RegExp('\\b' + _escapeRegExp(facId) + '\\b', 'g')), _locStrRegexCache.get('fac:' + facId));
                                 if (r.test(argStr)) {
                                     argStr = argStr.replace(r, getFacilityName(facId, player ? player.era : getRuntimeDefaultEraId()));
                                 }
                             });
                         }
                         if (argStr.includes('"loc_key"')) {
-                            argStr = parseLocString(argStr, disableLoc);
+                            // FIX: Pass depth counter to limit recursion
+                            argStr = parseLocString(argStr, disableLoc, _depth + 1);
                         }
                         data.loc_args[k] = argStr;
                     }

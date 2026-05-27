@@ -321,8 +321,12 @@ double readJsonNumberOrDefault(const JsonValue& value, double fallback) {
     return fallback;
 }
 
+// FIX (Issue #82): readJsonIntOrDefault now rounds doubles instead of silently
+// truncating. Previously, a JSON value of 3.7 would become 3 with no warning.
+// Now it uses std::round() so 3.7 → 4, 3.2 → 3. For INT types, behavior is unchanged.
 int readJsonIntOrDefault(const JsonValue& value, int fallback) {
-    if (value.type == JsonValue::INT || value.type == JsonValue::DOUBLE) return value.asInt();
+    if (value.type == JsonValue::INT) return value.asInt();
+    if (value.type == JsonValue::DOUBLE) return (int)std::round(value.asDouble());
     return fallback;
 }
 

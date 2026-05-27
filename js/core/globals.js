@@ -8,7 +8,8 @@ let currentNarratorIndex = 0;
 let tempPlayer = null; // Для временного хранения персонажа
 let preloadedWorldData = null;
 let directoryHandle = null;
-let lastFSAErrorTime = 0; // Для предотвращения спама alert'ами
+// FIX (Issue #101): Removed unused `lastFSAErrorTime` — was declared but never read
+// or set anywhere in the codebase. The FSA_ERROR_COOLDOWN constant remains as documentation.
 const FSA_ERROR_COOLDOWN = 10000; // 10 секунд
 
 

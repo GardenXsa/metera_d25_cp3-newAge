@@ -1,7 +1,15 @@
 from pathlib import Path
+import shutil
 
 path = Path('engine/meterea_engine.cpp')
 text = path.read_text(encoding='utf-8')
+
+# FIX (Issue #12): Create backup before modifying C++ source files.
+# Previously, repair scripts wrote directly with no backup — if the script
+# crashed mid-write or produced malformed output, the original was lost.
+backup_path = path.with_suffix(path.suffix + '.bak')
+shutil.copy2(path, backup_path)
+print(f'Backup created: {backup_path}')
 
 marker = '// Forward declarations for data-architecture helper layer'
 if marker in text:

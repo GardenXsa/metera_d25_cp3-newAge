@@ -30,7 +30,7 @@
   "location_size_thresholds": {
     "city": 5000,
     "village": 1,
-    "ruins": 0
+    "ruins": -1
   },
   "default_era": "rebirth",
   "default_race_field": "base_race",

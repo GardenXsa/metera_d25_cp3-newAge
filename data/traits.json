@@ -8,7 +8,7 @@
   { "id": "cruel", "name": "Жестокий", "personality_bias": { "aggression": 20, "sociability": -10 }, "tags": [] },
   { "id": "kind", "name": "Добрый", "personality_bias": { "aggression": -15, "sociability": 15, "loyalty": 5 }, "tags": [] },
   { "id": "pervert", "name": "Извращенец", "personality_bias": { "lust": 30, "sociability": -5 }, "tags": [] },
-  { "id": "merchant", "name": "Торговец", "personality_bias": { "greed": 10, "sociability": 10 }, "tags": ["merchant"] },
-  { "id": "guard", "name": "Стражник", "personality_bias": { "aggression": 5, "loyalty": 20 }, "tags": ["guard"] },
+  { "id": "mercantile", "name": "Торговый", "personality_bias": { "greed": 10, "sociability": 10 }, "tags": ["merchant"] },
+  { "id": "vigilant", "name": "Бдительный", "personality_bias": { "aggression": 5, "loyalty": 20 }, "tags": ["guard"] },
   { "id": "trader", "name": "Купец", "personality_bias": { "greed": 15, "sociability": 15 }, "tags": ["merchant"] }
 ]

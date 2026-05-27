@@ -2,8 +2,14 @@
   "road": { "mini_char": "#", "color": "#7f8c8d", "name_i18n_key": "facilities.road" },
   "house": { "mini_char": "H", "color": "#e67e22", "name_i18n_key": "facilities.house" },
   "tavern": { "mini_char": "T", "color": "#e74c3c", "name_i18n_key": "facilities.tavern" },
+  "taverns": { "mini_char": "T", "color": "#e74c3c", "name_i18n_key": "facilities.tavern" },
   "forge": { "mini_char": "F", "color": "#95a5a6", "name_i18n_key": "facilities.forge" },
+  "forges": { "mini_char": "F", "color": "#95a5a6", "name_i18n_key": "facilities.forge" },
   "market": { "mini_char": "M", "color": "#f1c40f", "name_i18n_key": "facilities.market" },
+  "trade_posts": { "mini_char": "M", "color": "#f1c40f", "name_i18n_key": "facilities.market" },
   "office": { "mini_char": "O", "color": "#3498db", "name_i18n_key": "facilities.office" },
-  "temple": { "mini_char": "+", "color": "#9b59b6", "name_i18n_key": "facilities.temple" }
+  "offices": { "mini_char": "O", "color": "#3498db", "name_i18n_key": "facilities.office" },
+  "temple": { "mini_char": "+", "color": "#9b59b6", "name_i18n_key": "facilities.temple" },
+  "temples": { "mini_char": "+", "color": "#9b59b6", "name_i18n_key": "facilities.temple" },
+  "barracks": { "mini_char": "B", "color": "#c0392b", "name_i18n_key": "facilities.barracks" }
 }
