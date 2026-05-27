@@ -34,7 +34,8 @@
       "dexterity": 10,
       "constitution": 10,
       "charisma": 10,
-      "resilience": 10
+      "resilience": 10,
+      "intelligence": 10
     }
   },
   "calendar": {
@@ -307,7 +308,6 @@
   },
   "currency": {
     "prototype_ids": [
-      "gold",
       "gold_ingot"
     ],
     "ai_identifiers": [

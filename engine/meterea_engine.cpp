@@ -7004,8 +7004,9 @@ void processDailyMilitary() {
                 if (!a.location.empty() && g_world.regions.count(a.location)) {
                     g_world.regions[a.location].population += a.size;
                 }
+                std::string erasedLocation = a.location; // C4: save location before erase
                 faction.armies.erase(faction.armies.begin() + i);
-                triggerJsHook("onArmyDestroyed", [&](){ JsonValue _h=JsonValue::object(); _h.set("factionId",fid); _h.set("location",faction.armies[i].location); return _h; });
+                triggerJsHook("onArmyDestroyed", [&](){ JsonValue _h=JsonValue::object(); _h.set("factionId",fid); _h.set("location",erasedLocation); return _h; });
                 continue;
             }
 
@@ -9345,12 +9346,12 @@ void checkRulerDeaths() {
 }
 
 void processIntrigues() {
-    for (int i = g_world.intrigues.size() - 1; i >= 0; i--) {
+    for (int i = (int)g_world.intrigues.size() - 1; i >= 0; i--) { // M12: cast to int before subtract to avoid unsigned underflow
         auto& intr = g_world.intrigues[i];
         
         std::string tName = locStr("engine.intrigue." + intr.type);
-        std::string initName = g_world.factions[intr.initiatorFactionId].name;
-        std::string targetName = g_world.factions[intr.targetFactionId].name;
+        std::string initName = g_world.factions.count(intr.initiatorFactionId) ? g_world.factions.at(intr.initiatorFactionId).name : intr.initiatorFactionId; // H10: use .at() to avoid auto-creating empty factions
+        std::string targetName = g_world.factions.count(intr.targetFactionId) ? g_world.factions.at(intr.targetFactionId).name : intr.targetFactionId; // H10
 
         if (intr.phase == "recruitment" || intr.phase == "") {
             for (auto& [nid, npc] : g_world.npcs) {
@@ -14787,7 +14788,8 @@ int main() {
             continue;
         }
         else if (cmd == "stopRealtime") {
-            g_realtime_active = false;
+            g_realtime_active = false; // H8: signal thread to stop
+            if (g_realtime_thread) { g_realtime_thread->join(); delete g_realtime_thread; g_realtime_thread = nullptr; } // H8: join and clean up thread to prevent leak
             response.set("status", "ok");
             { std::lock_guard<std::mutex> outLock(g_output_mutex); std::cout << response.toString() << std::endl; std::cout.flush(); }
             continue;

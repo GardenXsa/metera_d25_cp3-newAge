@@ -668,8 +668,16 @@ const server = http.createServer((req, res) => {
                   req.headers['x-session-token'];
     if (token !== HTTP_SESSION_TOKEN) {
         // Also allow requests from our own Electron origin without token (for initial load)
+        // Fix #111: Use proper URL origin comparison instead of .includes() to prevent bypass
         const reqOrigin = req.headers.origin || req.headers.referer || '';
-        const isOwnOrigin = reqOrigin.includes(`${SERVER_HOST}:${PORT}`);
+        let isOwnOrigin = false;
+        try {
+            const reqUrl = new URL(reqOrigin);
+            isOwnOrigin = reqUrl.origin === new URL(getServerOrigin()).origin;
+        } catch (e) {
+            // Malformed URL — treat as not our origin
+            isOwnOrigin = false;
+        }
         const isLocalhost = LOCALHOST_IPS.has(clientIp);
         if (!isOwnOrigin && !isLocalhost) {
             res.statusCode = 403;
@@ -747,6 +755,10 @@ function createWindow () { const win = new BrowserWindow({ width: WINDOW_WIDTH, 
       if (url.startsWith(origin)) {
           return { action: 'allow' };
       }
+      // Fix #112: Only open external URLs with allowed protocols
+      if (!EXTERNAL_LINK_PROTOCOLS.some(p => url.startsWith(p))) {
+          return { action: 'deny' };
+      }
       shell.openExternal(url);
       return { action: 'deny' };
   });
@@ -756,7 +768,10 @@ function createWindow () { const win = new BrowserWindow({ width: WINDOW_WIDTH, 
       const origin = getServerOrigin();
       if (!url.startsWith(origin)) {
           event.preventDefault();
-          shell.openExternal(url);
+          // Fix #112: Only open external URLs with allowed protocols
+          if (EXTERNAL_LINK_PROTOCOLS.some(p => url.startsWith(p))) {
+              shell.openExternal(url);
+          }
       }
   });
 
@@ -878,10 +893,15 @@ ipcMain.handle('list-worlds', async () => {
             try {
                 const filePath = path.join(WORLDS_DIR, file);
                 const stats = fs.statSync(filePath);
+                // Fix #128: Use try/finally to ensure FD is closed on error
                 const fd = fs.openSync(filePath, 'r');
-                const buffer = Buffer.alloc(WORLD_PREVIEW_BYTES); const bytesRead = fs.readSync(fd, buffer, 0, WORLD_PREVIEW_BYTES, 0);
-                fs.closeSync(fd);
-                const chunk = buffer.toString('utf-8', 0, bytesRead);
+                let chunk;
+                try {
+                    const buffer = Buffer.alloc(WORLD_PREVIEW_BYTES); const bytesRead = fs.readSync(fd, buffer, 0, WORLD_PREVIEW_BYTES, 0);
+                    chunk = buffer.toString('utf-8', 0, bytesRead);
+                } finally {
+                    fs.closeSync(fd);
+                }
                 const nameMatch = chunk.match(/"name"\s*:\s*"([^"]+)"/);
                 const eraMatch = chunk.match(/"era"\s*:\s*"([^"]+)"/);
                 const modListMatch = chunk.match(/"mod_list"\s*:\s*(\[[\s\S]*?\])/);
@@ -963,11 +983,15 @@ ipcMain.handle('read-save-chunk', async (event, filename, position, size) => {
     if (typeof position !== 'number' || position < 0) return "";
     if (typeof size !== 'number' || size <= 0 || size > MAX_READ_SAVE_CHUNK_BYTES) return ""; // Max 1MB per chunk
     try {
+        // Fix #128: Use try/finally to ensure FD is closed on error
         const fd = await fs.promises.open(path.join(SAVES_DIR, filename), 'r');
-        const buffer = Buffer.alloc(size);
-        const { bytesRead } = await fd.read(buffer, 0, size, position);
-        await fd.close();
-        return buffer.toString('utf-8', 0, bytesRead);
+        try {
+            const buffer = Buffer.alloc(size);
+            const { bytesRead } = await fd.read(buffer, 0, size, position);
+            return buffer.toString('utf-8', 0, bytesRead);
+        } finally {
+            await fd.close();
+        }
     } catch (e) { return ""; }
 });
 
@@ -980,11 +1004,15 @@ ipcMain.handle('list-saves', async () => {
                 const filePath = path.join(SAVES_DIR, file);
                 const stats = fs.statSync(filePath);
                 
+                // Fix #128: Use try/finally to ensure FD is closed on error
                 const fd = fs.openSync(filePath, 'r');
-                const buffer = Buffer.alloc(SAVE_PREVIEW_BYTES); const bytesRead = fs.readSync(fd, buffer, 0, SAVE_PREVIEW_BYTES, 0);
-                fs.closeSync(fd);
-                
-                const chunk = buffer.toString('utf-8', 0, bytesRead);
+                let chunk;
+                try {
+                    const buffer = Buffer.alloc(SAVE_PREVIEW_BYTES); const bytesRead = fs.readSync(fd, buffer, 0, SAVE_PREVIEW_BYTES, 0);
+                    chunk = buffer.toString('utf-8', 0, bytesRead);
+                } finally {
+                    fs.closeSync(fd);
+                }
                 
                 if (chunk.startsWith('{"block":"meta"')) {
                     const firstLine = chunk.split('\n')[0];
@@ -1197,6 +1225,8 @@ ipcMain.handle('gemini-request', async (event, model, contents) => {
             { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: savedThresholds.dangerousContent || defaultThreshold } 
         ];
         const requestBody = JSON.stringify({ contents, generationConfig: GEMINI_GENERATION_CONFIG, safetySettings });
+        // Fix #113: Validate model name to prevent path traversal
+        if (!/^[a-zA-Z0-9.-]+$/.test(model)) return { status: 'error', message: 'Invalid model name' };
         const request = net.request({
             method: 'POST', protocol: 'https:', hostname: 'generativelanguage.googleapis.com',
             path: `/v1beta/models/${model}:generateContent`,
@@ -1208,7 +1238,14 @@ ipcMain.handle('gemini-request', async (event, model, contents) => {
         request.on('response', (res) => {
             let body = '';
             res.on('data', chunk => body += chunk);
-            res.on('end', () => resolve(JSON.parse(body)));
+            // Fix #127: Wrap JSON.parse in try/catch to prevent crash on malformed response
+            res.on('end', () => {
+                try {
+                    resolve(JSON.parse(body));
+                } catch (e) {
+                    resolve({ status: 'error', message: 'Invalid JSON in Gemini response' });
+                }
+            });
         });
         request.on('error', e => reject(e));
         request.write(requestBody);

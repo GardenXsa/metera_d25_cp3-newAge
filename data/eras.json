@@ -3,7 +3,7 @@
     "id": "rebirth",
     "name": "Возрождение",
     "start_year": 1042,
-    "default_location_file": "locations_expanded.json",
+    "default_location_file": "locations_rebirth.json",
     "display_name_i18n_key": "characterCreation.eraRebirth",
     "description_i18n_key": "characterCreation.eraRebirthDesc"
   },

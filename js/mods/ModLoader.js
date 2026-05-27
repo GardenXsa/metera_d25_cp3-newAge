@@ -69,7 +69,8 @@ window.ModAPI = {
             iterations++;
         }
         // Remove on* event handlers — handle both space and / as attribute separators
-        result = result.replace(/[\/\s]on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+        // FIX (Issue #129): Also match entity-encoded equals (&#61; / &#x3D;)
+        result = result.replace(/[\/\s]on\w+\s*(?:=|&#61;|&#x3D;)\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
         // Remove javascript: and vbscript: URLs (with HTML entity bypass prevention)
         result = result.replace(/(&#(106|74);|&amp;#(106|74);|j\s*&#x0*6[1a];?|j\s*&#x0*4[1a];?|j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:)/gi, 'blocked:');
         result = result.replace(/(javascript|vbscript|data)\s*:/gi, 'blocked:');
@@ -731,9 +732,10 @@ function createModSandbox(modAPI, modId, modMeta) {
         if (typeof modAPI[key] === 'function') {
             safeModAPI[key] = modAPI[key].bind(modAPI);
         } else {
+            // FIX (Issue #115): Removed `set` — even after Object.freeze, the setter
+            // still executed and wrote to the real modAPI. Read-only getter only.
             Object.defineProperty(safeModAPI, key, {
                 get: () => modAPI[key],
-                set: (val) => { modAPI[key] = val; },
                 enumerable: true
             });
         }
@@ -1000,15 +1002,13 @@ async function executeModInSandbox(code, modAPI, modId, modMeta) {
     // The mod sandbox already has: constructor chain defense, with(sandboxProxy), 
     // MOD_WRITABLE_WINDOW_PROPS whitelist, Function.prototype.constructor patch.
     // Additional restrictions:
-    // 1. Mod code runs in strict mode to prevent `with` outside sandbox
-    // 2. Wrapped in try/catch/finally to always restore prototype constructors
-    // 3. The sandboxProxy traps prevent access to eval, Function, AsyncFunction
-    // 4. A code scanner rejects mod source containing dangerous patterns before execution
-    const STRICT_MODE_PREFIX = '"use strict";';
+    // FIX (Issue #106): Removed "use strict" — it disables the `with` statement
+    // which is ESSENTIAL for the sandbox to work. The Proxy's `has` trap returning
+    // true for all properties provides equivalent scope isolation to strict mode.
+    // The code scanner (executeModInSandbox pre-scan) rejects dangerous patterns.
 
     // Wrap mod code in with(sandboxProxy) to redirect ALL global lookups
     const wrappedCode = `
-        ${STRICT_MODE_PREFIX}
         ${constructorChainDefense}
         try {
             with(this) {

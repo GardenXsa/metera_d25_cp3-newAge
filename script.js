@@ -96,9 +96,16 @@ if (typeof window !== 'undefined') window.MetereaState = MetereaState;
 // They are XOR-encrypted with a per-session key derived from a random nonce.
 // This prevents trivial exfiltration via XSS (keys are unreadable without the session key).
 // ======================================================================
-const _SESSION_KEY_NONCE = (typeof crypto !== 'undefined' && crypto.getRandomValues)
-    ? Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('')
-    : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+const _SESSION_KEY_NONCE = (() => {
+    const _SK_STORAGE_KEY = '_sk_key';
+    const stored = localStorage.getItem(_SK_STORAGE_KEY);
+    if (stored) return stored;
+    const generated = (typeof crypto !== 'undefined' && crypto.getRandomValues)
+        ? Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('')
+        : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+    localStorage.setItem(_SK_STORAGE_KEY, generated);
+    return generated;
+})();
 
 function _xorEncode(text) {
     if (typeof text !== 'string' || text.length === 0) return '';
@@ -9353,7 +9360,7 @@ function updateNexusDisplay() {
                     valueDisplay = `${item.value}`;
             }
 
-            li.innerHTML = `<span class="nexus-name">${item.name}</span><span class="nexus-value">${valueDisplay}</span>`;
+            li.innerHTML = `<span class="nexus-name">${escapeHTML(item.name)}</span><span class="nexus-value">${escapeHTML(valueDisplay)}</span>`;
             nexusList.appendChild(li);
         });
     }
@@ -10095,10 +10102,10 @@ function updateStatusEffectsDisplay() {
 
             li.innerHTML = `
                 <div>
-                    <span class="effect-name">${effect.name}</span>
-                    <span class="effect-duration">${durationText}</span>
+                    <span class="effect-name">${escapeHTML(effect.name)}</span>
+                    <span class="effect-duration">${escapeHTML(durationText)}</span>
                 </div>
-                <div class="effect-description">${effect.description}</div>
+                <div class="effect-description">${escapeHTML(effect.description)}</div>
             `;
             statusEffectsList.appendChild(li);
         });
@@ -10146,11 +10153,11 @@ function updateQuestList() {
                 }
             }
             li.innerHTML = `
-                <span class="quest-title">${title}</span>
-                <div class="quest-detail"><strong>${t('quests.objectiveLabel')}:</strong> ${objective}</div>
-                <div class="quest-detail quest-description"><strong>${t('quests.descriptionLabel')}:</strong> ${description}</div>
-                <div class="quest-detail"><strong>${t('quests.rewardLabel')}:</strong> ${rewardValue}</div>
-                <div class="quest-detail"><strong>${t('quests.issuerLabel')}:</strong> ${issuerValue}</div>
+                <span class="quest-title">${escapeHTML(title)}</span>
+                <div class="quest-detail"><strong>${t('quests.objectiveLabel')}:</strong> ${escapeHTML(objective)}</div>
+                <div class="quest-detail quest-description"><strong>${t('quests.descriptionLabel')}:</strong> ${escapeHTML(description)}</div>
+                <div class="quest-detail"><strong>${t('quests.rewardLabel')}:</strong> ${escapeHTML(rewardValue)}</div>
+                <div class="quest-detail"><strong>${t('quests.issuerLabel')}:</strong> ${escapeHTML(issuerValue)}</div>
             `;
             questList.appendChild(li);
         });
@@ -10966,12 +10973,12 @@ function showNPCDetailsModal(npcId) {
 
     modalContent.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h2 style="margin: 0; color: #d4af37; font-size: 1.5em;">${npc.name}</h2>
+            <h2 style="margin: 0; color: #d4af37; font-size: 1.5em;">${escapeHTML(npc.name)}</h2>
             <button id="close-npc-modal" style="background: #e74c3c; border: none; color: white; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold;">✕ Закрыть</button>
         </div>
 
         <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-            <div style="font-style: italic; color: #bdc3c7;">${npc.description || 'Нет описания'}</div>
+            <div style="font-style: italic; color: #bdc3c7;">${escapeHTML(npc.description || 'Нет описания')}</div>
         </div>
 
         <h3 style="margin: 20px 0 15px 0; color: #d4af37;">💞 Отношения с вами</h3>
@@ -12084,6 +12091,10 @@ let apiRequestQueue = Promise.resolve();
 
 async function performAiFetch(systemInstruction, history, providerModel, currentInput = "") {
     return new Promise((resolve, reject) => {
+        // Fix #116: Add .catch(() => {}) to prevent deadlock — if the .then() callback
+        // throws outside try/catch, the rejected promise would become the new apiRequestQueue,
+        // and subsequent .then() calls on a rejected promise skip their callback entirely,
+        // causing a permanent deadlock where all future AI requests are silently dropped.
         apiRequestQueue = apiRequestQueue.then(async () => {
             try {
                 const result = await _internalPerformAiFetch(systemInstruction, history, providerModel, currentInput);
@@ -12093,7 +12104,7 @@ async function performAiFetch(systemInstruction, history, providerModel, current
             } finally {
                 lastApiRequestTime = Date.now();
             }
-        });
+        }).catch(() => {}); // ensure chain always resolves, preventing deadlock
     });
 }
 
@@ -18638,7 +18649,7 @@ async function openLoadWorldModal() {
             </div>
             ${w.mod_list && w.mod_list.filter(m=>m!=='base_game').length > 0
                 ? `<div style="margin-top:4px; display:flex; flex-wrap:wrap; gap:3px;">
-                    ${w.mod_list.filter(m=>m!=='base_game').map(m=>`<span style="background:rgba(93,173,226,0.1);border:1px solid rgba(93,173,226,0.25);border-radius:3px;padding:1px 5px;font-size:0.7em;color:#5dade2;">${m}</span>`).join('')}
+                    ${w.mod_list.filter(m=>m!=='base_game').map(m=>`<span style="background:rgba(93,173,226,0.1);border:1px solid rgba(93,173,226,0.25);border-radius:3px;padding:1px 5px;font-size:0.7em;color:#5dade2;">${escapeHTML(m)}</span>`).join('')}
                    </div>`
                 : ''}
             <div style="display:flex; justify-content:space-between; width:100%; margin-top:8px; align-items:center;">

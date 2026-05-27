@@ -113,6 +113,7 @@
   "biomes_legacy_numeric_ids": [
     "ocean",
     "shallow_water",
+    "beach",
     "plains",
     "forest",
     "mountains",

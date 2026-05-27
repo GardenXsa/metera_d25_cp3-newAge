@@ -129,7 +129,9 @@ struct JsonValue {
         if (type == ARRAY && index < arr_val.size()) {
             return arr_val[index];
         }
-        static JsonValue null_val;
+        // Fix #131: Replaced static with thread_local to prevent data race
+        // when multiple threads access out-of-bounds indices simultaneously.
+        thread_local JsonValue null_val;
         null_val = JsonValue(); // Reset to avoid stale data
         return null_val;
     }
