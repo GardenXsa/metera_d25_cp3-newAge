@@ -10151,7 +10151,7 @@ function updateInventoryDisplay() {
             li.addEventListener('dragend', handleDragEnd);
 
             const itemName = props.name || item.prototype_id || 'Неизвестный предмет';
-            let rarityClass = props.rarity ? props.rarity.toLowerCase().replace(/[^a-zа-СЏС'0-9]/g, '-') : '';
+            let rarityClass = props.rarity ? props.rarity.toLowerCase().replace(/[^a-zа-яё0-9]/g, '-') : '';
 
             // Проверка: является ли предмет транспортом (через централизованный TransportSystem)
             const isTransport = TransportSystem.isTransportId(item.prototype_id) ||
