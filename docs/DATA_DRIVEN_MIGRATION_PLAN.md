@@ -28,7 +28,7 @@
 - [x] Inventory actor routes, movement settings, buildContainer defaults вынесены из `script.js`.
 - [x] Runtime config validator добавлен.
 - [x] Data integrity validator добавлен.
-- [x] Smoke-check зелёный: `80 checks, 0 failed, 0 warnings`.
+- [x] Smoke-check зелёный: `84 checks, 0 failed, 0 warnings`.
 - [x] Worklog Viewer показывает общий прогресс.
 - [x] Git checkpoint `76b2df5` запушен (Phase 6).
 

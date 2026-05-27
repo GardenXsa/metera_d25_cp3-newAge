@@ -96,6 +96,7 @@ function main() {
   runIfExists('runtime data tests', 'tests/runtime_data.test.js', process.execPath, ['tests/runtime_data.test.js']);
   runIfExists('character stats resolver tests', 'tests/character_stats_resolver.test.js', process.execPath, ['tests/character_stats_resolver.test.js']);
   runIfExists('mod runtime E2E flow tests', 'tests/mod_runtime_e2e.test.js', process.execPath, ['tests/mod_runtime_e2e.test.js']);
+  runIfExists('text encoding guard tests', 'tests/text_encoding_guard.test.js', process.execPath, ['tests/text_encoding_guard.test.js']);
   runIfExists('stub game integration tests', 'tests/test_stub_game.js', process.execPath, ['tests/test_stub_game.js']);
 
   const py = detectPython();

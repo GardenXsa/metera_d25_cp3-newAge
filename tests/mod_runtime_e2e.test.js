@@ -183,6 +183,8 @@ function assertCharacterCreationRuntimeFlow(database) {
 function assertWorldStartupGuardIsPresent() {
   const scriptSource = fs.readFileSync(projectPath('script.js'), 'utf8');
   assert(scriptSource.includes('armWorldGenerationWatchdog'), 'world startup watchdog function is missing');
+  assert(scriptSource.includes('shouldWorldStartupWatchdogAutoDisable'), 'world startup watchdog must have late-stage false-positive guard');
+  assert(scriptSource.includes('late-stage startup already reached game interface/world state'), 'world startup watchdog must not auto-disable mods after game interface/world state is reached');
   assert(scriptSource.includes('disableActiveModsAfterWorldStartupFailure'), 'world startup watchdog does not disable active mods');
   assert(scriptSource.includes('world startup watchdog timeout'), 'world startup watchdog timeout reason is missing');
 }

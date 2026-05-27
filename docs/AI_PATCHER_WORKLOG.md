@@ -3776,3 +3776,70 @@ Full verify summary: 0 failed, 0 skipped
 ```
 
 **Примечание:** последняя inline `node -e` проверка упала из-за shell/quoting на Windows, но все реальные синтаксические, E2E и full verify проверки зелёные.
+
+
+
+---
+
+### 74. `fix_mojibake_quick_tags_encoding_guard`
+
+**Статус:** подготовлен к применению.
+
+**Диагноз:** на quick tags / dice UI видны строки вида `рџ... STR`, `рџ... D20`, `рџ... Defend`. Это не проблема перевода и не проблема модов; это mojibake emoji/Unicode. Часть UI берёт короткие action labels/эмодзи из runtime/AI/UI строк, и при неверном charset или уже испорченной строке пользователь видит CP1251-подобную кашу вместо emoji.
+
+**Что меняется:**
+
+- `main.js`: MIME для `.html/.js/.css/.json` теперь явно отдаётся с `charset=utf-8`;
+- добавлен `js/core/textEncodingGuard.js`;
+- guard чинит известные mojibake-префиксы в `#quick-tags-bar`, `#active-rolls-container`, `#suggested-actions-container`, dice UI;
+- `index.html` подключает guard перед `script.js`;
+- добавлен `tests/text_encoding_guard.test.js`;
+- `runtime_smoke_check.js` и `full_verify.js` запускают новый тест;
+- smoke baseline обновляется до `84 checks, 0 failed, 0 warnings`.
+
+**Проверки после применения:**
+
+```bash
+node --check main.js
+node --check js/core/textEncodingGuard.js
+node --check tests/text_encoding_guard.test.js
+node tests/text_encoding_guard.test.js
+node tests/mod_runtime_e2e.test.js
+npm run verify
+git status --short
+```
+
+**Ручной тест:** запустить `npm start`, открыть экран с quick tags / active rolls. В местах, где было `рџ... STR`, `рџ... D20`, `рџ... Defend`, должны отображаться нормальные emoji или чистые читаемые подписи.
+
+
+
+
+---
+
+### 75. `fix_world_startup_watchdog_false_positive`
+
+**Статус:** подготовлен к применению.
+
+**Диагноз:** watchdog запуска мира был слишком агрессивным. Он имел фиксированный таймаут `45000` мс и мог автоотключить моды уже после перехода на `game-interface`, когда мир фактически создан, а UI находится на поздней стадии `Завершение...`. Это ложноположительный fail: такая ситуация не доказывает, что мод сломан.
+
+**Что меняется:**
+
+- таймаут watchdog увеличен до 180 секунд;
+- добавлен `shouldWorldStartupWatchdogAutoDisable(detail)`;
+- если watchdog срабатывает после перехода в `game-interface`, при наличии `World.regions` или на late-stage текстах `Завершение/final/setup`, моды больше НЕ автоотключаются;
+- старое автоотключение остаётся только для раннего зависания до создания мира/runtime state;
+- `tests/mod_runtime_e2e.test.js` проверяет наличие late-stage false-positive guard.
+
+**Отдельное замечание:** в логе runtime одновременно были активны `cyberpunk_core` и `neon_siltlands_core`. Для total-conversion модов это подозрительная комбинация. Команда после патча сбрасывает runtime-disabled и оставляет активными `base_game + neon_siltlands_core`, чтобы вернуться к стабильной текущей конфигурации.
+
+**Проверки после применения:**
+
+```bash
+node --check script.js
+node --check tests/mod_runtime_e2e.test.js
+node tests/mod_runtime_e2e.test.js
+npm run verify
+git status --short
+```
+
+**Ручной тест:** запустить `npm start`, включить только `neon_siltlands_core`, создать мир. Если запуск дольше 45 секунд на стадии `Завершение...`, watchdog больше не должен отключать мод.

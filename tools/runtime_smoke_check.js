@@ -139,6 +139,7 @@ function checkExpectedFiles() {
     'tools/verify_character_stats_contract.js',
     'tests/character_stats_resolver.test.js',
     'tests/mod_runtime_e2e.test.js',
+    'tests/text_encoding_guard.test.js',
     'data/runtime_manifest.json',
     'data/ui_runtime.json',
     'data/electron_runtime.json',
@@ -186,6 +187,7 @@ function main() {
     'js/core/constants.js',
     'js/core/runtimeLog.js',
     'js/core/characterStatsResolver.js',
+    'js/core/textEncodingGuard.js',
     'js/cartographer/globalMap.js',
     'js/mods/ModLoader.js',
     'js/mods/ModLoaderIntegration.js',
@@ -197,7 +199,8 @@ function main() {
     'tools/validate_modding_contract.js',
     'tools/verify_character_stats_contract.js',
     'tests/character_stats_resolver.test.js',
-    'tests/mod_runtime_e2e.test.js'
+    'tests/mod_runtime_e2e.test.js',
+    'tests/text_encoding_guard.test.js'
   ].forEach(checkJsSyntax);
 
   runNodeTool('tools/validate_runtime_configs.js', 'runtime config contracts');
@@ -206,6 +209,7 @@ function main() {
   runNodeTool('tools/verify_character_stats_contract.js', 'character stats contract');
   runNodeTool('tests/character_stats_resolver.test.js', 'character stats resolver tests');
   runNodeTool('tests/mod_runtime_e2e.test.js', 'mod runtime E2E flow tests');
+  runNodeTool('tests/text_encoding_guard.test.js', 'text encoding guard tests');
   printResults();
 }
 
