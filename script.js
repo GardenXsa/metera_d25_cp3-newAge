@@ -6898,7 +6898,7 @@ function getFriendlyApiErrorMessage(status, rawText) {
         502: "Плохой шлюз. Сервер провайдера ИИ временно недоступен.",
         503: "Сервер провайдера ИИ перегружен. Повторите попытку позже.",
         504: "Время ожидания ответа от сервера ИИ истекло.",
-        'network': "Ошибка сети. Проверьте подключение к интернету или отключите VPN/AdBlock."
+        'network': "Ошибка сети. Проверьте подключение к интернету. Если используете VPN/AdBlock — отключите. Если ошибка повторяется, проверьте CSP-политику (connect-src) в electron_runtime.json."
     };
     
     let friendlyText = t(`apiErrors.${status}`, null, "");
@@ -12541,8 +12541,8 @@ async function _internalPerformAiFetch(systemInstruction, history, providerModel
                 continue;
             }
         } catch (err) {
-            console.error("Fetch error:", err);
-            if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError'))) {
+            console.error("Fetch error:", err?.message || err?.toString?.() || String(err), err?.stack || '');
+            if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.name === 'TypeError')) {
                 throw new Error(getFriendlyApiErrorMessage('network', err.message));
             }
             throw err;

@@ -69,7 +69,17 @@
       ],
       "connect_src": [
         "https://cdnjs.cloudflare.com",
-        "https://cdn.jsdelivr.net"
+        "https://cdn.jsdelivr.net",
+        "https://llmost.ru",
+        "https://api.deepseek.com",
+        "https://openrouter.ai",
+        "https://api.omniroute.ai",
+        "https://generativelanguage.googleapis.com",
+        "https://image.pollinations.ai",
+        "https://api.openai.com",
+        "https://api.anthropic.com",
+        "http://localhost:",
+        "https://localhost:"
       ]
     }
   },
