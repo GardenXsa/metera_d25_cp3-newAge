@@ -575,7 +575,7 @@ ipcMain.handle('nexus-write-sync-file', async (event, worldData) => {
         const tempFileName = SYNC_TEMP_FILE_NAME;
         const tempFilePath = path.join(SAVES_DIR, tempFileName);
         fs.writeFileSync(tempFilePath, serialized);
-        return { status: 'ok' }; // Don't leak internal path in response
+        return { status: 'ok', path: tempFilePath };
     } catch (error) {
         // Don't leak internal error details — just return a generic message
         console.error('[nexus-write-sync-file] Error:', error.message);
@@ -997,7 +997,7 @@ ipcMain.handle('read-save-chunk', async (event, filename, position, size) => {
 
 ipcMain.handle('list-saves', async () => {
     try {
-        const files = fs.readdirSync(SAVES_DIR).filter(f => f.endsWith('.json'));
+        const files = fs.readdirSync(SAVES_DIR).filter(f => f.endsWith('.json') && f !== SYNC_TEMP_FILE_NAME);
         const results = [];
         for (const file of files) {
             try {
@@ -1017,7 +1017,7 @@ ipcMain.handle('list-saves', async () => {
                 if (chunk.startsWith('{"block":"meta"')) {
                     const firstLine = chunk.split('\n')[0];
                     const meta = JSON.parse(firstLine).data;
-                    results.push({ filename: file, timestamp: meta.timestamp, playerData: meta.playerData });
+                    results.push({ filename: file, timestamp: meta.timestamp, playerData: meta.playerData, mod_list: meta.mod_list || [] });
                 } else {
                     const nameMatch = chunk.match(/"name"\s*:\s*"([^"]+)"/);
                     const levelMatch = chunk.match(/"level"\s*:\s*(\d+)/);

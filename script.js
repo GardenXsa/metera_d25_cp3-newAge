@@ -3205,7 +3205,7 @@ async function showLoadGameScreen() {
         }
 
         const saves = await window.electronAPI.listSaves() || [];
-        const manualSaves = saves.filter(s => !s.filename.startsWith('autosave_'))
+        const manualSaves = saves.filter(s => !s.filename.startsWith('autosave_') && !s.filename.startsWith('__'))
             .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
         const autoSaves = saves.filter(s => s.filename.startsWith('autosave_'))
             .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
@@ -3219,24 +3219,98 @@ async function showLoadGameScreen() {
             items.slice(0, maxCount).forEach(save => {
                 const li = document.createElement('li');
                 li.className = 'save-slot-btn';
-                const name = escapeHTML(save.name || save.filename || 'Сохранение');
+                const pName = (save.playerData && save.playerData.name) ? save.playerData.name : (save.name || 'Сохранение');
+                const pLevel = (save.playerData && save.playerData.stats && save.playerData.stats.level) ? ` Ур.${save.playerData.stats.level}` : '';
+                const name = escapeHTML(pName + pLevel);
                 const date = save.timestamp ? new Date(save.timestamp).toLocaleString() : '';
-                li.innerHTML = `<span class="save-slot-id">${name}</span><span class="save-slot-date" style="float:right;color:#7f8c8d;font-size:0.85em;">${escapeHTML(date)}</span>`;
+                const modInfo = (save.mod_list && save.mod_list.length > 0) ? `<span style="color:#9b59b6;font-size:0.8em;"> [${save.mod_list.join(', ')}]</span>` : '';
+                li.innerHTML = `<span class="save-slot-id">${name}${modInfo}</span><span class="save-slot-date" style="float:right;color:#7f8c8d;font-size:0.85em;">${escapeHTML(date)}</span>`;
                 li.addEventListener('click', async () => {
                     try {
-                        const data = await window.electronAPI.loadGame(save.filename);
-                        if (data && data.player) {
-                            player = data.player;
-                            if (data.world) setWorld(data.world);
-                            if (data.conversationHistory) conversationHistory = data.conversationHistory;
-                            setActiveScreen('game-interface');
-                            updateCharacterSheet();
-                            updateMapDisplay();
-                            updateInventoryDisplay();
-                            updateEnvironmentPanel();
-                            console.log(`[LoadGame] Loaded: ${save.filename}`);
+                        // Check if SaveManager's loadGame is available for block-based saves
+                        if (typeof window.loadGame === 'function' && save.filename && save.filename.startsWith(SAVE_FILE_PREFIX)) {
+                            // Block-based save — use SaveManager for full restoration
+                            const slotType = save.playerData && save.playerData.slotType ? save.playerData.slotType : 'manual';
+                            const slotId = save.playerData && save.playerData.slotId ? save.playerData.slotId : 1;
+                            await window.loadGame(slotType, slotId);
                         } else {
-                            showCustomAlert('Не удалось загрузить сохранение — данные повреждены.');
+                            // Legacy monolithic save (autosave_*.json or old format)
+                            const data = await window.electronAPI.loadGame(save.filename);
+                            if (data && data.player) {
+                                // Use SaveManager.loadGame-style restoration for legacy saves
+                                player = data.player;
+                                if (data.world) setWorld(data.world);
+                                if (data.conversationHistory) conversationHistory = data.conversationHistory;
+
+                                // Post-load initialization
+                                if (typeof initWorldSimulator === 'function') {
+                                    await initWorldSimulator(100, 0, true);
+                                }
+                                if (typeof ensurePlayerContainers === 'function') {
+                                    await ensurePlayerContainers();
+                                }
+                                if (typeof syncPlayerContainerBindings === 'function') {
+                                    await syncPlayerContainerBindings();
+                                }
+                                if (typeof syncPlayerGoldFromInventory === 'function') {
+                                    syncPlayerGoldFromInventory();
+                                }
+                                if (typeof loadActiveEraLore === 'function') {
+                                    await loadActiveEraLore(player.era);
+                                }
+                                if (typeof loadGlobalLocations === 'function') {
+                                    await loadGlobalLocations(DEFAULT_WORLD_ID, currentLanguage, player.era);
+                                }
+
+                                // Sync with C++ engine
+                                if (window.electronAPI && window.electronAPI.nexusWriteSyncFile && window.electronAPI.nexusLoadWorldFile) {
+                                    try {
+                                        const syncItems = typeof ItemRegistry !== 'undefined' ? Array.from(ItemRegistry.entries()) : [];
+                                        const syncContainers = typeof ContainerRegistry !== 'undefined' ? Array.from(ContainerRegistry.entries()) : [];
+                                        const worldFileData = { world: World, items: syncItems, containers: syncContainers };
+                                        const writeRes = await window.electronAPI.nexusWriteSyncFile(worldFileData);
+                                        if (writeRes.status === 'ok') {
+                                            const syncTempPath = path.join ? null : null; // Use known temp filename
+                                            const loadRes = await window.electronAPI.nexusLoadWorldFile(writeRes.path || '__nexus_sync_temp__.json');
+                                            if (loadRes && loadRes.status === 'ok') {
+                                                console.log('[LoadGame] Engine sync completed');
+                                            }
+                                        }
+                                    } catch (syncErr) {
+                                        console.warn('[LoadGame] Engine sync failed:', syncErr);
+                                    }
+                                }
+
+                                player.stats = player.stats || {};
+                                player.nexusData = player.nexusData || {};
+                                player.statusEffects = player.statusEffects || {};
+                                player.quests = player.quests || {};
+                                player.skills = player.skills || {};
+                                player.mapMarkers = player.mapMarkers || {};
+                                player.subLocations = player.subLocations || {};
+                                player.visibleEntities = player.visibleEntities || {};
+                                player.allKnownEntities = player.allKnownEntities || {};
+                                player.visitedLocations = player.visitedLocations || [];
+                                player.localMap = player.localMap || null;
+                                player.gameLogHistory = player.gameLogHistory || [];
+                                player.holdings = player.holdings || {};
+                                player.bankAccount = player.bankAccount || { deposit: 0, loan: 0, loanDays: 0 };
+                                player.factionData = player.factionData || {};
+                                player.gmNotes = player.gmNotes || {};
+
+                                if (window.Cartographer) Cartographer.isMapInitialized = false;
+                                stopMenuMusic();
+                                await initializeGameInterface();
+                                setActiveScreen('game-interface');
+                                updateCharacterSheet();
+                                updateMapDisplay();
+                                updateInventoryDisplay();
+                                updateEnvironmentPanel();
+                                if (typeof displaySavedChatHistory === 'function') displaySavedChatHistory();
+                                console.log(`[LoadGame] Loaded legacy save: ${save.filename}`);
+                            } else {
+                                showCustomAlert('Не удалось загрузить сохранение — данные повреждены.');
+                            }
                         }
                     } catch (err) {
                         console.error('[LoadGame] Error:', err);
@@ -6026,7 +6100,7 @@ function t(key, variables = null, fallback = null) {
     if (variables && typeof translation === 'string') {
         for (const varKey in variables) {
             const regex = new RegExp(`\\{${varKey}\\}`, 'g');
-            translation = translation.replace(regex, variables[varKey]);
+            translation = translation.replace(regex, String(variables[varKey]));
         }
     }
     return translation || (fallback !== null ? fallback : key);
@@ -8101,7 +8175,7 @@ function handleRaceOrClassChange() {
 }
 
 function handleStatChange(event) {
-    const button = event.target;
+    const button = event.currentTarget;
     const stat = button.getAttribute('data-stat');
     const change = button.classList.contains('plus') ? 1 : -1;
 
@@ -10151,7 +10225,7 @@ function showItemExamineModal(item) {
     if (item.effects && item.effects.length > 0) {
         statsHtml += `<div><strong>Эффекты:</strong> ${item.effects.map(e => `${e.stat.toUpperCase()} ${e.change > 0 ? '+' : ''}${e.change}`).join(', ')}</div>`;
     }
-    statsHtml += `<div><strong>Ценность:</strong> ${item.value || 0} 💰</div>`;
+    statsHtml += `<div><strong>Ценность:</strong> ${(typeof item.value === 'object' ? JSON.stringify(item.value) : item.value) || 0} 💰</div>`;
     document.getElementById('examine-stats').innerHTML = statsHtml || 'Нет характеристик';
 
     const historyEl = document.getElementById('examine-history-content');
@@ -10467,10 +10541,10 @@ function renderChroniclePage(page) {
             
             li.innerHTML = `
                 <div style="display:flex; justify-content: space-between; align-items: flex-start;">
-                    <span class="chronicle-title">${ev.name}</span>
-                    <span class="${statusClass}">${statusIcon} ${isActive ? t('extraLoc.chronicles.active') : ev.value.toUpperCase()}</span>
+                    <span class="chronicle-title">${escapeHTML(String(ev.name))}</span>
+                    <span class="${statusClass}">${statusIcon} ${isActive ? t('extraLoc.chronicles.active') : escapeHTML(String(ev.value)).toUpperCase()}</span>
                 </div>
-                <div class="chronicle-desc">${ev.description}</div>
+                <div class="chronicle-desc">${escapeHTML(String(ev.description))}</div>
             `;
         } else {
             const news = item.data;
@@ -10791,7 +10865,7 @@ function createItemTooltip(event, item) {
             <div style="font-style:italic;">${safeItemDesc}</div>
             ${effectsHtml}
             ${historyHtml}
-            <div style="margin-top:8px; font-size:0.85em; text-align:right; opacity:0.8;">💰 Ценность: ${item.value || 0}</div>
+            <div style="margin-top:8px; font-size:0.85em; text-align:right; opacity:0.8;">💰 Ценность: ${(typeof item.value === 'object' ? JSON.stringify(item.value) : item.value) || 0}</div>
         </div>
     `;
 
@@ -14700,7 +14774,7 @@ async function executeNonInventoryCommand(command, args) {
                     if (!player.nexusData[args.id]) {
                         player.nexusData[args.id] = {
                             id: args.id, name: args.name, description: args.description || '',
-                            category: args.category, displayType: dType, value: args.value,
+                            category: args.category, displayType: dType, value: (typeof args.value === 'object' && args.value !== null) ? JSON.stringify(args.value) : args.value,
                             effectsJSON: args.effectsJSON || null,
                             effectApplied: false
                         };
@@ -14738,7 +14812,7 @@ if (player.nexusData && player.nexusData[args.id]) {
                                 feedback = t('gameInterface.commandFeedback.nexusModified', { name: nexusItem.name, change: args.value, newValue: nexusItem.value });
                             }
                         } else {
-                            nexusItem.value = args.value;
+                            nexusItem.value = (typeof args.value === 'object' && args.value !== null) ? JSON.stringify(args.value) : args.value;
                             feedback = t('gameInterface.commandFeedback.nexusSet', { name: nexusItem.name, newValue: nexusItem.value });
                         }
                         updateNexusDisplay();
@@ -16381,11 +16455,12 @@ function updateTraitsDisplay() {
         groupedTraits[category].forEach(trait => {
             const li = document.createElement('li');
             li.title = trait.description;
+            const safeTraitValue = (typeof trait.value === 'object' && trait.value !== null) ? JSON.stringify(trait.value) : String(trait.value);
             let valueDisplay = '';
             if (trait.type === 'numeric') {
-                valueDisplay = ` (Ранг: ${trait.value})`;
+                valueDisplay = ` (Ранг: ${safeTraitValue})`;
             } else if (trait.type === 'text') {
-                valueDisplay = `: ${trait.value}`;
+                valueDisplay = `: ${safeTraitValue}`;
             }
             li.innerHTML = `<span class="trait-name">${escapeHTML(trait.name)}</span><span class="trait-value">${escapeHTML(valueDisplay)}</span>`;
             traitsList.appendChild(li);

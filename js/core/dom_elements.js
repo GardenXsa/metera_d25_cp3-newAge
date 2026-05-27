@@ -96,6 +96,7 @@ function initDomElements() {
             int: document.getElementById('create-stat-int'),
             con: document.getElementById('create-stat-con'),
             cha: document.getElementById('create-stat-cha'),
+            res: document.getElementById('create-stat-res'),
         },
         startGameButton: document.getElementById('start-game-button'),
         creationError: document.getElementById('creation-error'),

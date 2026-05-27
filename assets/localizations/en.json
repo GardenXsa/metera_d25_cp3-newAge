@@ -106,6 +106,7 @@
     "statINT": "Intelligence (INT)",
     "statCON": "Constitution (CON)",
     "statCHA": "Charisma (CHA)",
+    "statRES": "Resilience (RES)",
     "startGameButton": "Next",
     "cancelButton": "Cancel",
     "quickStartButton": "Quick Start",

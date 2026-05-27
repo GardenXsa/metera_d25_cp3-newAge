@@ -106,6 +106,7 @@
     "statINT": "Интеллект (INT)",
     "statCON": "Выносливость (CON)",
     "statCHA": "Харизма (CHA)",
+    "statRES": "Стойкость (RES)",
     "startGameButton": "Далее",
     "cancelButton": "Отмена",
     "quickStartButton": "Быстрый старт",
