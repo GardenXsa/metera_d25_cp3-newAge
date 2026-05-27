@@ -1272,7 +1272,7 @@ const TransportSystem = {
         doc += '  { "command": "addItem", "args": { "aiIdentifier": "horse", "name": "Гнедая лошадь" } }\n';
         doc += '  { "command": "mountTransport", "args": { "itemId": "horse" } }\n';
         doc += '\nНЕПРАВИЛЬНО:\n';
-        doc += '  { "command": "addItem", "args": { "aiIdentifier": "horse_brown" } } вќЊ\n';
+        doc += '  { "command": "addItem", "args": { "aiIdentifier": "horse_brown" } } ❌\n';
         doc += '  { "command": "addItem", "args": { "aiIdentifier": "лошадь" } } ❌\n';
         doc += '=== [КОНЕЦ СЛУЖЕБНОЙ ИНФОРМАЦИИ] ===\n';
 
@@ -1391,7 +1391,7 @@ async function updateTransportUI() {
         indicator.innerHTML = `
             <i class="fas fa-horse"></i>
             ${t('transport.active', 'Transport')}: ${transportName}
-            <br>Speed: Г—${info.speed_multiplier.toFixed(1)}
+            <br>Speed: ×${info.speed_multiplier.toFixed(1)}
             <button id="dismount-transport-btn" class="btn-small">${t('transport.dismount', 'Dismount')}</button>
         `;
         const dismountBtn = indicator.querySelector('#dismount-transport-btn');
@@ -3615,7 +3615,7 @@ async function runWorldSimulationTick() {
                 if (f.diplomacy[target] === "war") activeWars.push(`${f.name} воюет с ${World.factions[target].name}`);
             }
         }
-        if (activeWars.length > 0) worldSummary += `\nР’РѕР№РЅС‹: ${[...new Set(activeWars)].join(", ")}\n`;
+        if (activeWars.length > 0) worldSummary += `\nВойны: ${[...new Set(activeWars)].join(", ")}\n`;
 
         let recentNews = World.news
             .map(n => ({ ...n, daysOld: Math.max(0, currentDay - (n.day || 0)) }))
@@ -3631,7 +3631,7 @@ async function runWorldSimulationTick() {
             const m = window.WORLD_CONFIG.months[player.gameTime.month - 1];
             mName = typeof t === 'function' ? t(m.name_i18n_key, null, m.id) : m.id;
         }
-        let currentDateStr = `${player.gameTime.day} ${mName}, ${player.gameTime.year} РіРѕРґР°`;
+        let currentDateStr = `${player.gameTime.day} ${mName}, ${player.gameTime.year} года`;
         
         const prompt = `### ДИРЕКТИВА: ДВИЖОК МИРА (WORLD SIMULATOR) v5.0\nТы -- аналитический модуль. Твоя задача: написать историческую сводку ("Вести из Эфира") на основе СЫРЫХ ДАННЫХ.\n\n[СИСТЕМНОЕ ВРЕМЯ]:\n- Текущая дата: ${currentDateStr}\n- Времени прошло с прошлой сводки: ровно ${daysPassed} дней.\n\n${worldSummary}\n\nПРИКАЗЫ (ЛОГИКА И ФАКТЫ):\n1. Внимательно изучи "Хронологию системных событий". Обращай внимание на пометку "[X дн. назад]". Если осада началась 14 дней назад и длилась 4 дня, значит ОНА УЖЕ ЗАВЕРШИЛАСЬ. Не смей писать, что город "продержится еще 4 дня"!\n2. Сверься с "ТЕКУЩИМ СОСТОЯНИЕМ МИРА". Если в списке "Армий в походе СЕЙЧАС" у фракции 0 армий, значит в ДАННЫЙ МОМЕНТ она никого не осаждает и никуда не идет. Все её походы из Хронологии уже завершены, описывай их как прошлые события.\n3. Опиши события в прошедшем времени, как историк, подводящий итоги за ${daysPassed} дней. Оперируй только фактами из сводки, НЕ ВЫДУМЫВАЙ действия армий, если их нет в логах.\n4. Начни текст с четкого обозначения прошедшего времени (Например: "За минувшие ${daysPassed} дней...", "К ${currentDateStr} ситуация...").\n5. Твой ответ ДОЛЖЕН БЫТЬ СТРОГО ВАЛИДНЫМ JSON ОБЪЕКТОМ. Массив actions оставляй ПУСТЫМ [].\nФормат:\n{\n  "narrative": "Твоя точная и логичная хроника событий...",\n  "actions": []\n}`;
         
@@ -4377,13 +4377,13 @@ function populateClassesUI(classesData) {
 
 // 1. Конфигурация кнопок (Типы бросков)
 const quickTags = [
-    { label: 'вљ”пёЏ Attack', type: 'combat', stat: 'atk' },
+    { label: '⚔️ Attack', type: 'combat', stat: 'atk' },
     { label: 'рџ›ЎпёЏ Defend', type: 'combat', stat: 'def' },
     { label: 'рџЋІ D20', type: 'stat', stat: 'd20' },
     { label: 'рџ’Є STR', type: 'stat', stat: 'str' },
     { label: 'рџ¤ё DEX', type: 'stat', stat: 'dex' },
     { label: 'рџ§  INT', type: 'stat', stat: 'int' },
-    { label: 'вќ¤пёЏ CON', type: 'stat', stat: 'con' },
+    { label: '❤️ CON', type: 'stat', stat: 'con' },
     { label: 'рџ—ЈпёЏ CHA', type: 'stat', stat: 'cha' }
 ];
 
@@ -4473,7 +4473,7 @@ function createRollBadge(statKey, labelText) {
             badge.classList.remove('shake');
             void badge.offsetWidth;
             badge.classList.add('shake');
-            return false; // РЈР¶Рµ РІРёСЃРёС‚
+            return false; // Уже висит
         }
     }
 
@@ -5292,10 +5292,10 @@ function showAiErrorModal(errorText, isInitial, onRetry, customTitle = null, cus
     let detailsText = errorText;
 
     // Разделяем человекочитаемую часть и технические детали
-    if (typeof errorText === 'string' && errorText.includes('\n\n[РљРѕРґ:')) {
-        let parts = errorText.split('\n\n[РљРѕРґ:');
+    if (typeof errorText === 'string' && errorText.includes('\n\n[Код:')) {
+        let parts = errorText.split('\n\n[Код:');
         mainText = parts[0];
-        detailsText = '[РљРѕРґ:' + parts[1];
+        detailsText = '[Код:' + parts[1];
     }
 
     if (customDesc) {
@@ -5900,7 +5900,7 @@ async function loadLanguagesConfig() {
     } catch (error) {
         console.error("Не удалось загрузить конфигурацию языков:", error);
         availableLanguages = {
-            [DEFAULT_LANGUAGE]: { name: (DEFAULT_LANGUAGE === 'ru' ? 'Р СѓСЃСЃРєРёР№' : 'Default'), file: `assets/localizations/${DEFAULT_LANGUAGE}.json` }
+            [DEFAULT_LANGUAGE]: { name: (DEFAULT_LANGUAGE === 'ru' ? 'Русский' : 'Default'), file: `assets/localizations/${DEFAULT_LANGUAGE}.json` }
         };
         populateLanguageSelector();
     }
@@ -6132,7 +6132,7 @@ function updateDynamicUIText() {
     if (mapPanelTitle) {
         mapPanelTitle.textContent = t('gameInterface.mapPanel.title');
     }
-    const environmentPanelTitle = document.querySelector('.environment-panel .panel-toggle > span:first-child'); // РќРћР’РћР•
+    const environmentPanelTitle = document.querySelector('.environment-panel .panel-toggle > span:first-child'); // НОВОЕ
     if (environmentPanelTitle) {
         environmentPanelTitle.textContent = t('gameInterface.environmentPanel.title');
     }
@@ -6155,7 +6155,7 @@ function updateDynamicUIText() {
     }
     const portPanelTitle = document.querySelector('.port-panel .panel-toggle > span:first-child');
     if (portPanelTitle) {
-        portPanelTitle.textContent = t('gameInterface.portPanel.title', null, 'РџРѕСЂС‚');
+        portPanelTitle.textContent = t('gameInterface.portPanel.title', null, 'Порт');
     }
     const clearEchoBtn = document.getElementById('clear-echo-memory-btn');
     if (clearEchoBtn) {
@@ -6224,7 +6224,7 @@ function updateDynamicUIText() {
             li.textContent = t('gameInterface.mapPanel.noCustom');
         }
     }
-    if (environmentList && environmentList.children.length === 1 && environmentList.firstElementChild.tagName === 'LI') { // РќРћР’РћР•
+    if (environmentList && environmentList.children.length === 1 && environmentList.firstElementChild.tagName === 'LI') { // НОВОЕ
         const li = environmentList.firstElementChild;
         if (Object.keys(player?.visibleEntities || {}).length === 0) {
             li.textContent = t('gameInterface.environmentPanel.empty');
@@ -6741,7 +6741,7 @@ async function pingProvider() {
         } else {
             const errText = await response.text();
             let shortMsg = t(`apiErrors.${response.status}`, null, `Ошибка ${response.status}`);
-            resultDiv.innerHTML = `<span style="color: #e74c3c;" title="${escapeHTML(errText)}"><i class="fas fa-times"></i> ${escapeHTML(shortMsg)} (РљРѕРґ: ${response.status})</span>`;
+            resultDiv.innerHTML = `<span style="color: #e74c3c;" title="${escapeHTML(errText)}"><i class="fas fa-times"></i> ${escapeHTML(shortMsg)} (Код: ${response.status})</span>`;
         }
     } catch (e) {
         let shortMsg = e.message.includes('fetch') ? t('apiErrors.network', null, 'Ошибка сети') : e.message;
@@ -6839,7 +6839,7 @@ async function fetchModels() {
                     else if (p_prompt >= 0 && p_comp >= 0) {
                         let pr_str = p_prompt < 0.01 ? p_prompt.toFixed(4) : p_prompt.toFixed(2);
                         let cmp_str = p_comp < 0.01 ? p_comp.toFixed(4) : p_comp.toFixed(2);
-                        priceText = `$${pr_str} / $${cmp_str} Р·Р° 1M`;
+                        priceText = `$${pr_str} / $${cmp_str} за 1M`;
                     } else priceText = 'Платная';
                     
                     let isCaching = m.architecture && m.architecture.prompt_caching;
@@ -7015,7 +7015,7 @@ async function testApiConnection() {
                         // Форматируем цену: если меньше цента, показываем 4 знака, иначе 2
                         let pr_str = p_prompt < 0.01 ? p_prompt.toFixed(4) : p_prompt.toFixed(2);
                         let cmp_str = p_comp < 0.01 ? p_comp.toFixed(4) : p_comp.toFixed(2);
-                        priceText = `$${pr_str} / $${cmp_str} Р·Р° 1M`;
+                        priceText = `$${pr_str} / $${cmp_str} за 1M`;
                     } else {
                         priceText = 'Платная';
                     }
@@ -7049,7 +7049,7 @@ async function testApiConnection() {
         } else {
             const errText = await response.text();
             let shortMsg = t(`apiErrors.${response.status}`, null, `Ошибка ${response.status}`);
-            resultDiv.innerHTML = `<span style="color: #e74c3c;" title="${escapeHTML(errText)}"><i class="fas fa-times"></i> ${escapeHTML(shortMsg)} (РљРѕРґ: ${response.status})</span>`;
+            resultDiv.innerHTML = `<span style="color: #e74c3c;" title="${escapeHTML(errText)}"><i class="fas fa-times"></i> ${escapeHTML(shortMsg)} (Код: ${response.status})</span>`;
             console.error("Ping error:", errText);
         }
     } catch (e) {
@@ -7726,7 +7726,7 @@ function setupEventListeners() {
     if (repeatBtn) repeatBtn.addEventListener('click', repeatLastAction);
 
     document.addEventListener('keydown', (e) => {
-        if (e.ctrlKey && (e.key === 'r' || e.key === 'Рє')) {
+        if (e.ctrlKey && (e.key === 'r' || e.key === 'к')) {
             e.preventDefault();
             repeatLastAction();
         }
@@ -8864,7 +8864,7 @@ function updateTimeDisplay() {
             mName = typeof t === 'function' ? t(m.name_i18n_key, null, m.id) : m.id;
         }
         
-        timeInfo.innerHTML = `${icon} ${gt.day} ${mName}, ${gt.year} Рі. | ${hh}:${mm}`;
+        timeInfo.innerHTML = `${icon} ${gt.day} ${mName}, ${gt.year} г. | ${hh}:${mm}`;
     }
 }
 
@@ -9508,8 +9508,8 @@ function updateNexusDisplay() {
                 case 'clock':
                     const max = parseInt(item.max, 10) || requireRuntimeNumber(getGameplayRuntimeConfig().item_display.clock_max_segments, 'gameplay_runtime.item_display.clock_max_segments');
                     const val = parseInt(item.value, 10) || 0;
-                    const filled = 'в–€'.repeat(val);
-                    const empty = 'в–‘'.repeat(Math.max(0, max - val));
+                    const filled = '█'.repeat(val);
+                    const empty = '░'.repeat(Math.max(0, max - val));
                     valueDisplay = `<span style="color:#e74c3c; letter-spacing: 2px;">[${filled}${empty}]</span>`;
                     break;
                 case 'text':
@@ -9612,7 +9612,7 @@ function updateDiceLogDisplay() {
         const li = document.createElement('li');
         li.style.cssText = 'flex-direction: column; align-items: flex-start; background: rgba(0,0,0,0.3); border-left: 3px solid #f39c12; margin-bottom: 5px; padding: 8px;';
         
-        let html = `<div style="color: #f39c12; font-size: 0.85em; margin-bottom: 4px; font-weight: bold;">РҐРѕРґ ${entry.turn}</div>`;
+        let html = `<div style="color: #f39c12; font-size: 0.85em; margin-bottom: 4px; font-weight: bold;">Ход ${entry.turn}</div>`;
         entry.rolls.forEach(roll => {
             html += `<div style="color: #ecf0f1; font-size: 0.9em; font-family: monospace;">рџЋІ ${roll}</div>`;
         });
@@ -9852,8 +9852,8 @@ function updateCharacterSheet() {
         if (locationStatLine) locationStatLine.style.display = 'none';
         if (journeyContainer) {
             journeyContainer.style.display = 'flex';
-            journeyDest.textContent = `Р’ пути: ${player.travel.destinationName}`;
-            journeyProgressText.textContent = `${player.travel.elapsedHours} / ${player.travel.totalHours} С‡.`;
+            journeyDest.textContent = `В пути: ${player.travel.destinationName}`;
+            journeyProgressText.textContent = `${player.travel.elapsedHours} / ${player.travel.totalHours} ч.`;
             const pct = Math.min(100, (player.travel.elapsedHours / player.travel.totalHours) * 100);
             journeyProgressBar.style.width = `${pct}%`;
             
@@ -9969,9 +9969,9 @@ function updateCharacterSheet() {
             journeyContainer.style.display = 'flex';
             // Визуальная индикация боя в путешествии
             if (player.currentCombat && player.currentCombat.isActive) {
-                journeyDest.innerHTML = `Р’ пути: ${escapeHTML(player.currentJourney.destination)} <span style="color: #e74c3c;">[БОЙ!]</span>`;
+                journeyDest.innerHTML = `В пути: ${escapeHTML(player.currentJourney.destination)} <span style="color: #e74c3c;">[БОЙ!]</span>`;
             } else {
-                journeyDest.textContent = `Р’ пути: ${player.currentJourney.destination}`;
+                journeyDest.textContent = `В пути: ${player.currentJourney.destination}`;
             }
             journeyProgressText.textContent = `${player.currentJourney.currentPoint} / ${player.currentJourney.points}`;
             const pct = Math.min(100, (player.currentJourney.currentPoint / player.currentJourney.points) * 100);
@@ -10121,8 +10121,8 @@ function updateInventoryDisplay() {
         if (currentInventoryFilter === 'quest') return props.isQuestItem === true;
         const iType = (props.itemType || 'misc').toLowerCase().trim();
         if (currentInventoryFilter === 'potion' && (iType === 'potion' || iType === 'зелье' || iType === 'consumable')) return true;
-        if (currentInventoryFilter === 'weapon' && (iType === 'weapon' || iType === 'РѕСЂСѓР¶РёРµ')) return true;
-        if (currentInventoryFilter === 'armor' && (iType === 'armor' || iType === 'Р±СЂРѕРЅСЏ')) return true;
+        if (currentInventoryFilter === 'weapon' && (iType === 'weapon' || iType === 'оружие')) return true;
+        if (currentInventoryFilter === 'armor' && (iType === 'armor' || iType === 'броня')) return true;
         return iType === currentInventoryFilter;
     });
 
@@ -10151,7 +10151,7 @@ function updateInventoryDisplay() {
             li.addEventListener('dragend', handleDragEnd);
 
             const itemName = props.name || item.prototype_id || 'Неизвестный предмет';
-            let rarityClass = props.rarity ? props.rarity.toLowerCase().replace(/[^a-zР°-СЏС'0-9]/g, '-') : '';
+            let rarityClass = props.rarity ? props.rarity.toLowerCase().replace(/[^a-zа-СЏС'0-9]/g, '-') : '';
 
             // Проверка: является ли предмет транспортом (через централизованный TransportSystem)
             const isTransport = TransportSystem.isTransportId(item.prototype_id) ||
@@ -10353,7 +10353,7 @@ function updateSkillsDisplay() {
         badge.dataset.resultText = `[SYSTEM_MECHANIC: АКТИВИРОВАНО УМЕНИЕ | ИМЯ: ${skillName} | ЭФФЕКТ: ${skillEffect}]`;
 
         badge.innerHTML = `
-        <span>вњЁ ${skillName}</span>
+        <span>✨ ${skillName}</span>
         <span class="roll-badge-close" title="Отменить">✖</span>
     `;
 
@@ -10379,7 +10379,7 @@ function updateSkillsDisplay() {
 
             let detailsHTML = '';
             if (skill.damage && String(skill.damage).toLowerCase() !== 'нет') {
-                detailsHTML += `<span><strong>${t('skills.damageLabel', 'РЈСЂРѕРЅ')}:</strong> ${skill.damage}</span>`;
+                detailsHTML += `<span><strong>${t('skills.damageLabel', 'Урон')}:</strong> ${skill.damage}</span>`;
             }
             if (skill.cost && skill.costType && String(skill.costType).toLowerCase() !== 'нет') {
                 detailsHTML += `<span><strong>${t('skills.costLabel', 'Стоимость')}:</strong> ${skill.cost} ${skill.costType}</span>`;
@@ -10393,7 +10393,7 @@ function updateSkillsDisplay() {
                 detailsHTML += `<span><strong>${t('skills.cooldownLabel', 'Перезар.')}:</strong> ${skill.cooldown}</span>`;
             }
             if (skill.skillType && String(skill.skillType).toLowerCase() !== 'нет') {
-                detailsHTML += `<span><strong>${t('skills.typeLabel', 'РўРёРї')}:</strong> ${skill.skillType}</span>`;
+                detailsHTML += `<span><strong>${t('skills.typeLabel', 'Тип')}:</strong> ${skill.skillType}</span>`;
             }
 
             let effectDisplay = skill.effect || '';
@@ -10451,11 +10451,11 @@ function updateWorldChroniclesDisplay() {
             <div class="chronicle-ui-container" id="chronicle-ui-container">
                 <div class="chronicle-filter-row">
                     <button class="c-filter-btn ${currentChronicleFilter === 'all' ? 'active' : ''}" data-filter="all">${t('extraLoc.chronicles.all')}</button>
-                    <button class="c-filter-btn ${currentChronicleFilter === 'war' ? 'active' : ''}" data-filter="war">вљ”пёЏ ${t('extraLoc.chronicles.wars')}</button>
+                    <button class="c-filter-btn ${currentChronicleFilter === 'war' ? 'active' : ''}" data-filter="war">⚔️ ${t('extraLoc.chronicles.wars')}</button>
                     <button class="c-filter-btn ${currentChronicleFilter === 'disaster' ? 'active' : ''}" data-filter="disaster">рџЊЄпёЏ ${t('extraLoc.chronicles.disasters')}</button>
                     <button class="c-filter-btn ${currentChronicleFilter === 'trade' ? 'active' : ''}" data-filter="trade">рџ'° ${t('extraLoc.chronicles.economy')}</button>
                     <button class="c-filter-btn ${currentChronicleFilter === 'business' ? 'active' : ''}" data-filter="business">рџЏ­ ${t('extraLoc.chronicles.business')}</button>
-                    <button class="c-filter-btn ${currentChronicleFilter === 'market' ? 'active' : ''}" data-filter="market">вљ–пёЏ ${t('extraLoc.chronicles.market')}</button>
+                    <button class="c-filter-btn ${currentChronicleFilter === 'market' ? 'active' : ''}" data-filter="market">⚖️ ${t('extraLoc.chronicles.market')}</button>
                     <button class="c-filter-btn ${currentChronicleFilter === 'logistics' ? 'active' : ''}" data-filter="logistics">📦 ${t('extraLoc.chronicles.logistics')}</button>
                     <button class="c-filter-btn ${currentChronicleFilter === 'politics' ? 'active' : ''}" data-filter="politics">🏛️ Политика</button>
                     <button class="c-filter-btn ${currentChronicleFilter === 'misc' ? 'active' : ''}" data-filter="misc">рџ—ЈпёЏ ${t('extraLoc.chronicles.rumors')}</button>
@@ -10585,7 +10585,7 @@ function renderChroniclePage(page) {
         
         const btnPrev = document.createElement('button');
         btnPrev.className = 'c-page-btn';
-        btnPrev.innerHTML = `в—Ђ ${t('extraLoc.chronicles.back')}`;
+        btnPrev.innerHTML = `◀ ${t('extraLoc.chronicles.back')}`;
         btnPrev.disabled = (page === 1);
         btnPrev.onclick = () => renderChroniclePage(page - 1);
 
@@ -10765,7 +10765,7 @@ function updateEnvironmentPanel() {
             nameSpan.textContent = entity.name || entity.id || t('gameInterface.environmentPanel.unknownEntity', 'Неизвестное существо');
 
             if (entity.isSleeping) {
-                nameSpan.textContent += " (РЎРїРёС‚)";
+                nameSpan.textContent += " (Спит)";
                 nameSpan.style.color = "#7f8c8d";
                 nameSpan.style.fontStyle = "italic";
             }
@@ -10878,7 +10878,7 @@ function getRarityColor(r) {
     const s = String(r).toLowerCase();
     if (s.includes('необыч')) return '#1eff00';
     if (s.includes('редк')) return '#0070dd';
-    if (s.includes('СЌРїРёС‡')) return '#a335ee';
+    if (s.includes('эпич')) return '#a335ee';
     if (s.includes('легенд')) return '#ff8000';
     return '#5d4a36';
 }
@@ -10920,7 +10920,7 @@ function showEntityTooltip(event) {
         const healthPercentage = Math.max(0, Math.min(100, (data.hp / data.maxHp) * 100));
         let barClass = 'enemy'; // Default red
         if (!data.isHostile) {
-            if (data.type.toLowerCase() === t('gameInterface.environmentPanel.entityTypeNPC', 'РќРџРЎ').toLowerCase()) {
+            if (data.type.toLowerCase() === t('gameInterface.environmentPanel.entityTypeNPC', 'НПС').toLowerCase()) {
                 barClass = 'friendly'; // Green for friendly NPC
             } else {
                 barClass = 'neutral'; // Yellow for neutral creature
@@ -10932,7 +10932,7 @@ function showEntityTooltip(event) {
                 <div class="health-bar ${barClass}" style="width: ${healthPercentage}%;">${healthText}</div>
             </div>
         `;
-        healthText = `<p><strong>${t('gameInterface.environmentPanel.tooltip.health', 'Р--РґРѕСЂРѕРІСЊРµ')}:</strong> <span class="stat-value">${data.hp} / ${data.maxHp}</span></p>`;
+        healthText = `<p><strong>${t('gameInterface.environmentPanel.tooltip.health', 'Р--доровье')}:</strong> <span class="stat-value">${data.hp} / ${data.maxHp}</span></p>`;
     }
 
 
@@ -11270,7 +11270,7 @@ function updateEroticJournal() {
         });
 
         const typeLabel = scene.type === 'consensual' ? 'рџ’•' :
-                         scene.type === 'forced' ? 'вљ пёЏ' :
+                         scene.type === 'forced' ? '⚠️' :
                          scene.type === 'seduction' ? '😏' : '💋';
 
         li.innerHTML = `
@@ -11347,7 +11347,7 @@ function showEroticSceneModal(sceneId) {
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9em;">
                 <div><strong>📅 ${t('gameInterface.eroticJournalPanel.sceneDay', 'День')}:</strong> ${scene.day}</div>
                 <div><strong>📍 ${t('gameInterface.eroticJournalPanel.sceneLocation', 'Локация')}:</strong> ${scene.location}</div>
-                <div><strong>рџ’ћ ${t('gameInterface.eroticJournalPanel.sceneType', 'РўРёРї')}:</strong> ${typeLabel}</div>
+                <div><strong>рџ’ћ ${t('gameInterface.eroticJournalPanel.sceneType', 'Тип')}:</strong> ${typeLabel}</div>
                 <div><strong>🔥 Интенсивность:</strong> ${intensityLabel}</div>
             </div>
         </div>
@@ -11483,7 +11483,7 @@ function closeInGameMenu() {
     }, 300); // Время анимации
 }
 
-// --- Лог Рё Р’РІРѕРґ ---
+// --- Лог и Ввод ---
 function addLogMessage(message, type = "gm-message", isRestoring = false, imagePrompt = "", savedImageBase64 = null) {
     if (!gameLog) return;
     message = parseLocString(message); // Авто-локализация
@@ -11947,7 +11947,7 @@ async function handleUserInput() {
     const delta = player.gameTime.totalPulses - (player.lastTurnPulses || player.gameTime.totalPulses);
     const d = Math.floor(delta / 288);
     const h = Math.floor((delta % 288) / 12);
-    return d > 0 ? `${d} РґРЅ. Рё ${h} С‡.` : `${h} С‡.`;
+    return d > 0 ? `${d} дн. и ${h} ч.` : `${h} ч.`;
 })()}`, "system-message");
             updateCharacterSheet();
         }
@@ -11993,7 +11993,7 @@ async function handleUserInput() {
                     let costVal = parseInt(skill.cost) || 0;
                     let costType = (skill.costType || '').toLowerCase();
                     if (costType.includes('mp') || costType.includes('ман')) player.stats.mana -= costVal;
-                    else if (costType.includes('hp') || costType.includes('Р·РґРѕСЂРѕРІСЊ')) damagePlayerHP(costVal);
+                    else if (costType.includes('hp') || costType.includes('здоровь')) damagePlayerHP(costVal);
 
                     let cdVal = parseInt(skill.cooldown) || 0;
                     if (cdVal > 0) skill.currentCooldown = cdVal;
@@ -13101,7 +13101,7 @@ function parseAIResponse(rawResponse) {
         const jsonString = cleanRaw.substring(startIdx, endIdx + 1);
 
         try {
-            // Умный С…РёСЂСѓСЂРі JSON
+            // Умный хирург JSON
             let fixedJsonString = jsonString
                 .replace(/,\s*([\]}\]])/g, '$1')
                 .replace(/}\s*{/g, '},{')
@@ -13511,9 +13511,9 @@ function applyTimePassed(tp) {
     if (totalPulses > 0) {
         advanceTime(totalPulses);
         let timeStrings = [];
-        if (tp.days > 0) timeStrings.push(`${tp.days} РґРЅ.`);
-        if (tp.hours > 0) timeStrings.push(`${tp.hours} С‡.`);
-        if (tp.minutes > 0) timeStrings.push(`${tp.minutes} РјРёРЅ.`);
+        if (tp.days > 0) timeStrings.push(`${tp.days} дн.`);
+        if (tp.hours > 0) timeStrings.push(`${tp.hours} ч.`);
+        if (tp.minutes > 0) timeStrings.push(`${tp.minutes} мин.`);
         addCalculationMessage(`[ВРЕМЯ] Прошло: ${timeStrings.join(', ')}.`);
     }
     return totalPulses;
@@ -14489,7 +14489,7 @@ async function executeNonInventoryCommand(command, args) {
                 }
                 break;
 
-            // --- РљРђР РўРђ ---
+            // --- КАРТА ---
 
             case 'addDiscoveredLocation': // Старое название, сохраняем для совместимости промпта
             case 'addMapMarker':
@@ -14765,7 +14765,7 @@ async function executeNonInventoryCommand(command, args) {
                 break;
 
 
-            // --- РљРћРќРЎРўРђРќРўР« (NEXUS) ---
+            // --- КОНСТАНТЫ (NEXUS) ---
 
             case 'nexusDefine':
                 let dType = args.displayType || 'text'; // Защита от ошибок ИИ
@@ -15381,10 +15381,10 @@ if (player.nexusData && player.nexusData[args.id]) {
                                 const xp = entity.xpReward || 0;
                                 if (xp > 0) {
                                     player.stats.xp += xp;
-                                    feedback += ` (РЈР±РёС‚! +${xp} XP)`;
+                                    feedback += ` (Убит! +${xp} XP)`;
                                     levelUp();
                                 } else {
-                                    feedback += ` (РЈР±РёС‚!)`;
+                                    feedback += ` (Убит!)`;
                                 }
                                 generateWorldNews(`Герой ${player.name} сразил противника: ${entity.name}.`, player.location || "global", 2, 'war');
                                 // Безопасное удаление
@@ -16116,7 +16116,7 @@ function applyDisease(severity = 2) {
     if (severity === 1) {
         diseaseName = 'Лёгкое ЗППП';
     } else if (severity === 2) {
-        diseaseName = 'Р—РџРџРџ';
+        diseaseName = 'ЗППП';
     } else if (severity === 3) {
         diseaseName = 'Тяжёлое ЗППП';
         description = 'Вы заразились тяжёлым венерическим заболеванием. Срочно требуется лечение!';
@@ -17031,7 +17031,7 @@ function populateAdminMenu() {
             let isPlayer = (f.rulerId === 'player');
             let wars = [];
             for (let t in f.diplomacy) { if (f.diplomacy[t] === "war" && World.factions[t]) wars.push(World.factions[t].name); }
-            let warText = wars.length > 0 ? `<br><span style="color:#e74c3c; font-size:0.85em;">вљ"пёЏ Р'РѕР№РЅР°: ${wars.join(', ')}</span>` : '';
+            let warText = wars.length > 0 ? `<br><span style="color:#e74c3c; font-size:0.85em;">вљ"️ Р'ойна: ${wars.join(', ')}</span>` : '';
             
             const formatNum = (num) => {
                 if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -17047,7 +17047,7 @@ function populateAdminMenu() {
             const manpower = availableManpower(f);
             
             let titleColor = isPlayer ? "#2ecc71" : "#3498db";
-            let titlePrefix = isPlayer ? "рџ‘‘ [Р’РђРЁРђ] " : "";
+            let titlePrefix = isPlayer ? "рџ‘‘ [ВАША] " : "";
             let bgStyle = isPlayer ? 'style="border-left-color: #2ecc71; background: rgba(46, 204, 113, 0.1);"' : '';
             
             html += `<div class="debug-item" ${bgStyle}>
@@ -17235,7 +17235,7 @@ window.runUnitTests = function () {
 
     function assertEqual(testName, actual, expected) {
         if (actual === expected) {
-            console.log(`вњ… [PASSED] ${testName}`);
+            console.log(`✅ [PASSED] ${testName}`);
             passed++;
         } else {
             console.error(`❌ [FAILED] ${testName} | Ожидалось: ${expected}, Получено: ${actual}`);
@@ -17377,7 +17377,7 @@ async function runDeepSetupPipeline(narratorStyleGuide) {
         else if (currentApiProvider === 'omniroute') modelIdForRequest = omnirouteModelId;
 
         const getBaseContext = () => {
-            const genderText = player.gender ? ` | РџРѕР»: ${player.gender}` : '';
+            const genderText = player.gender ? ` | Пол: ${player.gender}` : '';
             return `Мир: ${DEFAULT_WORLD_ID} | Эпоха: ${player.era}\nИгрок: ${player.name} (${player.race}, ${player.class}${genderText})\nРежим старта: ${player.startMode}\nОписание от игрока: "${player.description}"`;
         };
 
@@ -17559,7 +17559,7 @@ function updateWorldSimDebugDisplay() {
             let isPlayer = (f.rulerId === 'player');
             let wars = [];
             for (let t_id in f.diplomacy) { if (f.diplomacy[t_id] === "war" && World.factions[t_id]) wars.push(World.factions[t_id].name); }
-            let warText = wars.length > 0 ? `<br><span style="color:#e74c3c; font-size:0.85em;">вљ”пёЏ ${t('extraLoc.debugPanel.war')}: ${wars.join(', ')}</span>` : '';
+            let warText = wars.length > 0 ? `<br><span style="color:#e74c3c; font-size:0.85em;">⚔️ ${t('extraLoc.debugPanel.war')}: ${wars.join(', ')}</span>` : '';
             
             const formatNum = (num) => {
                 if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -17575,7 +17575,7 @@ function updateWorldSimDebugDisplay() {
             const manpower = availableManpower(f);
             
             let titleColor = isPlayer ? "#2ecc71" : "#3498db";
-            let titlePrefix = isPlayer ? "рџ‘‘ [Р’РђРЁРђ] " : "";
+            let titlePrefix = isPlayer ? "рџ‘‘ [ВАША] " : "";
             let bgStyle = isPlayer ? 'style="border-left-color: #2ecc71; background: rgba(46, 204, 113, 0.1); grid-column: span 2;"' : '';
             
             html += `<div class="debug-item" ${bgStyle}>
@@ -17596,7 +17596,7 @@ function updateWorldSimDebugDisplay() {
                         let locName = World.regions[a.location] ? World.regions[a.location].name : a.location;
                         html += `<div style="background: rgba(0,0,0,0.4); padding: 6px; margin-top: 4px; border-radius: 4px; border-left: 2px solid #e74c3c;">
                             <span style="color:#ecf0f1;">${t('extraLoc.debugPanel.army')} (${a.size} чел.)</span><br>
-                            <span style="color:#bdc3c7; font-size: 0.9em;">${t('extraLoc.debugPanel.position')}: ${locName} вћ” ${destName}</span><br>
+                            <span style="color:#bdc3c7; font-size: 0.9em;">${t('extraLoc.debugPanel.position')}: ${locName} ➔ ${destName}</span><br>
                             <div style="margin-top: 4px; display: flex; gap: 5px;">
                                 <button onclick="adminCommandArmy('${f.id}', '${a.id}', 'move')" style="background: #2980b9; padding: 2px 8px; font-size: 0.8em; margin: 0; min-width: auto;">${t('extraLoc.debugPanel.march')}</button>
                                 <button onclick="adminCommandArmy('${f.id}', '${a.id}', 'disband')" style="background: #c0392b; padding: 2px 8px; font-size: 0.8em; margin: 0; min-width: auto;">${t('extraLoc.debugPanel.disband')}</button>
@@ -17609,7 +17609,7 @@ function updateWorldSimDebugDisplay() {
         }
         html += '</div></div>';
 
-        html += `<div class="debug-card"><div class="debug-card-title"><span>вљ”пёЏ ${t('extraLoc.debugPanel.troopActivity')}</span></div>`;
+        html += `<div class="debug-card"><div class="debug-card-title"><span>⚔️ ${t('extraLoc.debugPanel.troopActivity')}</span></div>`;
         let armiesExist = false;
         for (let fId in World.factions) {
             World.factions[fId].armies.forEach(a => {
@@ -17991,7 +17991,7 @@ window.openBusinessModal = async function(bId) {
                     </div>
                     
                     <div class="bus-flex-row">
-                        <input type="number" id="bus-cash-input" placeholder="РЎСѓРјРјР°" class="bus-input">
+                        <input type="number" id="bus-cash-input" placeholder="Сумма" class="bus-input">
                         <button onclick="depositBusinessCash('${bId}')" class="bus-btn btn-green" title="${t('extraLoc.businessModal.deposit')}"><i class="fas fa-arrow-down"></i></button>
                         <button onclick="withdrawBusinessCash('${bId}')" class="bus-btn btn-red" title="${t('extraLoc.businessModal.withdraw')}"><i class="fas fa-arrow-up"></i></button>
                     </div>
@@ -18040,7 +18040,7 @@ window.openBusinessModal = async function(bId) {
                     
                     <div style="display:flex; justify-content:space-between; align-items:center; margin: 15px 0 10px 0;">
                         <label class="bus-label" style="margin:0;">${t('extraLoc.businessModal.storageContent')}</label>
-                        <span style="font-size: 0.85em; color: #f39c12;"><i class="fas fa-weight-hanging"></i> ${Math.round(currentWeight)} / ${maxWeight} РєРі</span>
+                        <span style="font-size: 0.85em; color: #f39c12;"><i class="fas fa-weight-hanging"></i> ${Math.round(currentWeight)} / ${maxWeight} кг</span>
                     </div>
                     <div style="background: #181b20; border: 1px solid #323942; border-radius: 6px; max-height: 150px; overflow-y: auto; padding: 0 10px;">
                         ${invListHtml}
@@ -18067,7 +18067,7 @@ window.openBusinessModal = async function(bId) {
         else if (World.businesses[rule.target_id]) targetName = `${t('extraLoc.businessModal.warehouse')}: ${getFacilityName(World.businesses[rule.target_id].facility_type)} (${World.regions[World.businesses[rule.target_id].region_id]?.name || ''})`;
         
         const reserveText = rule.keep_reserve > 0 ? ` | ${t('extraLoc.businessModal.reserve')}: ${rule.keep_reserve}` : '';
-        const amountText = rule.amount_is_percent ? `${rule.amount}%` : `РґРѕ ${rule.amount} ${t('extraLoc.general.pcs')}`;
+        const amountText = rule.amount_is_percent ? `${rule.amount}%` : `до ${rule.amount} ${t('extraLoc.general.pcs')}`;
         
         html += `
                         <div class="bus-rule-item" style="border-left-color: ${color};">
@@ -18258,7 +18258,7 @@ function updatePortPanel() {
     let shipsInPort = (World.ships || []).filter(s => s.destination === playerRegionId && (!s.path || s.path.length === 0));
     if (shipsInPort.length === 0) html += `<li style="color:#7f8c8d; padding: 3px;">${t('extraLoc.portPanel.noShips')}</li>`;
     shipsInPort.forEach(s => {
-        let icon = "в›µ";
+        let icon = "⛵";
         if (s.type === "WAR_GALLEY" || s.type === "WAR_FRIGATE") icon = "⛴️";
         if (s.type === "PIRATE") icon = "🏴‍☠️";
         if (s.type === "TRANSPORT") icon = "рџ›¶";
@@ -18630,7 +18630,7 @@ function restructureUI() {
         <button class="s-tab-btn active" data-target="right-tab-env" title="Окружение"><i class="fas fa-map-marked-alt"></i></button>
         <button class="s-tab-btn" data-target="right-tab-journal" title="Журнал"><i class="fas fa-book-open"></i></button>
         <button class="s-tab-btn" data-target="right-tab-prog" title="Развитие"><i class="fas fa-dna"></i></button>
-        <button class="s-tab-btn" data-target="right-tab-econ" title="Р­РєРѕРЅРѕРјРёРєР°"><i class="fas fa-coins"></i></button>
+        <button class="s-tab-btn" data-target="right-tab-econ" title="Экономика"><i class="fas fa-coins"></i></button>
         <button class="s-tab-btn" data-target="right-tab-sys" title="Система"><i class="fas fa-cogs"></i></button>
     `;
 
@@ -18762,7 +18762,7 @@ function promptSaveWorldModal() {
             return;
         }
 
-        saveWorldNameInput.value = `РњРёСЂ_${player.era}_${new Date().toISOString().slice(0,10)}`;
+        saveWorldNameInput.value = `Мир_${player.era}_${new Date().toISOString().slice(0,10)}`;
 
         saveWorldModal.style.display = 'flex';
         setTimeout(() => saveWorldModal.classList.add('visible'), 10);
