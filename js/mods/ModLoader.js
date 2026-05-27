@@ -501,6 +501,24 @@ const WINDOW_BLOCKED_PROPS = new Set([
     'self',      // window.self  → return safe proxy
     'globalThis',// window.globalThis → return safe proxy
     'crypto',
+    'navigator', 'location', 'history',
+]);
+
+/**
+ * Allowed game globals that may be exposed via the safe window proxy.
+ * Mods can READ these properties through window.X or as bare identifiers.
+ * Properties NOT in this set are blocked with a warning.
+ */
+const WINDOW_ALLOWED_PASSTHROUGH = new Set([
+    // Core game state
+    'player', 't', 'World', 'currentLocation', 'selectedItemId',
+    // UI update functions
+    'updateCharacterSheet', 'damagePlayerHP', 'updateInventoryUI',
+    'updateMapDisplay', 'updateDialogueUI', 'updateQuestLog', 'updateCraftingUI',
+    // Custom mod state
+    'ModState',
+    // Game globals commonly needed by mods
+    'GameRNG', 'ItemRegistry', 'EventBus',
 ]);
 
 /**
@@ -569,12 +587,19 @@ function createSafeWindowProxy(realWindow, modId, safeModAPI) {
 
             // Block dangerous properties
             if (WINDOW_BLOCKED_PROPS.has(prop)) {
-                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to access window.${prop} — blocked`);
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to access window.${String(prop)} — blocked`);
                 return undefined;
             }
-
-            // Allow all other window properties (game globals: player, t, World, etc.)
-            return realWindow[prop];
+            // Only allow explicitly whitelisted properties
+            if (!WINDOW_ALLOWED_PASSTHROUGH.has(prop)) {
+                console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to access window.${String(prop)} — not in allowed passthrough list`);
+                return undefined;
+            }
+            const value = realWindow[prop];
+            if (typeof value === 'function') {
+                return value.bind(realWindow);
+            }
+            return value;
         },
 
         set(target, prop, value) {
@@ -843,13 +868,8 @@ function createModSandbox(modAPI, modId, modMeta) {
                 return undefined;
             }
 
-            // 3. Pass-through: check if it's a game global on window.
-            //    Dangerous window properties are already filtered by step 2
-            //    (fetch, eval, etc. are in both SANDBOX_BLOCKED_GLOBALS
-            //     and WINDOW_BLOCKED_PROPS).
-            //    This allows `player`, `t`, `World`, `updateCharacterSheet`,
-            //    `damagePlayerHP`, etc. to work as bare identifiers.
-            if (prop in window) {
+            // 3. Pass-through: allow only whitelisted game globals from window.
+            if (WINDOW_ALLOWED_PASSTHROUGH.has(prop) && prop in window) {
                 return window[prop];
             }
 
@@ -876,7 +896,7 @@ function createModSandbox(modAPI, modId, modMeta) {
                 window[prop] = value;
                 return true;
             }
-            // Block writes to other window properties
+            // Block writes to other window properties (including those in passthrough but not writable)
             if (prop in window) {
                 console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to set window.${prop} — not in writable whitelist, blocked`);
                 return true;
@@ -899,6 +919,7 @@ function createModSandbox(modAPI, modId, modMeta) {
                 console.warn(`[ModLoader SANDBOX] Mod ${modId} tried to delete window.${prop} — blocked`);
                 return false;
             }
+            // Allow deletion of local sandbox variables
             return true;
         }
     });

@@ -662,13 +662,16 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // Auth check: validate session token in URL query param
+    // Auth check: validate session token via query param or header
     const urlObj = new URL(req.url, getServerOrigin());
-    const token = urlObj.searchParams.get('token');
+    const token = urlObj.searchParams.get('token') ||
+                  req.headers['x-session-token'];
     if (token !== HTTP_SESSION_TOKEN) {
         // Also allow requests from our own Electron origin without token (for initial load)
-        const origin = req.headers.origin || req.headers.referer || '';
-        if (!origin.includes(`${SERVER_HOST}:${PORT}`)) {
+        const reqOrigin = req.headers.origin || req.headers.referer || '';
+        const isOwnOrigin = reqOrigin.includes(`${SERVER_HOST}:${PORT}`);
+        const isLocalhost = LOCALHOST_IPS.has(clientIp);
+        if (!isOwnOrigin && !isLocalhost) {
             res.statusCode = 403;
             res.end('Forbidden');
             return;
@@ -738,18 +741,27 @@ server.listen(PORT, SERVER_HOST, () => { console.log(`[SERVER] Static origin: ${
 
 function createWindow () { const win = new BrowserWindow({ width: WINDOW_WIDTH, height: WINDOW_HEIGHT, webPreferences: { nodeIntegration: WINDOW_NODE_INTEGRATION, contextIsolation: WINDOW_CONTEXT_ISOLATION, ...(process.env.NODE_ENV === 'development' && WINDOW_DISABLE_WEB_SECURITY_IN_DEVELOPMENT ? { webSecurity: false } : {}), preload: path.join(__dirname, WINDOW_PRELOAD_FILE) } });
 
-  // Перехватываем открытие новых окон (внешних ссылок _blank)
-  // и принудительно открываем их в браузере по умолчанию (Chrome, Firefox и т.д.)
+  // Перехватываем открытие новых окон — только свой origin разрешаем, остальное в браузер
   win.webContents.setWindowOpenHandler(({ url }) => {
-      if (EXTERNAL_LINK_PROTOCOLS.some(protocol => url.startsWith(protocol))) {
-          require('electron').shell.openExternal(url);
-          return { action: 'deny' };
+      const origin = getServerOrigin();
+      if (url.startsWith(origin)) {
+          return { action: 'allow' };
       }
-      return { action: 'allow' };
+      shell.openExternal(url);
+      return { action: 'deny' };
   });
 
-  // Pass HTTP session token to renderer for authenticated API requests
-  win.loadURL(`${getServerOrigin()}?token=${HTTP_SESSION_TOKEN}`);
+  // Блокируем навигацию за пределы нашего origin
+  win.webContents.on('will-navigate', (event, url) => {
+      const origin = getServerOrigin();
+      if (!url.startsWith(origin)) {
+          event.preventDefault();
+          shell.openExternal(url);
+      }
+  });
+
+  // Load without token in URL — use header-based auth instead (cleaner, no token leak in URL bar)
+  win.loadURL(getServerOrigin());
 
   // Reset rate limiter on page reload (CTRL+SHIFT+R triggers many concurrent requests)
   win.webContents.on('did-navigate', () => {
@@ -843,11 +855,8 @@ ipcMain.handle('load-game', async (event, filename) => {
 ipcMain.handle('save-world-state', async (event, filename, data) => {
     if (!isSafeFileName(filename)) return { success: false };
     try {
-        const name = data.name || "Неизвестный мир";
-        const era = data.era || "rebirth";
-        delete data.name;
-        delete data.era;
-        const orderedData = { name, era, ...data };
+        const { name = "Неизвестный мир", era = "rebirth", ...rest } = data || {};
+        const orderedData = { name, era, ...rest };
         fs.writeFileSync(path.join(WORLDS_DIR, filename), JSON.stringify(orderedData));
         return { success: true };
     } catch (error) { return { success: false, error: error.message }; }
