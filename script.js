@@ -3113,9 +3113,11 @@ function mutateWorld(mutator) {
 // ======================================================================
 // --- AUTOSAVE & LOAD SCREEN SYSTEM (Fix #134, #137) ---
 // ======================================================================
-const MAX_MANUAL_SAVES = 5;
-const MAX_AUTO_SAVES = 3;
-let autoSaveIntervalMs = parseInt(localStorage.getItem('autoSaveInterval')) || 300000; // 5 min default
+// MAX_MANUAL_SAVES and MAX_AUTO_SAVES are declared in js/core/constants.js (loaded first).
+// Do NOT re-declare here — const/let at top level cannot be re-declared in same scope.
+// Default values: 5 manual, 20 auto (overridden by applyRuntimeConstants from ui_runtime.json)
+// autoSaveIntervalMs is declared in js/core/globals.js (loaded first).
+// Do NOT re-declare here.
 let _autoSaveTimerId = null;
 
 /**
