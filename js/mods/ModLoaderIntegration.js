@@ -379,7 +379,15 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         if (typeof populateClassesUI === 'function') populateClassesUI(database.classes);
 
         console.log('[ModLoader] База данных собрана. Инициализация C++ ядра...');
-        
+
+        // --- Проверка наличия Electron IPC ---
+        if (!window.electronAPI || !window.electronAPI.nexusInit) {
+            console.warn('[ModLoader] Electron IPC недоступен (браузерный режим). C++ ядро не запущено — мир будет сгенерирован на JS.');
+            window.isSimulatorInitialized = false;
+            // Возвращаем минимальный мир, чтобы игра не упала
+            return _generateFallbackWorld(database);
+        }
+
         const activeModIds = Object.keys(window.ModAPI.mods);
         const initResult = await window.electronAPI.nexusInit(true, activeModIds);
         if (initResult.status !== 'ok') {
@@ -423,4 +431,124 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         window.isSimulatorInitialized = false;
         return null;
     }
+}
+
+/**
+ * Генерирует минимальный мир для браузерного режима (без C++ ядра).
+ * Структура совместима с тем, что возвращает nexusBuildWorld.
+ */
+function _generateFallbackWorld(database) {
+    const era = (typeof player !== 'undefined' && player.era) ? player.era : 'era_rebirth';
+    const startDay = (typeof player !== 'undefined' && player.gameTime) ? calculateAbsoluteStartDay(player.gameTime) : 0;
+    const locs = (typeof globalLocations !== 'undefined') ? globalLocations : {};
+
+    // Собираем фракции из globalLocations
+    const factions = {};
+    const regionMap = {};
+    for (const [locId, loc] of Object.entries(locs)) {
+        if (locId === 'startLocation' || !loc) continue;
+        const facId = loc.faction || 'faction_neutral';
+        if (!factions[facId]) {
+            factions[facId] = {
+                id: facId,
+                name: facId,
+                ruler: null,
+                rulerTrait: 'balanced',
+                type: 'kingdom',
+                relations: {},
+                diplomacy: {},
+                warExhaustion: 0,
+                resources: { gold: 500, food: 300, materials: 200 },
+                military: { army_size: 50, fleet_size: 0 },
+                vault_id: null,
+                regions: []
+            };
+        }
+        factions[facId].regions.push(locId);
+        regionMap[locId] = {
+            id: locId,
+            name: loc.name || locId,
+            factionId: facId,
+            population: Math.floor(Math.random() * 800) + 200,
+            x: loc.x || 0,
+            y: loc.y || 0,
+            facilities: [],
+            vault_id: null,
+            terrain: 'plains',
+            current_season: 'summer',
+            weather: 'clear',
+            threat_level: 0,
+            stability: 80,
+            isOccupied: false,
+            markets: { bread: 5, wood: 3, iron_ore: 8, weapons: 15 },
+            cityLayout: [],
+            caravans: [],
+            market_square: []
+        };
+    }
+
+    // Если локаций нет — создаём одну стартовую
+    if (Object.keys(regionMap).length === 0) {
+        regionMap['capital_aquilon'] = {
+            id: 'capital_aquilon',
+            name: 'Аквилон',
+            factionId: 'faction_alpha',
+            population: 1000,
+            x: 128, y: 128,
+            facilities: [],
+            vault_id: null,
+            terrain: 'plains',
+            current_season: 'summer',
+            weather: 'clear',
+            threat_level: 0,
+            stability: 80,
+            isOccupied: false,
+            markets: { bread: 5, wood: 3, iron_ore: 8, weapons: 15 },
+            cityLayout: [],
+            caravans: [],
+            market_square: []
+        };
+        factions['faction_alpha'] = {
+            id: 'faction_alpha',
+            name: 'faction_alpha',
+            ruler: null,
+            rulerTrait: 'balanced',
+            type: 'kingdom',
+            relations: {},
+            diplomacy: {},
+            warExhaustion: 0,
+            resources: { gold: 500, food: 300, materials: 200 },
+            military: { army_size: 50, fleet_size: 0 },
+            vault_id: null,
+            regions: ['capital_aquilon']
+        };
+    }
+
+    // Отношения между фракциями
+    const facIds = Object.keys(factions);
+    for (let i = 0; i < facIds.length; i++) {
+        for (let j = i + 1; j < facIds.length; j++) {
+            const rel = Math.floor(Math.random() * 50) - 10;
+            factions[facIds[i]].relations[facIds[j]] = rel;
+            factions[facIds[j]].relations[facIds[i]] = rel;
+        }
+    }
+
+    const world = {
+        era: era,
+        current_day: startDay,
+        factions: factions,
+        regions: regionMap,
+        npcs: [],
+        news: [],
+        relevant_news: [],
+        chronicles: [],
+        trade_journal: [],
+        monsters: [],
+        map_data: null,
+        world_map: null
+    };
+
+    console.log('[ModLoader] Сгенерирован фоллбэк-мир (браузерный режим):', Object.keys(regionMap).length, 'регионов,', Object.keys(factions).length, 'фракций');
+    return world;
 }
