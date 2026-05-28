@@ -1,25 +1,106 @@
 (function() {
+    // ========================================================================
+    // TextEncodingGuard — fixes mojibake (UTF-8 bytes misread as Windows-1251)
+    // ========================================================================
+
     const MOJIBAKE_REPLACEMENTS = [
+        [/вљ”п¸Џ/g, '⚔️'],
+        [/вљ”/g, '⚔'],
+        [/рџ›Ўп¸Џ/g, '🛡️'],
+        [/рџ›Ў/g, '🛡'],
         [/рџЋІ/g, '🎲'],
-        [/рџ’Є/g, '💪'],
-        [/рџЏѓ/g, '🤸'],
-        [/рџ’Ў/g, '💡'],
-        [/рџ›ЎпёЏ/g, '🛡️'],
-        [/рџ›Ў/g, '🛡️'],
-        [/рџ™‚/g, '🙂'],
-        [/рџ§™вЂЌв™‚пёЏ/g, '🧙'],
-        [/рџ§™/g, '🧙'],
-        [/вљ”пёЏ/g, '⚔️'],
-        [/вљ”/g, '⚔️'],
-        [/вќ¤пёЏ/g, '❤️'],
-        [/вќ¤/g, '❤️'],
-        [/рџ’§/g, '💧'],
+        [/рџ’ª/g, '💪'],
+        [/рџ¤¸/g, '🤸'],
+        [/рџЁ /g, '🧠'],
+        [/вќ¤п¸Џ/g, '❤️'],
+        [/вќ¤/g, '❤'],
+        [/рџ—Јп¸Џ/g, '🗣️'],
+        [/рџ—Ј/g, '🗣'],
+        [/рџ’Ё/g, '💧'],
         [/рџ’°/g, '💰'],
+        [/вљ–п¸Џ/g, '⚖️'],
+        [/вљ–/g, '⚖'],
         [/рџ“Ќ/g, '📍'],
-        [/вљ–пёЏ/g, '⚖️'],
-        [/вљ–/g, '⚖️'],
-        [/рџЊЄпёЏ/g, '🌪️'],
-        [/рџЊЄ/g, '🌪️']
+        [/рџЇЂ/g, '🫀'],
+        [/рџЉ/g, '😊'],
+        [/рџЊªп¸Џ/g, '🌪️'],
+        [/рџЊª/g, '🌪'],
+        [/рџЏ­/g, '🏭'],
+        [/рџ“¦/g, '📦'],
+        [/рџЏ›п¸Џ/g, '🏛️'],
+        [/рџЏ›/g, '🏛'],
+        [/рџ’Ў/g, '💡'],
+        [/рџ™‚/g, '🙂'],
+        [/рџЁ™/g, '🧙'],
+        [/рџ”Ґ/g, '🔥'],
+        [/в п¸Џ/g, '☠️'],
+        [/в /g, '☠'],
+        [/рџ’љ/g, '💚'],
+        [/рџ’™/g, '💙'],
+        [/рџ’›/g, '💛'],
+        [/рџ’њ/g, '💜'],
+        [/рџ’”/g, '💔'],
+        [/вњ¨/g, '✨'],
+        [/рџЏ‹п¸Џ/g, '🏋️'],
+        [/рџЏ‹/g, '🏋'],
+        [/рџ—Ўп¸Џ/g, '🗡️'],
+        [/рџ—Ў/g, '🗡'],
+        [/рџ“њ/g, '📜'],
+        [/рџ””/g, '🔔'],
+        [/рџ—ºп¸Џ/g, '🗺️'],
+        [/рџ—º/g, '🗺'],
+        [/рџЏ”п¸Џ/g, '🏔️'],
+        [/рџЏ”/g, '🏔'],
+        [/рџљў/g, '🚢'],
+        [/вљ“/g, '⚓'],
+        [/вљЎ/g, '⚡'],
+        [/вљЎп¸Џ/g, '⚡️'],
+        [/вљ™п¸Џ/g, '⚙️'],
+        [/вљ™/g, '⚙'],
+        [/в™‚п¸Џ/g, '♂️'],
+        [/в™‚/g, '♂'],
+        [/в™Ђп¸Џ/g, '♀️'],
+        [/в™Ђ/g, '♀'],
+        [/рџЋ‰/g, '🎉'],
+        [/рџЏѓ/g, '🏃'],
+        [/рџ”‘/g, '🔑'],
+        [/рџ”’/g, '🔒'],
+        [/рџ”Ї/g, '🔫'],
+        [/рџ’Ј/g, '💣'],
+        [/рџ’Ђ/g, '💀'],
+        [/рџ„/g, '😄'],
+        [/рџѓ/g, '😃'],
+        [/рџђ/g, '😐'],
+        [/рџЏ/g, '😏'],
+        [/рџ€/g, '😈'],
+        [/рџ’‹/g, '💋'],
+        [/рџ’•/g, '💕'],
+        [/вљ п¸Џ/g, '⚠️'],
+        [/вљ /g, '⚠'],
+        [/рџ“–/g, '📖'],
+        [/рџ“™/g, '📙'],
+        [/рџ¤¸вЂЌв™‚п¸Џ/g, '🤸‍♂️'],
+        [/рџ¤¸вЂЌв™‚/g, '🤸‍♂'],
+        [/рџЁ™вЂЌв™‚п¸Џ/g, '🧙‍♂️'],
+        [/рџЁ™вЂЌв™‚/g, '🧙‍♂'],
+        [/вЂ /g, '†'],
+        [/вЂЎ/g, '‡'],
+        [/вЂў/g, '•'],
+        [/вЂ¦/g, '…'],
+        [/в„ў/g, '™'],
+        [/в‚¬/g, '€'],
+        [/в€ћ/g, '∞'],
+        [/в‰ /g, '≠'],
+        [/в‰€/g, '≈'],
+        [/в‰¤/g, '≤'],
+        [/в‰Ґ/g, '≥'],
+        [/в€љ/g, '√'],
+        [/вЂ”/g, '—'],
+        [/вЂ“/g, '–'],
+        [/Р'ойна/g, 'Война'],
+        [/Р'ойны/g, 'Войны'],
+        [/Р'ойну/g, 'Войну'],
+        [/Р'ойне/g, 'Войне'],
     ];
 
     const WATCH_SELECTORS = [
@@ -30,7 +111,40 @@
         '#dice-roll-list',
         '.dice-roll-area',
         '.quick-tags-bar',
-        '.suggested-actions-bar'
+        '.suggested-actions-bar',
+        // World chronicle panel
+        '#world-chronicles-list',
+        '#world-chronicles-panel',
+        '.chronicle-item',
+        '.chronicle-desc',
+        '.chronicle-title',
+        '.chronicle-filters',
+        '#chronicle-ui-container',
+        // Character panel stats
+        '.character-panel',
+        '#character-panel',
+        '.stat-row',
+        // Dice roll badges
+        '.chat-roll-badge',
+        '.roll-badge',
+        // Port panel
+        '.port-panel',
+        '#port-panel',
+        // Game message bubbles (catch-all for AI responses)
+        '.message-bubble',
+        '.message-wrapper',
+        '.gm-message',
+        '.world-event-card',
+        '.world-event-body',
+        // Environment panel
+        '.environment-panel',
+        '#environment-panel',
+        // Any element with dynamic text content from AI or engine
+        '.panel-content',
+        '.system-content',
+        // Status effects
+        '.status-effect-item',
+        '.effects-list'
     ];
 
     function repairText(value) {
@@ -39,10 +153,6 @@
         for (const [pattern, replacement] of MOJIBAKE_REPLACEMENTS) {
             repaired = repaired.replace(pattern, replacement);
         }
-
-        // If an unknown emoji mojibake prefix remains before a readable label,
-        // drop only that leading broken prefix instead of touching normal text.
-        repaired = repaired.replace(/^([рР]џ\S{1,18}|в[^\sA-Za-zА-Яа-я0-9]{1,18})\s+([A-Za-zА-Яа-я0-9])/u, '$2');
         return repaired;
     }
 
@@ -63,7 +173,9 @@
 
     function repairKnownContainers() {
         WATCH_SELECTORS.forEach((selector) => {
-            document.querySelectorAll(selector).forEach(repairContainer);
+            try {
+                document.querySelectorAll(selector).forEach(repairContainer);
+            } catch (e) {}
         });
     }
 
@@ -79,12 +191,16 @@
                         return;
                     }
                     if (node.nodeType !== Node.ELEMENT_NODE) return;
-                    if (WATCH_SELECTORS.some((selector) => node.matches && node.matches(selector))) {
+                    if (WATCH_SELECTORS.some((selector) => {
+                        try { return node.matches && node.matches(selector); } catch(e) { return false; }
+                    })) {
                         repairContainer(node);
                     }
                     if (node.querySelectorAll) {
                         WATCH_SELECTORS.forEach((selector) => {
-                            node.querySelectorAll(selector).forEach(repairContainer);
+                            try {
+                                node.querySelectorAll(selector).forEach(repairContainer);
+                            } catch(e) {}
                         });
                     }
                 });

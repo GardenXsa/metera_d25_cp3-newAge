@@ -17099,7 +17099,7 @@ function populateAdminMenu() {
             let isPlayer = (f.rulerId === 'player');
             let wars = [];
             for (let t in f.diplomacy) { if (f.diplomacy[t] === "war" && World.factions[t]) wars.push(World.factions[t].name); }
-            let warText = wars.length > 0 ? `<br><span style="color:#e74c3c; font-size:0.85em;">вљ"️ Р'ойна: ${wars.join(', ')}</span>` : '';
+            let warText = wars.length > 0 ? `<br><span style="color:#e74c3c; font-size:0.85em;">⚔️ Война: ${wars.join(', ')}</span>` : '';
             
             const formatNum = (num) => {
                 if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -18318,7 +18318,7 @@ function updatePortPanel() {
     let fleetsInPort = (World.fleets || []).filter(f => f.destination === playerRegionId && (!f.path || f.path_index >= f.path.length - 1));
     if (fleetsInPort.length === 0) html += `<li style="color:#7f8c8d; padding: 3px;">${t('extraLoc.portPanel.noFleets')}</li>`;
     fleetsInPort.forEach(f => {
-        html += `<li style="background: rgba(0,0,0,0.4); padding: 4px; margin-bottom: 2px; border-radius: 4px; border-left: 3px solid #9b59b6;">вљ“🛒Ў <b>${t('extraLoc.portPanel.fleet')}</b> (${t('extraLoc.portPanel.owner')}: ${f.owner_id})<br><span style="font-size:0.85em; color:#bdc3c7;">${t('extraLoc.portPanel.shipsCount')}: ${f.ship_ids.length} | ${t('extraLoc.portPanel.mission')}: ${t('extraLoc.portPanel.missions.' + f.mission, null, f.mission)}</span></li>`;
+        html += `<li style="background: rgba(0,0,0,0.4); padding: 4px; margin-bottom: 2px; border-radius: 4px; border-left: 3px solid #9b59b6;">⚓🚢 <b>${t('extraLoc.portPanel.fleet')}</b> (${t('extraLoc.portPanel.owner')}: ${f.owner_id})<br><span style="font-size:0.85em; color:#bdc3c7;">${t('extraLoc.portPanel.shipsCount')}: ${f.ship_ids.length} | ${t('extraLoc.portPanel.mission')}: ${t('extraLoc.portPanel.missions.' + f.mission, null, f.mission)}</span></li>`;
     });
     html += `</ul>`;
 
