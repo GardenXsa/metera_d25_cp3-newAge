@@ -778,6 +778,16 @@ function createWindow () { const win = new BrowserWindow({ width: WINDOW_WIDTH, 
   // Load without token in URL — use header-based auth instead (cleaner, no token leak in URL bar)
   win.loadURL(getServerOrigin());
 
+  // Enable DevTools shortcut: Ctrl+Shift+I (or Cmd+Option+I on macOS)
+  win.webContents.on('before-input-event', (event, input) => {
+      const isMac = process.platform === 'darwin';
+      const modifierKey = isMac ? input.meta : input.control;
+      if (modifierKey && input.shift && input.key.toLowerCase() === 'i') {
+          win.webContents.toggleDevTools();
+          event.preventDefault();
+      }
+  });
+
   // Reset rate limiter on page reload (CTRL+SHIFT+R triggers many concurrent requests)
   win.webContents.on('did-navigate', () => {
       rateLimiter.clear();
@@ -1328,6 +1338,13 @@ ipcMain.handle('api-fetch-abort', async () => {
         currentApiFetchRequest = null;
     }
     return { ok: true };
+});
+
+ipcMain.handle('toggle-dev-tools', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) {
+        win.webContents.toggleDevTools();
+    }
 });
 
 ipcMain.handle('gemini-request', async (event, model, contents) => {

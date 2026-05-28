@@ -512,8 +512,9 @@ body {
     width: 100%;
     max-width: 100%;
     flex-grow: 1;
-    height: 0;
+    min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     margin-bottom: 20px;
     border: none;
     background: transparent !important;
@@ -521,13 +522,33 @@ body {
     box-shadow: none !important;
     mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 95%, transparent 100%);
     -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 95%, transparent 100%);
-    scrollbar-width: none;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(93, 173, 226, 0.3) rgba(26, 37, 48, 0.5);
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
 }
-.game-log::-webkit-scrollbar { display: none; }
+.game-log::-webkit-scrollbar { 
+    width: 8px; 
+    display: block;
+}
+.game-log::-webkit-scrollbar-track {
+    background: rgba(26, 37, 48, 0.5);
+    border-radius: 4px;
+}
+.game-log::-webkit-scrollbar-thumb {
+    background: rgba(93, 173, 226, 0.5);
+    border-radius: 4px;
+}
+.game-log::-webkit-scrollbar-thumb:hover {
+    background: rgba(93, 173, 226, 0.8);
+}
 
 /* --- СИСТЕМА ЧАТ-ПУЗЫРЕЙ --- */
 
-.message-bubble { position: relative; }
+.message-bubble { 
+    position: relative; 
+    pointer-events: auto !important; /* ФИКС: включаем обработку событий мыши для скролла */
+}
 .bubble-user { padding-left: 40px; }
 .bubble-gm { padding-right: 40px; }
 
