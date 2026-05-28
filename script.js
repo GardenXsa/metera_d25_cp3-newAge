@@ -7731,6 +7731,15 @@ function setupEventListeners() {
             repeatLastAction();
         }
         
+        // --- Открытие DevTools по Ctrl+Shift+I ---
+        if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'i') {
+            if (window.electronAPI && window.electronAPI.toggleDevTools) {
+                window.electronAPI.toggleDevTools();
+                e.preventDefault();
+            }
+        }
+        // -----------------------------------------
+        
         // --- ИНТЕГРАЦИЯ МОДОВ: Хоткеи ---
         if (window.ModAPI && window.ModAPI.hotkeys) {
             let keys = [];
