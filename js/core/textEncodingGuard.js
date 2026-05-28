@@ -23,6 +23,7 @@
     ];
 
     const WATCH_SELECTORS = [
+        '#game-log',
         '#quick-tags-bar',
         '#active-rolls-container',
         '#suggested-actions-container',
