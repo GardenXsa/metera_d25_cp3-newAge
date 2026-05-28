@@ -1,4 +1,4 @@
-﻿// ======================================================================
+// ======================================================================
 // --- MARKED.JS FALLBACK (in case CDN is blocked by CSP/offline) ---
 // ======================================================================
 if (typeof marked === 'undefined') {
@@ -4378,13 +4378,13 @@ function populateClassesUI(classesData) {
 // 1. Конфигурация кнопок (Типы бросков)
 const quickTags = [
     { label: '⚔️ Attack', type: 'combat', stat: 'atk' },
-    { label: 'рџ›ЎпёЏ Defend', type: 'combat', stat: 'def' },
-    { label: 'рџЋІ D20', type: 'stat', stat: 'd20' },
-    { label: 'рџ’Є STR', type: 'stat', stat: 'str' },
-    { label: 'рџ¤ё DEX', type: 'stat', stat: 'dex' },
-    { label: 'рџ§  INT', type: 'stat', stat: 'int' },
+    { label: '🛡️ Defend', type: 'combat', stat: 'def' },
+    { label: '🎲 D20', type: 'stat', stat: 'd20' },
+    { label: '💪 STR', type: 'stat', stat: 'str' },
+    { label: '🤸 DEX', type: 'stat', stat: 'dex' },
+    { label: '🧠 INT', type: 'stat', stat: 'int' },
     { label: '❤️ CON', type: 'stat', stat: 'con' },
-    { label: 'рџ—ЈпёЏ CHA', type: 'stat', stat: 'cha' }
+    { label: '🗣️ CHA', type: 'stat', stat: 'cha' }
 ];
 
 // 2. Инициализация панели кнопок (Вызывается при старте игры)
@@ -4566,7 +4566,7 @@ function parseInlineRolls(text) {
             const sign = modifier >= 0 ? "+" : "";
 
             // Формат вывода: [🎲 STR Check: 15 (roll:12+3)]
-            return `[рџЋІ ${label}: ${total} (roll:${roll}${sign}${modifier})]`;
+            return `[🎲 ${label}: ${total} (roll:${roll}${sign}${modifier})]`;
         }
 
         // Если тег не распознан, возвращаем как есть
@@ -9623,7 +9623,7 @@ function updateDiceLogDisplay() {
         
         let html = `<div style="color: #f39c12; font-size: 0.85em; margin-bottom: 4px; font-weight: bold;">Ход ${entry.turn}</div>`;
         entry.rolls.forEach(roll => {
-            html += `<div style="color: #ecf0f1; font-size: 0.9em; font-family: monospace;">рџЋІ ${roll}</div>`;
+            html += `<div style="color: #ecf0f1; font-size: 0.9em; font-family: monospace;">🎲 ${roll}</div>`;
         });
         
         li.innerHTML = html;
@@ -10461,13 +10461,13 @@ function updateWorldChroniclesDisplay() {
                 <div class="chronicle-filter-row">
                     <button class="c-filter-btn ${currentChronicleFilter === 'all' ? 'active' : ''}" data-filter="all">${t('extraLoc.chronicles.all')}</button>
                     <button class="c-filter-btn ${currentChronicleFilter === 'war' ? 'active' : ''}" data-filter="war">⚔️ ${t('extraLoc.chronicles.wars')}</button>
-                    <button class="c-filter-btn ${currentChronicleFilter === 'disaster' ? 'active' : ''}" data-filter="disaster">рџЊЄпёЏ ${t('extraLoc.chronicles.disasters')}</button>
-                    <button class="c-filter-btn ${currentChronicleFilter === 'trade' ? 'active' : ''}" data-filter="trade">рџ'° ${t('extraLoc.chronicles.economy')}</button>
-                    <button class="c-filter-btn ${currentChronicleFilter === 'business' ? 'active' : ''}" data-filter="business">рџЏ­ ${t('extraLoc.chronicles.business')}</button>
+                    <button class="c-filter-btn ${currentChronicleFilter === 'disaster' ? 'active' : ''}" data-filter="disaster">🌪️ ${t('extraLoc.chronicles.disasters')}</button>
+                    <button class="c-filter-btn ${currentChronicleFilter === 'trade' ? 'active' : ''}" data-filter="trade">💰 ${t('extraLoc.chronicles.economy')}</button>
+                    <button class="c-filter-btn ${currentChronicleFilter === 'business' ? 'active' : ''}" data-filter="business">🏭 ${t('extraLoc.chronicles.business')}</button>
                     <button class="c-filter-btn ${currentChronicleFilter === 'market' ? 'active' : ''}" data-filter="market">⚖️ ${t('extraLoc.chronicles.market')}</button>
                     <button class="c-filter-btn ${currentChronicleFilter === 'logistics' ? 'active' : ''}" data-filter="logistics">📦 ${t('extraLoc.chronicles.logistics')}</button>
                     <button class="c-filter-btn ${currentChronicleFilter === 'politics' ? 'active' : ''}" data-filter="politics">🏛️ Политика</button>
-                    <button class="c-filter-btn ${currentChronicleFilter === 'misc' ? 'active' : ''}" data-filter="misc">рџ—ЈпёЏ ${t('extraLoc.chronicles.rumors')}</button>
+                    <button class="c-filter-btn ${currentChronicleFilter === 'misc' ? 'active' : ''}" data-filter="misc">🗣️ ${t('extraLoc.chronicles.rumors')}</button>
                 </div>
                 <div class="chronicle-filter-row">
                     <button class="c-filter-btn ${currentChronicleTimeFilter === 7 ? 'active' : ''}" data-time="7">${t('extraLoc.chronicles.days7')}</button>
@@ -10660,7 +10660,7 @@ function updateTradeJournalDisplay() {
         return `
         <li style="display:flex; justify-content:space-between; padding: 3px 0;">
             <span style="color:#bdc3c7">📦 ${name}</span>
-            <span style="color:#f5b041; font-weight:bold;">${price.toFixed(1)} рџ'°</span>
+            <span style="color:#f5b041; font-weight:bold;">${price.toFixed(1)} 💰</span>
         </li>`;
     };
 
@@ -10677,7 +10677,7 @@ function updateTradeJournalDisplay() {
         let offersHtml = '';
         region.market_square.slice(0, 10).forEach(offer => {
             let goodName = getItemName(offer.good, player ? player.era : getRuntimeDefaultEraId());
-            offersHtml += `<li style="display:flex; justify-content:space-between; padding: 2px 0; font-size: 0.85em;"><span style="color:#bdc3c7">${goodName} (x${offer.quantity})</span><span style="color:#f5b041;">${offer.price.toFixed(1)} рџ'°</span></li>`;
+            offersHtml += `<li style="display:flex; justify-content:space-between; padding: 2px 0; font-size: 0.85em;"><span style="color:#bdc3c7">${goodName} (x${offer.quantity})</span><span style="color:#f5b041;">${offer.price.toFixed(1)} 💰</span></li>`;
         });
         html += offersHtml;
         if (region.market_square.length > 10) html += `<li style="font-size: 0.8em; color: #7f8c8d;">${t('extraLoc.tradeJournal.moreLots', {count: region.market_square.length - 10})}</li>`;
@@ -10921,7 +10921,7 @@ function showEntityTooltip(event) {
     if (data.dex !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.dex', '🤸 Ловкость')}:</span> <span class="stat-value">${data.dex}</span></p>`;
     if (data.con !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.con', '맷 Выносливость')}:</span> <span class="stat-value">${data.con}</span></p>`;
     if (data.int !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.int', '💡 Интеллект')}:</span> <span class="stat-value">${data.int}</span></p>`;
-    if (allowNSFW && data.lust !== undefined) statsHtml += `<p><span class="stat-label" style="color:#e91e63;">рџ’‹ Похоть:</span> <span class="stat-value" style="color:#e91e63;">${data.lust}%</span></p>`;
+    if (allowNSFW && data.lust !== undefined) statsHtml += `<p><span class="stat-label" style="color:#e91e63;">💋 Похоть:</span> <span class="stat-value" style="color:#e91e63;">${data.lust}%</span></p>`;
 
     let healthBarHtml = '';
     let healthText = '';
@@ -11278,7 +11278,7 @@ function updateEroticJournal() {
             li.style.background = 'rgba(231, 76, 60, 0.1)';
         });
 
-        const typeLabel = scene.type === 'consensual' ? 'рџ’•' :
+        const typeLabel = scene.type === 'consensual' ? '💕' :
                          scene.type === 'forced' ? '⚠️' :
                          scene.type === 'seduction' ? '😏' : '💋';
 
@@ -11348,7 +11348,7 @@ function showEroticSceneModal(sceneId) {
 
     modalContent.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #e74c3c; padding-bottom: 15px;">
-            <h2 style="margin: 0; color: #e74c3c; font-size: 1.5em;">рџ’‹ ${scene.partner}</h2>
+            <h2 style="margin: 0; color: #e74c3c; font-size: 1.5em;">💋 ${scene.partner}</h2>
             <button id="close-scene-modal" style="background: #c0392b; border: none; color: white; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold;">✕ ${t('gameInterface.eroticJournalPanel.closeModal', 'Закрыть')}</button>
         </div>
 
@@ -11356,7 +11356,7 @@ function showEroticSceneModal(sceneId) {
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9em;">
                 <div><strong>📅 ${t('gameInterface.eroticJournalPanel.sceneDay', 'День')}:</strong> ${scene.day}</div>
                 <div><strong>📍 ${t('gameInterface.eroticJournalPanel.sceneLocation', 'Локация')}:</strong> ${scene.location}</div>
-                <div><strong>рџ’ћ ${t('gameInterface.eroticJournalPanel.sceneType', 'Тип')}:</strong> ${typeLabel}</div>
+                <div><strong>💞 ${t('gameInterface.eroticJournalPanel.sceneType', 'Тип')}:</strong> ${typeLabel}</div>
                 <div><strong>🔥 Интенсивность:</strong> ${intensityLabel}</div>
             </div>
         </div>
@@ -17115,12 +17115,12 @@ function populateAdminMenu() {
             const manpower = availableManpower(f);
             
             let titleColor = isPlayer ? "#2ecc71" : "#3498db";
-            let titlePrefix = isPlayer ? "рџ‘‘ [ВАША] " : "";
+            let titlePrefix = isPlayer ? "👑 [ВАША] " : "";
             let bgStyle = isPlayer ? 'style="border-left-color: #2ecc71; background: rgba(46, 204, 113, 0.1);"' : '';
             
             html += `<div class="debug-item" ${bgStyle}>
                      <b style="color:${titleColor}">${titlePrefix}${f.name}</b><br>
-                     рџ'°${formatNum(gold)} | рџ›ЎпёЏ${formatNum(manpower)}
+                     💰${formatNum(gold)} | 🛡️${formatNum(manpower)}
                      ${warText}
                      </div>`;
         }
@@ -17296,7 +17296,7 @@ window.adminEditNexus = function (id) {
 // ==========================================
 window.runUnitTests = function () {
     addLogMessage("[DEV] 🧪 Запуск Unit-тестов...", "system-message");
-    console.group("рџ§Є UNIT TESTS RUN");
+    console.group("🧪 UNIT TESTS RUN");
 
     let passed = 0;
     let failed = 0;
@@ -17609,7 +17609,7 @@ function updateWorldSimDebugDisplay() {
         panel.style.display = 'flex';
         let html = '';
 
-        html += `<div class="debug-card"><div class="debug-card-title"><span>рџЏ›пёЏ ${t('extraLoc.debugPanel.factions')}</span></div><div class="debug-grid">`;
+        html += `<div class="debug-card"><div class="debug-card-title"><span>🏛️ ${t('extraLoc.debugPanel.factions')}</span></div><div class="debug-grid">`;
         
         let playerHasFaction = false;
         for (let fId in World.factions) {
@@ -17643,12 +17643,12 @@ function updateWorldSimDebugDisplay() {
             const manpower = availableManpower(f);
             
             let titleColor = isPlayer ? "#2ecc71" : "#3498db";
-            let titlePrefix = isPlayer ? "рџ‘‘ [ВАША] " : "";
+            let titlePrefix = isPlayer ? "👑 [ВАША] " : "";
             let bgStyle = isPlayer ? 'style="border-left-color: #2ecc71; background: rgba(46, 204, 113, 0.1); grid-column: span 2;"' : '';
             
             html += `<div class="debug-item" ${bgStyle}>
                      <b style="color:${titleColor}">${titlePrefix}${f.name}</b><br>
-                     рџ'°${formatNum(gold)} | рџ›ЎпёЏ${formatNum(manpower)}
+                     💰${formatNum(gold)} | 🛡️${formatNum(manpower)}
                      ${warText}`;
                      
             if (isPlayer) {
@@ -17697,7 +17697,7 @@ function updateWorldSimDebugDisplay() {
                     statusText = `<b style="color:#e74c3c">${t('extraLoc.debugPanel.battle', {phase: phaseName})}</b>`;
                 }
 
-                let armyName = World.factions[fId].rulerId === 'player' ? `рџ‘‘ ${t('extraLoc.debugPanel.yourArmy')}` : World.factions[fId].name;
+                let armyName = World.factions[fId].rulerId === 'player' ? `👑 ${t('extraLoc.debugPanel.yourArmy')}` : World.factions[fId].name;
 
                 html += `<div class="debug-army-item">
                             <b>${armyName}</b> (${a.size} ед.) ➔ <b>${dest}</b><br>
@@ -17708,7 +17708,7 @@ function updateWorldSimDebugDisplay() {
         if (!armiesExist) html += `<div style="color:#7f8c8d; font-style:italic; padding:5px;">${t('extraLoc.debugPanel.noTroops')}</div>`;
         html += '</div>';
 
-        html += `<div class="debug-card"><div class="debug-card-title"><span>рџЊЌ ${t('extraLoc.debugPanel.regions')}</span></div><div class="debug-grid">`;
+        html += `<div class="debug-card"><div class="debug-card-title"><span>🌍 ${t('extraLoc.debugPanel.regions')}</span></div><div class="debug-grid">`;
         for (let rId in World.regions) {
             let r = World.regions[rId];
             let owner = World.factions[r.factionId] ? World.factions[r.factionId].name : t('extraLoc.debugPanel.neutrals');
@@ -17770,7 +17770,7 @@ function updateWorldSimDebugDisplay() {
         }
         html += '</div></div>';
 
-        html += `<div class="debug-card"><div class="debug-card-title"><span>рџ‘‘ ${t('extraLoc.debugPanel.rulersAndIntrigues')}</span></div><div class="debug-grid">`;
+        html += `<div class="debug-card"><div class="debug-card-title"><span>👑 ${t('extraLoc.debugPanel.rulersAndIntrigues')}</span></div><div class="debug-grid">`;
         if(World.rulers) {
             for(let rId in World.rulers) {
                 let r = World.rulers[rId];
@@ -18166,9 +18166,9 @@ window.openBusinessModal = async function(bId) {
                             <label class="bus-label">${t('extraLoc.businessModal.operation')}</label>
                             <select id="new-rule-type" onchange="toggleRuleType()" class="bus-input" style="cursor:pointer;">
                                 <option value="transfer">📦 ${t('extraLoc.businessModal.export')}</option>
-                                <option value="pull">рџ“Ґ ${t('extraLoc.businessModal.import')}</option>
-                                <option value="order">рџ›’ ${t('extraLoc.businessModal.order')}</option>
-                                <option value="retail">рџЏЄ ${t('extraLoc.businessModal.retail')}</option>
+                                <option value="pull">💰“Ґ ${t('extraLoc.businessModal.import')}</option>
+                                <option value="order">🛒’ ${t('extraLoc.businessModal.order')}</option>
+                                <option value="retail">🏪 ${t('extraLoc.businessModal.retail')}</option>
                             </select>
                         </div>
                         <div>
@@ -18306,7 +18306,7 @@ function updatePortPanel() {
         html += `<h4 style="color:#e67e22; margin: 10px 0 5px 0; font-size: 0.9em; border-bottom:1px solid #e67e22; padding-bottom:3px;">${t('extraLoc.portPanel.contracts')}</h4><ul style="list-style:none; padding:0; margin:0; max-height: 100px; overflow-y: auto; font-size: 0.85em;">`;
         if (port.build_queue && port.build_queue.length > 0) {
             port.build_queue.forEach(bq => {
-                html += `<li style="background: rgba(0,0,0,0.4); padding: 4px; margin-bottom: 2px; border-radius: 4px; border-left: 3px solid #e67e22;">рџЏ—пёЏ ${t('extraLoc.portPanel.shipTypes.' + bq.type, null, bq.type)} (${t('extraLoc.portPanel.owner')}: ${bq.owner_id}) - ${t('extraLoc.portPanel.daysLeft')}: ${bq.days_left}</li>`;
+                html += `<li style="background: rgba(0,0,0,0.4); padding: 4px; margin-bottom: 2px; border-radius: 4px; border-left: 3px solid #e67e22;">🏗️ ${t('extraLoc.portPanel.shipTypes.' + bq.type, null, bq.type)} (${t('extraLoc.portPanel.owner')}: ${bq.owner_id}) - ${t('extraLoc.portPanel.daysLeft')}: ${bq.days_left}</li>`;
             });
         } else {
             html += `<li style="color:#7f8c8d; padding: 3px;">${t('extraLoc.portPanel.queueEmpty')}</li>`;
@@ -18318,7 +18318,7 @@ function updatePortPanel() {
     let fleetsInPort = (World.fleets || []).filter(f => f.destination === playerRegionId && (!f.path || f.path_index >= f.path.length - 1));
     if (fleetsInPort.length === 0) html += `<li style="color:#7f8c8d; padding: 3px;">${t('extraLoc.portPanel.noFleets')}</li>`;
     fleetsInPort.forEach(f => {
-        html += `<li style="background: rgba(0,0,0,0.4); padding: 4px; margin-bottom: 2px; border-radius: 4px; border-left: 3px solid #9b59b6;">вљ“рџ›ЎпёЏ <b>${t('extraLoc.portPanel.fleet')}</b> (${t('extraLoc.portPanel.owner')}: ${f.owner_id})<br><span style="font-size:0.85em; color:#bdc3c7;">${t('extraLoc.portPanel.shipsCount')}: ${f.ship_ids.length} | ${t('extraLoc.portPanel.mission')}: ${t('extraLoc.portPanel.missions.' + f.mission, null, f.mission)}</span></li>`;
+        html += `<li style="background: rgba(0,0,0,0.4); padding: 4px; margin-bottom: 2px; border-radius: 4px; border-left: 3px solid #9b59b6;">вљ“🛒Ў <b>${t('extraLoc.portPanel.fleet')}</b> (${t('extraLoc.portPanel.owner')}: ${f.owner_id})<br><span style="font-size:0.85em; color:#bdc3c7;">${t('extraLoc.portPanel.shipsCount')}: ${f.ship_ids.length} | ${t('extraLoc.portPanel.mission')}: ${t('extraLoc.portPanel.missions.' + f.mission, null, f.mission)}</span></li>`;
     });
     html += `</ul>`;
 
@@ -18329,7 +18329,7 @@ function updatePortPanel() {
         let icon = "⛵";
         if (s.type === "WAR_GALLEY" || s.type === "WAR_FRIGATE") icon = "⛴️";
         if (s.type === "PIRATE") icon = "🏴‍☠️";
-        if (s.type === "TRANSPORT") icon = "рџ›¶";
+        if (s.type === "TRANSPORT") icon = "🛒¶";
         html += `<li style="background: rgba(0,0,0,0.4); padding: 4px; margin-bottom: 2px; border-radius: 4px; border-left: 3px solid #3498db;">${icon} <b>${t('extraLoc.portPanel.shipTypes.' + s.type, null, s.type)}</b> (${t('extraLoc.portPanel.owner')}: ${s.owner_id})<br><span style="font-size:0.85em; color:#bdc3c7;">${t('extraLoc.portPanel.hull')}: ${s.hull}% | ${t('extraLoc.portPanel.crew')}: ${s.sailors} | ${t('extraLoc.portPanel.cargo')}: ${s.cargo_capacity}</span></li>`;
     });
     html += `</ul>`;
