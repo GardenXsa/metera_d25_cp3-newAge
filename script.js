@@ -3299,6 +3299,8 @@ async function showLoadGameScreen() {
                                 player.gmNotes = player.gmNotes || {};
 
                                 if (window.Cartographer) Cartographer.isMapInitialized = false;
+                                isWaitingForAI = false;
+                                window.isSimulatingTime = false;
                                 stopMenuMusic();
                                 await initializeGameInterface();
                                 setActiveScreen('game-interface');
@@ -6081,6 +6083,11 @@ function applyTranslations() {
 }
 
 function t(key, variables = null, fallback = null) {
+    if (typeof variables === 'string' && fallback === null) {
+        fallback = variables;
+        variables = null;
+    }
+
     let translation = undefined;
     
     // Сначала ищем перевод в словарях модов
@@ -6103,7 +6110,16 @@ function t(key, variables = null, fallback = null) {
             translation = translation.replace(regex, String(variables[varKey]));
         }
     }
-    return translation || (fallback !== null ? fallback : key);
+    const result = translation || (fallback !== null ? fallback : key);
+    return window.TextEncodingGuard ? window.TextEncodingGuard.repairText(result) : result;
+}
+
+function formatItemHistoryDay(day) {
+    if (window.WorldDateFormatter && typeof window.WorldDateFormatter.formatWorldDay === 'function') {
+        return window.WorldDateFormatter.formatWorldDay(day);
+    }
+    if (typeof formatWorldDay === 'function') return formatWorldDay(day);
+    return Number.isFinite(Number(day)) ? `День ${Math.floor(Number(day))}` : 'Дата неизвестна';
 }
 
 function updateDynamicUIText() {
@@ -6246,6 +6262,7 @@ function updateDynamicUIText() {
 
 // --- Инициализация Приложения ---
 async function initializeApp() {
+    installGameLogWheelScroll();
 
     // Слушатель прогресса нативного движка
     if (window.electronAPI && window.electronAPI.onNexusProgress) {
@@ -8537,14 +8554,13 @@ async function finalizeWorldSetupAndStart() {
     if (preloadedWorldData) {
         console.log("Используется предзагруженный мир.");
         setWorld(preloadedWorldData);
-        // Инициализируем движок, но НЕ синхронизируем мир сейчас --
-        // World JSON слишком большой (1.5МБ+), syncState таймаутится.
-        // Синхронизация будет выполнена позже, после создания контейнеров.
-        if (window.electronAPI && window.electronAPI.nexusInit) {
-            const initRes = await window.electronAPI.nexusInit(true);
-            if (initRes.status !== 'ok') {
-                console.warn('[Nexus] Init failed for preloaded world:', initRes.message);
-            }
+        // Load runtime database into Nexus Engine, but do not build a fresh world.
+        // The saved world is synced below via file because the JSON is too large for stdin.
+        const initWorldResult = await initWorldSimulator(initialAgents, absoluteStartDay, true);
+        if (!initWorldResult) {
+            disarmWorldGenerationWatchdog(worldGenerationWatchdog, 'preloaded world engine init failed');
+            hideLoadingScreen();
+            return;
         }
     } else {
         setWorld(await initWorldSimulator(initialAgents, absoluteStartDay));
@@ -10230,7 +10246,11 @@ function showItemExamineModal(item) {
 
     const historyEl = document.getElementById('examine-history-content');
     if (item.history && item.history.length > 0) {
-        historyEl.innerHTML = item.history.map(h => `<div style="margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 2px;"><span style="color:#f39c12;">[День ${h.day}]</span> ${escapeHTML(parseLocString(h.event))}</div>`).join('');
+        historyEl.innerHTML = item.history.map(h => {
+            const dateText = escapeHTML(formatItemHistoryDay(h.day));
+            const eventText = escapeHTML(parseLocString(h.event));
+            return `<div style="margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 2px;"><span style="color:#f39c12;">[${dateText}]</span> ${eventText}</div>`;
+        }).join('');
     } else {
         historyEl.innerHTML = '<div style="font-style:italic;">История этого предмета скрыта во тьме веков...</div>';
     }
@@ -10847,7 +10867,11 @@ function createItemTooltip(event, item) {
 
     let historyHtml = '';
     if (item.history && item.history.length > 0) {
-        const historyItems = item.history.slice(-3).map(h => `[День ${h.day}] ${parseLocString(h.event)}`).join('<br>');
+        const historyItems = item.history.slice(-3).map(h => {
+            const dateText = escapeHTML(formatItemHistoryDay(h.day));
+            const eventText = escapeHTML(parseLocString(h.event));
+            return `[${dateText}] ${eventText}`;
+        }).join('<br>');
         historyHtml = `<div style="margin-top:8px; border-top:1px dashed #2c1e14; padding-top:5px; font-size:0.85em; color:#d35400;">
             <strong>Летопись предмета:</strong><br>${historyItems}
         </div>`;
@@ -10910,9 +10934,9 @@ function showEntityTooltip(event) {
     let statsHtml = '';
     if (data.str !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.str', '⚔️ Сила')}:</span> <span class="stat-value">${data.str}</span></p>`;
     if (data.dex !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.dex', '🤸 Ловкость')}:</span> <span class="stat-value">${data.dex}</span></p>`;
-    if (data.con !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.con', '맷 Выносливость')}:</span> <span class="stat-value">${data.con}</span></p>`;
+    if (data.con !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.con', 'Выносливость')}:</span> <span class="stat-value">${data.con}</span></p>`;
     if (data.int !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.int', '💡 Интеллект')}:</span> <span class="stat-value">${data.int}</span></p>`;
-    if (allowNSFW && data.lust !== undefined) statsHtml += `<p><span class="stat-label" style="color:#e91e63;">рџ’‹ Похоть:</span> <span class="stat-value" style="color:#e91e63;">${data.lust}%</span></p>`;
+    if (allowNSFW && data.lust !== undefined) statsHtml += `<p><span class="stat-label" style="color:#e91e63;">Похоть:</span> <span class="stat-value" style="color:#e91e63;">${data.lust}%</span></p>`;
 
     let healthBarHtml = '';
     let healthText = '';
@@ -10932,7 +10956,7 @@ function showEntityTooltip(event) {
                 <div class="health-bar ${barClass}" style="width: ${healthPercentage}%;">${healthText}</div>
             </div>
         `;
-        healthText = `<p><strong>${t('gameInterface.environmentPanel.tooltip.health', 'Р--доровье')}:</strong> <span class="stat-value">${data.hp} / ${data.maxHp}</span></p>`;
+        healthText = `<p><strong>${t('gameInterface.environmentPanel.tooltip.health', 'Здоровье')}:</strong> <span class="stat-value">${data.hp} / ${data.maxHp}</span></p>`;
     }
 
 
@@ -11484,9 +11508,33 @@ function closeInGameMenu() {
 }
 
 // --- Лог и Ввод ---
+function installGameLogWheelScroll() {
+    if (window.__gameLogWheelScrollInstalled) return;
+    window.__gameLogWheelScrollInstalled = true;
+
+    document.addEventListener('wheel', (event) => {
+        const gameLog = document.getElementById('game-log');
+        if (!gameLog || gameLog.scrollHeight <= gameLog.clientHeight) return;
+
+        const rect = gameLog.getBoundingClientRect();
+        const isOverGameLog =
+            event.clientX >= rect.left &&
+            event.clientX <= rect.right &&
+            event.clientY >= rect.top &&
+            event.clientY <= rect.bottom;
+
+        if (!isOverGameLog) return;
+
+        gameLog.scrollTop += event.deltaY;
+        event.preventDefault();
+    }, { capture: true, passive: false });
+}
+
 function addLogMessage(message, type = "gm-message", isRestoring = false, imagePrompt = "", savedImageBase64 = null) {
     if (!gameLog) return;
     message = parseLocString(message); // Авто-локализация
+
+    const wasNearBottom = !gameLog || (gameLog.scrollHeight - gameLog.scrollTop - gameLog.clientHeight) < 80;
 
     // --- СИСТЕМА СОХРАНЕНИЯ ЛОГОВ ---
     let currentHistoryEntry = null;
@@ -11802,7 +11850,9 @@ function addLogMessage(message, type = "gm-message", isRestoring = false, imageP
     }
 
     pruneGameLog();
-    gameLog.scrollTo({ top: gameLog.scrollHeight, behavior: 'smooth' });
+    if (wasNearBottom) {
+        gameLog.scrollTo({ top: gameLog.scrollHeight, behavior: 'smooth' });
+    }
 }
 
 function processTurnEffects() {
