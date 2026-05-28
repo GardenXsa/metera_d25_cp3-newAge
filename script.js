@@ -1624,6 +1624,8 @@ async function executeCommand(command, args) {
             case 'nexusDefine':
             case 'nexusUpdate':
             case 'nexusRemove':
+            case 'nexusLink':
+            case 'nexusUnlink':
             case 'repairFacility':
             case 'applyPredefinedEffect':
             case 'addStatusEffect':
@@ -9462,8 +9464,13 @@ function handleStatIncrease(event) {
 }
 
 function updateNexusDisplay() {
+    const nexusPanel = document.getElementById('nexus-panel');
     const nexusList = document.getElementById('nexus-list');
-    if (!player || !nexusList) return;
+    if (!player || !nexusPanel || !nexusList) return;
+
+    // --- НОВОЕ: Состояние активной вкладки ---
+    if (!window._nexusTabState) window._nexusTabState = 'all';
+    const activeTab = window._nexusTabState;
 
     nexusList.innerHTML = '';
     const nexusData = Object.values(player.nexusData || {});
@@ -9471,77 +9478,316 @@ function updateNexusDisplay() {
     // Фильтруем служебные элементы и скрываем Мировые События (они теперь в Летописи Мира)
     const actualItems = nexusData.filter(item => {
         if (!item || typeof item.name !== 'string' || item.name === item.category) return false;
-        if (item.category === 'World_Event' || item.category === 'Мировое Событие' || item.id.startsWith('event_')) return false;
+        if (item.category === 'World_Event' || item.category === 'Мировое Событие' || (item.id && item.id.startsWith('event_'))) return false;
         return true;
     });
 
+    // --- Обеспечиваем обратную совместимость: добавляем недостающие поля старым константам ---
+    actualItems.forEach(item => {
+        if (item.state === undefined) item.state = 'active';
+        if (item.parentId === undefined) item.parentId = null;
+        if (item.order === undefined) item.order = null;
+        if (item.requirements === undefined) item.requirements = null;
+        if (item.icon === undefined) item.icon = null;
+        if (item.tags === undefined) item.tags = null;
+        if (item.linkedIds === undefined) item.linkedIds = null;
+        if (item.max === undefined) item.max = null;
+    });
+
+    // --- НОВОЕ: Строим карту parent→children для иерархии ---
+    const childMap = {}; // parentId → [child items]
+    const rootItems = []; // элементы без parentId
+    actualItems.forEach(item => {
+        if (item.parentId && nexusData.some(i => i.id === item.parentId)) {
+            if (!childMap[item.parentId]) childMap[item.parentId] = [];
+            childMap[item.parentId].push(item);
+        } else {
+            rootItems.push(item);
+        }
+    });
+
+    // Сортировка детей по order, затем по name
+    for (const pid in childMap) {
+        childMap[pid].sort((a, b) => {
+            if (a.order != null && b.order != null) return a.order - b.order;
+            if (a.order != null) return -1;
+            if (b.order != null) return 1;
+            return a.name.localeCompare(b.name, currentLanguage);
+        });
+    }
+
+    // --- НОВОЕ: Рендерим вкладки ---
+    const tabContainer = document.createElement('div');
+    tabContainer.className = 'nexus-tabs';
+    const tabs = [
+        { id: 'all', label: t('gameInterface.nexusPanel.tabs.all', 'Все'), icon: '📋' },
+        { id: 'requests', label: t('gameInterface.nexusPanel.tabs.requests', 'Заявки'), icon: '📨' },
+        { id: 'tree', label: t('gameInterface.nexusPanel.tabs.tree', 'Деревья'), icon: '🌳' }
+    ];
+
+    tabs.forEach(tab => {
+        const btn = document.createElement('button');
+        btn.className = `nexus-tab-btn${activeTab === tab.id ? ' active' : ''}`;
+        btn.innerHTML = `${tab.icon} ${tab.label}`;
+        btn.addEventListener('click', () => {
+            window._nexusTabState = tab.id;
+            updateNexusDisplay();
+        });
+        tabContainer.appendChild(btn);
+    });
+    nexusList.appendChild(tabContainer);
+
+    // --- Пустое состояние ---
     if (actualItems.length === 0) {
-        nexusList.innerHTML = `<li data-i18n="gameInterface.nexusPanel.empty">${t('gameInterface.nexusPanel.empty', 'Нет данных')}</li>`;
+        const emptyLi = document.createElement('li');
+        emptyLi.className = 'nexus-empty';
+        emptyLi.textContent = t('gameInterface.nexusPanel.empty', 'Нет данных');
+        nexusList.appendChild(emptyLi);
         return;
     }
 
-    // Группируем отфильтрованные элементы по категориям
-    const groupedData = actualItems.reduce((acc, item) => {
-        const category = item.category || t('gameInterface.nexusPanel.defaultCategory', 'Прочее');
-        if (!acc[category]) {
-            acc[category] = [];
+    // === ВСПМОГАТЕЛЬНАЯ ФУНКЦИЯ: рендер значения ===
+    function renderValue(item) {
+        switch (item.displayType) {
+            case 'boolean':
+                return item.value === 'true'
+                    ? t('gameInterface.nexusPanel.boolTrue', 'Да')
+                    : t('gameInterface.nexusPanel.boolFalse', 'Нет');
+            case 'numeric':
+                return `${item.value}`;
+            case 'clock':
+                const max = parseInt(item.max, 10) || requireRuntimeNumber(getGameplayRuntimeConfig().item_display.clock_max_segments, 'gameplay_runtime.item_display.clock_max_segments');
+                const val = parseInt(item.value, 10) || 0;
+                const filled = '█'.repeat(val);
+                const empty = '░'.repeat(Math.max(0, max - val));
+                return `<span style="color:#e74c3c; letter-spacing: 2px;">[${filled}${empty}]</span>`;
+            case 'text':
+            default:
+                return `${item.value}`;
         }
-        acc[category].push(item);
-        return acc;
-    }, {});
+    }
 
-    const sortedCategories = Object.keys(groupedData).sort((a, b) => a.localeCompare(b, currentLanguage));
+    // === ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: badge состояния ===
+    function stateBadge(state) {
+        switch (state) {
+            case 'pending': return '<span class="nexus-state-badge pending">⏳</span>';
+            case 'locked': return '<span class="nexus-state-badge locked">🔒</span>';
+            case 'rejected': return '<span class="nexus-state-badge rejected">✕</span>';
+            default: return '';
+        }
+    }
 
-    for (const category of sortedCategories) {
-        const categoryHeader = document.createElement('li');
-        categoryHeader.className = 'category-header';
-        categoryHeader.textContent = category;
-        nexusList.appendChild(categoryHeader);
+    // === ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: рендер элемента с tooltip ===
+    function renderItem(item, depth = 0) {
+        if (!item || typeof item.name !== 'string' || typeof item.value === 'undefined') {
+            console.error("Пропущен некорректный элемент Nexus:", item);
+            return;
+        }
 
-        groupedData[category].sort((a, b) => a.name.localeCompare(b.name, currentLanguage)).forEach(item => {
-            // *** ЗАЩИТА: Дополнительная проверка на корректность объекта ***
-            if (!item || typeof item.name !== 'string' || typeof item.value === 'undefined') {
-                console.error("Пропущен некорректный элемент Nexus:", item);
-                return; // Пропускаем рендеринг сломанного элемента
+        const li = document.createElement('li');
+        const stateClass = item.state !== 'active' ? ` nexus-state-${item.state}` : '';
+        const depthClass = depth > 0 ? ` nexus-depth-${Math.min(depth, 4)}` : '';
+        li.className = `nexus-item${stateClass}${depthClass}`;
+
+        // Tooltip
+        li.addEventListener('mouseenter', (e) => {
+            const desc = item.description || 'Нет подробного описания.';
+            let content = `<div style="color:#5d4a36; font-style:italic; margin-bottom: 5px; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 3px;">Категория: ${item.category || 'Прочее'}</div>
+                           <div style="color:#1a110a; line-height: 1.4; font-size: 0.95em; font-weight: 500;">${desc}</div>`;
+            if (item.state !== 'active') {
+                const stateLabel = { pending: 'Ожидает', locked: 'Закрыто', rejected: 'Отклонено' }[item.state] || item.state;
+                content += `<div style="margin-top: 5px; padding-top: 3px; border-top: 1px solid rgba(0,0,0,0.1); color: #c0392b; font-weight: 600;">Состояние: ${stateLabel}</div>`;
             }
-
-            const li = document.createElement('li');
-            li.className = 'nexus-item';
-            // Кастомный тултип для Nexus
-            li.addEventListener('mouseenter', (e) => {
-                const desc = item.description || 'Нет подробного описания.';
-                const content = `<div style="color:#5d4a36; font-style:italic; margin-bottom: 5px; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 3px;">Категория: ${item.category || 'Прочее'}</div>
-                                 <div style="color:#1a110a; line-height: 1.4; font-size: 0.95em; font-weight: 500;">${desc}</div>`;
-                showGenericTooltip(e, item.name, content);
-            });
-            li.addEventListener('mouseleave', hideGenericTooltip);
-            li.addEventListener('mousemove', moveGenericTooltip);
-
-            let valueDisplay = '';
-            switch (item.displayType) {
-                case 'boolean':
-                    valueDisplay = item.value === 'true'
-                        ? t('gameInterface.nexusPanel.boolTrue', 'Да')
-                        : t('gameInterface.nexusPanel.boolFalse', 'Нет');
-                    break;
-                case 'numeric':
-                    valueDisplay = `${item.value}`;
-                    break;
-                case 'clock':
-                    const max = parseInt(item.max, 10) || requireRuntimeNumber(getGameplayRuntimeConfig().item_display.clock_max_segments, 'gameplay_runtime.item_display.clock_max_segments');
-                    const val = parseInt(item.value, 10) || 0;
-                    const filled = '█'.repeat(val);
-                    const empty = '░'.repeat(Math.max(0, max - val));
-                    valueDisplay = `<span style="color:#e74c3c; letter-spacing: 2px;">[${filled}${empty}]</span>`;
-                    break;
-                case 'text':
-                default:
-                    valueDisplay = `${item.value}`;
+            if (item.requirements) {
+                content += `<div style="margin-top: 3px; color: #8e44ad; font-size: 0.9em;">Требования: ${item.requirements}</div>`;
             }
-
-            li.innerHTML = `<span class="nexus-name">${escapeHTML(item.name)}</span><span class="nexus-value">${escapeHTML(valueDisplay)}</span>`;
-            nexusList.appendChild(li);
+            if (item.parentId) {
+                const parent = player.nexusData[item.parentId];
+                if (parent) content += `<div style="margin-top: 3px; color: #7f8c8d; font-size: 0.85em;">Родитель: ${parent.name}</div>`;
+            }
+            if (Array.isArray(item.linkedIds) && item.linkedIds.length > 0) {
+                const linkedNames = item.linkedIds.map(lid => player.nexusData[lid]?.name || lid).join(', ');
+                content += `<div style="margin-top: 3px; color: #2ecc71; font-size: 0.85em;">Связи: ${linkedNames}</div>`;
+            }
+            showGenericTooltip(e, item.name, content);
         });
+        li.addEventListener('mouseleave', hideGenericTooltip);
+        li.addEventListener('mousemove', moveGenericTooltip);
+
+        const iconStr = item.icon ? `<span class="nexus-icon">${item.icon}</span> ` : '';
+        const badgeStr = stateBadge(item.state);
+        const valueDisplay = renderValue(item);
+
+        li.innerHTML = `${iconStr}<span class="nexus-name">${escapeHTML(item.name)}</span>${badgeStr}<span class="nexus-value">${escapeHTML(valueDisplay)}</span>`;
+        nexusList.appendChild(li);
+
+        // Рекурсивно рендерим детей
+        if (childMap[item.id]) {
+            childMap[item.id].forEach(child => renderItem(child, depth + 1));
+        }
+    }
+
+    // === ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: рендер дерева ===
+    function renderTreeItem(item, depth = 0) {
+        const li = document.createElement('li');
+        const isUnlocked = item.state === 'active';
+        const stateClass = isUnlocked ? 'tree-unlocked' : 'tree-locked';
+        const depthClass = ` tree-depth-${Math.min(depth, 6)}`;
+        li.className = `nexus-tree-item ${stateClass}${depthClass}`;
+
+        const iconStr = item.icon ? `<span class="nexus-icon">${item.icon}</span> ` : (isUnlocked ? '🟢 ' : '🔴 ');
+        const badgeStr = stateBadge(item.state);
+        const valueDisplay = renderValue(item);
+
+        li.addEventListener('mouseenter', (e) => {
+            const desc = item.description || 'Нет подробного описания.';
+            let content = `<div style="color:#1a110a; line-height: 1.4; font-size: 0.95em; font-weight: 500;">${desc}</div>`;
+            if (item.requirements) {
+                content += `<div style="margin-top: 5px; color: #8e44ad; font-weight: 600;">Требования: ${item.requirements}</div>`;
+            }
+            const stateLabel = { active: 'Открыто', pending: 'Ожидает', locked: 'Закрыто', rejected: 'Отклонено' }[item.state] || item.state;
+            content += `<div style="margin-top: 3px; color: ${isUnlocked ? '#27ae60' : '#c0392b'}; font-size: 0.9em;">Состояние: ${stateLabel}</div>`;
+            showGenericTooltip(e, item.name, content);
+        });
+        li.addEventListener('mouseleave', hideGenericTooltip);
+        li.addEventListener('mousemove', moveGenericTooltip);
+
+        li.innerHTML = `${iconStr}<span class="nexus-name">${escapeHTML(item.name)}</span>${badgeStr}<span class="nexus-value">${escapeHTML(valueDisplay)}</span>`;
+        nexusList.appendChild(li);
+
+        // Дети дерева
+        if (childMap[item.id]) {
+            childMap[item.id].forEach(child => renderTreeItem(child, depth + 1));
+        }
+    }
+
+    // ========================================
+    // РЕНДЕР ПО ВКЛАДКАМ
+    // ========================================
+
+    if (activeTab === 'all') {
+        // --- ВКЛАДКА "ВСЁ": Категории + иерархия + badge состояний ---
+        const groupedData = rootItems.reduce((acc, item) => {
+            const category = item.category || t('gameInterface.nexusPanel.defaultCategory', 'Прочее');
+            if (!acc[category]) acc[category] = [];
+            acc[category].push(item);
+            return acc;
+        }, {});
+
+        const sortedCategories = Object.keys(groupedData).sort((a, b) => a.localeCompare(b, currentLanguage));
+
+        for (const category of sortedCategories) {
+            const categoryHeader = document.createElement('li');
+            categoryHeader.className = 'category-header';
+            categoryHeader.textContent = category;
+            nexusList.appendChild(categoryHeader);
+
+            // Сортировка: по order, затем по name
+            groupedData[category].sort((a, b) => {
+                if (a.order != null && b.order != null) return a.order - b.order;
+                if (a.order != null) return -1;
+                if (b.order != null) return 1;
+                return a.name.localeCompare(b.name, currentLanguage);
+            }).forEach(item => renderItem(item, 0));
+        }
+
+    } else if (activeTab === 'requests') {
+        // --- ВКЛАДКА "ЗАЯВКИ": Только pending/locked/rejected ---
+        const requestItems = actualItems.filter(item => item.state !== 'active');
+
+        if (requestItems.length === 0) {
+            const emptyLi = document.createElement('li');
+            emptyLi.className = 'nexus-empty';
+            emptyLi.textContent = t('gameInterface.nexusPanel.noRequests', 'Нет активных заявок');
+            nexusList.appendChild(emptyLi);
+            return;
+        }
+
+        // Группируем по состоянию
+        const byState = { pending: [], locked: [], rejected: [] };
+        requestItems.forEach(item => {
+            if (byState[item.state]) byState[item.state].push(item);
+        });
+
+        const stateLabels = {
+            pending: t('gameInterface.nexusPanel.statePending', '⏳ Ожидают рассмотрения'),
+            locked: t('gameInterface.nexusPanel.stateLocked', '🔒 Закрыто (требования не выполнены)'),
+            rejected: t('gameInterface.nexusPanel.stateRejected', '✕ Отклонено')
+        };
+
+        for (const stateKey of ['pending', 'locked', 'rejected']) {
+            if (byState[stateKey].length === 0) continue;
+
+            const stateHeader = document.createElement('li');
+            stateHeader.className = `nexus-request-header nexus-request-${stateKey}`;
+            stateHeader.textContent = `${stateLabels[stateKey]} (${byState[stateKey].length})`;
+            nexusList.appendChild(stateHeader);
+
+            byState[stateKey].sort((a, b) => a.name.localeCompare(b.name, currentLanguage)).forEach(item => {
+                const li = document.createElement('li');
+                li.className = `nexus-item nexus-state-${item.state} nexus-request-item`;
+
+                li.addEventListener('mouseenter', (e) => {
+                    const desc = item.description || 'Нет подробного описания.';
+                    let content = `<div style="color:#5d4a36; font-style:italic; margin-bottom: 5px; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 3px;">Категория: ${item.category || 'Прочее'}</div>
+                                   <div style="color:#1a110a; line-height: 1.4; font-size: 0.95em; font-weight: 500;">${desc}</div>`;
+                    if (item.requirements) {
+                        content += `<div style="margin-top: 8px; padding-top: 5px; border-top: 2px solid #8e44ad; color: #8e44ad; font-weight: 600; font-size: 0.95em;">Требования: ${item.requirements}</div>`;
+                    }
+                    showGenericTooltip(e, item.name, content);
+                });
+                li.addEventListener('mouseleave', hideGenericTooltip);
+                li.addEventListener('mousemove', moveGenericTooltip);
+
+                const iconStr = item.icon ? `<span class="nexus-icon">${item.icon}</span> ` : '';
+                const valueDisplay = renderValue(item);
+                li.innerHTML = `${iconStr}<span class="nexus-name">${escapeHTML(item.name)}</span><span class="nexus-value">${escapeHTML(valueDisplay)}</span>`;
+                nexusList.appendChild(li);
+
+                // Показываем требования прямо в списке
+                if (item.requirements) {
+                    const reqLi = document.createElement('li');
+                    reqLi.className = 'nexus-requirement-line';
+                    reqLi.textContent = `↳ ${item.requirements}`;
+                    nexusList.appendChild(reqLi);
+                }
+            });
+        }
+
+    } else if (activeTab === 'tree') {
+        // --- ВКЛАДКА "ДЕРЕВЬЯ": Иерархический вид ---
+        // Находим корни деревьев: элементы без parentId, у которых есть дети
+        const treeRoots = rootItems.filter(item => childMap[item.id] && childMap[item.id].length > 0);
+
+        if (treeRoots.length === 0) {
+            const emptyLi = document.createElement('li');
+            emptyLi.className = 'nexus-empty';
+            emptyLi.textContent = t('gameInterface.nexusPanel.noTrees', 'Нет деревьев (создайте константы с parentId)');
+            nexusList.appendChild(emptyLi);
+            return;
+        }
+
+        // Группируем корни по категории
+        const groupedTree = treeRoots.reduce((acc, item) => {
+            const category = item.category || t('gameInterface.nexusPanel.defaultCategory', 'Прочее');
+            if (!acc[category]) acc[category] = [];
+            acc[category].push(item);
+            return acc;
+        }, {});
+
+        const sortedTreeCategories = Object.keys(groupedTree).sort((a, b) => a.localeCompare(b, currentLanguage));
+
+        for (const category of sortedTreeCategories) {
+            const categoryHeader = document.createElement('li');
+            categoryHeader.className = 'category-header';
+            categoryHeader.textContent = category;
+            nexusList.appendChild(categoryHeader);
+
+            groupedTree[category].sort((a, b) => {
+                if (a.order != null && b.order != null) return a.order - b.order;
+                return a.name.localeCompare(b.name, currentLanguage);
+            }).forEach(item => renderTreeItem(item, 0));
+        }
     }
 }
 
@@ -9593,6 +9839,12 @@ function processAutomatedNexusEffects() {
 
     for (const key in player.nexusData) {
         const nexusItem = player.nexusData[key];
+
+        // НОВОЕ: Пропускаем константы в неактивном состоянии — эффекты не применяются
+        if (nexusItem.state && nexusItem.state !== 'active') {
+            continue;
+        }
+
         if (nexusItem.effectsJSON && !nexusItem.effectApplied) {
             try {
                 const parsedEffects = typeof nexusItem.effectsJSON === 'string' ? JSON.parse(nexusItem.effectsJSON) : nexusItem.effectsJSON;
@@ -9604,6 +9856,25 @@ function processAutomatedNexusEffects() {
                             player.stats[stat] += change;
                             addLogMessage(`Константа '${nexusItem.name}' повлияла на вас! (${stat.toUpperCase()} ${change > 0 ? '+' : ''}${change})`, 'level-up');
                             addCalculationMessage(`[NEXUS_AUTO] Эффект '${key}' применен. ${stat.toUpperCase()} ${change > 0 ? '+' : ''}${change}.`);
+                        }
+                    }
+                    // НОВОЕ: Поддержка unlock_child — автоматически разблокировать детей при активации
+                    if (subEffect.action && subEffect.action.type === 'unlock_child') {
+                        const childId = subEffect.action.childId;
+                        if (childId && player.nexusData[childId] && player.nexusData[childId].state === 'locked') {
+                            player.nexusData[childId].state = 'pending';
+                            addCalculationMessage(`[NEXUS_AUTO] Дочерняя константа '${childId}' разблокирована (locked → pending).`);
+                        }
+                    }
+                    // НОВОЕ: Поддержка link — автоматически связать с другой константой
+                    if (subEffect.action && subEffect.action.type === 'nexus_link') {
+                        const targetId = subEffect.action.targetId;
+                        if (targetId && player.nexusData[targetId]) {
+                            if (!Array.isArray(nexusItem.linkedIds)) nexusItem.linkedIds = [];
+                            if (!Array.isArray(player.nexusData[targetId].linkedIds)) player.nexusData[targetId].linkedIds = [];
+                            if (!nexusItem.linkedIds.includes(targetId)) nexusItem.linkedIds.push(targetId);
+                            if (!player.nexusData[targetId].linkedIds.includes(key)) player.nexusData[targetId].linkedIds.push(key);
+                            addCalculationMessage(`[NEXUS_AUTO] Связь установлена: '${key}' ↔ '${targetId}'.`);
                         }
                     }
                 }
@@ -14857,12 +15128,46 @@ async function executeNonInventoryCommand(command, args) {
                 if (args.id && args.name && args.category && args.value !== undefined) {
                     if (!player.nexusData) player.nexusData = {};
                     if (!player.nexusData[args.id]) {
+                        // Валидация parentId — родитель должен существовать
+                        let resolvedParentId = null;
+                        if (args.parentId && player.nexusData[args.parentId]) {
+                            resolvedParentId = args.parentId;
+                        } else if (args.parentId && !player.nexusData[args.parentId]) {
+                            console.warn(`[NEXUS] parentId '${args.parentId}' не найден. Константа создана без родителя.`);
+                        }
+
+                        // Валидация state
+                        const validStates = ['active', 'pending', 'locked', 'rejected'];
+                        let resolvedState = args.state || 'active';
+                        if (!validStates.includes(resolvedState)) resolvedState = 'active';
+
                         player.nexusData[args.id] = {
-                            id: args.id, name: args.name, description: args.description || '',
-                            category: args.category, displayType: dType, value: (typeof args.value === 'object' && args.value !== null) ? JSON.stringify(args.value) : args.value,
+                            id: args.id,
+                            name: args.name,
+                            description: args.description || '',
+                            category: args.category,
+                            displayType: dType,
+                            value: (typeof args.value === 'object' && args.value !== null) ? JSON.stringify(args.value) : args.value,
+                            max: args.max || null,
                             effectsJSON: args.effectsJSON || null,
-                            effectApplied: false
+                            effectApplied: false,
+                            // --- НОВЫЕ ПОЛЯ: Иерархия ---
+                            parentId: resolvedParentId,
+                            order: args.order != null ? parseInt(args.order, 10) : null,
+                            // --- НОВЫЕ ПОЛЯ: Состояние (Заявки) ---
+                            state: resolvedState,
+                            requirements: args.requirements || null,
+                            // --- НОВЫЕ ПОЛЯ: Визуал и связи ---
+                            icon: args.icon || null,
+                            tags: Array.isArray(args.tags) ? args.tags : null,
+                            linkedIds: Array.isArray(args.linkedIds) ? args.linkedIds : null
                         };
+
+                        // Если у родителя есть effectsJSON с unlock-эффектами — не применяем, пока state !== 'active'
+                        if (resolvedState === 'active' && args.effectsJSON) {
+                            // эффекты будут применены через processAutomatedNexusEffects()
+                        }
+
                         feedback = t('gameInterface.commandFeedback.nexusDefined', { name: args.name });
                         updateNexusDisplay();
                         updateWorldChroniclesDisplay();
@@ -14875,7 +15180,7 @@ async function executeNonInventoryCommand(command, args) {
                 break;
 
             case 'nexusUpdate':
-                if (args.id && args.value !== undefined) {
+                if (args.id && (args.value !== undefined || args.state !== undefined)) {
                                         // ИНТЕГРАЦИЯ С ИНТРИГАМИ (Ускорение прогресса через Nexus)
                     if (args.id.includes("_progress") && typeof World !== 'undefined' && World.intrigues) {
                         let intrId = args.id.replace("_progress", "");
@@ -14890,16 +15195,62 @@ async function executeNonInventoryCommand(command, args) {
 
 if (player.nexusData && player.nexusData[args.id]) {
                         const nexusItem = player.nexusData[args.id];
-                        if (args.isModification === true && nexusItem.displayType === 'numeric') {
-                            const change = parseInt(args.value, 10);
-                            if (!isNaN(change)) {
-                                nexusItem.value = (parseInt(nexusItem.value, 10) || 0) + change;
-                                feedback = t('gameInterface.commandFeedback.nexusModified', { name: nexusItem.name, change: args.value, newValue: nexusItem.value });
+
+                        // --- Обновление значения ---
+                        if (args.value !== undefined) {
+                            if (args.isModification === true && nexusItem.displayType === 'numeric') {
+                                const change = parseInt(args.value, 10);
+                                if (!isNaN(change)) {
+                                    nexusItem.value = (parseInt(nexusItem.value, 10) || 0) + change;
+                                    feedback = t('gameInterface.commandFeedback.nexusModified', { name: nexusItem.name, change: args.value, newValue: nexusItem.value });
+                                }
+                            } else {
+                                nexusItem.value = (typeof args.value === 'object' && args.value !== null) ? JSON.stringify(args.value) : args.value;
+                                feedback = t('gameInterface.commandFeedback.nexusSet', { name: nexusItem.name, newValue: nexusItem.value });
                             }
-                        } else {
-                            nexusItem.value = (typeof args.value === 'object' && args.value !== null) ? JSON.stringify(args.value) : args.value;
-                            feedback = t('gameInterface.commandFeedback.nexusSet', { name: nexusItem.name, newValue: nexusItem.value });
                         }
+
+                        // --- НОВОЕ: Обновление состояния (state) ---
+                        if (args.state !== undefined) {
+                            const validStates = ['active', 'pending', 'locked', 'rejected'];
+                            if (validStates.includes(args.state)) {
+                                const oldState = nexusItem.state;
+                                nexusItem.state = args.state;
+
+                                // При переходе в 'active' — активируем эффекты если они не были применены
+                                if (args.state === 'active' && oldState !== 'active' && nexusItem.effectsJSON && !nexusItem.effectApplied) {
+                                    nexusItem.effectApplied = false; // сброс, чтобы processAutomatedNexusEffects применил
+                                    addLogMessage(`Заявка '${nexusItem.name}' утверждена! Эффекты будут применены.`, 'level-up');
+                                    addCalculationMessage(`[NEXUS_STATE] '${args.id}' перешёл из '${oldState}' в 'active'. Эффекты поставлены в очередь.`);
+                                }
+
+                                // При отклонении заявки
+                                if (args.state === 'rejected' && oldState === 'pending') {
+                                    addLogMessage(`Заявка '${nexusItem.name}' отклонена.`, 'system-message');
+                                }
+
+                                if (args.value !== undefined) {
+                                    feedback += ` Состояние: ${oldState} → ${args.state}.`;
+                                } else {
+                                    feedback = `Константа '${nexusItem.name}': состояние изменено ${oldState} → ${args.state}.`;
+                                }
+                            }
+                        }
+
+                        // --- НОВОЕ: Обновление metadata-полей ---
+                        if (args.parentId !== undefined) {
+                            if (!args.parentId || player.nexusData[args.parentId]) {
+                                nexusItem.parentId = args.parentId || null;
+                            }
+                        }
+                        if (args.requirements !== undefined) nexusItem.requirements = args.requirements;
+                        if (args.icon !== undefined) nexusItem.icon = args.icon;
+                        if (args.order !== undefined) nexusItem.order = parseInt(args.order, 10) || null;
+                        if (args.description !== undefined) nexusItem.description = args.description;
+                        if (Array.isArray(args.tags)) nexusItem.tags = args.tags;
+                        if (Array.isArray(args.linkedIds)) nexusItem.linkedIds = args.linkedIds;
+                        if (args.max !== undefined) nexusItem.max = args.max;
+
                         updateNexusDisplay();
                         updateWorldChroniclesDisplay();
     updateTradeJournalDisplay();
@@ -14908,7 +15259,7 @@ if (player.nexusData && player.nexusData[args.id]) {
                         feedback = `[ERROR] Константа Nexus '${args.id}' не найдена.`;
                     }
                 } else {
-                    feedback = `[ERROR] 'nexusUpdate' требует 'id' и 'value'.`;
+                    feedback = `[ERROR] 'nexusUpdate' требует 'id' и хотя бы одно из: 'value', 'state'.`;
                 }
                 break;
 
@@ -14939,6 +15290,47 @@ if (player.nexusData && player.nexusData[args.id]) {
                     }
                 } else {
                     feedback = `[ERROR] 'nexusRemove' требует 'id'.`;
+                }
+                break;
+
+            // --- СВЯЗИ МЕЖДУ КОНСТАНТАМИ (NEXUS LINK) ---
+            case 'nexusLink':
+                if (args.sourceId && args.targetId && player.nexusData && player.nexusData[args.sourceId] && player.nexusData[args.targetId]) {
+                    const source = player.nexusData[args.sourceId];
+                    const target = player.nexusData[args.targetId];
+                    // Добавляем двунаправленную связь
+                    if (!Array.isArray(source.linkedIds)) source.linkedIds = [];
+                    if (!Array.isArray(target.linkedIds)) target.linkedIds = [];
+                    if (!source.linkedIds.includes(args.targetId)) {
+                        source.linkedIds.push(args.targetId);
+                    }
+                    if (!target.linkedIds.includes(args.sourceId)) {
+                        target.linkedIds.push(args.sourceId);
+                    }
+                    feedback = `Связь установлена: '${source.name}' ↔ '${target.name}'.`;
+                    updateNexusDisplay();
+                } else {
+                    feedback = `[ERROR] 'nexusLink' требует существующие 'sourceId' и 'targetId'.`;
+                }
+                break;
+
+            // --- РАЗРЫВ СВЯЗИ МЕЖДУ КОНСТАНТАМИ (NEXUS UNLINK) ---
+            case 'nexusUnlink':
+                if (args.sourceId && args.targetId && player.nexusData && player.nexusData[args.sourceId] && player.nexusData[args.targetId]) {
+                    const src = player.nexusData[args.sourceId];
+                    const tgt = player.nexusData[args.targetId];
+                    if (Array.isArray(src.linkedIds)) {
+                        src.linkedIds = src.linkedIds.filter(id => id !== args.targetId);
+                        if (src.linkedIds.length === 0) src.linkedIds = null;
+                    }
+                    if (Array.isArray(tgt.linkedIds)) {
+                        tgt.linkedIds = tgt.linkedIds.filter(id => id !== args.sourceId);
+                        if (tgt.linkedIds.length === 0) tgt.linkedIds = null;
+                    }
+                    feedback = `Связь разорвана: '${src.name}' ✕ '${tgt.name}'.`;
+                    updateNexusDisplay();
+                } else {
+                    feedback = `[ERROR] 'nexusUnlink' требует существующие 'sourceId' и 'targetId'.`;
                 }
                 break;
 
@@ -17086,18 +17478,24 @@ function populateAdminMenu() {
     });
     html += `</ul></div>`;
 
-    // Правая колонка: Nexus
+    // Правая колонка: Nexus (расширенная)
     html += `<div style="flex: 1; min-width: 300px; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 5px; border-left: 3px solid #3498db;">
-                <h4 style="margin: 0 0 10px 0; color: #3498db;">🔮 Константы (Nexus)</h4>
+                <h4 style="margin: 0 0 10px 0; color: #3498db;">🔮 Константы (Nexus) — Расширенные</h4>
                 <ul style="list-style: none; padding: 0; margin: 0;">`;
 
     const nexusItems = Object.values(player.nexusData || {});
     if (nexusItems.length === 0) html += `<li style="color: #7f8c8d; font-size: 0.9em;">Нет активных констант</li>`;
     nexusItems.forEach(item => {
+        const state = item.state || 'active';
+        const stateColor = { active: '#2ecc71', pending: '#f39c12', locked: '#95a5a6', rejected: '#e74c3c' }[state] || '#7f8c8d';
+        const iconStr = item.icon || '';
+        const parentStr = item.parentId ? ` ↑<span style="color:#8e44ad;font-size:0.8em">${item.parentId}</span>` : '';
+        const reqStr = item.requirements ? ` <span style="color:#8e44ad;font-size:0.75em">[${item.requirements}]</span>` : '';
         html += `<li style="margin-bottom: 8px; font-size: 0.9em; border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 5px;">
-                    <strong style="color: #5dade2">${item.name}</strong>: <span style="color: #f1c40f">${item.value}</span>
-                    <div style="margin-top: 5px; display: flex; gap: 5px;">
-                        <button onclick="adminEditNexus('${item.id}')" style="background: #2980b9; padding: 2px 8px; font-size: 0.8em; margin: 0; min-width: auto;">Изменить</button>
+                    ${iconStr} <strong style="color: #5dade2">${item.name}</strong>${parentStr}: <span style="color: #f1c40f">${item.value}</span> <span style="color:${stateColor};font-size:0.75em;font-weight:600">[${state}]</span>${reqStr}
+                    <div style="margin-top: 5px; display: flex; gap: 5px; flex-wrap: wrap;">
+                        <button onclick="adminEditNexus('${item.id}')" style="background: #2980b9; padding: 2px 8px; font-size: 0.8em; margin: 0; min-width: auto;">Значение</button>
+                        <button onclick="adminSetNexusState('${item.id}')" style="background: #8e44ad; padding: 2px 8px; font-size: 0.8em; margin: 0; min-width: auto;">Состояние</button>
                         <button onclick="adminDeleteNexus('${item.id}')" style="background: #c0392b; padding: 2px 8px; font-size: 0.8em; margin: 0; min-width: auto;">Удалить</button>
                     </div>
                  </li>`;
@@ -17305,6 +17703,19 @@ window.adminEditNexus = function (id) {
     if (newVal !== null) {
         executeCommand('nexusUpdate', { id: id, value: newVal });
         populateAdminMenu();
+    }
+};
+
+window.adminSetNexusState = function (id) {
+    const item = player.nexusData[id];
+    if (!item) return;
+    const currentState = item.state || 'active';
+    const newState = prompt(`Состояние для '${item.name}' (active/pending/locked/rejected):`, currentState);
+    if (newState && ['active', 'pending', 'locked', 'rejected'].includes(newState)) {
+        executeCommand('nexusUpdate', { id: id, state: newState });
+        populateAdminMenu();
+    } else if (newState !== null) {
+        showCustomAlert('Недопустимое состояние. Используйте: active, pending, locked, rejected');
     }
 };
 

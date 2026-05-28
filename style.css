@@ -2127,10 +2127,47 @@ button:not(.arrow-button):hover::after {
     overflow-y: auto;
 }
 
+/* --- НОВОЕ: Вкладки внутри панели Nexus --- */
+.nexus-tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+    margin-bottom: 8px;
+    padding: 3px;
+    background: rgba(10, 15, 20, 0.6);
+    border: 1px solid rgba(155, 89, 182, 0.3);
+    border-radius: 8px;
+}
+.nexus-tab-btn {
+    flex: 1 1 auto;
+    background: transparent;
+    border: none;
+    color: #aeb6bf;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 0.8em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+.nexus-tab-btn:hover {
+    color: #ecf0f1;
+    background: rgba(155, 89, 182, 0.2);
+}
+.nexus-tab-btn.active {
+    background: rgba(155, 89, 182, 0.6);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(155, 89, 182, 0.4);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
 /* Стиль для заголовка категории (напр. "Принадлежность", "Репутация") */
 .nexus-panel .category-header {
     font-weight: bold;
-    color: #aeb6bf; /* Менее яркий, как заголовок */
+    color: #aeb6bf;
     margin-top: 10px;
     padding-bottom: 4px;
     border-bottom: 1px solid rgba(93, 123, 151, 0.3);
@@ -2142,49 +2179,182 @@ button:not(.arrow-button):hover::after {
     margin-top: 0;
 }
 
-/* Стиль для элемента константы (напр. "Член Гильдии Воров") */
+/* Стиль для элемента константы */
 .nexus-panel .nexus-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 6px 0 6px 15px; /* Отступ слева для иерархии */
+    padding: 6px 0 6px 15px;
     border-bottom: 1px solid rgba(93, 123, 151, 0.2);
     list-style: none;
     position: relative;
-    min-height: 20px; /* Добавлено для стабильности */
+    min-height: 20px;
 }
 
 .nexus-panel .nexus-item:last-child {
     border-bottom: none;
 }
 
-/* Добавляем стилизованный маркер-точку */
+/* Маркер-точка */
 .nexus-panel .nexus-item::before {
     content: "•";
-    color: #5dade2; /* Цвет акцента */
+    color: #5dade2;
     position: absolute;
     left: 4px;
     top: 50%;
-    transform: translateY(-50%); /* Центрирование по вертикали */
+    transform: translateY(-50%);
     font-size: 1.1em;
 }
 
-.nexus-panel .nexus-name {
+/* --- НОВОЕ: Иерархия (подклассы) --- */
+.nexus-panel .nexus-item.nexus-depth-1 { padding-left: 30px; }
+.nexus-panel .nexus-item.nexus-depth-1::before { content: "└"; color: #8e44ad; left: 18px; }
+.nexus-panel .nexus-item.nexus-depth-2 { padding-left: 45px; }
+.nexus-panel .nexus-item.nexus-depth-2::before { content: "└"; color: #9b59b6; left: 33px; }
+.nexus-panel .nexus-item.nexus-depth-3 { padding-left: 60px; }
+.nexus-panel .nexus-item.nexus-depth-3::before { content: "└"; color: #af7ac5; left: 48px; }
+.nexus-panel .nexus-item.nexus-depth-4 { padding-left: 75px; }
+.nexus-panel .nexus-item.nexus-depth-4::before { content: "└"; color: #d2b4de; left: 63px; }
+
+/* --- НОВОЕ: Badge состояния --- */
+.nexus-state-badge {
+    font-size: 0.85em;
+    margin: 0 4px;
+    vertical-align: middle;
+}
+.nexus-state-badge.pending { opacity: 1; }
+.nexus-state-badge.locked { opacity: 0.7; }
+.nexus-state-badge.rejected { color: #e74c3c; }
+
+/* --- НОВОЕ: Стили для состояний --- */
+.nexus-panel .nexus-item.nexus-state-pending {
+    border-left: 2px solid #f39c12;
+    padding-left: 13px;
+}
+.nexus-panel .nexus-item.nexus-state-pending .nexus-name {
+    color: #f5b041;
+    font-style: italic;
+}
+.nexus-panel .nexus-item.nexus-state-locked {
+    opacity: 0.5;
+}
+.nexus-panel .nexus-item.nexus-state-locked .nexus-name {
+    color: #7f8c8d;
+    text-decoration: line-through;
+}
+.nexus-panel .nexus-item.nexus-state-rejected {
+    opacity: 0.35;
+}
+.nexus-panel .nexus-item.nexus-state-rejected .nexus-name {
+    color: #e74c3c;
+    text-decoration: line-through;
+}
+
+/* --- НОВОЕ: Иконка константы --- */
+.nexus-icon {
+    margin-right: 4px;
+    font-size: 1em;
+}
+
+/* --- НОВОЕ: Заголовки раздела заявок --- */
+.nexus-request-header {
+    font-weight: bold;
+    padding: 6px 4px;
+    margin-top: 8px;
+    border-bottom: 2px solid;
+    font-size: 0.9em;
+    list-style: none;
+}
+.nexus-request-header.nexus-request-pending {
+    color: #f39c12;
+    border-bottom-color: rgba(243, 156, 18, 0.4);
+}
+.nexus-request-header.nexus-request-locked {
+    color: #95a5a6;
+    border-bottom-color: rgba(149, 165, 166, 0.4);
+}
+.nexus-request-header.nexus-request-rejected {
+    color: #e74c3c;
+    border-bottom-color: rgba(231, 76, 60, 0.4);
+}
+
+/* --- НОВОЕ: Строка требований в заявке --- */
+.nexus-requirement-line {
+    padding: 2px 0 4px 20px;
+    color: #8e44ad;
+    font-size: 0.82em;
+    font-style: italic;
+    list-style: none;
+    border-bottom: 1px solid rgba(142, 68, 173, 0.15);
+}
+
+/* --- НОВОЕ: Пустое состояние --- */
+.nexus-panel .nexus-empty {
+    color: #7f8c8d;
+    text-align: center;
+    padding: 15px 0;
+    font-style: italic;
+    list-style: none;
+}
+
+/* --- НОВОЕ: Деревья --- */
+.nexus-tree-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0 5px 15px;
+    border-bottom: 1px solid rgba(93, 123, 151, 0.15);
+    list-style: none;
+    position: relative;
+    min-height: 20px;
+}
+.nexus-tree-item .nexus-name {
     color: #ecf0f1;
     font-weight: 500;
     flex-grow: 1;
     margin-right: 10px;
-    white-space: normal; /* Разрешаем перенос текста */
+    white-space: normal;
+    word-break: break-word;
+}
+.nexus-tree-item .nexus-value {
+    color: #f5b041;
+    font-size: 0.95em;
+    font-style: italic;
+    flex-shrink: 0;
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* Глубина дерева */
+.nexus-tree-item.tree-depth-1 { padding-left: 28px; border-left: 1px dashed rgba(155, 89, 182, 0.3); margin-left: 12px; }
+.nexus-tree-item.tree-depth-2 { padding-left: 40px; border-left: 1px dashed rgba(155, 89, 182, 0.25); margin-left: 24px; }
+.nexus-tree-item.tree-depth-3 { padding-left: 52px; border-left: 1px dashed rgba(155, 89, 182, 0.2); margin-left: 36px; }
+.nexus-tree-item.tree-depth-4 { padding-left: 64px; border-left: 1px dashed rgba(155, 89, 182, 0.15); margin-left: 48px; }
+.nexus-tree-item.tree-depth-5 { padding-left: 76px; border-left: 1px dashed rgba(155, 89, 182, 0.1); margin-left: 60px; }
+.nexus-tree-item.tree-depth-6 { padding-left: 88px; border-left: 1px dashed rgba(155, 89, 182, 0.08); margin-left: 72px; }
+
+/* Разблокированный узел */
+.nexus-tree-item.tree-unlocked .nexus-name { color: #2ecc71; }
+/* Заблокированный узел */
+.nexus-tree-item.tree-locked { opacity: 0.45; }
+.nexus-tree-item.tree-locked .nexus-name { color: #95a5a6; }
+
+.nexus-name {
+    color: #ecf0f1;
+    font-weight: 500;
+    flex-grow: 1;
+    margin-right: 10px;
+    white-space: normal;
     word-break: break-word;
 }
 
-.nexus-panel .nexus-value {
-    color: #f5b041; /* Яркий цвет для значения */
+.nexus-value {
+    color: #f5b041;
     font-size: 0.95em;
     font-style: italic;
-    flex-shrink: 0; /* Запрещаем сжиматься */
-    text-align: right; /* Выравнивание по правому краю */
-    white-space: nowrap; /* Запрещаем перенос значения */
+    flex-shrink: 0;
+    text-align: right;
+    white-space: nowrap;
 }
 
 /* --- СТИЛИ ДЛЯ ОПИСАНИЯ ЭПОХИ В МЕНЮ СОЗДАНИЯ --- */
