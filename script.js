@@ -6462,6 +6462,25 @@ async function initializeApp() {
         });
     }
 
+    // --- Обработчик кликов на кнопки действий Nexus (approve/deny) через делегирование ---
+    const nexusListEl = document.getElementById('nexus-list');
+    if (nexusListEl && !nexusListEl._nexusActionsBound) {
+        nexusListEl._nexusActionsBound = true;
+        nexusListEl.addEventListener('click', (e) => {
+            const actionBtn = e.target.closest('.nexus-action-btn');
+            if (!actionBtn) return;
+            e.stopPropagation();
+            const action = actionBtn.dataset.nexusAction;
+            const itemId = actionBtn.dataset.nexusId;
+            if (!action || !itemId) return;
+            if (action === 'approve') {
+                executeCommand('nexusUpdate', { id: itemId, state: 'active' });
+            } else if (action === 'deny') {
+                executeCommand('nexusUpdate', { id: itemId, state: 'rejected' });
+            }
+        });
+    }
+
     console.log("Инициализация приложения завершена.");
 }
 
@@ -9528,7 +9547,7 @@ function updateNexusDisplay() {
 
     // --- Пустое состояние ---
     if (actualItems.length === 0) {
-        nexusList.innerHTML = `<li class="nexus-empty">${t('gameInterface.nexusPanel.empty', 'Нет данных')}</li>`;
+        nexusList.innerHTML = `<li class="nexus-empty">${t('gameInterface.nexusPanel.empty', 'Нет данных')}<div class="nexus-empty-hint">Константы создаются ГМ в процессе игры: титулы, репутация, болезни, фракции...</div></li>`;
         return;
     }
 
@@ -9580,8 +9599,13 @@ function updateNexusDisplay() {
             case 'pending': return '<span class="nexus-state-dot pending" title="Ожидает"></span>';
             case 'locked': return '<span class="nexus-state-dot locked" title="Закрыто"></span>';
             case 'rejected': return '<span class="nexus-state-dot rejected" title="Отклонено"></span>';
+            case 'active': return '<span class="nexus-state-dot active" title="Активно"></span>';
             default: return '';
         }
+    }
+
+    function stateLabel(state) {
+        return { active: 'Активно', pending: 'Ожидает', locked: 'Закрыто', rejected: 'Отклонено' }[state] || state;
     }
 
     function renderItem(item, depth) {
@@ -9620,8 +9644,11 @@ function updateNexusDisplay() {
         const iconStr = item.icon ? `<span class="nexus-icon">${item.icon}</span>` : '';
         const dotStr = stateIndicator(item.state);
         const valueDisplay = renderValue(item);
+        const linkedStr = (Array.isArray(item.linkedIds) && item.linkedIds.length > 0)
+            ? `<span class="nexus-linked-names">[${item.linkedIds.map(lid => player.nexusData[lid]?.name || lid).join(', ')}]</span>`
+            : '';
 
-        li.innerHTML = `${dotStr}${iconStr}<span class="nexus-name">${escapeHTML(item.name)}</span><span class="nexus-value">${valueDisplay}</span>`;
+        li.innerHTML = `${dotStr}${iconStr}<span class="nexus-name">${escapeHTML(item.name)}${linkedStr}</span><span class="nexus-value">${valueDisplay}</span>`;
         nexusList.appendChild(li);
 
         // Дети
@@ -9696,7 +9723,7 @@ function updateNexusDisplay() {
         const requestItems = actualItems.filter(item => item.state !== 'active');
 
         if (requestItems.length === 0) {
-            nexusList.innerHTML = `<li class="nexus-empty">${t('gameInterface.nexusPanel.noRequests', 'Нет активных заявок')}</li>`;
+            nexusList.innerHTML = `<li class="nexus-empty">${t('gameInterface.nexusPanel.noRequests', 'Нет активных заявок')}<div class="nexus-empty-hint">Заявки появляются, когда ГМ создаёт константы со state: pending или locked</div></li>`;
             return;
         }
 
@@ -9732,6 +9759,10 @@ function updateNexusDisplay() {
                     if (item.requirements) {
                         content += `<div style="margin-top: 8px; padding-top: 5px; border-top: 2px solid #8e44ad; color: #8e44ad; font-weight: 600; font-size: 0.95em;">Требования: ${item.requirements}</div>`;
                     }
+                    if (item.parentId) {
+                        const parent = player.nexusData[item.parentId];
+                        if (parent) content += `<div style="margin-top: 3px; color: #7f8c8d; font-size: 0.85em;">Родитель: ${parent.name}</div>`;
+                    }
                     showGenericTooltip(e, item.name, content);
                 });
                 li.addEventListener('mouseleave', hideGenericTooltip);
@@ -9740,7 +9771,17 @@ function updateNexusDisplay() {
                 const iconStr = item.icon ? `<span class="nexus-icon">${item.icon}</span>` : '';
                 const dotStr = stateIndicator(item.state);
                 const valueDisplay = renderValue(item);
-                li.innerHTML = `${dotStr}${iconStr}<span class="nexus-name">${escapeHTML(item.name)}</span><span class="nexus-value">${valueDisplay}</span>`;
+
+                // Кнопки действий для pending
+                let actionsHtml = '';
+                if (item.state === 'pending') {
+                    actionsHtml = `<span class="nexus-actions">
+                        <button class="nexus-action-btn approve" data-nexus-action="approve" data-nexus-id="${escapeHTML(item.id)}" title="Одобрить">\u2713</button>
+                        <button class="nexus-action-btn deny" data-nexus-action="deny" data-nexus-id="${escapeHTML(item.id)}" title="Отклонить">\u2717</button>
+                    </span>`;
+                }
+
+                li.innerHTML = `${dotStr}${iconStr}<span class="nexus-name">${escapeHTML(item.name)}</span><span class="nexus-value">${valueDisplay}</span>${actionsHtml}`;
                 nexusList.appendChild(li);
 
                 if (item.requirements) {
@@ -9757,7 +9798,11 @@ function updateNexusDisplay() {
         const treeRoots = rootItems.filter(item => childMap[item.id] && childMap[item.id].length > 0);
 
         if (treeRoots.length === 0) {
-            nexusList.innerHTML = `<li class="nexus-empty">${t('gameInterface.nexusPanel.noTrees', 'Нет деревьев (создайте константы с parentId)')}</li>`;
+            const hasAnyItems = actualItems.length > 0;
+            const hint = hasAnyItems
+                ? 'Создайте константы с parentId для построения дерева умений/талантов'
+                : 'Сначала создайте константы через ГМ, затем свяжите их через parentId';
+            nexusList.innerHTML = `<li class="nexus-empty">${t('gameInterface.nexusPanel.noTrees', 'Нет деревьев')}<div class="nexus-empty-hint">${hint}</div></li>`;
             return;
         }
 
@@ -15173,12 +15218,12 @@ async function executeNonInventoryCommand(command, args) {
                 break;
 
             case 'nexusUpdate':
-                if (args.id && (args.value !== undefined || args.state !== undefined)) {
+                if (args.id && (args.value !== undefined || args.state !== undefined || args.parentId !== undefined || args.requirements !== undefined || args.icon !== undefined || args.description !== undefined)) {
                                         // ИНТЕГРАЦИЯ С ИНТРИГАМИ (Ускорение прогресса через Nexus)
-                    if (args.id.includes("_progress") && typeof World !== 'undefined' && World.intrigues) {
-                        let intrId = args.id.replace("_progress", "");
+                    if (args.id.endsWith("_progress") && typeof World !== 'undefined' && World.intrigues && args.value !== undefined) {
+                        let intrId = args.id.replace(/_progress$/, "");
                         let intr = World.intrigues.find(i => i.id === intrId);
-                        if (intr) {
+                        if (intr && !player.nexusData[args.id]) {
                             intr.progress = parseInt(args.value, 10);
                             feedback = `[Интрига] Прогресс заговора '${intrId}' принудительно установлен на ${intr.progress}.`;
                             updateWorldSimDebugDisplay();
@@ -15211,10 +15256,16 @@ if (player.nexusData && player.nexusData[args.id]) {
                                 nexusItem.state = args.state;
 
                                 // При переходе в 'active' — активируем эффекты если они не были применены
-                                if (args.state === 'active' && oldState !== 'active' && nexusItem.effectsJSON && !nexusItem.effectApplied) {
+                                if (args.state === 'active' && oldState !== 'active') {
                                     nexusItem.effectApplied = false; // сброс, чтобы processAutomatedNexusEffects применил
-                                    addLogMessage(`Заявка '${nexusItem.name}' утверждена! Эффекты будут применены.`, 'level-up');
-                                    addCalculationMessage(`[NEXUS_STATE] '${args.id}' перешёл из '${oldState}' в 'active'. Эффекты поставлены в очередь.`);
+                                    if (nexusItem.effectsJSON) {
+                                        addLogMessage(`Заявка '${nexusItem.name}' утверждена! Эффекты применяются.`, 'level-up');
+                                        addCalculationMessage(`[NEXUS_STATE] '${args.id}' перешёл из '${oldState}' в 'active'. Эффекты поставлены в очередь.`);
+                                    } else {
+                                        addLogMessage(`'${nexusItem.name}' активировано.`, 'level-up');
+                                    }
+                                    // Немедленно обработать эффекты
+                                    processAutomatedNexusEffects();
                                 }
 
                                 // При отклонении заявки
@@ -15252,19 +15303,19 @@ if (player.nexusData && player.nexusData[args.id]) {
                         feedback = `[ERROR] Константа Nexus '${args.id}' не найдена.`;
                     }
                 } else {
-                    feedback = `[ERROR] 'nexusUpdate' требует 'id' и хотя бы одно из: 'value', 'state'.`;
+                    feedback = `[ERROR] 'nexusUpdate' требует 'id' и хотя бы одно из: 'value', 'state', 'parentId', 'requirements', 'icon', 'description'.`;
                 }
                 break;
 
             case 'nexusRemove':
                 if (args.id) {
                                         // ИНТЕГРАЦИЯ С ИНТРИГАМИ (Ускорение прогресса через Nexus)
-                    if (args.id.includes("_progress") && typeof World !== 'undefined' && World.intrigues) {
-                        let intrId = args.id.replace("_progress", "");
+                    if (args.id.endsWith("_progress") && typeof World !== 'undefined' && World.intrigues) {
+                        let intrId = args.id.replace(/_progress$/, "");
                         let intr = World.intrigues.find(i => i.id === intrId);
-                        if (intr) {
-                            intr.progress = parseInt(args.value, 10);
-                            feedback = `[Интрига] Прогресс заговора '${intrId}' принудительно установлен на ${intr.progress}.`;
+                        if (intr && !player.nexusData[args.id]) {
+                            intr.progress = 0;
+                            feedback = `[Интрига] Прогресс заговора '${intrId}' сброшен.`;
                             updateWorldSimDebugDisplay();
                             break;
                         }
@@ -15272,8 +15323,46 @@ if (player.nexusData && player.nexusData[args.id]) {
 
 if (player.nexusData && player.nexusData[args.id]) {
                         const name = player.nexusData[args.id].name;
-                        delete player.nexusData[args.id];
-                        feedback = t('gameInterface.commandFeedback.nexusRemoved', { name: name });
+                        const removedId = args.id;
+
+                        // Очистка linkedIds у других констант
+                        for (const key in player.nexusData) {
+                            const item = player.nexusData[key];
+                            if (Array.isArray(item.linkedIds)) {
+                                item.linkedIds = item.linkedIds.filter(lid => lid !== removedId);
+                                if (item.linkedIds.length === 0) item.linkedIds = null;
+                            }
+                        }
+
+                        // Каскадное удаление детей (если они ссылаются на удалённого родителя)
+                        const childIdsToRemove = [];
+                        for (const key in player.nexusData) {
+                            if (player.nexusData[key].parentId === removedId) {
+                                childIdsToRemove.push(key);
+                            }
+                        }
+
+                        delete player.nexusData[removedId];
+
+                        // Удаляем осиротевших детей (рекурсивно)
+                        for (const childId of childIdsToRemove) {
+                            if (player.nexusData[childId]) {
+                                const childName = player.nexusData[childId].name;
+                                // Очистка линков от ребёнка
+                                for (const key in player.nexusData) {
+                                    const item = player.nexusData[key];
+                                    if (Array.isArray(item.linkedIds)) {
+                                        item.linkedIds = item.linkedIds.filter(lid => lid !== childId);
+                                        if (item.linkedIds.length === 0) item.linkedIds = null;
+                                    }
+                                }
+                                delete player.nexusData[childId];
+                                addCalculationMessage(`[NEXUS_CASCADE] Дочерняя константа '${childName}' удалена вместе с родителем.`);
+                            }
+                        }
+
+                        const cascadeNote = childIdsToRemove.length > 0 ? ` (+${childIdsToRemove.length} дочерних)` : '';
+                        feedback = t('gameInterface.commandFeedback.nexusRemoved', { name: name }) + cascadeNote;
                         updateNexusDisplay();
                         updateWorldChroniclesDisplay();
     updateTradeJournalDisplay();
