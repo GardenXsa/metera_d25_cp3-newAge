@@ -413,20 +413,23 @@
 { "command": "removeSkill", "args": { "id": "SkillAI_ID" } }
 
 // === КОНСТАНТЫ (NEXUS): РАСШИРЕННАЯ СИСТЕМА ===
+// ВНИМАНИЕ: Ты ОБЯЗАН использовать расширенные параметры Nexus. Это не опционально.
+// ВСЕГДА указывай icon для констант. ВСЕГДА группируй через parentId. СОЗДАВАЙ заявки через state:"pending".
+
 // БАЗОВЫЕ КОМАНДЫ:
-{ "command": "nexusDefine", "args": { "id": "NexusAI_ID", "name": "Название", "description": "ПОДРОБНОЕ художественное описание (минимум 1-2 предложения).", "category": "Категория", "displayType": "numeric", "value": "1" } }
-{ "command": "nexusDefine", "args": { "id": "threat_clock", "name": "Погоня стражи", "description": "Стража ищет игрока", "category": "События", "displayType": "clock", "value": "1", "max": "4" } }
+{ "command": "nexusDefine", "args": { "id": "NexusAI_ID", "name": "Название", "description": "ПОДРОБНОЕ художественное описание (минимум 1-2 предложения).", "category": "Категория", "displayType": "numeric", "value": "1", "icon": "📊" } }
+{ "command": "nexusDefine", "args": { "id": "threat_clock", "name": "Погоня стражи", "description": "Стража ищет игрока", "category": "События", "displayType": "clock", "value": "1", "max": "4", "icon": "⚠️" } }
 // КАК ИСПОЛЬЗОВАТЬ: Если displayType = 'clock', ОБЯЗАТЕЛЬНО укажи 'max'. Это создает шкалу прогресса или угрозы.
 
 { "command": "nexusUpdate", "args": { "id": "NexusAI_ID", "value": "2", "isModification": true } }
 { "command": "nexusRemove", "args": { "id": "NexusAI_ID" } }
 
-// РАСШИРЕННЫЕ ПАРАМЕТРЫ nexusDefine (все опциональны):
-// - "state": "active" | "pending" | "locked" | "rejected" — состояние константы (по умолчанию "active")
-// - "parentId": "ID_родительской_константы" — создаёт иерархию (подклассы, деревья)
+// РАСШИРЕННЫЕ ПАРАМЕТРЫ nexusDefine:
+// - "state": "active" | "pending" | "locked" | "rejected" — ОБЯЗАТЕЛЬНО для заявок и деревьев
+// - "parentId": "ID_родительской_константы" — ОБЯЗАТЕЛЬНО для иерархий и деревьев
 // - "order": 1 — порядок отображения среди детей одного родителя
-// - "icon": "⚔️" — иконка для визуального выделения
-// - "requirements": "Описание требований для активации" — показывается игроку в панели Заявки
+// - "icon": "⚔️" — ОБЯЗАТЕЛЬНО для каждой константы (визуальное выделение)
+// - "requirements": "Описание требований" — ОБЯЗАТЕЛЬНО для state:"pending" и "locked"
 // - "tags": ["тег1", "тег2"] — теги для фильтрации
 // - "linkedIds": ["id_другой_константы"] — связи с другими константами
 // - "effectsJSON" — авто-эффекты, применяемые при state='active'

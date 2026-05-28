@@ -50,7 +50,7 @@
 { "command": "equipItem", "args": { "aiIdentifier": "ItemAI_ID", "slot": "right_hand" } }
 { "command": "addQuest", "args": { "aiIdentifier": "unique_quest_id", "title": "QuestTitle", "objective": "...", "description": "...", "reward": "...", "issuer": "..." } }
 { "command": "addSkill", "args": { "id": "SkillAI_ID", "name": "SkillName", "description": "...", "damage": "1к6", "cost": 10, "costType": "MP", "duration": "3 хода", "cooldown": "2 хода", "skillType": "Активное", "effect": "..." } }
-{ "command": "nexusDefine", "args": { "id": "NexusAI_ID", "name": "Название", "description": "...", "category": "Категория", "displayType": "numeric", "value": "1" } }
+{ "command": "nexusDefine", "args": { "id": "NexusAI_ID", "name": "Название", "description": "...", "category": "Категория", "displayType": "numeric", "value": "1", "icon": "📊" } }
 { "command": "applyPredefinedEffect", "args": { "target": "player", "id": "bulls_strength", "duration": 5 } }
 { "command": "addEnvironment", "args": { "aiIdentifier": "EntityAI_ID", "name": "Имя", "type": "npc", "description": "...", "hp": 50, "maxHp": 50, "str": 12, "dex": 14, "con": 13, "int": 8, "isHostile": false, "xpReward": 25 } }
 { "command": "updateEntityStat", "args": { "aiIdentifier": "EntityAI_ID", "stat": "hp", "value": 42 } }
