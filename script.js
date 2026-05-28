@@ -6447,6 +6447,21 @@ async function initializeApp() {
     startBackgroundChanger();
     updateDynamicUIText();
 
+    // --- Обработчик кликов на фильтры Nexus (делегирование, один раз) ---
+    const nexusFiltersContainer = document.querySelector('.nexus-filters');
+    if (nexusFiltersContainer && !nexusFiltersContainer._nexusBound) {
+        nexusFiltersContainer._nexusBound = true;
+        nexusFiltersContainer.addEventListener('click', (e) => {
+            const btn = e.target.closest('.nexus-filter-btn');
+            if (!btn) return;
+            const tab = btn.dataset.nexusTab;
+            if (tab) {
+                window._nexusTabState = tab;
+                updateNexusDisplay();
+            }
+        });
+    }
+
     console.log("Инициализация приложения завершена.");
 }
 
@@ -9464,25 +9479,24 @@ function handleStatIncrease(event) {
 }
 
 function updateNexusDisplay() {
-    const nexusPanel = document.getElementById('nexus-panel');
     const nexusList = document.getElementById('nexus-list');
-    if (!player || !nexusPanel || !nexusList) return;
+    if (!player || !nexusList) return;
 
-    // --- НОВОЕ: Состояние активной вкладки ---
+    // --- Состояние активной вкладки ---
     if (!window._nexusTabState) window._nexusTabState = 'all';
     const activeTab = window._nexusTabState;
 
     nexusList.innerHTML = '';
     const nexusData = Object.values(player.nexusData || {});
 
-    // Фильтруем служебные элементы и скрываем Мировые События (они теперь в Летописи Мира)
+    // Фильтруем служебные элементы и скрываем Мировые События
     const actualItems = nexusData.filter(item => {
         if (!item || typeof item.name !== 'string' || item.name === item.category) return false;
         if (item.category === 'World_Event' || item.category === 'Мировое Событие' || (item.id && item.id.startsWith('event_'))) return false;
         return true;
     });
 
-    // --- Обеспечиваем обратную совместимость: добавляем недостающие поля старым константам ---
+    // --- Обратная совместимость ---
     actualItems.forEach(item => {
         if (item.state === undefined) item.state = 'active';
         if (item.parentId === undefined) item.parentId = null;
@@ -9494,9 +9508,33 @@ function updateNexusDisplay() {
         if (item.max === undefined) item.max = null;
     });
 
-    // --- НОВОЕ: Строим карту parent→children для иерархии ---
-    const childMap = {}; // parentId → [child items]
-    const rootItems = []; // элементы без parentId
+    // --- Обновляем счётчики на вкладках ---
+    const requestCount = actualItems.filter(i => i.state !== 'active').length;
+    const treeCount = actualItems.filter(i => i.parentId && nexusData.some(p => p.id === i.parentId)).length;
+    const filterBtns = document.querySelectorAll('.nexus-filter-btn');
+    filterBtns.forEach(btn => {
+        const tab = btn.dataset.nexusTab;
+        btn.classList.toggle('active', tab === activeTab);
+        // Обновляем текст с счётчиком
+        if (tab === 'all') {
+            btn.textContent = `Все${actualItems.length > 0 ? ` (${actualItems.length})` : ''}`;
+        } else if (tab === 'requests') {
+            btn.textContent = `Заявки${requestCount > 0 ? ` (${requestCount})` : ''}`;
+            if (requestCount > 0) btn.classList.add('has-items'); else btn.classList.remove('has-items');
+        } else if (tab === 'tree') {
+            btn.textContent = `Деревья${treeCount > 0 ? ` (${treeCount})` : ''}`;
+        }
+    });
+
+    // --- Пустое состояние ---
+    if (actualItems.length === 0) {
+        nexusList.innerHTML = `<li class="nexus-empty">${t('gameInterface.nexusPanel.empty', 'Нет данных')}</li>`;
+        return;
+    }
+
+    // --- Строим карту parent→children ---
+    const childMap = {};
+    const rootItems = [];
     actualItems.forEach(item => {
         if (item.parentId && nexusData.some(i => i.id === item.parentId)) {
             if (!childMap[item.parentId]) childMap[item.parentId] = [];
@@ -9506,7 +9544,6 @@ function updateNexusDisplay() {
         }
     });
 
-    // Сортировка детей по order, затем по name
     for (const pid in childMap) {
         childMap[pid].sort((a, b) => {
             if (a.order != null && b.order != null) return a.order - b.order;
@@ -9516,43 +9553,14 @@ function updateNexusDisplay() {
         });
     }
 
-    // --- НОВОЕ: Рендерим вкладки ---
-    const tabContainer = document.createElement('div');
-    tabContainer.className = 'nexus-tabs';
-    const tabs = [
-        { id: 'all', label: t('gameInterface.nexusPanel.tabs.all', 'Все'), icon: '📋' },
-        { id: 'requests', label: t('gameInterface.nexusPanel.tabs.requests', 'Заявки'), icon: '📨' },
-        { id: 'tree', label: t('gameInterface.nexusPanel.tabs.tree', 'Деревья'), icon: '🌳' }
-    ];
+    // === Вспомогательные функции ===
 
-    tabs.forEach(tab => {
-        const btn = document.createElement('button');
-        btn.className = `nexus-tab-btn${activeTab === tab.id ? ' active' : ''}`;
-        btn.innerHTML = `${tab.icon} ${tab.label}`;
-        btn.addEventListener('click', () => {
-            window._nexusTabState = tab.id;
-            updateNexusDisplay();
-        });
-        tabContainer.appendChild(btn);
-    });
-    nexusList.appendChild(tabContainer);
-
-    // --- Пустое состояние ---
-    if (actualItems.length === 0) {
-        const emptyLi = document.createElement('li');
-        emptyLi.className = 'nexus-empty';
-        emptyLi.textContent = t('gameInterface.nexusPanel.empty', 'Нет данных');
-        nexusList.appendChild(emptyLi);
-        return;
-    }
-
-    // === ВСПМОГАТЕЛЬНАЯ ФУНКЦИЯ: рендер значения ===
     function renderValue(item) {
         switch (item.displayType) {
             case 'boolean':
                 return item.value === 'true'
-                    ? t('gameInterface.nexusPanel.boolTrue', 'Да')
-                    : t('gameInterface.nexusPanel.boolFalse', 'Нет');
+                    ? `<span class="nexus-bool-true">${t('gameInterface.nexusPanel.boolTrue', 'Да')}</span>`
+                    : `<span class="nexus-bool-false">${t('gameInterface.nexusPanel.boolFalse', 'Нет')}</span>`;
             case 'numeric':
                 return `${item.value}`;
             case 'clock':
@@ -9560,29 +9568,24 @@ function updateNexusDisplay() {
                 const val = parseInt(item.value, 10) || 0;
                 const filled = '█'.repeat(val);
                 const empty = '░'.repeat(Math.max(0, max - val));
-                return `<span style="color:#e74c3c; letter-spacing: 2px;">[${filled}${empty}]</span>`;
+                return `<span class="nexus-clock">[${filled}${empty}]</span>`;
             case 'text':
             default:
                 return `${item.value}`;
         }
     }
 
-    // === ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: badge состояния ===
-    function stateBadge(state) {
+    function stateIndicator(state) {
         switch (state) {
-            case 'pending': return '<span class="nexus-state-badge pending">⏳</span>';
-            case 'locked': return '<span class="nexus-state-badge locked">🔒</span>';
-            case 'rejected': return '<span class="nexus-state-badge rejected">✕</span>';
+            case 'pending': return '<span class="nexus-state-dot pending" title="Ожидает"></span>';
+            case 'locked': return '<span class="nexus-state-dot locked" title="Закрыто"></span>';
+            case 'rejected': return '<span class="nexus-state-dot rejected" title="Отклонено"></span>';
             default: return '';
         }
     }
 
-    // === ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: рендер элемента с tooltip ===
-    function renderItem(item, depth = 0) {
-        if (!item || typeof item.name !== 'string' || typeof item.value === 'undefined') {
-            console.error("Пропущен некорректный элемент Nexus:", item);
-            return;
-        }
+    function renderItem(item, depth) {
+        if (!item || typeof item.name !== 'string' || typeof item.value === 'undefined') return;
 
         const li = document.createElement('li');
         const stateClass = item.state !== 'active' ? ` nexus-state-${item.state}` : '';
@@ -9595,15 +9598,15 @@ function updateNexusDisplay() {
             let content = `<div style="color:#5d4a36; font-style:italic; margin-bottom: 5px; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 3px;">Категория: ${item.category || 'Прочее'}</div>
                            <div style="color:#1a110a; line-height: 1.4; font-size: 0.95em; font-weight: 500;">${desc}</div>`;
             if (item.state !== 'active') {
-                const stateLabel = { pending: 'Ожидает', locked: 'Закрыто', rejected: 'Отклонено' }[item.state] || item.state;
-                content += `<div style="margin-top: 5px; padding-top: 3px; border-top: 1px solid rgba(0,0,0,0.1); color: #c0392b; font-weight: 600;">Состояние: ${stateLabel}</div>`;
+                const stateLabel = { pending: 'Ожидает рассмотрения', locked: 'Закрыто (требования не выполнены)', rejected: 'Отклонено' }[item.state] || item.state;
+                content += `<div style="margin-top: 5px; padding-top: 3px; border-top: 1px solid rgba(0,0,0,0.1); color: ${item.state === 'pending' ? '#f39c12' : '#c0392b'}; font-weight: 600;">${stateLabel}</div>`;
             }
             if (item.requirements) {
                 content += `<div style="margin-top: 3px; color: #8e44ad; font-size: 0.9em;">Требования: ${item.requirements}</div>`;
             }
             if (item.parentId) {
                 const parent = player.nexusData[item.parentId];
-                if (parent) content += `<div style="margin-top: 3px; color: #7f8c8d; font-size: 0.85em;">Родитель: ${parent.name}</div>`;
+                if (parent) content += `<div style="margin-top: 3px; color: #7f8c8d; font-size: 0.85em;">↳ ${parent.name}</div>`;
             }
             if (Array.isArray(item.linkedIds) && item.linkedIds.length > 0) {
                 const linkedNames = item.linkedIds.map(lid => player.nexusData[lid]?.name || lid).join(', ');
@@ -9614,29 +9617,28 @@ function updateNexusDisplay() {
         li.addEventListener('mouseleave', hideGenericTooltip);
         li.addEventListener('mousemove', moveGenericTooltip);
 
-        const iconStr = item.icon ? `<span class="nexus-icon">${item.icon}</span> ` : '';
-        const badgeStr = stateBadge(item.state);
+        const iconStr = item.icon ? `<span class="nexus-icon">${item.icon}</span>` : '';
+        const dotStr = stateIndicator(item.state);
         const valueDisplay = renderValue(item);
 
-        li.innerHTML = `${iconStr}<span class="nexus-name">${escapeHTML(item.name)}</span>${badgeStr}<span class="nexus-value">${escapeHTML(valueDisplay)}</span>`;
+        li.innerHTML = `${dotStr}${iconStr}<span class="nexus-name">${escapeHTML(item.name)}</span><span class="nexus-value">${valueDisplay}</span>`;
         nexusList.appendChild(li);
 
-        // Рекурсивно рендерим детей
+        // Дети
         if (childMap[item.id]) {
             childMap[item.id].forEach(child => renderItem(child, depth + 1));
         }
     }
 
-    // === ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: рендер дерева ===
-    function renderTreeItem(item, depth = 0) {
+    function renderTreeItem(item, depth) {
         const li = document.createElement('li');
         const isUnlocked = item.state === 'active';
         const stateClass = isUnlocked ? 'tree-unlocked' : 'tree-locked';
         const depthClass = ` tree-depth-${Math.min(depth, 6)}`;
         li.className = `nexus-tree-item ${stateClass}${depthClass}`;
 
-        const iconStr = item.icon ? `<span class="nexus-icon">${item.icon}</span> ` : (isUnlocked ? '🟢 ' : '🔴 ');
-        const badgeStr = stateBadge(item.state);
+        const iconStr = item.icon ? `<span class="nexus-icon">${item.icon}</span>` : '';
+        const dotStr = isUnlocked ? '<span class="nexus-state-dot active"></span>' : stateIndicator(item.state);
         const valueDisplay = renderValue(item);
 
         li.addEventListener('mouseenter', (e) => {
@@ -9646,16 +9648,15 @@ function updateNexusDisplay() {
                 content += `<div style="margin-top: 5px; color: #8e44ad; font-weight: 600;">Требования: ${item.requirements}</div>`;
             }
             const stateLabel = { active: 'Открыто', pending: 'Ожидает', locked: 'Закрыто', rejected: 'Отклонено' }[item.state] || item.state;
-            content += `<div style="margin-top: 3px; color: ${isUnlocked ? '#27ae60' : '#c0392b'}; font-size: 0.9em;">Состояние: ${stateLabel}</div>`;
+            content += `<div style="margin-top: 3px; color: ${isUnlocked ? '#27ae60' : '#c0392b'}; font-size: 0.9em;">${stateLabel}</div>`;
             showGenericTooltip(e, item.name, content);
         });
         li.addEventListener('mouseleave', hideGenericTooltip);
         li.addEventListener('mousemove', moveGenericTooltip);
 
-        li.innerHTML = `${iconStr}<span class="nexus-name">${escapeHTML(item.name)}</span>${badgeStr}<span class="nexus-value">${escapeHTML(valueDisplay)}</span>`;
+        li.innerHTML = `${dotStr}${iconStr}<span class="nexus-name">${escapeHTML(item.name)}</span><span class="nexus-value">${valueDisplay}</span>`;
         nexusList.appendChild(li);
 
-        // Дети дерева
         if (childMap[item.id]) {
             childMap[item.id].forEach(child => renderTreeItem(child, depth + 1));
         }
@@ -9666,7 +9667,7 @@ function updateNexusDisplay() {
     // ========================================
 
     if (activeTab === 'all') {
-        // --- ВКЛАДКА "ВСЁ": Категории + иерархия + badge состояний ---
+        // --- ВСЁ: категории + иерархия ---
         const groupedData = rootItems.reduce((acc, item) => {
             const category = item.category || t('gameInterface.nexusPanel.defaultCategory', 'Прочее');
             if (!acc[category]) acc[category] = [];
@@ -9682,7 +9683,6 @@ function updateNexusDisplay() {
             categoryHeader.textContent = category;
             nexusList.appendChild(categoryHeader);
 
-            // Сортировка: по order, затем по name
             groupedData[category].sort((a, b) => {
                 if (a.order != null && b.order != null) return a.order - b.order;
                 if (a.order != null) return -1;
@@ -9692,35 +9692,33 @@ function updateNexusDisplay() {
         }
 
     } else if (activeTab === 'requests') {
-        // --- ВКЛАДКА "ЗАЯВКИ": Только pending/locked/rejected ---
+        // --- ЗАЯВКИ ---
         const requestItems = actualItems.filter(item => item.state !== 'active');
 
         if (requestItems.length === 0) {
-            const emptyLi = document.createElement('li');
-            emptyLi.className = 'nexus-empty';
-            emptyLi.textContent = t('gameInterface.nexusPanel.noRequests', 'Нет активных заявок');
-            nexusList.appendChild(emptyLi);
+            nexusList.innerHTML = `<li class="nexus-empty">${t('gameInterface.nexusPanel.noRequests', 'Нет активных заявок')}</li>`;
             return;
         }
 
-        // Группируем по состоянию
         const byState = { pending: [], locked: [], rejected: [] };
         requestItems.forEach(item => {
             if (byState[item.state]) byState[item.state].push(item);
         });
 
         const stateLabels = {
-            pending: t('gameInterface.nexusPanel.statePending', '⏳ Ожидают рассмотрения'),
-            locked: t('gameInterface.nexusPanel.stateLocked', '🔒 Закрыто (требования не выполнены)'),
-            rejected: t('gameInterface.nexusPanel.stateRejected', '✕ Отклонено')
+            pending: t('gameInterface.nexusPanel.statePending', 'Ожидают рассмотрения'),
+            locked: t('gameInterface.nexusPanel.stateLocked', 'Закрыто (требования не выполнены)'),
+            rejected: t('gameInterface.nexusPanel.stateRejected', 'Отклонено')
         };
+
+        const stateIcons = { pending: '⏳', locked: '🔒', rejected: '✕' };
 
         for (const stateKey of ['pending', 'locked', 'rejected']) {
             if (byState[stateKey].length === 0) continue;
 
             const stateHeader = document.createElement('li');
             stateHeader.className = `nexus-request-header nexus-request-${stateKey}`;
-            stateHeader.textContent = `${stateLabels[stateKey]} (${byState[stateKey].length})`;
+            stateHeader.textContent = `${stateIcons[stateKey]} ${stateLabels[stateKey]} (${byState[stateKey].length})`;
             nexusList.appendChild(stateHeader);
 
             byState[stateKey].sort((a, b) => a.name.localeCompare(b.name, currentLanguage)).forEach(item => {
@@ -9739,12 +9737,12 @@ function updateNexusDisplay() {
                 li.addEventListener('mouseleave', hideGenericTooltip);
                 li.addEventListener('mousemove', moveGenericTooltip);
 
-                const iconStr = item.icon ? `<span class="nexus-icon">${item.icon}</span> ` : '';
+                const iconStr = item.icon ? `<span class="nexus-icon">${item.icon}</span>` : '';
+                const dotStr = stateIndicator(item.state);
                 const valueDisplay = renderValue(item);
-                li.innerHTML = `${iconStr}<span class="nexus-name">${escapeHTML(item.name)}</span><span class="nexus-value">${escapeHTML(valueDisplay)}</span>`;
+                li.innerHTML = `${dotStr}${iconStr}<span class="nexus-name">${escapeHTML(item.name)}</span><span class="nexus-value">${valueDisplay}</span>`;
                 nexusList.appendChild(li);
 
-                // Показываем требования прямо в списке
                 if (item.requirements) {
                     const reqLi = document.createElement('li');
                     reqLi.className = 'nexus-requirement-line';
@@ -9755,19 +9753,14 @@ function updateNexusDisplay() {
         }
 
     } else if (activeTab === 'tree') {
-        // --- ВКЛАДКА "ДЕРЕВЬЯ": Иерархический вид ---
-        // Находим корни деревьев: элементы без parentId, у которых есть дети
+        // --- ДЕРЕВЬЯ ---
         const treeRoots = rootItems.filter(item => childMap[item.id] && childMap[item.id].length > 0);
 
         if (treeRoots.length === 0) {
-            const emptyLi = document.createElement('li');
-            emptyLi.className = 'nexus-empty';
-            emptyLi.textContent = t('gameInterface.nexusPanel.noTrees', 'Нет деревьев (создайте константы с parentId)');
-            nexusList.appendChild(emptyLi);
+            nexusList.innerHTML = `<li class="nexus-empty">${t('gameInterface.nexusPanel.noTrees', 'Нет деревьев (создайте константы с parentId)')}</li>`;
             return;
         }
 
-        // Группируем корни по категории
         const groupedTree = treeRoots.reduce((acc, item) => {
             const category = item.category || t('gameInterface.nexusPanel.defaultCategory', 'Прочее');
             if (!acc[category]) acc[category] = [];
