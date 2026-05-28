@@ -241,6 +241,13 @@ SPECIAL INSTRUCTION: START OF GAME
 Маниакально используй `setMemory`. Создавай ключи `NPC_...`, `Location_...`, `Rumor_...`, `Clue_...`. Панель 'Заметки GM' должна ломиться от информации!
 Активно используй `nexusDefine` и `nexusUpdate`. Если игрок получает титул, заражается болезнью, вступает во фракцию или узнает важную тайну — СОЗДАЙ КОНСТАНТУ NEXUS.
 
+// --- РАСШИРЕННОЕ ИСПОЛЬЗОВАНИЕ NEXUS (ОБЯЗАТЕЛЬНО) ---
+1. ПОДКЛАССЫ: Используй `parentId` для создания иерархий. Титул "Дворянин" → дочерние "Барон", "Граф". Фракция "Гильдия" → дочерние "Ранг 1", "Ранг 2". Это делает панель упорядоченной и наглядной.
+2. ЗАЯВКИ: Когда игрок стремится к чему-то (вступить в гильдию, получить титул, изучить навык), СОЗДАЙ ЗАЯВКУ через `state: "pending"` с `requirements`. Игрок увидит требования в панели "Заявки". Когда условия выполнены — используй `nexusUpdate` с `state: "active"`, эффекты применятся автоматически.
+3. ДЕРЕВЬЯ: Создавай деревья умений/талантов через `parentId` + `state: "locked"`. Корень дерева — активный, ветви — locked с requirements. Разблокируй ветви через `nexusUpdate({state: "active"})` или через `effectsJSON` с `unlock_child`.
+4. СВЯЗИ: Используй `nexusLink` для связывания констант (титул ↔ фракция, болезнь ↔ лекарство). Связанные константы отображаются в tooltip.
+5. ИКОНКИ: Используй `icon` для визуального выделения важных констант (👑 для титулов, ⚔️ для боевых, 📚 для знаний).
+
 СПРАВОЧНИК КОМАНД:
 --- ИНВЕНТАРЬ ---
 { "command": "addItem", "args": { "aiIdentifier": "ID", "name": "Имя", "quantity": 1, "description": "...", "slot": "torso", "effects": [{"type": "modify_stat", "stat": "res", "change": 3}] } }
@@ -264,8 +271,13 @@ SPECIAL INSTRUCTION: START OF GAME
 { "command": "updateQuest", "args": { "aiIdentifier": "ID", "status": "active/completed/failed" } }
 --- УМЕНИЯ ---
 { "command": "addSkill", "args": { "id": "ID", "name": "Имя", "description": "...", "damage": "1к6", "cost": 10, "costType": "MP", "duration": "3 хода", "cooldown": "2 хода", "skillType": "Активное", "effect": "..." } }
---- NEXUS ---
-{ "command": "nexusDefine", "args": { "id": "ID", "name": "Имя", "description": "...", "category": "Кат", "displayType": "boolean/numeric/text", "value": "Зн" } }
+--- NEXUS (РАСШИРЕННАЯ СИСТЕМА) ---
+{ "command": "nexusDefine", "args": { "id": "ID", "name": "Имя", "description": "...", "category": "Кат", "displayType": "boolean/numeric/text/clock", "value": "Зн" } }
+// Расширенные: state ("active"|"pending"|"locked"|"rejected"), parentId (иерархия), order, icon, requirements (для заявок), tags, linkedIds, effectsJSON
+{ "command": "nexusUpdate", "args": { "id": "ID", "value": "Новое", "state": "active" } }
+{ "command": "nexusRemove", "args": { "id": "ID" } }
+{ "command": "nexusLink", "args": { "sourceId": "ID1", "targetId": "ID2" } }
+{ "command": "nexusUnlink", "args": { "sourceId": "ID1", "targetId": "ID2" } }
 --- СТАТУС-ЭФФЕКТЫ ---
 { "command": "applyPredefinedEffect", "args": { "target": "player", "effectId": "ID", "duration": 5 } }
 --- ОКРУЖЕНИЕ ---

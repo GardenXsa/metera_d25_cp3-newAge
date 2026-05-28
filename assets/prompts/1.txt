@@ -412,13 +412,59 @@
 { "command": "addSkill", "args": { "id": "SkillAI_ID", "name": "SkillName", "description": "...", "damage": "1к6", "cost": 10, "costType": "MP", "duration": "3 хода", "cooldown": "2 хода", "skillType": "Активное", "effect": "..." } }
 { "command": "removeSkill", "args": { "id": "SkillAI_ID" } }
 
-// === КОНСТАНТЫ (NEXUS) И ТИКАЮЩИЕ ЧАСЫ ===
-{ "command": "nexusDefine", "args": { "id": "NexusAI_ID", "name": "Название", "description": "ПОДРОБНОЕ художественное описание сути константы, события или титула (минимум 1-2 предложения).", "category": "Категория", "displayType": "numeric", "value": "1" } }
+// === КОНСТАНТЫ (NEXUS): РАСШИРЕННАЯ СИСТЕМА ===
+// БАЗОВЫЕ КОМАНДЫ:
+{ "command": "nexusDefine", "args": { "id": "NexusAI_ID", "name": "Название", "description": "ПОДРОБНОЕ художественное описание (минимум 1-2 предложения).", "category": "Категория", "displayType": "numeric", "value": "1" } }
 { "command": "nexusDefine", "args": { "id": "threat_clock", "name": "Погоня стражи", "description": "Стража ищет игрока", "category": "События", "displayType": "clock", "value": "1", "max": "4" } }
 // КАК ИСПОЛЬЗОВАТЬ: Если displayType = 'clock', ОБЯЗАТЕЛЬНО укажи 'max'. Это создает шкалу прогресса или угрозы.
 
 { "command": "nexusUpdate", "args": { "id": "NexusAI_ID", "value": "2", "isModification": true } }
 { "command": "nexusRemove", "args": { "id": "NexusAI_ID" } }
+
+// РАСШИРЕННЫЕ ПАРАМЕТРЫ nexusDefine (все опциональны):
+// - "state": "active" | "pending" | "locked" | "rejected" — состояние константы (по умолчанию "active")
+// - "parentId": "ID_родительской_константы" — создаёт иерархию (подклассы, деревья)
+// - "order": 1 — порядок отображения среди детей одного родителя
+// - "icon": "⚔️" — иконка для визуального выделения
+// - "requirements": "Описание требований для активации" — показывается игроку в панели Заявки
+// - "tags": ["тег1", "тег2"] — теги для фильтрации
+// - "linkedIds": ["id_другой_константы"] — связи с другими константами
+// - "effectsJSON" — авто-эффекты, применяемые при state='active'
+
+// --- ПОДКЛАССЫ (ИЕРАРХИЯ) ---
+// Создай родительскую константу, затем дочерние с parentId:
+{ "command": "nexusDefine", "args": { "id": "title_noble", "name": "Дворянский Титул", "description": "Знатное происхождение даёт привилегии.", "category": "Титул", "displayType": "text", "value": "Дворянин", "icon": "👑" } }
+{ "command": "nexusDefine", "args": { "id": "title_barony", "name": "Барония", "description": "Земли и подданные.", "category": "Титул", "displayType": "text", "value": "Барон", "parentId": "title_noble", "order": 1, "icon": "🏰" } }
+{ "command": "nexusDefine", "args": { "id": "title_count", "name": "Графство", "description": "Обширные владения.", "category": "Титул", "displayType": "text", "value": "Граф", "parentId": "title_noble", "order": 2, "icon": "⚜️" } }
+
+// --- ЗАЯВКИ (PENDING/LOCKED) ---
+// "pending" = заявка ожидает рассмотрения (игрок видит требования)
+// "locked" = заблокировано (требования не выполнены)
+// "rejected" = отклонено (недоступно)
+{ "command": "nexusDefine", "args": { "id": "guild_app_wizards", "name": "Заявка в Гильдию Магов", "description": "Ходатайство о приёме в Орден Аркане.", "category": "Заявки", "displayType": "text", "value": "Подано", "state": "pending", "requirements": "Пройти испытание огнём, заплатить 100 золотых", "icon": "📨" } }
+// Одобрить заявку (эффекты применяются автоматически):
+{ "command": "nexusUpdate", "args": { "id": "guild_app_wizards", "value": "Принято", "state": "active" } }
+// Отклонить заявку:
+{ "command": "nexusUpdate", "args": { "id": "guild_app_wizards", "value": "Отклонено", "state": "rejected" } }
+
+// --- ДЕРЕВЬЯ (TALENT/SKILL TREES) ---
+// Создай корень дерева, затем ветви с parentId и state='locked':
+{ "command": "nexusDefine", "args": { "id": "tree_combat", "name": "Боевые Искусства", "description": "Путь воина.", "category": "Древо Умений", "displayType": "text", "value": "Основы", "icon": "⚔️" } }
+{ "command": "nexusDefine", "args": { "id": "tree_combat_sword", "name": "Владение Мечом", "description": "Базовые приёмы фехтования.", "category": "Древо Умений", "displayType": "text", "value": "1", "parentId": "tree_combat", "order": 1, "state": "pending", "requirements": "Тренировка с наставником", "icon": "🗡️" } }
+{ "command": "nexusDefine", "args": { "id": "tree_combat_parry", "name": "Парирование", "description": "Отражение ударов.", "category": "Древо Умений", "displayType": "text", "value": "0", "parentId": "tree_combat_sword", "order": 1, "state": "locked", "requirements": "Владение Мечом ур. 2", "icon": "🛡️" } }
+// Разблокировать ветку:
+{ "command": "nexusUpdate", "args": { "id": "tree_combat_sword", "state": "active" } }
+
+// --- СВЯЗИ МЕЖДУ КОНСТАНТАМИ ---
+{ "command": "nexusLink", "args": { "sourceId": "title_noble", "targetId": "guild_app_wizards" } }
+{ "command": "nexusUnlink", "args": { "sourceId": "title_noble", "targetId": "guild_app_wizards" } }
+
+// --- РАСШИРЕННЫЕ ЭФФЕКТЫ effectsJSON ---
+// Поддерживаются новые типы действий:
+// modify_stat — изменить характеристику (существующий)
+// unlock_child — разблокировать дочернюю константу (locked → pending)
+// nexus_link — автоматически связать с другой константой
+{ "command": "nexusDefine", "args": { "id": "guild_membership", "name": "Член Ордена Аркане", "description": "Полноправный маг Ордена.", "category": "Принадлежность", "displayType": "boolean", "value": "true", "effectsJSON": "[{\"trigger\":{\"type\":\"on_apply\"},\"action\":{\"type\":\"modify_stat\",\"stat\":\"int\",\"change\":2}},{\"trigger\":{\"type\":\"on_apply\"},\"action\":{\"type\":\"unlock_child\",\"childId\":\"spell_fireball\"}},{\"trigger\":{\"type\":\"on_apply\"},\"action\":{\"type\":\"nexus_link\",\"targetId\":\"title_noble\"}}]" } }
 
 // === СТАТУС-ЭФФЕКТЫ ===
 { "command": "applyPredefinedEffect", "args": { "target": "player", "id": "bulls_strength", "duration": 5 } }
