@@ -527,6 +527,20 @@ body {
     touch-action: pan-y;
     -webkit-overflow-scrolling: touch;
 }
+/* ФИКС: скролл чата работает только при наведении на сам элемент чата */
+.game-log:hover {
+    overflow-y: auto !important;
+}
+/* Отключаем скролл чата когда есть активные модальные окна */
+.modal-overlay.active,
+.admin-menu.active,
+.entity-tooltip.visible,
+#custom-confirm-modal.active,
+#custom-alert-modal.active,
+#ai-error-modal.active {
+    pointer-events: auto !important;
+    z-index: 10000 !important;
+}
 .game-log::-webkit-scrollbar { 
     width: 8px; 
     display: block;
