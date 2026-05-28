@@ -71,7 +71,7 @@ function makeMojibake(emoji) {
   return cp1251Str;
 }
 
-// Test known mojibake pattern replacements
+// ========== Test 1: Basic mojibake repair ==========
 assert.strictEqual(guard.repairText(makeMojibake('🎲') + ' D20'), '🎲 D20');
 assert.strictEqual(guard.repairText(makeMojibake('💪') + ' STR'), '💪 STR');
 assert.strictEqual(guard.repairText(makeMojibake('🛡️') + ' Defend'), '🛡️ Defend');
@@ -84,33 +84,103 @@ assert.strictEqual(guard.repairText(makeMojibake('💰') + ' Gold'), '💰 Gold'
 assert.strictEqual(guard.repairText(makeMojibake('📍') + ' Location'), '📍 Location');
 assert.strictEqual(guard.repairText('normal text'), 'normal text');
 
-// Test double-encoded Cyrillic (В → Р')
+// ========== Test 2: ⚡️ variation selector fix (was broken before) ==========
+// The old code had [/вљЎ/g, '⚡'] BEFORE [/вљЎпёЏ/g, '⚡️']
+// which meant the longer pattern never matched. Now the order is correct.
+const lightningVS = guard.repairText(makeMojibake('⚡️'));
+assert(lightningVS.includes('⚡️'), '⚡️ (with variation selector) must be repaired correctly, got: ' + lightningVS);
+
+const lightningNoVS = guard.repairText(makeMojibake('⚡'));
+assert(lightningNoVS.includes('⚡'), '⚡ (without variation selector) must be repaired correctly');
+
+// ========== Test 3: Double-encoded Cyrillic (В → Р') ==========
 const voyneMojibake = String.fromCharCode(0x0420) + "'" + String.fromCharCode(0x043E) + String.fromCharCode(0x0439) + String.fromCharCode(0x043D) + String.fromCharCode(0x0430);
 assert.strictEqual(guard.repairText(voyneMojibake), 'Война');
 
-// Test that normal Russian text is NOT corrupted
+// General Р' + lowercase pattern
+const velikiyMojibake = String.fromCharCode(0x0420) + "'" + String.fromCharCode(0x0435) + String.fromCharCode(0x043B) + String.fromCharCode(0x0438) + String.fromCharCode(0x043A) + String.fromCharCode(0x0438) + String.fromCharCode(0x0439);
+assert.strictEqual(guard.repairText(velikiyMojibake), 'Великий');
+
+// Lowercase в → р' pattern
+const lowercaseVMojibake = String.fromCharCode(0x0440) + "'" + String.fromCharCode(0x043E) + String.fromCharCode(0x0439) + String.fromCharCode(0x043D) + String.fromCharCode(0x0435);
+assert.strictEqual(guard.repairText(lowercaseVMojibake), 'войне');
+
+// ========== Test 4: Normal Russian text is NOT corrupted ==========
 assert.strictEqual(guard.repairText('Привет мир'), 'Привет мир');
 assert.strictEqual(guard.repairText('Летопись Мира'), 'Летопись Мира');
+assert.strictEqual(guard.repairText('Война и мир'), 'Война и мир');
 
-// Test combined: mojibake + normal text
+// ========== Test 5: Combined mojibake + normal text ==========
 const combined = guard.repairText(makeMojibake('⚔️') + ' Война началась');
 assert(combined.includes('⚔️'), 'Combined text must contain ⚔️');
 assert(combined.includes('Война'), 'Combined text must preserve Война');
 
-// Verify MIME types declare UTF-8
+// ========== Test 6: Programmatic emoji set (RPG/fantasy) ==========
+// These emojis are NOT hardcoded but should be repaired via programmatic generation
+const rpgEmojis = ['👑', '🏹', '🐉', '🏰', '🔮', '🍷', '🌙', '👑', '💀'];
+for (const emoji of rpgEmojis) {
+  const mojibake = makeMojibake(emoji);
+  const repaired = guard.repairText(mojibake);
+  assert.strictEqual(repaired, emoji, `Programmatic emoji ${emoji} must be repaired correctly (got: ${repaired})`);
+}
+
+// ========== Test 7: repairObject() function ==========
+assert(guard.repairObject, 'repairObject must be exported');
+
+// Test repairObject with World-like data
+const testWorld = {
+  news: [
+    { text: makeMojibake('⚔️') + ' ' + String.fromCharCode(0x0420) + "'ойна началась!", category: 'war' },
+    { text: makeMojibake('💰') + ' Торговый путь открыт', category: 'trade' }
+  ],
+  regions: { r1: { name: makeMojibake('🏰') + ' Крепость' } },
+  tick: 100
+};
+
+const repairedWorld = guard.repairObject(testWorld);
+assert(repairedWorld.news[0].text.includes('⚔️'), 'repairObject must fix emoji in news[0].text');
+assert(repairedWorld.news[0].text.includes('Война'), 'repairObject must fix double-encoded Cyrillic in news[0].text');
+assert(repairedWorld.news[1].text.includes('💰'), 'repairObject must fix emoji in news[1].text');
+assert(repairedWorld.regions.r1.name.includes('🏰'), 'repairObject must fix emoji in region names');
+assert.strictEqual(repairedWorld.tick, 100, 'repairObject must not modify non-string values');
+
+// Test repairObject with null/undefined/primitives
+assert.strictEqual(guard.repairObject(null), null);
+assert.strictEqual(guard.repairObject(undefined), undefined);
+assert.strictEqual(guard.repairObject(42), 42);
+assert.strictEqual(guard.repairObject('hello'), 'hello');
+assert.strictEqual(guard.repairObject(makeMojibake('🔥')), '🔥');
+
+// Test repairObject with arrays
+const testArr = [makeMojibake('🎲'), 'normal', makeMojibake('⚔️') + ' fight'];
+const repairedArr = guard.repairObject(testArr);
+assert.strictEqual(repairedArr[0], '🎲', 'repairObject must fix array string elements');
+assert.strictEqual(repairedArr[1], 'normal', 'repairObject must preserve normal strings');
+assert(repairedArr[2].includes('⚔️'), 'repairObject must fix combined text in arrays');
+
+// ========== Test 8: MIME types declare UTF-8 ==========
 const main = read('main.js');
 assert(main.includes("'.html': 'text/html; charset=utf-8'"), 'HTML MIME type must declare UTF-8');
 assert(main.includes("'.js': 'text/javascript; charset=utf-8'"), 'JS MIME type must declare UTF-8');
 assert(main.includes("'.json': 'application/json; charset=utf-8'"), 'JSON MIME type must declare UTF-8');
 
-// Verify the guard script is loaded in the HTML
+// ========== Test 9: Guard script is loaded in HTML ==========
 const html = read('index.html');
 assert(html.includes('js/core/textEncodingGuard.js'), 'index.html must load textEncodingGuard.js');
 
-// Verify the guard watches chronicle selectors
+// ========== Test 10: Guard watches chronicle and dice selectors ==========
 const guardSrc = read('js/core/textEncodingGuard.js');
 assert(guardSrc.includes('#world-chronicles-list'), 'Guard must watch #world-chronicles-list');
 assert(guardSrc.includes('.chronicle-item'), 'Guard must watch .chronicle-item');
 assert(guardSrc.includes('.message-bubble'), 'Guard must watch .message-bubble');
+assert(guardSrc.includes('.chat-roll-badge'), 'Guard must watch .chat-roll-badge');
+assert(guardSrc.includes('.roll-badge'), 'Guard must watch .roll-badge');
 
-console.log('text encoding guard tests OK');
+// ========== Test 11: setWorld calls repairObject ==========
+const scriptSrc = read('script.js');
+assert(scriptSrc.includes('TextEncodingGuard.repairObject'), 'script.js must call TextEncodingGuard.repairObject in setWorld');
+
+// ========== Test 12: addLogMessage calls repairText ==========
+assert(scriptSrc.includes('TextEncodingGuard.repairText'), 'script.js must call TextEncodingGuard.repairText for log messages');
+
+console.log('text encoding guard tests OK (' + rpgEmojis.length + ' programmatic emojis verified)');

@@ -3083,9 +3083,13 @@ function getFacilityName(facId, eraId) {
 function generateWorldNews(text, location, importance, category) {
     if (typeof World === 'undefined' || !World) return;
     if (!World.news) World.news = [];
+    // Fix mojibake in news text before storing
+    const repairedText = (typeof window.TextEncodingGuard !== 'undefined')
+        ? window.TextEncodingGuard.repairText(text)
+        : text;
     World.news.push({
         id: "news_" + generateUUID(),
-        text: text,
+        text: repairedText,
         location: location || "global",
         importance: importance || 1,
         category: category || "misc",
@@ -3099,6 +3103,11 @@ function getWorld() {
     return World;
 }
 function setWorld(newWorld) {
+    // Fix mojibake in engine data BEFORE storing — prevents garbled text
+    // in World.news[], region names, agent names, etc. from reaching the DOM
+    if (newWorld && typeof window.TextEncodingGuard !== 'undefined') {
+        window.TextEncodingGuard.repairObject(newWorld);
+    }
     World = newWorld;
 }
 function mutateWorld(mutator) {
@@ -6271,6 +6280,10 @@ async function initializeApp() {
     if (window.electronAPI && window.electronAPI.onNexusRealtimeUpdate) {
         window.electronAPI.onNexusRealtimeUpdate((data) => {
             if (!World) return;
+            // Fix mojibake in engine delta updates before applying
+            if (typeof window.TextEncodingGuard !== 'undefined') {
+                window.TextEncodingGuard.repairObject(data);
+            }
             // Apply lightweight updates from engine delta
             if (data.time) World.time = data.time;
             if (data.homeostasis) World.homeostasis = data.homeostasis;
@@ -11495,6 +11508,10 @@ function closeInGameMenu() {
 // --- Лог и Ввод ---
 function addLogMessage(message, type = "gm-message", isRestoring = false, imagePrompt = "", savedImageBase64 = null) {
     if (!gameLog) return;
+    // Fix mojibake in AI/engine messages before rendering
+    if (typeof window.TextEncodingGuard !== 'undefined') {
+        message = window.TextEncodingGuard.repairText(message);
+    }
     message = parseLocString(message); // Авто-локализация
 
     // --- СИСТЕМА СОХРАНЕНИЯ ЛОГОВ ---
