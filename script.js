@@ -13271,6 +13271,25 @@ async function sendApiRequest(promptTextForAI, isInitialPrompt = false, isDiceRo
                 if (grailResult.corrections) player.gmErrors.push(grailResult.corrections);
             }
 
+            // === CONFLUENCE: Reconciliation Buffer ===
+            if (window.ReconciliationBuffer && ReconciliationBuffer.getConfig().enabled) {
+                // 1. Detect orphaned narrative
+                const orphaned = ReconciliationBuffer.detectOrphaned(
+                    result.narrative || '',
+                    allPendingActions || []
+                );
+                // 2. Auto-correct safe orphaned items
+                const autoCorrected = ReconciliationBuffer.autoCorrect(orphaned);
+                // 3. Detect unacknowledged sim events (against previous narrative)
+                const prevNarrative = conversationHistory && conversationHistory.length > 0
+                    ? (conversationHistory[conversationHistory.length - 1]?.parts?.[0]?.text || '')
+                    : '';
+                ReconciliationBuffer.detectUnacknowledged(
+                    '', // Current manifest will be extracted from World
+                    prevNarrative
+                );
+            }
+
             updateCharacterSheet();
             updateMapDisplay();
             updateInventoryDisplay();
@@ -13735,8 +13754,16 @@ function buildDynamicContext(expiredEffects) {
         const fbStr = CommandFeedback.flushForContext();
         if (fbStr) cmdFeedback = fbStr;
     }
+
+    // --- CONFLUENCE: Reconciliation Buffer ---
+    let reconBlock = '';
+    if (window.ReconciliationBuffer && ReconciliationBuffer.getConfig().enabled) {
+        const reconStr = ReconciliationBuffer.buildContextBlock();
+        if (reconStr) reconBlock = reconStr;
+        ReconciliationBuffer.flush();
+    }
     
-    return `======================================================================\n=== ДИНАМИЧЕСКИЕ ДАННЫЕ (ИЗМЕНЯЮТСЯ КАЖДЫЙ ХОД) ===\n======================================================================\n${echoMemoryString}\n${snapshot}${predictiveFeed}${cmdFeedback}\n${expiredText}\n${errorText}\n${ghostText}${grailHints}\n`;
+    return `======================================================================\n=== ДИНАМИЧЕСКИЕ ДАННЫЕ (ИЗМЕНЯЮТСЯ КАЖДЫЙ ХОД) ===\n======================================================================\n${echoMemoryString}\n${snapshot}${predictiveFeed}${cmdFeedback}${reconBlock}\n${expiredText}\n${errorText}\n${ghostText}${grailHints}\n`;
 }
 
 function getPromptRuntimeConfig() {
