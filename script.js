@@ -8328,6 +8328,7 @@ async function finalizeCharacterCreation() {
             description: charDescInput.value.trim(),
             generateBackstory: generateBackstory,
             enhanceBackstory: enhanceBackstory,
+            _backstoryLocked: !generateBackstory && !enhanceBackstory,
             stats: { ...currentCreationStats },
             availablePoints: availableStatPoints
         }));
@@ -8342,6 +8343,7 @@ async function finalizeCharacterCreation() {
             description: charDescInput.value.trim(),
             generateBackstory: generateBackstory,
             enhanceBackstory: enhanceBackstory,
+            _backstoryLocked: !generateBackstory && !enhanceBackstory, // Блокировка перезаписи предыстории ИИ
             stats: {
                 ...currentCreationStats,
                 level: 1,
@@ -14211,10 +14213,16 @@ async function executeNonInventoryCommand(command, args) {
                 break;
 
             case 'setPlayerDescription':
+                // ПРОГРАММНАЯ БЛОКИРОВКА: Если игрок запретил генерацию предыстории — ЗАПРЕЩЕНО перезаписывать
+                if (player._backstoryLocked) {
+                    feedback = `[BLOCKED] setPlayerDescription ОТКЛОНЁН: игрок запретил изменение предыстории (флаг generateBackstory=FALSE). Предыстория игрока священна и не может быть перезаписана ИИ.`;
+                    console.warn('[BACKSTORY GUARD] setPlayerDescription заблокирован — _backstoryLocked=true');
+                    break;
+                }
                 let bioText = args.text || args.description || args.bio || args.value || args.narrative || args.biography || args.background || args.history || args.lore;
                 if (bioText) {
                     player.description = bioText;
-                    feedback = `[СИСТЕМА] Предыстория персонажа успешно сгенерирована и сохранена в профиль.`;
+                    feedback = `[СИСТЕМА] Предыстория персонажа успешно обновлена и сохранена в профиль.`;
                     updateCharacterSheet();
                 } else {
                     feedback = `[ERROR] 'setPlayerDescription' требует 'text' или 'description'. Получено: ${JSON.stringify(args)}`;
@@ -17980,15 +17988,28 @@ async function runDeepSetupPipeline(narratorStyleGuide) {
         else if (currentApiProvider === 'deepseek') modelIdForRequest = deepseekModelId;
         else if (currentApiProvider === 'omniroute') modelIdForRequest = omnirouteModelId;
 
+        // Флаг предыстории для deep_setup
+        let backstoryFlagText;
+        if (player.generateBackstory) {
+            backstoryFlagText = "TRUE (ТЫ ОБЯЗАН ПРИДУМАТЬ ПРЕДЫСТОРИЮ И ВЫЗВАТЬ setPlayerDescription)";
+        } else if (player.enhanceBackstory) {
+            backstoryFlagText = "ENHANCE (Ты ОБЯЗАН ОБОГАТИТЬ предысторию игрока деталями и вызвать setPlayerDescription. Сохрани ВСЕ факты из описания игрока, добавь глубину, лор, имена, места. НЕ УДАЛЯЙ и НЕ ПЕРЕЗАПИСЫВАЙ ввод игрока — только расширяй и дополняй.)";
+        } else {
+            backstoryFlagText = "FALSE (КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО генерировать или изменять предысторию. Игрок написал СВОЁ описание — это ФАКТ МИРА. НЕ вызывай setPlayerDescription. НЕ придумывай биографию. Используй описание игрока КАК ЕСТЬ.)";
+        }
+
         const getBaseContext = () => {
             const genderText = player.gender ? ` | Пол: ${player.gender}` : '';
             return `Мир: ${DEFAULT_WORLD_ID} | Эпоха: ${player.era}\nИгрок: ${player.name} (${player.race}, ${player.class}${genderText})\nРежим старта: ${player.startMode}\nОписание от игрока: "${player.description}"`;
         };
 
         // --- STAGE 1 ---
-        updateLoader("Этап 1/5: Нити Судьбы", "Создание биографии и мотивов...");
+        const stage1SubText = player._backstoryLocked
+            ? "Извлечение мотивов из описания игрока..."
+            : "Создание биографии и мотивов...";
+        updateLoader("Этап 1/5: Нити Судьбы", stage1SubText);
         let p1 = await loadPromptFromFile('assets/prompts/deep_setup/stage1_lore.txt');
-        p1 = p1.replace('{base_context}', getBaseContext()).replace('{lore}', worldLore);
+        p1 = p1.replace('{base_context}', getBaseContext()).replace('{lore}', worldLore).replace('{generate_backstory_flag}', backstoryFlagText);
         let r1 = await performAiFetch(p1, [], modelIdForRequest, "Сгенерируй биографию и константы (JSON).");
         let res1 = parseAIResponse(r1);
         let stage_1_results = JSON.stringify(res1.actions || []);
