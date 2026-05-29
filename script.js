@@ -3521,7 +3521,7 @@ function updateWorldSimulation(pulses) {
                             if (sendButton) sendButton.disabled = false;
                         }
                     } else {
-                        console.error("[Nexus] Ошибка симуляции:", res);
+                        console.error("[Nexus] Ошибка симуляции:", typeof res === 'string' ? res : JSON.stringify(res));
                     }
                 }).catch(err => {
                     console.error("[Nexus] Ошибка вызова nexusSimulate:", err);
@@ -8072,6 +8072,9 @@ function startNewGameSetup() {
         showCustomAlert(t('error.apiKeyNeededForProvider', { provider: providerName }, `Для начала игры требуется API ключ для провайдера ${providerName}. Пожалуйста, введите его в настройках.`));
         settingsReturnScreen = 'main-menu'; // Убедимся, что вернемся в главное меню
         setActiveScreen('settings-menu');
+        // Автоматически переключаемся на вкладку AI & API, чтобы пользователь увидел провайдер
+        const aiTabBtn = document.querySelector('[data-tab="settings-ai"]');
+        if (aiTabBtn) aiTabBtn.click();
         return;
     }
     // --- [КОНЕЦ ИСПРАВЛЕНИЯ] ---
@@ -8706,7 +8709,9 @@ async function finalizeWorldSetupAndStart() {
                 if (loadRes.status === 'ok') {
                     console.log('[Nexus] Файловая синхронизация мира завершена:', loadRes.message);
                 } else {
-                    console.warn('[Nexus] loadWorldFile не удался:', loadRes.message || loadRes.error || 'unknown error');
+                    const errVal = loadRes.message || loadRes.error || 'unknown error';
+                    const errStr = typeof errVal === 'string' ? errVal : JSON.stringify(errVal);
+                    console.warn('[Nexus] loadWorldFile не удался:', errStr);
                 }
             } else {
                 console.warn('[Nexus] Не удалось записать временный файл:', writeRes.message);
@@ -9521,7 +9526,7 @@ function levelUp() {
 
 function handleStatIncrease(event) {
     if (!player || player.stats.statPoints <= 0) return;
-    const statToIncrease = event.target.getAttribute('data-stat');
+    const statToIncrease = event.currentTarget.getAttribute('data-stat');
     const validStats = ['str', 'dex', 'int', 'con', 'cha', 'res'];
     if (!statToIncrease || !validStats.includes(statToIncrease)) return;
 

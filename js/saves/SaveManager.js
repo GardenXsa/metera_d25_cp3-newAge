@@ -374,6 +374,7 @@ async function loadGame(slotType, slotId) {
             if (window.electronAPI.nexusSyncState || window.electronAPI.nexusLoadWorldFile) {
                 for (let entId in player.allKnownEntities) {
                     let ent = player.allKnownEntities[entId];
+                    if (!ent) continue; // Пропуск null/undefined сущностей (dummy provider и т.д.)
                     let minDmg = ent.min_damage || 1 + Math.floor((ent.stats.maxHp ?? 10) / 40);
                     let diceSides = ent.type === 'creature' ? 8 : (((ent.stats.str ?? 10) > 16 || (ent.stats.dex ?? 10) > 16) ? 10 : 6);
                     let maxDmg = ent.max_damage || (minDmg * diceSides);
