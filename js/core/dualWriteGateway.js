@@ -384,8 +384,137 @@ window.DualWriteGateway = (() => {
                 break;
             }
 
+            // === C++ commands: военные / флот ===
+
+            case 'gmRaisePlayerArmy': {
+                delta.events.push({
+                    type: 'army_raised',
+                    region: args.regionId,
+                    manifestImpact: 'threat↑ stability↓ (набор армии)'
+                });
+                if (args.regionId) delta.regions[args.regionId] = { armyRaised: true };
+                break;
+            }
+
+            case 'gmCommandArmy': {
+                delta.events.push({
+                    type: 'army_commanded',
+                    army: args.armyId,
+                    action: args.action,
+                    manifestImpact: 'Военное действие → threat↑ warExhaustion↑'
+                });
+                break;
+            }
+
+            case 'buildShip': {
+                delta.events.push({
+                    type: 'ship_built',
+                    region: args.regionId,
+                    manifestImpact: 'Военная мощь на море ↑'
+                });
+                if (args.regionId) delta.regions[args.regionId] = { navalExpansion: true };
+                break;
+            }
+
+            case 'buildPort':
+            case 'upgradePort': {
+                delta.events.push({
+                    type: 'port_action',
+                    region: args.regionId,
+                    action: command,
+                    manifestImpact: 'Торговля ↑ economy↑'
+                });
+                if (args.regionId) delta.regions[args.regionId] = { portAction: command };
+                break;
+            }
+
+            case 'navalBlockade': {
+                const blockerId = args.blockerFactionId || args.factionId;
+                const targetId = args.targetFactionId;
+                delta.events.push({
+                    type: 'naval_blockade',
+                    factions: [blockerId, targetId],
+                    manifestImpact: 'trade↓ threat↑ warExhaustion↑ (блокада)'
+                });
+                delta.factions[targetId] = { blockaded: true, by: blockerId };
+                break;
+            }
+
+            // === C++ commands: инфраструктура / среда ===
+
+            case 'gmBuildHighway': {
+                delta.events.push({
+                    type: 'highway_built',
+                    from: args.fromRegionId,
+                    to: args.toRegionId,
+                    manifestImpact: 'trade↑ stability↑ (дорога)'
+                });
+                if (args.fromRegionId) delta.regions[args.fromRegionId] = { highwayBuilt: true };
+                if (args.toRegionId) delta.regions[args.toRegionId] = { highwayBuilt: true };
+                break;
+            }
+
+            case 'gmModifyTerrain': {
+                delta.events.push({
+                    type: 'terrain_modified',
+                    region: args.regionId,
+                    terrain: args.terrainType,
+                    manifestImpact: 'Ландшафт изменён → экономика и движение'
+                });
+                if (args.regionId) delta.regions[args.regionId] = { terrainModified: args.terrainType };
+                break;
+            }
+
+            case 'gmModifyTradeSecurity': {
+                delta.events.push({
+                    type: 'trade_security_modified',
+                    region: args.regionId,
+                    manifestImpact: args.increase ? 'trade↑ (безопасность караванов)' : 'trade↓ (опасные дороги)'
+                });
+                if (args.regionId) delta.regions[args.regionId] = { tradeSecurityChange: args.increase ? 'up' : 'down' };
+                break;
+            }
+
+            // === C++ commands: существа / катастрофы ===
+
+            case 'spawnMonster': {
+                delta.events.push({
+                    type: 'monster_spawned',
+                    monster: args.monsterId || args.monsterType,
+                    region: args.regionId,
+                    manifestImpact: 'threat↑ в регионе, опасность для путников'
+                });
+                if (args.regionId) delta.regions[args.regionId] = { monsterSpawned: true };
+                break;
+            }
+
+            case 'killMonster': {
+                delta.events.push({
+                    type: 'monster_killed',
+                    monster: args.monsterId,
+                    manifestImpact: 'threat↓ в регионе, безопасность ↑'
+                });
+                break;
+            }
+
+            case 'triggerDisaster': {
+                delta.events.push({
+                    type: 'disaster_triggered',
+                    disaster: args.disasterType,
+                    region: args.regionId,
+                    manifestImpact: 'stability↓↓ threat↑ economy↓ (катастрофа)'
+                });
+                if (args.regionId) delta.regions[args.regionId] = { disaster: args.disasterType };
+                break;
+            }
+
             default:
                 // Для неизвестных команд — минимальный delta
+                delta.events.push({
+                    type: 'generic_command',
+                    command,
+                    manifestImpact: `Команда ${command} выполнена`
+                });
                 break;
         }
 
@@ -419,6 +548,28 @@ window.DualWriteGateway = (() => {
                     return `Бой начался → ${e.manifestImpact}`;
                 case 'travel_started':
                     return `Путешествие в ${e.destination} → ${e.manifestImpact}`;
+                case 'army_raised':
+                    return `Армия набрана в ${e.region} → ${e.manifestImpact}`;
+                case 'army_commanded':
+                    return `Армия ${e.army}: ${e.action} → ${e.manifestImpact}`;
+                case 'ship_built':
+                    return `Корабль построен в ${e.region} → ${e.manifestImpact}`;
+                case 'port_action':
+                    return `Порт в ${e.region}: ${e.action} → ${e.manifestImpact}`;
+                case 'naval_blockade':
+                    return `Морская блокада: ${e.factions.join(' → ')} → ${e.manifestImpact}`;
+                case 'highway_built':
+                    return `Дорога: ${e.from}↔${e.to} → ${e.manifestImpact}`;
+                case 'terrain_modified':
+                    return `Ландшафт в ${e.region}: ${e.terrain} → ${e.manifestImpact}`;
+                case 'trade_security_modified':
+                    return `Безопасность торговли в ${e.region} → ${e.manifestImpact}`;
+                case 'monster_spawned':
+                    return `Монстр ${e.monster} в ${e.region} → ${e.manifestImpact}`;
+                case 'monster_killed':
+                    return `Монстр ${e.monster} убит → ${e.manifestImpact}`;
+                case 'disaster_triggered':
+                    return `Катастрофа ${e.disaster} в ${e.region} → ${e.manifestImpact}`;
                 default:
                     return `${e.type}: ${e.manifestImpact}`;
             }

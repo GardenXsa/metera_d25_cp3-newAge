@@ -13284,8 +13284,12 @@ async function sendApiRequest(promptTextForAI, isInitialPrompt = false, isDiceRo
                 const prevNarrative = conversationHistory && conversationHistory.length > 0
                     ? (conversationHistory[conversationHistory.length - 1]?.parts?.[0]?.text || '')
                     : '';
+                // Build current manifest for comparison (or let ReconciliationBuffer extract from World)
+                const currentManifest = (window.WorldManifest && typeof World !== 'undefined')
+                    ? WorldManifest.build(World, player?.location || '')
+                    : '';
                 ReconciliationBuffer.detectUnacknowledged(
-                    '', // Current manifest will be extracted from World
+                    currentManifest,
                     prevNarrative
                 );
             }

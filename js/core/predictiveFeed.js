@@ -48,7 +48,7 @@ window.PredictiveFeed = (() => {
 
     let _previousState = null;   // Кэш предыдущего состояния
     let _config = {
-        maxPredictionTicks: 3,   // Горизонт прогноза
+        maxPredictionTicks: 2,   // Горизонт прогноза (спецификация: 2 тика)
         maxPredictions: 5,       // Максимум прогнозов в отчёте
         enabled: true
     };
