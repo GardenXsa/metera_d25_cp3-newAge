@@ -3706,6 +3706,11 @@ async function runWorldSimulationTick() {
         updateTradeJournalDisplay();
         updatePortPanel();
         if (typeof updateHoldingsDisplay === 'function') updateHoldingsDisplay();
+
+        // === CONFLUENCE: Обновить кэш трендов для Predictive Feed ===
+        if (window.PredictiveFeed && typeof World !== 'undefined') {
+            PredictiveFeed.updateCache(World);
+        }
     }
 }
 // ======================================================================
@@ -13716,8 +13721,15 @@ function buildDynamicContext(expiredEffects) {
             grailHints = `\n\n=== GRAIL: НАРРАТИВНЫЕ ПОДСКАЗКИ ===\n${recentHints.join('\n')}\n=== КОНЕЦ ПОДСКАЗОК ===\n`;
         }
     }
+
+    // --- CONFLUENCE: Predictive Narrative Feed ---
+    let predictiveFeed = '';
+    if (window.PredictiveFeed && PredictiveFeed.getConfig().enabled) {
+        const feedStr = PredictiveFeed.build(World, player?.location || '');
+        if (feedStr) predictiveFeed = '\n' + feedStr;
+    }
     
-    return `======================================================================\n=== ДИНАМИЧЕСКИЕ ДАННЫЕ (ИЗМЕНЯЮТСЯ КАЖДЫЙ ХОД) ===\n======================================================================\n${echoMemoryString}\n${snapshot}\n${expiredText}\n${errorText}\n${ghostText}${grailHints}\n`;
+    return `======================================================================\n=== ДИНАМИЧЕСКИЕ ДАННЫЕ (ИЗМЕНЯЮТСЯ КАЖДЫЙ ХОД) ===\n======================================================================\n${echoMemoryString}\n${snapshot}${predictiveFeed}\n${expiredText}\n${errorText}\n${ghostText}${grailHints}\n`;
 }
 
 function getPromptRuntimeConfig() {
