@@ -4653,74 +4653,83 @@ function buildFullPlayerSnapshot() {
         worldContextString += `\n=== КАРТА МИРА (ДОСТУПНЫЕ ЛОКАЦИИ И ИХ ID) ===\n${mapCoordsString}\n==================================================\n`;
 
             if (World) {
-        worldContextString = "\n=== MASMP STATE VECTORS ===\n";
-        let playerRegion = null;
-        for (let rId in World.regions) {
-            if (player.location.toLowerCase().includes(World.regions[rId].name.toLowerCase())) {
-                playerRegion = rId; break;
+        // === CONFLUENCE PROTOCOL v2: World Manifest ===
+        // Если WorldManifest доступен — используем семантический отчёт
+        // Иначе — fallback на старые MASMP векторы
+        if (window.WorldManifest && WorldManifest.getConfig().useManifest) {
+            worldContextString += WorldManifest.build(World, player.location, player);
+        } else {
+            // --- MASMP FALLBACK (legacy) ---
+            worldContextString = "\n=== MASMP STATE VECTORS ===\n";
+            let playerRegion = null;
+            for (let rId in World.regions) {
+                if (player.location.toLowerCase().includes(World.regions[rId].name.toLowerCase())) {
+                    playerRegion = rId; break;
+                }
             }
-        }
-        if (playerRegion) {
-            let r = World.regions[playerRegion];
-            let ownerFaction = World.factions[r.factionId];
-            let ownerId = ownerFaction ? ownerFaction.id : "none";
-            
-            worldContextString += `[SYS_VEC | LOC:${r.id} | SEA:${r.current_season} | WTH:${r.weather || "clear"} | FAC:${ownerId} | THR:${r.threat_level} | STAB:${r.stability} | OCC:${r.isOccupied}]\n`;
-            
-            const marketFallbackPrices = getGameplayRuntimeConfig().economy.market_fallback_prices || {};
-            let prices = `food:${Math.round(r.markets.bread ?? requireRuntimeNumber(marketFallbackPrices.bread, 'gameplay_runtime.economy.market_fallback_prices.bread'))},wood:${Math.round(r.markets.wood ?? requireRuntimeNumber(marketFallbackPrices.wood, 'gameplay_runtime.economy.market_fallback_prices.wood'))},ore:${Math.round(r.markets.iron_ore ?? requireRuntimeNumber(marketFallbackPrices.iron_ore, 'gameplay_runtime.economy.market_fallback_prices.iron_ore'))},weap:${Math.round(r.markets.weapons ?? requireRuntimeNumber(marketFallbackPrices.weapons, 'gameplay_runtime.economy.market_fallback_prices.weapons'))}`;
-            worldContextString += `[ECON_VEC | LOC:${r.id} | PRICES:${prices}]\n`;
-            
-            if (r.cityLayout && r.cityLayout.length > 0) {
-                let bldgs = r.cityLayout.filter(b => b.type !== 'empty' && b.type !== 'road').map(b => `${b.type}:${b.sublocation_id}`).join(',');
-                if (bldgs) worldContextString += `[CITY_VEC | LOC:${r.id} | BLDGS:${bldgs}]\n`;
+            if (playerRegion) {
+                let r = World.regions[playerRegion];
+                let ownerFaction = World.factions[r.factionId];
+                let ownerId = ownerFaction ? ownerFaction.id : "none";
+                
+                worldContextString += `[SYS_VEC | LOC:${r.id} | SEA:${r.current_season} | WTH:${r.weather || "clear"} | FAC:${ownerId} | THR:${r.threat_level} | STAB:${r.stability} | OCC:${r.isOccupied}]\n`;
+                
+                const marketFallbackPrices = getGameplayRuntimeConfig().economy.market_fallback_prices || {};
+                let prices = `food:${Math.round(r.markets.bread ?? requireRuntimeNumber(marketFallbackPrices.bread, 'gameplay_runtime.economy.market_fallback_prices.bread'))},wood:${Math.round(r.markets.wood ?? requireRuntimeNumber(marketFallbackPrices.wood, 'gameplay_runtime.economy.market_fallback_prices.wood'))},ore:${Math.round(r.markets.iron_ore ?? requireRuntimeNumber(marketFallbackPrices.iron_ore, 'gameplay_runtime.economy.market_fallback_prices.iron_ore'))},weap:${Math.round(r.markets.weapons ?? requireRuntimeNumber(marketFallbackPrices.weapons, 'gameplay_runtime.economy.market_fallback_prices.weapons'))}`;
+                worldContextString += `[ECON_VEC | LOC:${r.id} | PRICES:${prices}]\n`;
+                
+                if (r.cityLayout && r.cityLayout.length > 0) {
+                    let bldgs = r.cityLayout.filter(b => b.type !== 'empty' && b.type !== 'road').map(b => `${b.type}:${b.sublocation_id}`).join(',');
+                    if (bldgs) worldContextString += `[CITY_VEC | LOC:${r.id} | BLDGS:${bldgs}]\n`;
+                }
             }
-        }
 
-        let facVecs = [];
-        for (let fId in World.factions) {
-            let f = World.factions[fId];
-            let enemies = Object.keys(f.diplomacy).filter(t => f.diplomacy[t] === 'war').join(',');
-            facVecs.push(`[FAC_VEC | ID:${fId} | WEX:${f.warExhaustion} | WAR:${enemies || 'none'}]`);
-        }
-        worldContextString += facVecs.join('\n') + '\n';
-
-        let goodsStats = {};
-        for (let rId in World.regions) {
-            let r = World.regions[rId];
-            if (!r.vault_id) continue;
-            let pop = r.population || 0;
-            for (let good in ECONOMY_ITEMS) {
-                if (!goodsStats[good]) goodsStats[good] = { stock: 0, demand: 0 };
-                goodsStats[good].stock += countRealItems(r.vault_id, good);
-                goodsStats[good].demand += pop * 0.01;
+            let facVecs = [];
+            for (let fId in World.factions) {
+                let f = World.factions[fId];
+                let enemies = Object.keys(f.diplomacy).filter(t => f.diplomacy[t] === 'war').join(',');
+                facVecs.push(`[FAC_VEC | ID:${fId} | WEX:${f.warExhaustion} | WAR:${enemies || 'none'}]`);
             }
+            worldContextString += facVecs.join('\n') + '\n';
+
+            let goodsStats = {};
+            for (let rId in World.regions) {
+                let r = World.regions[rId];
+                if (!r.vault_id) continue;
+                let pop = r.population || 0;
+                for (let good in ECONOMY_ITEMS) {
+                    if (!goodsStats[good]) goodsStats[good] = { stock: 0, demand: 0 };
+                    goodsStats[good].stock += countRealItems(r.vault_id, good);
+                    goodsStats[good].demand += pop * 0.01;
+                }
+            }
+            let deficitArray = [];
+            for (let good in goodsStats) {
+                let ratio = goodsStats[good].demand / (goodsStats[good].stock + 1);
+                deficitArray.push({ good: good, ratio: ratio });
+            }
+            deficitArray.sort((a, b) => b.ratio - a.ratio);
+            let top3 = deficitArray.slice(0, 3).map(item => item.good).join(',');
+            worldContextString += `[GLOB_ECON_VEC | DEFICIT:${top3 || 'none'}]\n`;
+
+            let activeMonsters = (World.monsters || []).filter(m => m.health > 0).map(m => `${m.type}:${m.region_id}:L${m.level}`).join(',');
+            if (activeMonsters) worldContextString += `[MONSTER_VEC | ACT:${activeMonsters}]\n`;
+
+            let activeDisasters = (World.map && World.map.disasters) ? World.map.disasters.filter(d => d.days_active > 0).map(d => `${d.type}:${d.affected_regions.join('-')}`).join(',') : "";
+            if (activeDisasters) worldContextString += `[DISASTER_VEC | ACT:${activeDisasters}]\n`;
+
+            let recentNewsStr = "Нет свежих новостей.";
+            if (typeof World !== 'undefined' && World && World.relevant_news && World.relevant_news.length > 0) {
+                recentNewsStr = World.relevant_news.map(n => {
+                    let daysOld = Math.max(0, (World.current_day || 0) - (n.day || 0));
+                    return `[${daysOld}d ago, ${n.location}] ${parseLocString(n.text)}`;
+                }).join("\n");
+            }
+            worldContextString += `\n=== RELEVANT EVENTS ===\n${recentNewsStr}\n`;
+
+            worldContextString += "==================================================\n";
+            // --- END MASMP FALLBACK ---
         }
-        let deficitArray = [];
-        for (let good in goodsStats) {
-            let ratio = goodsStats[good].demand / (goodsStats[good].stock + 1);
-            deficitArray.push({ good: good, ratio: ratio });
-        }
-        deficitArray.sort((a, b) => b.ratio - a.ratio);
-        let top3 = deficitArray.slice(0, 3).map(item => item.good).join(',');
-        worldContextString += `[GLOB_ECON_VEC | DEFICIT:${top3 || 'none'}]\n`;
-
-        let activeMonsters = (World.monsters || []).filter(m => m.health > 0).map(m => `${m.type}:${m.region_id}:L${m.level}`).join(',');
-        if (activeMonsters) worldContextString += `[MONSTER_VEC | ACT:${activeMonsters}]\n`;
-
-        let activeDisasters = (World.map && World.map.disasters) ? World.map.disasters.filter(d => d.days_active > 0).map(d => `${d.type}:${d.affected_regions.join('-')}`).join(',') : "";
-        if (activeDisasters) worldContextString += `[DISASTER_VEC | ACT:${activeDisasters}]\n`;
-
-        let recentNewsStr = "Нет свежих новостей.";
-        if (typeof World !== 'undefined' && World && World.relevant_news && World.relevant_news.length > 0) {
-            recentNewsStr = World.relevant_news.map(n => {
-                let daysOld = Math.max(0, (World.current_day || 0) - (n.day || 0));
-                return `[${daysOld}d ago, ${n.location}] ${parseLocString(n.text)}`;
-            }).join("\n");
-        }
-        worldContextString += `\n=== RELEVANT EVENTS ===\n${recentNewsStr}\n`;
-
-        worldContextString += "==================================================\n";
     }
 
     if (typeof World !== 'undefined' && World && World.monsters && World.monsters.length > 0) {
@@ -8762,23 +8771,30 @@ async function finalizeWorldSetupAndStart() {
         // --- SMART CONTEXT FILTER (EPIC HISTORY) ---
     let dynamicContextStr = "";
     if (typeof World !== 'undefined' && World && startRegionId && World.regions[startRegionId]) {
-        let r = World.regions[startRegionId];
-        dynamicContextStr += `\n=== MASMP STATE VECTORS ===\n`;
-        let ownerFaction = World.factions[r.factionId];
-        let ownerId = ownerFaction ? ownerFaction.id : "none";
-        
-        dynamicContextStr += `[SYS_VEC | LOC:${r.id} | SEA:${r.current_season} | WTH:${r.weather || "clear"} | FAC:${ownerId} | THR:${r.threat_level} | STAB:${r.stability} | OCC:${r.isOccupied}]\n`;
-        
-        let activeMonsters = (World.monsters || []).filter(m => m.health > 0 && m.region_id === startRegionId);
-        if (activeMonsters.length > 0) {
-            dynamicContextStr += `[MONSTER_VEC | ACT:${activeMonsters.map(m => `${m.type}:${m.region_id}:L${m.level}`).join(',')}]\n`;
-            dynamicContextStr += `\n[КРИТИЧЕСКАЯ УГРОЗА В РЕГИОНЕ]: ТЫ КАТЕГОРИЧЕСКИ ОБЯЗАН сделать монстра главной темой стартового описания (тень над городом, рев вдалеке, разрушения, паника жителей)!\n`;
-        }
-        
-        let activeDisasters = (World.map && World.map.disasters) ? World.map.disasters.filter(d => d.days_active > 0 && d.affected_regions.includes(startRegionId)) : [];
-        if (activeDisasters.length > 0) {
-            dynamicContextStr += `[DISASTER_VEC | ACT:${activeDisasters.map(d => `${d.type}:${d.affected_regions.join('-')}`).join(',')}]\n`;
-            dynamicContextStr += `\n[АКТИВНОЕ БЕДСТВИЕ В РЕГИОНЕ]: ТЫ ОБЯЗАН описать это в стартовом тексте!\n`;
+        // === CONFLUENCE PROTOCOL v2: World Manifest (Initial) ===
+        if (window.WorldManifest && WorldManifest.getConfig().useManifest) {
+            dynamicContextStr += WorldManifest.buildInitial(World, startRegionId);
+        } else {
+            // --- MASMP FALLBACK (legacy initial) ---
+            let r = World.regions[startRegionId];
+            dynamicContextStr += `\n=== MASMP STATE VECTORS ===\n`;
+            let ownerFaction = World.factions[r.factionId];
+            let ownerId = ownerFaction ? ownerFaction.id : "none";
+            
+            dynamicContextStr += `[SYS_VEC | LOC:${r.id} | SEA:${r.current_season} | WTH:${r.weather || "clear"} | FAC:${ownerId} | THR:${r.threat_level} | STAB:${r.stability} | OCC:${r.isOccupied}]\n`;
+            
+            let activeMonsters = (World.monsters || []).filter(m => m.health > 0 && m.region_id === startRegionId);
+            if (activeMonsters.length > 0) {
+                dynamicContextStr += `[MONSTER_VEC | ACT:${activeMonsters.map(m => `${m.type}:${m.region_id}:L${m.level}`).join(',')}]\n`;
+                dynamicContextStr += `\n[КРИТИЧЕСКАЯ УГРОЗА В РЕГИОНЕ]: ТЫ КАТЕГОРИЧЕСКИ ОБЯЗАН сделать монстра главной темой стартового описания (тень над городом, рев вдалеке, разрушения, паника жителей)!\n`;
+            }
+            
+            let activeDisasters = (World.map && World.map.disasters) ? World.map.disasters.filter(d => d.days_active > 0 && d.affected_regions.includes(startRegionId)) : [];
+            if (activeDisasters.length > 0) {
+                dynamicContextStr += `[DISASTER_VEC | ACT:${activeDisasters.map(d => `${d.type}:${d.affected_regions.join('-')}`).join(',')}]\n`;
+                dynamicContextStr += `\n[АКТИВНОЕ БЕДСТВИЕ В РЕГИОНЕ]: ТЫ ОБЯЗАН описать это в стартовом тексте!\n`;
+            }
+            // --- END MASMP FALLBACK ---
         }
     }
 
