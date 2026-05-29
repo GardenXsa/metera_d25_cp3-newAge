@@ -1564,6 +1564,11 @@ async function executeCommand(command, args) {
     console.log("Выполнение команды (ASYNC):", command, args);
     let feedback = null;
 
+    // --- GRAIL: Регистрация команды до выполнения ---
+    if (window.GRAIL) {
+        // Пока не выполняем — просто пушим в очередь _turnState.gmCommands
+    }
+
     // Гарантируем, что рюкзак и экипировка существуют перед выполнением команд
     const inventoryCommands = ['addItem', 'removeItem', 'equipItem', 'unequipItem', 'moveItem', 'updateStat', 'createContainer', 'destroyContainer', 'useItem', 'openContainer', 'trade', 'sell'];
     if (inventoryCommands.includes(command)) {
@@ -4793,7 +4798,8 @@ function buildFullPlayerSnapshot() {
   "quests": ${JSON.stringify(Object.values(player.quests || {}).filter(q => q.status === 'active'))},
   "gm_notes": ${JSON.stringify(player.gmNotes)}
 }
-${worldContextString}`;
+${worldContextString}
+${window.GRAIL ? GRAIL.buildGrailContextBlock(player) : ''}`;
 }
 
 
@@ -13135,6 +13141,11 @@ async function sendApiRequest(promptTextForAI, isInitialPrompt = false, isDiceRo
     if (userInput) userInput.disabled = true;
     if (sendButton) sendButton.disabled = true;
 
+    // --- GRAIL: Начало хода — снимок состояния ДО ---
+    if (window.GRAIL && player && !isSummarizationRequest) {
+        GRAIL.onTurnStart(player);
+    }
+
     const oldRetryBtn = document.getElementById('retry-request-btn');
     if (oldRetryBtn) oldRetryBtn.remove();
 
@@ -13233,6 +13244,12 @@ async function sendApiRequest(promptTextForAI, isInitialPrompt = false, isDiceRo
             }
             player.gmErrors = currentErrors;
 
+            // --- GRAIL: Конец хода — сверка (initial prompt) ---
+            if (window.GRAIL && player) {
+                const grailResult = GRAIL.onTurnEnd(result.narrative || '', player);
+                if (grailResult.corrections) player.gmErrors.push(grailResult.corrections);
+            }
+
             updateCharacterSheet();
             updateMapDisplay();
             updateInventoryDisplay();
@@ -13298,6 +13315,17 @@ async function sendApiRequest(promptTextForAI, isInitialPrompt = false, isDiceRo
                 }
             }
             player.gmErrors = currentErrors;
+
+            // --- GRAIL: Конец хода — сверка нарратива с состоянием ---
+            if (window.GRAIL && player) {
+                const grailResult = GRAIL.onTurnEnd(narrativeText, player);
+                if (grailResult.corrections && grailResult.corrections.length > 0) {
+                    player.gmErrors.push(grailResult.corrections);
+                }
+                if (grailResult.verificationResult?.violations?.length > 0) {
+                    console.warn('[GRAIL] Нарративные нарушения:', grailResult.verificationResult.violations);
+                }
+            }
 
             updateCharacterSheet();
             updateMapDisplay();
@@ -13661,8 +13689,19 @@ function buildDynamicContext(expiredEffects) {
     const expiredText = expiredEffects && expiredEffects.length > 0 ? `ВНИМАНИЕ: Истекли эффекты: ${expiredEffects.join(', ')}` : "";
     const errorText = (player && player.gmErrors && player.gmErrors.length > 0) ? `\n\n[КРИТИЧЕСКАЯ СИСТЕМНАЯ ОШИБКА ПРОШЛОГО ХОДА]\nТы допустил ошибки в JSON-командах в прошлом ответе:\n${player.gmErrors.join('\n')}\nТВОЙ АБСОЛЮТНЫЙ ПРИОРИТЕТ В ЭТОМ ХОДУ: ИСПРАВИТЬ ЭТИ ОШИБКИ! Вызови правильные команды с верными аргументами, прежде чем продолжать сюжет!` : "";
     const ghostText = (player && player.statusEffects && player.statusEffects['ghost_form']) ? "\n\n[SYSTEM CRITICAL: ИГРОК МЕРТВ (ПРИЗРАК В ТЕНИ). Он находится в изнанке мира. Он не может взаимодействовать с живыми, брать физические предметы или получать физический урон. Он должен найти Эфирный Разлом (Aether Rift). Когда он найдет его и шагнет туда, ТЫ ОБЯЗАН ИСПОЛЬЗОВАТЬ КОМАНДУ removeStatusEffect для 'ghost_form', выдать квест 'completed' и setLocation для возвращения его в реальный мир!]" : "";
+
+    // --- GRAIL: Нарративные подсказки из истории команд ---
+    let grailHints = '';
+    if (window.GRAIL) {
+        const recentHints = GRAIL.getCommandHistory().slice(-5)
+            .filter(h => h.narrativeHint)
+            .map(h => h.narrativeHint);
+        if (recentHints.length > 0) {
+            grailHints = `\n\n=== GRAIL: НАРРАТИВНЫЕ ПОДСКАЗКИ ===\n${recentHints.join('\n')}\n=== КОНЕЦ ПОДСКАЗОК ===\n`;
+        }
+    }
     
-    return `======================================================================\n=== ДИНАМИЧЕСКИЕ ДАННЫЕ (ИЗМЕНЯЮТСЯ КАЖДЫЙ ХОД) ===\n======================================================================\n${echoMemoryString}\n${snapshot}\n${expiredText}\n${errorText}\n${ghostText}\n`;
+    return `======================================================================\n=== ДИНАМИЧЕСКИЕ ДАННЫЕ (ИЗМЕНЯЮТСЯ КАЖДЫЙ ХОД) ===\n======================================================================\n${echoMemoryString}\n${snapshot}\n${expiredText}\n${errorText}\n${ghostText}${grailHints}\n`;
 }
 
 function getPromptRuntimeConfig() {
@@ -16623,6 +16662,16 @@ case 'setEntityBinding':
         feedback = t('gameInterface.commandFeedback.errorCommandGeneric', { command: command, args: error.message });
         console.error(`Критическая ошибка при выполнении команды ${command}:`, error, args);
     }
+
+    // --- GRAIL: Обогащение результата команды + пуш события ---
+    if (window.GRAIL) {
+        const enriched = GRAIL.onCommandExecuted(command, args, feedback);
+        if (enriched.narrativeHint && typeof addCalculationMessage === 'function') {
+            // Нарративная подсказка логируется для отладки, но не показывается игроку
+            // Будет использована в следующем контексте ГМ
+        }
+    }
+
     return feedback;
 }
 
