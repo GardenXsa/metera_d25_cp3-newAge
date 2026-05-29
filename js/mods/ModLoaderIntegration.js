@@ -391,7 +391,8 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         const activeModIds = Object.keys(window.ModAPI.mods);
         const initResult = await window.electronAPI.nexusInit(true, activeModIds);
         if (initResult.status !== 'ok') {
-            throw new Error(`Nexus Engine init failed: ${initResult.message}`);
+            const msg = typeof initResult.message === 'string' ? initResult.message : JSON.stringify(initResult.message);
+            throw new Error(`Nexus Engine init failed: ${msg}`);
         }
 
         console.log('[ModLoader] Ядро запущено. Загрузка базы данных...');
@@ -399,7 +400,8 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         const loadDbResult = await window.electronAPI.nexusLoadDatabase(databaseString);
 
         if (loadDbResult.status !== 'ok') {
-            throw new Error(`Failed to load database into engine: ${loadDbResult.message}`);
+            const msg = typeof loadDbResult.message === 'string' ? loadDbResult.message : JSON.stringify(loadDbResult.message);
+            throw new Error(`Failed to load database into engine: ${msg}`);
         }
 
         window.isSimulatorInitialized = true;
@@ -413,7 +415,10 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         }
         
         const buildResult = await window.electronAPI.nexusBuildWorld(player.id, player.era, initialAgents, globalLocations, startDay);
-        if (buildResult.status !== 'ok') throw new Error(`World build failed: ${buildResult.message}`);
+        if (buildResult.status !== 'ok') {
+            const msg = typeof buildResult.message === 'string' ? buildResult.message : JSON.stringify(buildResult.message);
+            throw new Error(`World build failed: ${msg}`);
+        }
         
         let newWorld = buildResult.world;
         if (newWorld) {

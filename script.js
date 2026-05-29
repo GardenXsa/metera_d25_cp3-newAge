@@ -1564,6 +1564,11 @@ async function executeCommand(command, args) {
     console.log("Выполнение команды (ASYNC):", command, args);
     let feedback = null;
 
+    // --- GRAIL: Регистрация команды до выполнения ---
+    if (window.GRAIL) {
+        // Пока не выполняем — просто пушим в очередь _turnState.gmCommands
+    }
+
     // Гарантируем, что рюкзак и экипировка существуют перед выполнением команд
     const inventoryCommands = ['addItem', 'removeItem', 'equipItem', 'unequipItem', 'moveItem', 'updateStat', 'createContainer', 'destroyContainer', 'useItem', 'openContainer', 'trade', 'sell'];
     if (inventoryCommands.includes(command)) {
@@ -3516,7 +3521,7 @@ function updateWorldSimulation(pulses) {
                             if (sendButton) sendButton.disabled = false;
                         }
                     } else {
-                        console.error("[Nexus] Ошибка симуляции:", res);
+                        console.error("[Nexus] Ошибка симуляции:", typeof res === 'string' ? res : JSON.stringify(res));
                     }
                 }).catch(err => {
                     console.error("[Nexus] Ошибка вызова nexusSimulate:", err);
@@ -3701,6 +3706,11 @@ async function runWorldSimulationTick() {
         updateTradeJournalDisplay();
         updatePortPanel();
         if (typeof updateHoldingsDisplay === 'function') updateHoldingsDisplay();
+
+        // === CONFLUENCE: Обновить кэш трендов для Predictive Feed ===
+        if (window.PredictiveFeed && typeof World !== 'undefined') {
+            PredictiveFeed.updateCache(World);
+        }
     }
 }
 // ======================================================================
@@ -4648,74 +4658,83 @@ function buildFullPlayerSnapshot() {
         worldContextString += `\n=== КАРТА МИРА (ДОСТУПНЫЕ ЛОКАЦИИ И ИХ ID) ===\n${mapCoordsString}\n==================================================\n`;
 
             if (World) {
-        worldContextString = "\n=== MASMP STATE VECTORS ===\n";
-        let playerRegion = null;
-        for (let rId in World.regions) {
-            if (player.location.toLowerCase().includes(World.regions[rId].name.toLowerCase())) {
-                playerRegion = rId; break;
+        // === CONFLUENCE PROTOCOL v2: World Manifest ===
+        // Если WorldManifest доступен — используем семантический отчёт
+        // Иначе — fallback на старые MASMP векторы
+        if (window.WorldManifest && WorldManifest.getConfig().useManifest) {
+            worldContextString += WorldManifest.build(World, player.location, player);
+        } else {
+            // --- MASMP FALLBACK (legacy) ---
+            worldContextString = "\n=== MASMP STATE VECTORS ===\n";
+            let playerRegion = null;
+            for (let rId in World.regions) {
+                if (player.location.toLowerCase().includes(World.regions[rId].name.toLowerCase())) {
+                    playerRegion = rId; break;
+                }
             }
-        }
-        if (playerRegion) {
-            let r = World.regions[playerRegion];
-            let ownerFaction = World.factions[r.factionId];
-            let ownerId = ownerFaction ? ownerFaction.id : "none";
-            
-            worldContextString += `[SYS_VEC | LOC:${r.id} | SEA:${r.current_season} | WTH:${r.weather || "clear"} | FAC:${ownerId} | THR:${r.threat_level} | STAB:${r.stability} | OCC:${r.isOccupied}]\n`;
-            
-            const marketFallbackPrices = getGameplayRuntimeConfig().economy.market_fallback_prices || {};
-            let prices = `food:${Math.round(r.markets.bread ?? requireRuntimeNumber(marketFallbackPrices.bread, 'gameplay_runtime.economy.market_fallback_prices.bread'))},wood:${Math.round(r.markets.wood ?? requireRuntimeNumber(marketFallbackPrices.wood, 'gameplay_runtime.economy.market_fallback_prices.wood'))},ore:${Math.round(r.markets.iron_ore ?? requireRuntimeNumber(marketFallbackPrices.iron_ore, 'gameplay_runtime.economy.market_fallback_prices.iron_ore'))},weap:${Math.round(r.markets.weapons ?? requireRuntimeNumber(marketFallbackPrices.weapons, 'gameplay_runtime.economy.market_fallback_prices.weapons'))}`;
-            worldContextString += `[ECON_VEC | LOC:${r.id} | PRICES:${prices}]\n`;
-            
-            if (r.cityLayout && r.cityLayout.length > 0) {
-                let bldgs = r.cityLayout.filter(b => b.type !== 'empty' && b.type !== 'road').map(b => `${b.type}:${b.sublocation_id}`).join(',');
-                if (bldgs) worldContextString += `[CITY_VEC | LOC:${r.id} | BLDGS:${bldgs}]\n`;
+            if (playerRegion) {
+                let r = World.regions[playerRegion];
+                let ownerFaction = World.factions[r.factionId];
+                let ownerId = ownerFaction ? ownerFaction.id : "none";
+                
+                worldContextString += `[SYS_VEC | LOC:${r.id} | SEA:${r.current_season} | WTH:${r.weather || "clear"} | FAC:${ownerId} | THR:${r.threat_level} | STAB:${r.stability} | OCC:${r.isOccupied}]\n`;
+                
+                const marketFallbackPrices = getGameplayRuntimeConfig().economy.market_fallback_prices || {};
+                let prices = `food:${Math.round(r.markets.bread ?? requireRuntimeNumber(marketFallbackPrices.bread, 'gameplay_runtime.economy.market_fallback_prices.bread'))},wood:${Math.round(r.markets.wood ?? requireRuntimeNumber(marketFallbackPrices.wood, 'gameplay_runtime.economy.market_fallback_prices.wood'))},ore:${Math.round(r.markets.iron_ore ?? requireRuntimeNumber(marketFallbackPrices.iron_ore, 'gameplay_runtime.economy.market_fallback_prices.iron_ore'))},weap:${Math.round(r.markets.weapons ?? requireRuntimeNumber(marketFallbackPrices.weapons, 'gameplay_runtime.economy.market_fallback_prices.weapons'))}`;
+                worldContextString += `[ECON_VEC | LOC:${r.id} | PRICES:${prices}]\n`;
+                
+                if (r.cityLayout && r.cityLayout.length > 0) {
+                    let bldgs = r.cityLayout.filter(b => b.type !== 'empty' && b.type !== 'road').map(b => `${b.type}:${b.sublocation_id}`).join(',');
+                    if (bldgs) worldContextString += `[CITY_VEC | LOC:${r.id} | BLDGS:${bldgs}]\n`;
+                }
             }
-        }
 
-        let facVecs = [];
-        for (let fId in World.factions) {
-            let f = World.factions[fId];
-            let enemies = Object.keys(f.diplomacy).filter(t => f.diplomacy[t] === 'war').join(',');
-            facVecs.push(`[FAC_VEC | ID:${fId} | WEX:${f.warExhaustion} | WAR:${enemies || 'none'}]`);
-        }
-        worldContextString += facVecs.join('\n') + '\n';
-
-        let goodsStats = {};
-        for (let rId in World.regions) {
-            let r = World.regions[rId];
-            if (!r.vault_id) continue;
-            let pop = r.population || 0;
-            for (let good in ECONOMY_ITEMS) {
-                if (!goodsStats[good]) goodsStats[good] = { stock: 0, demand: 0 };
-                goodsStats[good].stock += countRealItems(r.vault_id, good);
-                goodsStats[good].demand += pop * 0.01;
+            let facVecs = [];
+            for (let fId in World.factions) {
+                let f = World.factions[fId];
+                let enemies = Object.keys(f.diplomacy).filter(t => f.diplomacy[t] === 'war').join(',');
+                facVecs.push(`[FAC_VEC | ID:${fId} | WEX:${f.warExhaustion} | WAR:${enemies || 'none'}]`);
             }
+            worldContextString += facVecs.join('\n') + '\n';
+
+            let goodsStats = {};
+            for (let rId in World.regions) {
+                let r = World.regions[rId];
+                if (!r.vault_id) continue;
+                let pop = r.population || 0;
+                for (let good in ECONOMY_ITEMS) {
+                    if (!goodsStats[good]) goodsStats[good] = { stock: 0, demand: 0 };
+                    goodsStats[good].stock += countRealItems(r.vault_id, good);
+                    goodsStats[good].demand += pop * 0.01;
+                }
+            }
+            let deficitArray = [];
+            for (let good in goodsStats) {
+                let ratio = goodsStats[good].demand / (goodsStats[good].stock + 1);
+                deficitArray.push({ good: good, ratio: ratio });
+            }
+            deficitArray.sort((a, b) => b.ratio - a.ratio);
+            let top3 = deficitArray.slice(0, 3).map(item => item.good).join(',');
+            worldContextString += `[GLOB_ECON_VEC | DEFICIT:${top3 || 'none'}]\n`;
+
+            let activeMonsters = (World.monsters || []).filter(m => m.health > 0).map(m => `${m.type}:${m.region_id}:L${m.level}`).join(',');
+            if (activeMonsters) worldContextString += `[MONSTER_VEC | ACT:${activeMonsters}]\n`;
+
+            let activeDisasters = (World.map && World.map.disasters) ? World.map.disasters.filter(d => d.days_active > 0).map(d => `${d.type}:${d.affected_regions.join('-')}`).join(',') : "";
+            if (activeDisasters) worldContextString += `[DISASTER_VEC | ACT:${activeDisasters}]\n`;
+
+            let recentNewsStr = "Нет свежих новостей.";
+            if (typeof World !== 'undefined' && World && World.relevant_news && World.relevant_news.length > 0) {
+                recentNewsStr = World.relevant_news.map(n => {
+                    let daysOld = Math.max(0, (World.current_day || 0) - (n.day || 0));
+                    return `[${daysOld}d ago, ${n.location}] ${parseLocString(n.text)}`;
+                }).join("\n");
+            }
+            worldContextString += `\n=== RELEVANT EVENTS ===\n${recentNewsStr}\n`;
+
+            worldContextString += "==================================================\n";
+            // --- END MASMP FALLBACK ---
         }
-        let deficitArray = [];
-        for (let good in goodsStats) {
-            let ratio = goodsStats[good].demand / (goodsStats[good].stock + 1);
-            deficitArray.push({ good: good, ratio: ratio });
-        }
-        deficitArray.sort((a, b) => b.ratio - a.ratio);
-        let top3 = deficitArray.slice(0, 3).map(item => item.good).join(',');
-        worldContextString += `[GLOB_ECON_VEC | DEFICIT:${top3 || 'none'}]\n`;
-
-        let activeMonsters = (World.monsters || []).filter(m => m.health > 0).map(m => `${m.type}:${m.region_id}:L${m.level}`).join(',');
-        if (activeMonsters) worldContextString += `[MONSTER_VEC | ACT:${activeMonsters}]\n`;
-
-        let activeDisasters = (World.map && World.map.disasters) ? World.map.disasters.filter(d => d.days_active > 0).map(d => `${d.type}:${d.affected_regions.join('-')}`).join(',') : "";
-        if (activeDisasters) worldContextString += `[DISASTER_VEC | ACT:${activeDisasters}]\n`;
-
-        let recentNewsStr = "Нет свежих новостей.";
-        if (typeof World !== 'undefined' && World && World.relevant_news && World.relevant_news.length > 0) {
-            recentNewsStr = World.relevant_news.map(n => {
-                let daysOld = Math.max(0, (World.current_day || 0) - (n.day || 0));
-                return `[${daysOld}d ago, ${n.location}] ${parseLocString(n.text)}`;
-            }).join("\n");
-        }
-        worldContextString += `\n=== RELEVANT EVENTS ===\n${recentNewsStr}\n`;
-
-        worldContextString += "==================================================\n";
     }
 
     if (typeof World !== 'undefined' && World && World.monsters && World.monsters.length > 0) {
@@ -4793,7 +4812,8 @@ function buildFullPlayerSnapshot() {
   "quests": ${JSON.stringify(Object.values(player.quests || {}).filter(q => q.status === 'active'))},
   "gm_notes": ${JSON.stringify(player.gmNotes)}
 }
-${worldContextString}`;
+${worldContextString}
+${window.GRAIL ? GRAIL.buildGrailContextBlock(player) : ''}`;
 }
 
 
@@ -8052,6 +8072,9 @@ function startNewGameSetup() {
         showCustomAlert(t('error.apiKeyNeededForProvider', { provider: providerName }, `Для начала игры требуется API ключ для провайдера ${providerName}. Пожалуйста, введите его в настройках.`));
         settingsReturnScreen = 'main-menu'; // Убедимся, что вернемся в главное меню
         setActiveScreen('settings-menu');
+        // Автоматически переключаемся на вкладку AI & API, чтобы пользователь увидел провайдер
+        const aiTabBtn = document.querySelector('[data-tab="settings-ai"]');
+        if (aiTabBtn) aiTabBtn.click();
         return;
     }
     // --- [КОНЕЦ ИСПРАВЛЕНИЯ] ---
@@ -8328,6 +8351,7 @@ async function finalizeCharacterCreation() {
             description: charDescInput.value.trim(),
             generateBackstory: generateBackstory,
             enhanceBackstory: enhanceBackstory,
+            _backstoryLocked: !generateBackstory && !enhanceBackstory,
             stats: { ...currentCreationStats },
             availablePoints: availableStatPoints
         }));
@@ -8342,6 +8366,7 @@ async function finalizeCharacterCreation() {
             description: charDescInput.value.trim(),
             generateBackstory: generateBackstory,
             enhanceBackstory: enhanceBackstory,
+            _backstoryLocked: !generateBackstory && !enhanceBackstory, // Блокировка перезаписи предыстории ИИ
             stats: {
                 ...currentCreationStats,
                 level: 1,
@@ -8684,7 +8709,9 @@ async function finalizeWorldSetupAndStart() {
                 if (loadRes.status === 'ok') {
                     console.log('[Nexus] Файловая синхронизация мира завершена:', loadRes.message);
                 } else {
-                    console.warn('[Nexus] loadWorldFile не удался:', loadRes.message || loadRes.error || 'unknown error');
+                    const errVal = loadRes.message || loadRes.error || 'unknown error';
+                    const errStr = typeof errVal === 'string' ? errVal : JSON.stringify(errVal);
+                    console.warn('[Nexus] loadWorldFile не удался:', errStr);
                 }
             } else {
                 console.warn('[Nexus] Не удалось записать временный файл:', writeRes.message);
@@ -8754,23 +8781,30 @@ async function finalizeWorldSetupAndStart() {
         // --- SMART CONTEXT FILTER (EPIC HISTORY) ---
     let dynamicContextStr = "";
     if (typeof World !== 'undefined' && World && startRegionId && World.regions[startRegionId]) {
-        let r = World.regions[startRegionId];
-        dynamicContextStr += `\n=== MASMP STATE VECTORS ===\n`;
-        let ownerFaction = World.factions[r.factionId];
-        let ownerId = ownerFaction ? ownerFaction.id : "none";
-        
-        dynamicContextStr += `[SYS_VEC | LOC:${r.id} | SEA:${r.current_season} | WTH:${r.weather || "clear"} | FAC:${ownerId} | THR:${r.threat_level} | STAB:${r.stability} | OCC:${r.isOccupied}]\n`;
-        
-        let activeMonsters = (World.monsters || []).filter(m => m.health > 0 && m.region_id === startRegionId);
-        if (activeMonsters.length > 0) {
-            dynamicContextStr += `[MONSTER_VEC | ACT:${activeMonsters.map(m => `${m.type}:${m.region_id}:L${m.level}`).join(',')}]\n`;
-            dynamicContextStr += `\n[КРИТИЧЕСКАЯ УГРОЗА В РЕГИОНЕ]: ТЫ КАТЕГОРИЧЕСКИ ОБЯЗАН сделать монстра главной темой стартового описания (тень над городом, рев вдалеке, разрушения, паника жителей)!\n`;
-        }
-        
-        let activeDisasters = (World.map && World.map.disasters) ? World.map.disasters.filter(d => d.days_active > 0 && d.affected_regions.includes(startRegionId)) : [];
-        if (activeDisasters.length > 0) {
-            dynamicContextStr += `[DISASTER_VEC | ACT:${activeDisasters.map(d => `${d.type}:${d.affected_regions.join('-')}`).join(',')}]\n`;
-            dynamicContextStr += `\n[АКТИВНОЕ БЕДСТВИЕ В РЕГИОНЕ]: ТЫ ОБЯЗАН описать это в стартовом тексте!\n`;
+        // === CONFLUENCE PROTOCOL v2: World Manifest (Initial) ===
+        if (window.WorldManifest && WorldManifest.getConfig().useManifest) {
+            dynamicContextStr += WorldManifest.buildInitial(World, startRegionId);
+        } else {
+            // --- MASMP FALLBACK (legacy initial) ---
+            let r = World.regions[startRegionId];
+            dynamicContextStr += `\n=== MASMP STATE VECTORS ===\n`;
+            let ownerFaction = World.factions[r.factionId];
+            let ownerId = ownerFaction ? ownerFaction.id : "none";
+            
+            dynamicContextStr += `[SYS_VEC | LOC:${r.id} | SEA:${r.current_season} | WTH:${r.weather || "clear"} | FAC:${ownerId} | THR:${r.threat_level} | STAB:${r.stability} | OCC:${r.isOccupied}]\n`;
+            
+            let activeMonsters = (World.monsters || []).filter(m => m.health > 0 && m.region_id === startRegionId);
+            if (activeMonsters.length > 0) {
+                dynamicContextStr += `[MONSTER_VEC | ACT:${activeMonsters.map(m => `${m.type}:${m.region_id}:L${m.level}`).join(',')}]\n`;
+                dynamicContextStr += `\n[КРИТИЧЕСКАЯ УГРОЗА В РЕГИОНЕ]: ТЫ КАТЕГОРИЧЕСКИ ОБЯЗАН сделать монстра главной темой стартового описания (тень над городом, рев вдалеке, разрушения, паника жителей)!\n`;
+            }
+            
+            let activeDisasters = (World.map && World.map.disasters) ? World.map.disasters.filter(d => d.days_active > 0 && d.affected_regions.includes(startRegionId)) : [];
+            if (activeDisasters.length > 0) {
+                dynamicContextStr += `[DISASTER_VEC | ACT:${activeDisasters.map(d => `${d.type}:${d.affected_regions.join('-')}`).join(',')}]\n`;
+                dynamicContextStr += `\n[АКТИВНОЕ БЕДСТВИЕ В РЕГИОНЕ]: ТЫ ОБЯЗАН описать это в стартовом тексте!\n`;
+            }
+            // --- END MASMP FALLBACK ---
         }
     }
 
@@ -9492,7 +9526,7 @@ function levelUp() {
 
 function handleStatIncrease(event) {
     if (!player || player.stats.statPoints <= 0) return;
-    const statToIncrease = event.target.getAttribute('data-stat');
+    const statToIncrease = event.currentTarget.getAttribute('data-stat');
     const validStats = ['str', 'dex', 'int', 'con', 'cha', 'res'];
     if (!statToIncrease || !validStats.includes(statToIncrease)) return;
 
@@ -13133,6 +13167,11 @@ async function sendApiRequest(promptTextForAI, isInitialPrompt = false, isDiceRo
     if (userInput) userInput.disabled = true;
     if (sendButton) sendButton.disabled = true;
 
+    // --- GRAIL: Начало хода — снимок состояния ДО ---
+    if (window.GRAIL && player && !isSummarizationRequest) {
+        GRAIL.onTurnStart(player);
+    }
+
     const oldRetryBtn = document.getElementById('retry-request-btn');
     if (oldRetryBtn) oldRetryBtn.remove();
 
@@ -13231,6 +13270,35 @@ async function sendApiRequest(promptTextForAI, isInitialPrompt = false, isDiceRo
             }
             player.gmErrors = currentErrors;
 
+            // --- GRAIL: Конец хода — сверка (initial prompt) ---
+            if (window.GRAIL && player) {
+                const grailResult = GRAIL.onTurnEnd(result.narrative || '', player);
+                if (grailResult.corrections) player.gmErrors.push(grailResult.corrections);
+            }
+
+            // === CONFLUENCE: Reconciliation Buffer ===
+            if (window.ReconciliationBuffer && ReconciliationBuffer.getConfig().enabled) {
+                // 1. Detect orphaned narrative
+                const orphaned = ReconciliationBuffer.detectOrphaned(
+                    result.narrative || '',
+                    allPendingActions || []
+                );
+                // 2. Auto-correct safe orphaned items
+                const autoCorrected = ReconciliationBuffer.autoCorrect(orphaned);
+                // 3. Detect unacknowledged sim events (against previous narrative)
+                const prevNarrative = conversationHistory && conversationHistory.length > 0
+                    ? (conversationHistory[conversationHistory.length - 1]?.parts?.[0]?.text || '')
+                    : '';
+                // Build current manifest for comparison (or let ReconciliationBuffer extract from World)
+                const currentManifest = (window.WorldManifest && typeof World !== 'undefined')
+                    ? WorldManifest.build(World, player?.location || '')
+                    : '';
+                ReconciliationBuffer.detectUnacknowledged(
+                    currentManifest,
+                    prevNarrative
+                );
+            }
+
             updateCharacterSheet();
             updateMapDisplay();
             updateInventoryDisplay();
@@ -13296,6 +13364,17 @@ async function sendApiRequest(promptTextForAI, isInitialPrompt = false, isDiceRo
                 }
             }
             player.gmErrors = currentErrors;
+
+            // --- GRAIL: Конец хода — сверка нарратива с состоянием ---
+            if (window.GRAIL && player) {
+                const grailResult = GRAIL.onTurnEnd(narrativeText, player);
+                if (grailResult.corrections && grailResult.corrections.length > 0) {
+                    player.gmErrors.push(grailResult.corrections);
+                }
+                if (grailResult.verificationResult?.violations?.length > 0) {
+                    console.warn('[GRAIL] Нарративные нарушения:', grailResult.verificationResult.violations);
+                }
+            }
 
             updateCharacterSheet();
             updateMapDisplay();
@@ -13659,8 +13738,41 @@ function buildDynamicContext(expiredEffects) {
     const expiredText = expiredEffects && expiredEffects.length > 0 ? `ВНИМАНИЕ: Истекли эффекты: ${expiredEffects.join(', ')}` : "";
     const errorText = (player && player.gmErrors && player.gmErrors.length > 0) ? `\n\n[КРИТИЧЕСКАЯ СИСТЕМНАЯ ОШИБКА ПРОШЛОГО ХОДА]\nТы допустил ошибки в JSON-командах в прошлом ответе:\n${player.gmErrors.join('\n')}\nТВОЙ АБСОЛЮТНЫЙ ПРИОРИТЕТ В ЭТОМ ХОДУ: ИСПРАВИТЬ ЭТИ ОШИБКИ! Вызови правильные команды с верными аргументами, прежде чем продолжать сюжет!` : "";
     const ghostText = (player && player.statusEffects && player.statusEffects['ghost_form']) ? "\n\n[SYSTEM CRITICAL: ИГРОК МЕРТВ (ПРИЗРАК В ТЕНИ). Он находится в изнанке мира. Он не может взаимодействовать с живыми, брать физические предметы или получать физический урон. Он должен найти Эфирный Разлом (Aether Rift). Когда он найдет его и шагнет туда, ТЫ ОБЯЗАН ИСПОЛЬЗОВАТЬ КОМАНДУ removeStatusEffect для 'ghost_form', выдать квест 'completed' и setLocation для возвращения его в реальный мир!]" : "";
+
+    // --- GRAIL: Нарративные подсказки из истории команд ---
+    let grailHints = '';
+    if (window.GRAIL) {
+        const recentHints = GRAIL.getCommandHistory().slice(-5)
+            .filter(h => h.narrativeHint)
+            .map(h => h.narrativeHint);
+        if (recentHints.length > 0) {
+            grailHints = `\n\n=== GRAIL: НАРРАТИВНЫЕ ПОДСКАЗКИ ===\n${recentHints.join('\n')}\n=== КОНЕЦ ПОДСКАЗОК ===\n`;
+        }
+    }
+
+    // --- CONFLUENCE: Predictive Narrative Feed ---
+    let predictiveFeed = '';
+    if (window.PredictiveFeed && PredictiveFeed.getConfig().enabled) {
+        const feedStr = PredictiveFeed.build(World, player?.location || '');
+        if (feedStr) predictiveFeed = '\n' + feedStr;
+    }
+
+    // --- CONFLUENCE: Command Consequence Feedback ---
+    let cmdFeedback = '';
+    if (window.CommandFeedback && CommandFeedback.getConfig().enabled) {
+        const fbStr = CommandFeedback.flushForContext();
+        if (fbStr) cmdFeedback = fbStr;
+    }
+
+    // --- CONFLUENCE: Reconciliation Buffer ---
+    let reconBlock = '';
+    if (window.ReconciliationBuffer && ReconciliationBuffer.getConfig().enabled) {
+        const reconStr = ReconciliationBuffer.buildContextBlock();
+        if (reconStr) reconBlock = reconStr;
+        ReconciliationBuffer.flush();
+    }
     
-    return `======================================================================\n=== ДИНАМИЧЕСКИЕ ДАННЫЕ (ИЗМЕНЯЮТСЯ КАЖДЫЙ ХОД) ===\n======================================================================\n${echoMemoryString}\n${snapshot}\n${expiredText}\n${errorText}\n${ghostText}\n`;
+    return `======================================================================\n=== ДИНАМИЧЕСКИЕ ДАННЫЕ (ИЗМЕНЯЮТСЯ КАЖДЫЙ ХОД) ===\n======================================================================\n${echoMemoryString}\n${snapshot}${predictiveFeed}${cmdFeedback}${reconBlock}\n${expiredText}\n${errorText}\n${ghostText}${grailHints}\n`;
 }
 
 function getPromptRuntimeConfig() {
@@ -14114,6 +14226,11 @@ async function executeNonInventoryCommand(command, args) {
     if (!command) return null;
     if (!player) return t('gameInterface.commandFeedback.errorPlayerMissing');
 
+    // === CONFLUENCE: Command Consequence Feedback (pre-command snapshot) ===
+    if (window.CommandFeedback) {
+        CommandFeedback.capturePre(command, args);
+    }
+
     // --- СТАНДАРТИЗАЦИЯ АРГУМЕНТОВ (БРОНЯ ОТ ДУРАКА) ---
     if (args && typeof args === 'object') {
         // 0. Если ИИ прислал entityKey или target вместо aiIdentifier
@@ -14211,10 +14328,16 @@ async function executeNonInventoryCommand(command, args) {
                 break;
 
             case 'setPlayerDescription':
+                // ПРОГРАММНАЯ БЛОКИРОВКА: Если игрок запретил генерацию предыстории — ЗАПРЕЩЕНО перезаписывать
+                if (player._backstoryLocked) {
+                    feedback = `[BLOCKED] setPlayerDescription ОТКЛОНЁН: игрок запретил изменение предыстории (флаг generateBackstory=FALSE). Предыстория игрока священна и не может быть перезаписана ИИ.`;
+                    console.warn('[BACKSTORY GUARD] setPlayerDescription заблокирован — _backstoryLocked=true');
+                    break;
+                }
                 let bioText = args.text || args.description || args.bio || args.value || args.narrative || args.biography || args.background || args.history || args.lore;
                 if (bioText) {
                     player.description = bioText;
-                    feedback = `[СИСТЕМА] Предыстория персонажа успешно сгенерирована и сохранена в профиль.`;
+                    feedback = `[СИСТЕМА] Предыстория персонажа успешно обновлена и сохранена в профиль.`;
                     updateCharacterSheet();
                 } else {
                     feedback = `[ERROR] 'setPlayerDescription' требует 'text' или 'description'. Получено: ${JSON.stringify(args)}`;
@@ -16565,7 +16688,40 @@ case 'setEntityBinding':
                     }
                 }
 
-                if (window.electronAPI && window.electronAPI.nexusGmIntervention) {
+                if (window.DualWriteGateway && DualWriteGateway.isGatewayCommand(command)) {
+                    // === CONFLUENCE PROTOCOL v2: Dual-Write Gateway ===
+                    const gwResult = await DualWriteGateway.write(command, args, player?.location || "");
+                    if (gwResult.status === 'ok' && gwResult.simResult) {
+                        const res = gwResult.simResult;
+                        if (!res.feedback || res.feedback.trim() === '') {
+                            let errMsg = `[КРИТИЧЕСКАЯ ОШИБКА ЯДРА] Команда '${command}' проигнорирована C++ движком! Вы забыли перекомпилировать meterea_engine.exe после применения патчей.`;
+                            addLogMessage(errMsg, "system-message");
+                            addCalculationMessage(errMsg);
+                            break;
+                        }
+                        // World/Items/Containers уже обновлены внутри DualWriteGateway._applySimResult()
+                        processMonsterQuests();
+                        
+                        if (res.feedback) {
+                            feedback = res.feedback;
+                        }
+                        
+                        updateCharacterSheet();
+                        if (typeof updateHoldingsDisplay === 'function') updateHoldingsDisplay();
+                        if (typeof updatePortPanel === 'function') updatePortPanel();
+                        if (typeof updateTradeJournalDisplay === 'function') updateTradeJournalDisplay();
+                        if (typeof updateWorldChroniclesDisplay === 'function') updateWorldChroniclesDisplay();
+                        
+                        if (typeof updateWorldSimDebugDisplay === 'function') updateWorldSimDebugDisplay();
+                        if (typeof updateMapDisplay === 'function') {
+                            if (window.Cartographer) window.Cartographer.lastGenerationTick = -1;
+                            updateMapDisplay();
+                        }
+                    } else if (gwResult.status === 'error') {
+                        feedback = `[ERROR] DualWriteGateway: ${gwResult.error}`;
+                    }
+                } else if (window.electronAPI && window.electronAPI.nexusGmIntervention) {
+                    // --- FALLBACK: прямой вызов C++ (без Gateway) ---
                     const res = await window.electronAPI.nexusGmIntervention({ command, args }, player?.location || "");
                     if (res.status === 'ok') {
                         if (!res.feedback || res.feedback.trim() === '') {
@@ -16615,6 +16771,21 @@ case 'setEntityBinding':
         feedback = t('gameInterface.commandFeedback.errorCommandGeneric', { command: command, args: error.message });
         console.error(`Критическая ошибка при выполнении команды ${command}:`, error, args);
     }
+
+    // --- GRAIL: Обогащение результата команды + пуш события ---
+    // --- CONFLUENCE: Command Consequence Feedback ---
+    if (window.CommandFeedback) {
+        const cmdFeedback = CommandFeedback.generatePost(command, args);
+        // Feedback добавлен в буфер, будет включён в AI контекст через flushForContext()
+    }
+    if (window.GRAIL) {
+        const enriched = GRAIL.onCommandExecuted(command, args, feedback);
+        if (enriched.narrativeHint && typeof addCalculationMessage === 'function') {
+            // Нарративная подсказка логируется для отладки, но не показывается игроку
+            // Будет использована в следующем контексте ГМ
+        }
+    }
+
     return feedback;
 }
 
@@ -17980,15 +18151,28 @@ async function runDeepSetupPipeline(narratorStyleGuide) {
         else if (currentApiProvider === 'deepseek') modelIdForRequest = deepseekModelId;
         else if (currentApiProvider === 'omniroute') modelIdForRequest = omnirouteModelId;
 
+        // Флаг предыстории для deep_setup
+        let backstoryFlagText;
+        if (player.generateBackstory) {
+            backstoryFlagText = "TRUE (ТЫ ОБЯЗАН ПРИДУМАТЬ ПРЕДЫСТОРИЮ И ВЫЗВАТЬ setPlayerDescription)";
+        } else if (player.enhanceBackstory) {
+            backstoryFlagText = "ENHANCE (Ты ОБЯЗАН ОБОГАТИТЬ предысторию игрока деталями и вызвать setPlayerDescription. Сохрани ВСЕ факты из описания игрока, добавь глубину, лор, имена, места. НЕ УДАЛЯЙ и НЕ ПЕРЕЗАПИСЫВАЙ ввод игрока — только расширяй и дополняй.)";
+        } else {
+            backstoryFlagText = "FALSE (КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО генерировать или изменять предысторию. Игрок написал СВОЁ описание — это ФАКТ МИРА. НЕ вызывай setPlayerDescription. НЕ придумывай биографию. Используй описание игрока КАК ЕСТЬ.)";
+        }
+
         const getBaseContext = () => {
             const genderText = player.gender ? ` | Пол: ${player.gender}` : '';
             return `Мир: ${DEFAULT_WORLD_ID} | Эпоха: ${player.era}\nИгрок: ${player.name} (${player.race}, ${player.class}${genderText})\nРежим старта: ${player.startMode}\nОписание от игрока: "${player.description}"`;
         };
 
         // --- STAGE 1 ---
-        updateLoader("Этап 1/5: Нити Судьбы", "Создание биографии и мотивов...");
+        const stage1SubText = player._backstoryLocked
+            ? "Извлечение мотивов из описания игрока..."
+            : "Создание биографии и мотивов...";
+        updateLoader("Этап 1/5: Нити Судьбы", stage1SubText);
         let p1 = await loadPromptFromFile('assets/prompts/deep_setup/stage1_lore.txt');
-        p1 = p1.replace('{base_context}', getBaseContext()).replace('{lore}', worldLore);
+        p1 = p1.replace('{base_context}', getBaseContext()).replace('{lore}', worldLore).replace('{generate_backstory_flag}', backstoryFlagText);
         let r1 = await performAiFetch(p1, [], modelIdForRequest, "Сгенерируй биографию и константы (JSON).");
         let res1 = parseAIResponse(r1);
         let stage_1_results = JSON.stringify(res1.actions || []);
