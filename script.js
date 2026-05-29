@@ -7608,9 +7608,12 @@ function setupEventListeners() {
     if (charNameInput) charNameInput.addEventListener('input', checkCreationFormValidity);
     if (charDescInput) charDescInput.addEventListener('input', checkCreationFormValidity);
     const genBackstoryCb = document.getElementById('generate-backstory-checkbox');
-    if (genBackstoryCb && charDescInput) {
+    const enhanceBackstoryCb = document.getElementById('enhance-backstory-checkbox');
+    if (genBackstoryCb && enhanceBackstoryCb && charDescInput) {
+        // Взаимоисключающие чекбоксы
         genBackstoryCb.addEventListener('change', (e) => {
             if (e.target.checked) {
+                enhanceBackstoryCb.checked = false;
                 charDescInput.dataset.oldValue = charDescInput.value;
                 charDescInput.value = "ИИ сгенерирует мрачную и глубокую предысторию, вплетя её в лор мира...";
                 charDescInput.disabled = true;
@@ -7619,6 +7622,18 @@ function setupEventListeners() {
                 charDescInput.value = charDescInput.dataset.oldValue || "";
                 charDescInput.disabled = false;
                 charDescInput.style.opacity = "1";
+            }
+            checkCreationFormValidity();
+        });
+        enhanceBackstoryCb.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                genBackstoryCb.checked = false;
+                // НЕ блокируем textarea — игрок должен ввести свою предысторию для обогащения
+                if (charDescInput.disabled) {
+                    charDescInput.value = charDescInput.dataset.oldValue || "";
+                    charDescInput.disabled = false;
+                    charDescInput.style.opacity = "1";
+                }
             }
             checkCreationFormValidity();
         });
@@ -8300,6 +8315,7 @@ async function finalizeCharacterCreation() {
         const playerGender = document.getElementById('char-gender-select').value;
         const selectedEra = charEraSelect.value;
         const generateBackstory = document.getElementById('generate-backstory-checkbox')?.checked || false;
+        const enhanceBackstory = document.getElementById('enhance-backstory-checkbox')?.checked || false;
 
         // Save backup to localStorage
         localStorage.setItem('characterCreationBackup', JSON.stringify({
@@ -8311,6 +8327,7 @@ async function finalizeCharacterCreation() {
             startMode: charStartModeSelect.value,
             description: charDescInput.value.trim(),
             generateBackstory: generateBackstory,
+            enhanceBackstory: enhanceBackstory,
             stats: { ...currentCreationStats },
             availablePoints: availableStatPoints
         }));
@@ -8324,6 +8341,7 @@ async function finalizeCharacterCreation() {
             startMode: charStartModeSelect.value,
             description: charDescInput.value.trim(),
             generateBackstory: generateBackstory,
+            enhanceBackstory: enhanceBackstory,
             stats: {
                 ...currentCreationStats,
                 level: 1,
@@ -8805,7 +8823,15 @@ async function finalizeWorldSetupAndStart() {
     }
 
     let imgExample = enableImageGeneration ? '"image_prompt": "Ado music video aesthetic, monochrome with red accent, dark gothic anime, creepy vibe, masterpiece",' : '';
-    const genBackstoryText = player.generateBackstory ? "TRUE (ТЫ ОБЯЗАН ПРИДУМАТЬ ПРЕДЫСТОРИЮ И ВЫЗВАТЬ setPlayerDescription)" : "FALSE";
+    // --- Флаг предыстории: генерация / обогащение / ничего ---
+    let genBackstoryText;
+    if (player.generateBackstory) {
+        genBackstoryText = "TRUE (ТЫ ОБЯЗАН ПРИДУМАТЬ ПРЕДЫСТОРИЮ И ВЫЗВАТЬ setPlayerDescription)";
+    } else if (player.enhanceBackstory) {
+        genBackstoryText = "ENHANCE (Ты ОБЯЗАН ОБОГАТИТЬ предысторию игрока деталями и вызвать setPlayerDescription. Сохрани ВСЕ факты из описания игрока, добавь глубину, лор, имена, места. НЕ УДАЛЯЙ и НЕ ПЕРЕЗАПИСЫВАЙ ввод игрока — только расширяй и дополняй.)";
+    } else {
+        genBackstoryText = "FALSE (КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО генерировать или изменять предысторию. Игрок написал СВОЁ описание — это ФАКТ МИРА. НЕ вызывай setPlayerDescription. НЕ придумывай биографию. Используй описание игрока КАК ЕСТЬ.)";
+    }
     const startPrompt = initialPromptTemplate.replace(/{start_mode_instruction}/g, startModeInstruction)
         .replace(/{generate_backstory_flag}/g, genBackstoryText)
         .replace(/{image_prompt_example}/g, imgExample)
