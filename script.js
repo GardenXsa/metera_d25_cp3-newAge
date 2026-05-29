@@ -13728,8 +13728,15 @@ function buildDynamicContext(expiredEffects) {
         const feedStr = PredictiveFeed.build(World, player?.location || '');
         if (feedStr) predictiveFeed = '\n' + feedStr;
     }
+
+    // --- CONFLUENCE: Command Consequence Feedback ---
+    let cmdFeedback = '';
+    if (window.CommandFeedback && CommandFeedback.getConfig().enabled) {
+        const fbStr = CommandFeedback.flushForContext();
+        if (fbStr) cmdFeedback = fbStr;
+    }
     
-    return `======================================================================\n=== ДИНАМИЧЕСКИЕ ДАННЫЕ (ИЗМЕНЯЮТСЯ КАЖДЫЙ ХОД) ===\n======================================================================\n${echoMemoryString}\n${snapshot}${predictiveFeed}\n${expiredText}\n${errorText}\n${ghostText}${grailHints}\n`;
+    return `======================================================================\n=== ДИНАМИЧЕСКИЕ ДАННЫЕ (ИЗМЕНЯЮТСЯ КАЖДЫЙ ХОД) ===\n======================================================================\n${echoMemoryString}\n${snapshot}${predictiveFeed}${cmdFeedback}\n${expiredText}\n${errorText}\n${ghostText}${grailHints}\n`;
 }
 
 function getPromptRuntimeConfig() {
@@ -14182,6 +14189,11 @@ function validateActionsArray(actions) {
 async function executeNonInventoryCommand(command, args) {
     if (!command) return null;
     if (!player) return t('gameInterface.commandFeedback.errorPlayerMissing');
+
+    // === CONFLUENCE: Command Consequence Feedback (pre-command snapshot) ===
+    if (window.CommandFeedback) {
+        CommandFeedback.capturePre(command, args);
+    }
 
     // --- СТАНДАРТИЗАЦИЯ АРГУМЕНТОВ (БРОНЯ ОТ ДУРАКА) ---
     if (args && typeof args === 'object') {
@@ -16725,6 +16737,11 @@ case 'setEntityBinding':
     }
 
     // --- GRAIL: Обогащение результата команды + пуш события ---
+    // --- CONFLUENCE: Command Consequence Feedback ---
+    if (window.CommandFeedback) {
+        const cmdFeedback = CommandFeedback.generatePost(command, args);
+        // Feedback добавлен в буфер, будет включён в AI контекст через flushForContext()
+    }
     if (window.GRAIL) {
         const enriched = GRAIL.onCommandExecuted(command, args, feedback);
         if (enriched.narrativeHint && typeof addCalculationMessage === 'function') {
