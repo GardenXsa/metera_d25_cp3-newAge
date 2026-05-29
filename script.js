@@ -16628,7 +16628,40 @@ case 'setEntityBinding':
                     }
                 }
 
-                if (window.electronAPI && window.electronAPI.nexusGmIntervention) {
+                if (window.DualWriteGateway && DualWriteGateway.isGatewayCommand(command)) {
+                    // === CONFLUENCE PROTOCOL v2: Dual-Write Gateway ===
+                    const gwResult = await DualWriteGateway.write(command, args, player?.location || "");
+                    if (gwResult.status === 'ok' && gwResult.simResult) {
+                        const res = gwResult.simResult;
+                        if (!res.feedback || res.feedback.trim() === '') {
+                            let errMsg = `[КРИТИЧЕСКАЯ ОШИБКА ЯДРА] Команда '${command}' проигнорирована C++ движком! Вы забыли перекомпилировать meterea_engine.exe после применения патчей.`;
+                            addLogMessage(errMsg, "system-message");
+                            addCalculationMessage(errMsg);
+                            break;
+                        }
+                        // World/Items/Containers уже обновлены внутри DualWriteGateway._applySimResult()
+                        processMonsterQuests();
+                        
+                        if (res.feedback) {
+                            feedback = res.feedback;
+                        }
+                        
+                        updateCharacterSheet();
+                        if (typeof updateHoldingsDisplay === 'function') updateHoldingsDisplay();
+                        if (typeof updatePortPanel === 'function') updatePortPanel();
+                        if (typeof updateTradeJournalDisplay === 'function') updateTradeJournalDisplay();
+                        if (typeof updateWorldChroniclesDisplay === 'function') updateWorldChroniclesDisplay();
+                        
+                        if (typeof updateWorldSimDebugDisplay === 'function') updateWorldSimDebugDisplay();
+                        if (typeof updateMapDisplay === 'function') {
+                            if (window.Cartographer) window.Cartographer.lastGenerationTick = -1;
+                            updateMapDisplay();
+                        }
+                    } else if (gwResult.status === 'error') {
+                        feedback = `[ERROR] DualWriteGateway: ${gwResult.error}`;
+                    }
+                } else if (window.electronAPI && window.electronAPI.nexusGmIntervention) {
+                    // --- FALLBACK: прямой вызов C++ (без Gateway) ---
                     const res = await window.electronAPI.nexusGmIntervention({ command, args }, player?.location || "");
                     if (res.status === 'ok') {
                         if (!res.feedback || res.feedback.trim() === '') {
