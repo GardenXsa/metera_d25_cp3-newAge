@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readSaveChunk: (filename, position, size) => ipcRenderer.invoke('read-save-chunk', filename, position, size),
 
     speakText: (text, voiceModel) => ipcRenderer.invoke('speak-text', text, voiceModel),
+    readFileAsBase64: (filePath) => ipcRenderer.invoke('readFileAsBase64', filePath),
     sendGeminiRequest: (model, contents) => ipcRenderer.invoke('gemini-request', model, contents),
     getSavePath: () => ipcRenderer.invoke('get-save-path'),
     appRelaunch: () => ipcRenderer.invoke('app-relaunch'),

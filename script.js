@@ -5877,13 +5877,40 @@ async function speakText(text) {
         if (result.success) {
             currentAudio = new Audio(result.audioPath);
             currentAudio.volume = 0.8;
-            currentAudio.play();
+            currentAudio.play().catch(playErr => {
+                console.warn("[TTS] Ошибка воспроизведения:", playErr.name, playErr.message);
+                // Fallback: если file:// заблокирован, попробуем через data URI
+                if (playErr.name === 'NotSupportedError' && result.audioPath.startsWith('file://')) {
+                    _ttsFallbackPlay(result.audioPath);
+                }
+            });
         } else {
             console.error("[TTS] Ошибка генерации:", result.error);
             showCustomAlert("Ошибка TTS: Движок или модель голоса не найдены. Проверьте папку assets/tts/");
         }
     } catch (e) {
         console.error("[TTS] Критическая ошибка вызова IPC:", e);
+    }
+}
+
+/**
+ * Fallback воспроизведение TTS: читает WAV через Node.js и проигрывает через data URI.
+ * Chromium в Electron может блокировать file:// URL в new Audio() из-за CSP.
+ */
+async function _ttsFallbackPlay(fileUrl) {
+    try {
+        const filePath = decodeURIComponent(fileUrl.replace('file://', ''));
+        if (window.electronAPI && window.electronAPI.readFileAsBase64) {
+            const b64 = await window.electronAPI.readFileAsBase64(filePath);
+            const fallbackAudio = new Audio(`data:audio/wav;base64,${b64}`);
+            fallbackAudio.volume = 0.8;
+            currentAudio = fallbackAudio;
+            fallbackAudio.play().catch(err => {
+                console.warn("[TTS] Fallback воспроизведение тоже не удалось:", err.message);
+            });
+        }
+    } catch (e) {
+        console.warn("[TTS] Fallback чтение файла не удалось:", e.message);
     }
 }
 

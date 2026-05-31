@@ -1212,6 +1212,22 @@ ipcMain.handle('speak-text', async (event, text, voiceModel) => {
     });
 });
 
+// TTS Fallback: чтение WAV файла как base64 для data URI
+// Chromium в Electron блокирует file:// URL в new Audio() — data URI работает
+ipcMain.handle('readFileAsBase64', async (event, filePath) => {
+    try {
+        const fs = require('fs');
+        if (!fs.existsSync(filePath)) {
+            return null;
+        }
+        const buffer = fs.readFileSync(filePath);
+        return buffer.toString('base64');
+    } catch (e) {
+        console.error('[readFileAsBase64] Error:', e.message);
+        return null;
+    }
+});
+
 // ============================================================================
 // API FETCH VIA IPC — BYPASSES CORS RESTRICTIONS IN ELECTRON RENDERER
 // The renderer process (Chromium) enforces CORS, which blocks cross-origin
