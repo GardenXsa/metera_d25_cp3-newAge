@@ -14750,7 +14750,8 @@ function validateGMCommand(command, args) {
             if (!destExists) return { valid: false, error: `Локация '${testArgs.destinationId}' не найдена на карте. Используй только существующие ID.` };
             break;
         case 'setPlayerDescription':
-            if (!testArgs.text && !testArgs.description && !testArgs.bio && !testArgs.value && !testArgs.narrative && !testArgs.biography && !testArgs.background && !testArgs.history && !testArgs.lore) return { valid: false, error: "Не указан text или description." };
+            if (!testArgs.text && !testArgs.description && !testArgs.full_text && !testArgs.bio && !testArgs.narrative && !testArgs.biography && !testArgs.background && !testArgs.history && !testArgs.lore) return { valid: false, error: "Не указано поле 'text'. ЗАПРЕЩЕНО использовать 'full_text', 'description' и прочие — только 'text'." };
+            if (!testArgs.text) return { valid: true, warning: `setPlayerDescription: используйте СТРОГО поле 'text', а не '${Object.keys(testArgs).find(k => testArgs[k] && typeof testArgs[k] === 'string')}'.` };
             break;
         case 'updateStat':
         case 'setStat':
@@ -14897,13 +14898,27 @@ async function executeNonInventoryCommand(command, args) {
                     console.warn('[BACKSTORY GUARD] setPlayerDescription заблокирован — _backstoryLocked=true');
                     break;
                 }
-                let bioText = args.text || args.description || args.bio || args.value || args.narrative || args.biography || args.background || args.history || args.lore;
+                // КАНОНИЧНОЕ ПОЛЕ: 'text'. Алиасы принимаются с предупреждением, но wildcard УБРАН.
+                let bioText = args.text;
+                let usedField = 'text';
+                if (!bioText && args.description) { bioText = args.description; usedField = 'description'; }
+                if (!bioText && args.full_text) { bioText = args.full_text; usedField = 'full_text'; }
+                if (!bioText && args.bio) { bioText = args.bio; usedField = 'bio'; }
+                if (!bioText && args.narrative) { bioText = args.narrative; usedField = 'narrative'; }
+                if (!bioText && args.biography) { bioText = args.biography; usedField = 'biography'; }
+                if (!bioText && args.background) { bioText = args.background; usedField = 'background'; }
+                if (!bioText && args.history) { bioText = args.history; usedField = 'history'; }
+                if (!bioText && args.lore) { bioText = args.lore; usedField = 'lore'; }
+                if (bioText && usedField !== 'text') {
+                    console.warn(`[STRICT FIELD] setPlayerDescription: ГМ использовал неканоничное поле '${usedField}' вместо 'text'. Промпты нужно ужесточить.`);
+                    feedback = `[WARNING] setPlayerDescription: получено поле '${usedField}'. Используйте СТРОГО поле 'text'. Текст принят, но в будущем команда будет отклонена.`;
+                }
                 if (bioText) {
                     player.description = bioText;
-                    feedback = `[СИСТЕМА] Предыстория персонажа успешно обновлена и сохранена в профиль.`;
+                    if (!feedback) feedback = `[СИСТЕМА] Предыстория персонажа успешно обновлена и сохранена в профиль.`;
                     updateCharacterSheet();
                 } else {
-                    feedback = `[ERROR] 'setPlayerDescription' требует 'text' или 'description'. Получено: ${JSON.stringify(args)}`;
+                    feedback = `[ERROR] 'setPlayerDescription' требует поле 'text'. Получено: ${JSON.stringify(args)}. ЗАПРЕЩЕНО использовать 'full_text', 'description', 'bio', 'narrative', 'biography', 'background', 'history', 'lore' или любые другие поля — ТОЛЬКО 'text'.`;
                 }
                 break;
 

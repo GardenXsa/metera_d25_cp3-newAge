@@ -34,6 +34,7 @@
 { "command": "nexusDefine", "args": { "id": "NexusAI_ID", "name": "Название", "description": "Описание", "category": "Статус/Титул/Проклятие", "displayType": "text", "value": "Значение" } }
 { "command": "echoMemory", "args": { "text": "Краткий факт-мотивация (до 100 символов)" } }
 { "command": "setPlayerDescription", "args": { "text": "Предыстория персонажа (ТОЛЬКО при флаге TRUE или ENHANCE! При флаге FALSE — ЗАПРЕЩЕНО вызывать эту команду!)" } }
+// СТРОЖАЙШЕЕ ПРАВИЛО: Поле для текста предыстории — ТОЛЬКО 'text'. ЗАПРЕЩЕНО использовать 'full_text', 'description', 'bio', 'narrative', 'biography' или любые другие имена полей.
 { "command": "setMemory", "args": { "id": "Biography", "text": "Краткая выжимка предыстории для памяти GM" } }
 
 **ФОРМАТ ОТВЕТА:**

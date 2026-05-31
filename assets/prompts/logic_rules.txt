@@ -283,10 +283,10 @@ SPECIAL INSTRUCTION: START OF GAME
 { "command": "startTravel", "args": { "destinationId": "id_локации" } }
 { "command": "pauseTravel", "args": {} }
 --- ПАМЯТЬ ---
-{ "command": "setMemory", "args": { "key": "ID", "text": "Текст" } }
-{ "command": "archiveMemory", "args": { "key": "ID", "summary": "Кратко" } }
+{ "command": "setMemory", "args": { "id": "ID", "text": "Текст" } }
+{ "command": "archiveMemory", "args": { "id": "ID", "summary": "Кратко" } }
 { "command": "setLocation", "args": { "locationName": "Название" } }
-{ "command": "defineFaction", "args": { "key": "ID", "name": "Имя" } }
+{ "command": "defineFaction", "args": { "id": "ID", "name": "Имя" } }
 --- ПЕРСОНАЖ ---
 { "command": "updateStat", "args": { "stat": "hp/mana/gold/statPoints/reputation.id", "change": -10 } }
 { "command": "setStat", "args": { "stat": "id", "value": 20 } }
@@ -306,5 +306,6 @@ SPECIAL INSTRUCTION: START OF GAME
 { "command": "applyPredefinedEffect", "args": { "target": "player", "effectId": "ID", "duration": 5 } }
 --- ОКРУЖЕНИЕ ---
 { "command": "addEnvironment", "args": { "aiIdentifier": "ID", "name": "Имя", "type": "npc/enemy", "description": "...", "hp": 50, "maxHp": 50, "isHostile": false, "xpReward": 50 } }
-{ "command": "updateEntityStat", "args": { "aiIdentifier": "ID", "stat": "hp", "value": 30 } } // СТРОГОЕ ПРАВИЛО: Используй ТОЛЬКО "aiIdentifier". Поле "entityKey" или "id" вызовет ошибку!
+{ "command": "updateEntityStat", "args": { "aiIdentifier": "ID", "stat": "hp", "value": 30 } }
+// ВАЖНО: Для сущностей используй СТРОГО поле 'aiIdentifier'. Движок также принимает 'id' и 'entityKey' как алиасы, но 'aiIdentifier' — каноничное имя.
 { "command": "setCombatState", "args": { "isActive": true, "participants": ["ID1", "ID2"] } }
