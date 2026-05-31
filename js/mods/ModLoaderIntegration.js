@@ -429,9 +429,10 @@ async function loadDatabaseWithModsAndInitEngine(initialAgents, startDay, isLoad
         return newWorld;
 
     } catch (error) {
-        console.error("CRITICAL: World simulator initialization failed:", error);
+        const errorDetail = error && error.message ? error.message : (typeof error === 'string' ? error : JSON.stringify(error));
+        console.error("CRITICAL: World simulator initialization failed:", errorDetail, error);
         if (typeof showAiErrorModal === 'function') {
-            showAiErrorModal(error.message, true, null, "Ошибка инициализации ядра");
+            showAiErrorModal(errorDetail, true, null, "Ошибка инициализации ядра");
         }
         window.isSimulatorInitialized = false;
         return null;

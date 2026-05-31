@@ -15218,8 +15218,11 @@ int main() {
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
 #endif
+    // Signal readiness to Electron host immediately
+    { std::lock_guard<std::mutex> outLock(g_output_mutex); std::cout << "{\"status\":\"ready\",\"message\":\"Nexus Engine ready\"}" << std::endl; std::cout.flush(); }
+
     std::string line;
-    
+
     while (std::getline(std::cin, line)) {
         if (line.empty()) continue;
         
