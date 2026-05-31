@@ -287,10 +287,18 @@ function startEngine() {
         engineProcess.on('close', (code) => {
             console.log(`[Nexus] Движок завершен с кодом ${code}`);
             if (code !== 0 && code !== null) {
-                console.error(`[Nexus CRITICAL] Процесс упал. Если это произошло на ПК без среды разработки, убедитесь, что бинарник собран с флагом -static.`);
+                console.error(`[Nexus CRITICAL] Процесс упал (код ${code}). Если это произошло на ПК без среды разработки, убедитесь, что бинарник собран с флагом -static.`);
             }
             engineProcess = null;
             engineReady = false;
+
+            // Если движок упал ДО того как startEngine зарезолвился —
+            // резолвим с ошибкой, чтобы initEngine не продолжал
+            if (engineStartResolve) {
+                const startResolve = engineStartResolve;
+                engineStartResolve = null;
+                startResolve({ status: 'error', message: `Engine process exited during startup (code ${code})` });
+            }
             
             // Отклоняем текущую команду если она была
             if (currentResolve) {
@@ -322,8 +330,14 @@ function startEngine() {
             if (!startResolved) {
                 startResolved = true;
                 engineStartResolve = null;
-                engineReady = true;
-                resolve({ status: 'ok', message: 'Engine started (ready signal timeout)' });
+                // FIX: Не ставим engineReady = true если процесс уже упал
+                if (engineProcess && !engineProcess.killed) {
+                    engineReady = true;
+                    resolve({ status: 'ok', message: 'Engine started (ready signal timeout)' });
+                } else {
+                    engineReady = false;
+                    resolve({ status: 'error', message: 'Engine process died before ready signal (timeout fallback)' });
+                }
             }
         }, ENGINE_START_TIMEOUT_MS); }); } function sendCommand(command, params = {}, timeoutMs = DEFAULT_ENGINE_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
