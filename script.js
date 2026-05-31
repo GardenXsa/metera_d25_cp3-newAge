@@ -8680,14 +8680,14 @@ async function finalizeWorldSetupAndStart() {
     if (preloadedWorldData) {
         console.log("Используется предзагруженный мир.");
         setWorld(preloadedWorldData);
-        // Инициализируем движок, но НЕ синхронизируем мир сейчас --
-        // World JSON слишком большой (1.5МБ+), syncState таймаутится.
-        // Синхронизация будет выполнена позже, после создания контейнеров.
-        if (window.electronAPI && window.electronAPI.nexusInit) {
-            const initRes = await window.electronAPI.nexusInit(true);
-            if (initRes.status !== 'ok') {
-                console.warn('[Nexus] Init failed for preloaded world:', initRes.message);
-            }
+        // Полная инициализация движка через ModLoader (nexusInit + nexusLoadDatabase),
+        // а не только nexusInit — без БД движок не сможет обработать loadWorldFile.
+        // isLoadMode=true чтобы не перезаписывать World.
+        try {
+            await initWorldSimulator(100, 0, true);
+            console.log('[Nexus] Движок инициализирован для предзагруженного мира (isLoadMode=true)');
+        } catch (e) {
+            console.warn('[Nexus] Init failed for preloaded world:', e.message);
         }
     } else {
         setWorld(await initWorldSimulator(initialAgents, absoluteStartDay));
@@ -17405,6 +17405,7 @@ async function exitToMainMenu() {
         World = null;
         conversationHistory = [];
         currentSaveSlot = null;
+        preloadedWorldData = null;
         if (gameLog) gameLog.innerHTML = `<p class="system-message">${t('gameInterface.log.loading')}</p>`;
 
         if (gameInterface) {
