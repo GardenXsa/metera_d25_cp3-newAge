@@ -7,6 +7,76 @@ let narrators = [];
 let currentNarratorIndex = 0;
 let tempPlayer = null; // Для временного хранения персонажа
 let preloadedWorldData = null;
+
+// ===== WORLD STARTUP CONTEXT (Issue #003) =====
+// Управляемый контекст для preloadedWorldData — заменяет прямые обращения
+// к глобальной переменной на методы с валидацией и логированием.
+const WorldStartupContext = {
+    _data: null,
+    _worldId: null,
+    _source: null,  // откуда пришли данные ('modal', 'clear', 'reset')
+    _setAt: null,   // timestamp когда данные были установлены
+
+    /** Установить данные предзагруженного мира */
+    set(data, source = 'unknown') {
+        if (this._data) {
+            console.warn('[WorldStartupContext] Overwriting existing preloaded world data. Previous source:',
+                this._source, 'set at:', this._setAt ? new Date(this._setAt).toISOString() : 'unknown');
+        }
+        this._data = data;
+        this._worldId = data?.id || data?.name || 'unknown';
+        this._source = source;
+        this._setAt = Date.now();
+        // Синхронизируем с глобальной переменной для обратной совместимости
+        preloadedWorldData = data;
+        console.log(`[WorldStartupContext] World data set: id=${this._worldId}, source=${source}`);
+    },
+
+    /** Получить данные (возвращает ту же ссылку, не копию — для больших миров) */
+    get() {
+        return this._data;
+    },
+
+    /** Очистить данные */
+    clear(source = 'unknown') {
+        if (!this._data) return; // Нечего чистить
+        console.log(`[WorldStartupContext] World data cleared: id=${this._worldId}, source=${source}`);
+        this._data = null;
+        this._worldId = null;
+        this._source = null;
+        this._setAt = null;
+        preloadedWorldData = null;
+    },
+
+    /** Активны ли данные? */
+    isActive() {
+        return this._data !== null && this._data !== undefined;
+    },
+
+    /** Базовая структурная валидация данных мира */
+    validate() {
+        const data = this._data;
+        if (!data) return { valid: false, error: 'No data' };
+        if (typeof data !== 'object') return { valid: false, error: 'Data is not an object' };
+        if (!data.regions || typeof data.regions !== 'object') return { valid: false, error: 'Missing regions' };
+        if (!data.factions || typeof data.factions !== 'object') return { valid: false, error: 'Missing factions' };
+        const regionCount = Object.keys(data.regions).length;
+        if (regionCount === 0) return { valid: false, error: 'Empty regions' };
+        return { valid: true, regionCount, factionCount: Object.keys(data.factions).length, worldId: this._worldId };
+    },
+
+    /** Отладочная информация */
+    getDebugInfo() {
+        return {
+            isActive: this.isActive(),
+            worldId: this._worldId,
+            source: this._source,
+            setAt: this._setAt ? new Date(this._setAt).toISOString() : null,
+            ageMs: this._setAt ? Date.now() - this._setAt : null,
+            validation: this.validate()
+        };
+    }
+};
 let directoryHandle = null;
 // FIX (Issue #101): Removed unused `lastFSAErrorTime` — was declared but never read
 // or set anywhere in the codebase. The FSA_ERROR_COOLDOWN constant remains as documentation.
