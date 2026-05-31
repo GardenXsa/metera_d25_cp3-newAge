@@ -1,0 +1,451 @@
+{
+  "_comment": "NPC Background Composer Data — фрагменты предысторий с системой зависимостей. Каждый фрагмент — предложение, из которых собирается уникальная предыстория. Зависимости (requires) гарантируют логическую связность.",
+
+  "categories": {
+    "origin": {
+      "weight": 1.0,
+      "required": true,
+      "fragments": [
+        {
+          "id": "orig_town_born",
+          "text": "Родился в небольшом городке на окраине империи",
+          "requires": [],
+          "excludes": [],
+          "personality_bias": { "sociability": 5, "loyalty": 5 },
+          "tags": ["urban", "settled"]
+        },
+        {
+          "id": "orig_village_born",
+          "text": "Вырос в тихой деревне среди полей и лесов",
+          "requires": [],
+          "excludes": ["orig_town_born", "orig_city_born", "orig_nomad_born", "orig_slum_born"],
+          "personality_bias": { "sociability": 3, "loyalty": 8 },
+          "tags": ["rural", "settled"]
+        },
+        {
+          "id": "orig_city_born",
+          "text": "Появился на свет в столице, среди шума и камня",
+          "requires": [],
+          "excludes": ["orig_village_born", "orig_nomad_born", "orig_slum_born"],
+          "personality_bias": { "sociability": 8, "greed": 5 },
+          "tags": ["urban", "capital"]
+        },
+        {
+          "id": "orig_nomad_born",
+          "text": "Родился под звёздами в кочевом лагере",
+          "requires": [],
+          "excludes": ["orig_town_born", "orig_city_born", "orig_village_born", "orig_slum_born"],
+          "personality_bias": { "aggression": 5, "sociability": -3 },
+          "tags": ["nomad", "wanderer"]
+        },
+        {
+          "id": "orig_slum_born",
+          "text": "Не помнит родителей — вырос в трущобах, среди крыс и отбросов",
+          "requires": [],
+          "excludes": ["orig_town_born", "orig_city_born", "orig_village_born"],
+          "personality_bias": { "aggression": 8, "greed": 10, "loyalty": -5 },
+          "tags": ["poor", "criminal"]
+        },
+        {
+          "id": "orig_orphanage",
+          "text": "Провёл детство в приюте при храме, молясь и работая послушником",
+          "requires": [],
+          "excludes": ["orig_nomad_born", "orig_slum_born"],
+          "personality_bias": { "loyalty": 10, "sociability": -2 },
+          "tags": ["religious", "settled"]
+        },
+        {
+          "id": "orig_mountain_clan",
+          "text": "Принадлежит к горному клану с древними традициями",
+          "requires": [],
+          "excludes": ["orig_village_born", "orig_city_born", "orig_nomad_born", "orig_slum_born"],
+          "personality_bias": { "aggression": 3, "loyalty": 12 },
+          "tags": ["mountain", "clan"]
+        },
+        {
+          "id": "orig_forest_tribe",
+          "text": "Вырос в племени лесных следопытов, где учился читать следы раньше букв",
+          "requires": [],
+          "excludes": ["orig_city_born", "orig_slum_born", "orig_town_born"],
+          "personality_bias": { "aggression": 2, "sociability": -5 },
+          "tags": ["forest", "tribal"]
+        }
+      ]
+    },
+
+    "family": {
+      "weight": 0.9,
+      "required": true,
+      "fragments": [
+        {
+          "id": "fam_large_happy",
+          "text": "В большой дружной семье был самым младшим из семи детей",
+          "requires": [],
+          "excludes": ["fam_orphan", "fam_only_child"],
+          "personality_bias": { "sociability": 10, "loyalty": 8 },
+          "tags": ["family", "happy"]
+        },
+        {
+          "id": "fam_only_child",
+          "text": "Был единственным ребёнком, и родители отдавали ему всё внимание",
+          "requires": [],
+          "excludes": ["fam_large_happy", "fam_orphan"],
+          "personality_bias": { "greed": 5, "sociability": -3 },
+          "tags": ["family", "spoiled"]
+        },
+        {
+          "id": "fam_orphan",
+          "text": "Остался сиротой в раннем возрасте — выжил только благодаря собственной хватке",
+          "requires": [],
+          "excludes": ["fam_large_happy", "fam_only_child", "fam_strict"],
+          "personality_bias": { "aggression": 8, "loyalty": -8, "greed": 5 },
+          "tags": ["orphan", "hardship"]
+        },
+        {
+          "id": "fam_strict",
+          "text": "Отец был жестоким тираном, а мать молча терпела",
+          "requires": [],
+          "excludes": ["fam_large_happy", "fam_orphan"],
+          "personality_bias": { "aggression": 10, "loyalty": -5, "sociability": -5 },
+          "tags": ["abuse", "resentment"]
+        },
+        {
+          "id": "fam_merchant_dynasty",
+          "text": "Принадлежит к торговому роду, где счёт шёл на поколения",
+          "requires": [],
+          "excludes": ["fam_orphan", "fam_slum_family"],
+          "personality_bias": { "greed": 12, "sociability": 8 },
+          "tags": ["merchant", "wealth"]
+        },
+        {
+          "id": "fam_military_tradition",
+          "text": "В семье все мужчины были воинами, служившими фракции верой и правдой",
+          "requires": [],
+          "excludes": ["fam_orphan"],
+          "personality_bias": { "aggression": 8, "loyalty": 15 },
+          "tags": ["military", "duty"]
+        },
+        {
+          "id": "fam_slum_family",
+          "text": "Семья ютилась в одной комнате, перебиваясь с хлеба на воду",
+          "requires": [],
+          "excludes": ["fam_merchant_dynasty", "fam_only_child"],
+          "personality_bias": { "greed": 8, "aggression": 3 },
+          "tags": ["poor", "struggle"]
+        }
+      ]
+    },
+
+    "childhood_event": {
+      "weight": 0.8,
+      "required": false,
+      "fragments": [
+        {
+          "id": "child_plague",
+          "text": "В детстве пережил эпидемию, унёсшую половину деревни",
+          "requires": [],
+          "excludes": [],
+          "personality_bias": { "loyalty": -3, "aggression": 2 },
+          "tags": ["trauma", "disease"]
+        },
+        {
+          "id": "child_war_refugee",
+          "text": "Ещё ребёнком бежал от войны, потеряв дом и друзей",
+          "requires": [],
+          "excludes": [],
+          "personality_bias": { "aggression": 5, "loyalty": -5, "sociability": -5 },
+          "tags": ["trauma", "war"]
+        },
+        {
+          "id": "child_apprentice",
+          "text": "С малых лет подмастерье у мастера — работал за еду и крышу",
+          "requires": [],
+          "excludes": ["child_street_gang", "child_wild"],
+          "personality_bias": { "sociability": 3, "greed": -3 },
+          "tags": ["craft", "labour"]
+        },
+        {
+          "id": "child_street_gang",
+          "text": "Попал в уличную банду, где научился воровать и драться",
+          "requires": ["orig_slum_born"],
+          "excludes": ["child_apprentice", "child_wild"],
+          "personality_bias": { "aggression": 12, "greed": 8, "loyalty": -8 },
+          "tags": ["criminal", "street"]
+        },
+        {
+          "id": "child_wild",
+          "text": "Несколько лет жил один в лесу после того как заблудился",
+          "requires": ["orig_forest_tribe", "orig_village_born"],
+          "excludes": ["child_street_gang", "child_apprentice"],
+          "personality_bias": { "aggression": 5, "sociability": -10 },
+          "tags": ["wild", "isolation"]
+        },
+        {
+          "id": "child_magic_manifest",
+          "text": "В юности обнаружил магический дар, напугав всю деревню",
+          "requires": [],
+          "excludes": ["child_street_gang"],
+          "personality_bias": { "sociability": -5 },
+          "tags": ["magic", "gifted"]
+        },
+        {
+          "id": "child_saved_by_stranger",
+          "text": "Чужак спас его от гибели — и исчез, не назвав имени",
+          "requires": [],
+          "excludes": [],
+          "personality_bias": { "loyalty": 8, "sociability": 5 },
+          "tags": ["mystery", "gratitude"]
+        },
+        {
+          "id": "child_father_lost_hunt",
+          "text": "Отец ушёл на охоту и не вернулся — его так и не нашли",
+          "requires": ["fam_large_happy", "fam_military_tradition"],
+          "excludes": ["fam_orphan"],
+          "personality_bias": { "aggression": 5, "loyalty": 3 },
+          "tags": ["loss", "mystery"]
+        }
+      ]
+    },
+
+    "turning_point": {
+      "weight": 0.7,
+      "required": false,
+      "fragments": [
+        {
+          "id": "turn_deserted_army",
+          "text": "Дезертировал из армии, не выдержав жестокости командира",
+          "requires": ["fam_military_tradition"],
+          "excludes": ["turn_found_faith"],
+          "personality_bias": { "aggression": -5, "loyalty": -15, "sociability": -5 },
+          "tags": ["desertion", "trauma"]
+        },
+        {
+          "id": "turn_found_faith",
+          "text": "Обрёл веру после видения в горах и с тех пор следует заветам",
+          "requires": [],
+          "excludes": ["turn_deserted_army", "turn_criminal_life"],
+          "personality_bias": { "loyalty": 15, "aggression": -10, "greed": -5 },
+          "tags": ["religious", "devotion"]
+        },
+        {
+          "id": "turn_criminal_life",
+          "text": "Вступил в гильдию воров, когда легальных путей не осталось",
+          "requires": ["fam_slum_family", "orig_slum_born"],
+          "excludes": ["turn_found_faith", "turn_honest_trade"],
+          "personality_bias": { "aggression": 8, "greed": 10, "loyalty": -5 },
+          "tags": ["criminal", "underground"]
+        },
+        {
+          "id": "turn_honest_trade",
+          "text": "Начал честный торговый бизнес с одним мешком товара и упорством",
+          "requires": [],
+          "excludes": ["turn_criminal_life"],
+          "personality_bias": { "greed": 5, "sociability": 10 },
+          "tags": ["trade", "honest"]
+        },
+        {
+          "id": "turn_ether_exposure",
+          "text": "Попал под воздействие Эфира — с тех пор слышит шёпот по ночам",
+          "requires": [],
+          "excludes": [],
+          "personality_bias": { "aggression": 3, "sociability": -8 },
+          "tags": ["ether", "madness"]
+        },
+        {
+          "id": "turn_avenge_family",
+          "text": "Поклялся отомстить за погибшую семью и не успокоится, пока не исполнит клятву",
+          "requires": ["fam_strict", "child_war_refugee", "child_plague"],
+          "excludes": ["turn_found_faith"],
+          "personality_bias": { "aggression": 15, "loyalty": 10 },
+          "tags": ["vengeance", "obsession"]
+        },
+        {
+          "id": "turn_found_artifact",
+          "text": "Нашёл странный артефакт в руинах, который изменил его взгляд на мир",
+          "requires": [],
+          "excludes": [],
+          "personality_bias": { "greed": 5, "sociability": -3 },
+          "tags": ["discovery", "arcane"]
+        },
+        {
+          "id": "turn_saved_village",
+          "text": "Один спас деревню от набега разбойников, за что его стали уважать",
+          "requires": [],
+          "excludes": ["turn_criminal_life"],
+          "personality_bias": { "loyalty": 12, "sociability": 8, "aggression": 3 },
+          "tags": ["hero", "respect"]
+        },
+        {
+          "id": "turn_betrayed_by_friend",
+          "text": "Лучший друг предал его ради денег — с тех пор он никому не доверяет",
+          "requires": [],
+          "excludes": ["turn_found_faith", "turn_saved_village"],
+          "personality_bias": { "loyalty": -15, "sociability": -10, "aggression": 5 },
+          "tags": ["betrayal", "distrust"]
+        }
+      ]
+    },
+
+    "current_state": {
+      "weight": 1.0,
+      "required": true,
+      "fragments": [
+        {
+          "id": "cur_honest_worker",
+          "text": "Сейчас честно трудится, не помышляя о большем",
+          "requires": [],
+          "excludes": ["cur_fugitive", "cur_cultist"],
+          "personality_bias": { "greed": -5, "loyalty": 5, "sociability": 5 },
+          "tags": ["honest", "labour"]
+        },
+        {
+          "id": "cur_ambitious_upstart",
+          "text": "Готов на всё ради богатства и положения — путь наверх для него оправдывает средства",
+          "requires": [],
+          "excludes": ["cur_honest_worker", "cur_monk_hermit"],
+          "personality_bias": { "greed": 15, "aggression": 8, "sociability": 5 },
+          "tags": ["ambitious", "ruthless"]
+        },
+        {
+          "id": "cur_fugitive",
+          "text": "Скрывается от закона — живёт под чужим именем",
+          "requires": ["turn_deserted_army", "turn_criminal_life"],
+          "excludes": ["cur_honest_worker", "cur_monk_hermit"],
+          "personality_bias": { "aggression": 5, "sociability": -12, "loyalty": -5 },
+          "tags": ["criminal", "hiding"]
+        },
+        {
+          "id": "cur_monk_hermit",
+          "text": "Оставил мирскую суету и живёт отшельником, предаваясь молитвам",
+          "requires": ["turn_found_faith"],
+          "excludes": ["cur_ambitious_upstart", "cur_fugitive"],
+          "personality_bias": { "aggression": -15, "greed": -15, "sociability": -10, "loyalty": 10 },
+          "tags": ["religious", "isolation"]
+        },
+        {
+          "id": "cur_family_person",
+          "text": "Всё, что имеет — для семьи: жена и дети ждут его дома",
+          "requires": ["fam_large_happy", "fam_only_child"],
+          "excludes": ["cur_fugitive", "cur_monk_hermit"],
+          "personality_bias": { "loyalty": 15, "sociability": 8, "aggression": -5 },
+          "tags": ["family", "settled"]
+        },
+        {
+          "id": "cur_cultist",
+          "text": "Тайно служит тёмным силам — его улыбка скрывает зловещие намерения",
+          "requires": ["turn_ether_exposure"],
+          "excludes": ["cur_honest_worker", "cur_family_person"],
+          "personality_bias": { "aggression": 10, "sociability": -8, "loyalty": -10 },
+          "tags": ["cult", "dark"]
+        },
+        {
+          "id": "cur_weary_veteran",
+          "text": "Старый воин, уставший от битв — меч хранит только по привычке",
+          "requires": [],
+          "excludes": ["cur_ambitious_upstart"],
+          "personality_bias": { "aggression": -3, "loyalty": 5 },
+          "tags": ["veteran", "weary"]
+        },
+        {
+          "id": "cur_driven_explorer",
+          "text": "Одержим поиском знаний — библиотеки и руины манят его сильнее золота",
+          "requires": ["turn_found_artifact"],
+          "excludes": ["cur_honest_worker", "cur_cultist"],
+          "personality_bias": { "greed": -5, "sociability": -3 },
+          "tags": ["scholar", "explorer"]
+        }
+      ]
+    },
+
+    "quirk": {
+      "weight": 0.5,
+      "required": false,
+      "fragments": [
+        {
+          "id": "q_talks_to_animals",
+          "text": "Утверждает, что понимает язык животных",
+          "requires": ["orig_forest_tribe", "child_wild"],
+          "excludes": [],
+          "personality_bias": { "sociability": -5 },
+          "tags": ["eccentric", "nature"]
+        },
+        {
+          "id": "q_insomniac",
+          "text": "Страдает бессонницей — по ночам бродит или стережёт",
+          "requires": [],
+          "excludes": [],
+          "personality_bias": { "aggression": 3 },
+          "tags": ["quirk", "sleepless"]
+        },
+        {
+          "id": "q_collector",
+          "text": "Собирает странные вещи: камни, перья, кости, стекляшки",
+          "requires": [],
+          "excludes": [],
+          "personality_bias": { "greed": 3 },
+          "tags": ["quirk", "hoarding"]
+        },
+        {
+          "id": "q_superstitious",
+          "text": "Верит в приметы: плевки через плечо, стук по дереву — для него это серьёзно",
+          "requires": [],
+          "excludes": [],
+          "personality_bias": { "loyalty": 3 },
+          "tags": ["quirk", "belief"]
+        },
+        {
+          "id": "q_sings_always",
+          "text": "Постоянно напевает — даже в бою и за работой",
+          "requires": [],
+          "excludes": [],
+          "personality_bias": { "sociability": 8, "aggression": -3 },
+          "tags": ["quirk", "cheerful"]
+        },
+        {
+          "id": "q_mute_by_choice",
+          "text": "Говорит только когда считает нужным — большинство принимает его за немого",
+          "requires": ["child_war_refugee", "fam_strict"],
+          "excludes": ["q_sings_always"],
+          "personality_bias": { "sociability": -15 },
+          "tags": ["quirk", "silent"]
+        },
+        {
+          "id": "q_night_owl",
+          "text": "Ночью бодр, днём вял — обычный ритм жизни ему не подходит",
+          "requires": ["turn_ether_exposure"],
+          "excludes": [],
+          "personality_bias": { "sociability": -5 },
+          "tags": ["quirk", "nocturnal"]
+        },
+        {
+          "id": "q_loyal_to_dead",
+          "text": "Хранит клятву, данную мёртвому другу — для него она священна",
+          "requires": ["turn_betrayed_by_friend", "turn_avenge_family"],
+          "excludes": [],
+          "personality_bias": { "loyalty": 20 },
+          "tags": ["quirk", "devotion"]
+        },
+        {
+          "id": "q_secret_reader",
+          "text": "Тайно научился читать — скрывает это, ведь это занятие не для простолюдинов",
+          "requires": ["orig_slum_born", "orig_village_born"],
+          "excludes": [],
+          "personality_bias": { "greed": -2, "sociability": 3 },
+          "tags": ["quirk", "educated"]
+        }
+      ]
+    }
+  },
+
+  "composition_rules": {
+    "min_categories": 3,
+    "max_categories": 6,
+    "always_include": ["origin", "family", "current_state"],
+    "optional_categories": ["childhood_event", "turning_point", "quirk"],
+    "joiner": ". ",
+    "suffix": ".",
+    "max_personality_delta": 25,
+    "min_personality_value": 0,
+    "max_personality_value": 100
+  }
+}

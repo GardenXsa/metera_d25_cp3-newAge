@@ -112,6 +112,35 @@ struct FactionRelationsDef {
     std::unordered_map<std::string, std::vector<FactionRelationRule>> era_relations;
 };
 
+// 2.10. Фрагменты Предысторий NPC (Background Fragment Registry)
+struct BackgroundFragment {
+    std::string id;                                         // Уникальный ID фрагмента
+    std::string text;                                       // Текст предложения
+    std::vector<std::string> requires;                      // Зависимости: ID фрагментов, которые должны быть выбраны ранее
+    std::vector<std::string> excludes;                      // Исключения: ID фрагментов, с которыми несовместим
+    std::unordered_map<std::string, int> personality_bias;  // Влияние на характер: aggression, greed, sociability, loyalty, lust
+    std::vector<std::string> tags;                          // Семантические теги
+};
+
+struct BackgroundCategory {
+    std::string name;                           // Ключ категории (origin, family, childhood_event, etc.)
+    double weight;                              // Вес/вероятность выбора (0.0-1.0)
+    bool required;                              // Обязательная категория
+    std::vector<BackgroundFragment> fragments;  // Фрагменты в этой категории
+};
+
+struct BackgroundCompositionRules {
+    int min_categories = 3;
+    int max_categories = 6;
+    std::vector<std::string> always_include;    // Категории, которые всегда включаются
+    std::vector<std::string> optional_categories;
+    std::string joiner = ". ";                  // Разделитель между предложениями
+    std::string suffix = ".";                   // Конец предыстории
+    int max_personality_delta = 25;             // Макс. суммарное изменение одной черты
+    int min_personality_value = 0;
+    int max_personality_value = 100;
+};
+
 // Container Type Definition (Stage 8)
 struct ContainerTypeDef {
     bool is_locked = false;

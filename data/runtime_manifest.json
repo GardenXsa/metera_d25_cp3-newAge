@@ -124,6 +124,11 @@
       "default_type": "object",
       "merge_policy": "deepMerge"
     },
+    "npc_backgrounds": {
+      "path": "./data/npc_backgrounds.json",
+      "default_type": "object",
+      "merge_policy": "deepMerge"
+    },
     "faction_relations": {
       "path": "./data/faction_relations.json",
       "default_type": "object",
