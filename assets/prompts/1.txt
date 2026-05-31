@@ -402,11 +402,12 @@
 
 
 // === КВЕСТЫ ===
-// ВАЖНО: Для обновления/удаления квеста ОБЯЗАТЕЛЬНО используй тот же 'id', что и при создании! Не используй 'id' или 'title' как ключи.
-{ "command": "addQuest", "args": { "id": "unique_quest_id", "title": "QuestTitle", "objective": "...", "description": "...", "reward": "...", "issuer": "..." } }
-{ "command": "updateQuest", "args": { "id": "unique_quest_id", "status": "completed" } }
-{ "command": "removeQuest", "args": { "id": "unique_quest_id" } }
-{ "command": "editQuest", "args": { "id": "unique_quest_id", "field": "objective", "value": "Новая цель" } }
+// ВАЖНО: Для обновления/удаления квеста ОБЯЗАТЕЛЬНО используй тот же 'aiIdentifier', что и при создании!
+{ "command": "addQuest", "args": { "aiIdentifier": "unique_quest_id", "title": "QuestTitle", "objective": "...", "description": "...", "reward": "...", "issuer": "..." } }
+{ "command": "updateQuest", "args": { "aiIdentifier": "unique_quest_id", "status": "completed" } }
+{ "command": "removeQuest", "args": { "aiIdentifier": "unique_quest_id" } }
+{ "command": "editQuest", "args": { "aiIdentifier": "unique_quest_id", "field": "objective", "value": "Новая цель" } }
+// ВАЖНО: Для квестов используй СТРОГО поле 'aiIdentifier'. ЗАПРЕЩЕНО использовать 'id' или 'key'.
 
 // === УМЕНИЯ (ПОЛНАЯ ВЕРСИЯ) --
 { "command": "addSkill", "args": { "id": "SkillAI_ID", "name": "SkillName", "description": "...", "damage": "1к6", "cost": 10, "costType": "MP", "duration": "3 хода", "cooldown": "2 хода", "skillType": "Активное", "effect": "..." } }
@@ -470,16 +471,18 @@
 { "command": "nexusDefine", "args": { "id": "guild_membership", "name": "Член Ордена Аркане", "description": "Полноправный маг Ордена.", "category": "Принадлежность", "displayType": "boolean", "value": "true", "effectsJSON": "[{\"trigger\":{\"type\":\"on_apply\"},\"action\":{\"type\":\"modify_stat\",\"stat\":\"int\",\"change\":2}},{\"trigger\":{\"type\":\"on_apply\"},\"action\":{\"type\":\"unlock_child\",\"childId\":\"spell_fireball\"}},{\"trigger\":{\"type\":\"on_apply\"},\"action\":{\"type\":\"nexus_link\",\"targetId\":\"title_noble\"}}]" } }
 
 // === СТАТУС-ЭФФЕКТЫ ===
-{ "command": "applyPredefinedEffect", "args": { "target": "player", "id": "bulls_strength", "duration": 5 } }
+{ "command": "applyPredefinedEffect", "args": { "target": "player", "effectId": "bulls_strength", "duration": 5 } }
+// ВАЖНО: Поле для ID эффекта — СТРОГО 'effectId'. ЗАПРЕЩЕНО использовать 'id'.
 { "command": "addStatusEffect", "args": { "target": "player", "id": "curse_of_the_babbling_brook", "name": "Проклятие Болтливого Ручья", "duration": 10, "description": "Персонаж не может перестать говорить каламбурами.", "effectsJSON": "[{\"trigger\":{\"type\":\"on_apply\"},\"action\":{\"type\":\"modify_stat\",\"stat\":\"cha\",\"change\":-2}}]" } }
 { "command": "removeStatusEffect", "args": { "target": "player", "id": "bulls_strength" } }
 
 // === ОКРУЖЕНИЕ ===
-{ "command": "addEnvironment", "args": { "id": "EntityAI_ID", "name": "Имя", "type": "npc", "description": "...", "hp": 50, "maxHp": 50, "str": 12, "dex": 14, "con": 13, "int": 8, "isHostile": false } }
-{ "command": "removeEnvironment", "args": { "id": "EntityAI_ID" } }
-{ "command": "updateEntityStat", "args": { "id": "EntityAI_ID", "stat": "hp", "value": 42 } }
-{ "command": "setEntityState", "args": { "id": "EntityAI_ID", "property": "isHostile", "value": true } }
-{ "command": "revealEntityTrait", "args": { "id": "EntityAI_ID", "trait": "Трусливый" } }
+{ "command": "addEnvironment", "args": { "aiIdentifier": "EntityAI_ID", "name": "Имя", "type": "npc", "description": "...", "hp": 50, "maxHp": 50, "str": 12, "dex": 14, "con": 13, "int": 8, "isHostile": false } }
+{ "command": "removeEnvironment", "args": { "aiIdentifier": "EntityAI_ID" } }
+{ "command": "updateEntityStat", "args": { "aiIdentifier": "EntityAI_ID", "stat": "hp", "value": 42 } }
+{ "command": "setEntityState", "args": { "aiIdentifier": "EntityAI_ID", "property": "isHostile", "value": true } }
+{ "command": "revealEntityTrait", "args": { "aiIdentifier": "EntityAI_ID", "trait": "Трусливый" } }
+// ВАЖНО: Для сущностей используй СТРОГО поле 'aiIdentifier'. ЗАПРЕЩЕНО использовать 'id', 'entityKey' или 'target'.
 { "command": "setCombatState", "args": { "isActive": true, "participants": ["EntityAI_ID_1", "EntityAI_ID_2"] } }
 
 

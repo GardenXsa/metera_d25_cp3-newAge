@@ -20,7 +20,7 @@
 { "command": "addSubLocation", "args": { "id": "tavern_boar", "name": "Таверна", "parentId": "ID_ГЛОБАЛЬНОГО_РЕГИОНА", "description": "..." } }
 { "command": "setLocation", "args": { "locationName": "Название или ID" } }
 { "command": "addMapMarker", "args": { "id": "loc_id", "name": "Название (с ключевым словом: город, лес, гора)", "description": "...", "x": 0, "y": 0 } }
-{ "command": "addEnvironment", "args": { "id": "EntityAI_ID", "name": "Имя", "type": "npc/enemy", "description": "...", "hp": 50, "maxHp": 50, "str": 10, "dex": 10, "con": 10, "int": 10, "isHostile": false, "xpReward": 25 } }
+{ "command": "addEnvironment", "args": { "aiIdentifier": "EntityAI_ID", "name": "Имя", "type": "npc/enemy", "description": "...", "hp": 50, "maxHp": 50, "str": 10, "dex": 10, "con": 10, "int": 10, "isHostile": false, "xpReward": 25 } }
 { "command": "renderLocation", "args": { "locationId": "room_1", "size": "15x15", "description": "ТЕХНИЧЕСКОЕ ОПИСАНИЕ для 2D-карты. Только стены, пол, объекты. Без людей." } }
 
 **ФОРМАТ ОТВЕТА:**
