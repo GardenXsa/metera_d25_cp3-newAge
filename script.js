@@ -1910,6 +1910,7 @@ async function executeCommand(command, args) {
             case 'gmSpreadRumor':
             case 'gmFrameForSabotage':
             case 'gmDirectResourceInjection':
+            case 'spawnBackgroundNpcs':
             case 'applyConsequence':
             case 'updateRelationship':
             case 'recordIntimacy':
@@ -12347,6 +12348,103 @@ function clearEroticJournal() {
 }
 
 
+// ============================================================================
+// АВТОГЕНЕРАЦИЯ ФОНОВЫХ NPC при входе в населённые локации
+// ============================================================================
+// Вызывает C++ spawnBackgroundNpcs при первом посещении населённого региона.
+// Условия:
+//   - Локация ещё не была "заселена" (нет записи в _bgNpcSpawnedRegions)
+//   - Локация является городом/деревней/лагерем (тип city, village, camp)
+//   - Движок C++ инициализирован
+// ============================================================================
+
+const _bgNpcSpawnedRegions = new Set();
+
+async function _autoSpawnBackgroundNpcs(regionId) {
+    if (!regionId) return;
+
+    // Проверяем, были ли уже заселены фоновыми NPC в этой сессии
+    if (_bgNpcSpawnedRegions.has(regionId)) return;
+
+    // Определяем тип локации
+    let locationType = 'village'; // default
+    let isPopulated = false;
+
+    // Проверяем в World.regions (C++ данные)
+    if (typeof World !== 'undefined' && World && World.regions && World.regions[regionId]) {
+        const region = World.regions[regionId];
+        if (region.population && region.population > 10) {
+            isPopulated = true;
+        }
+        if (region.base_type) locationType = region.base_type;
+    }
+
+    // Проверяем в globalLocations (JS данные)
+    if (!isPopulated && typeof globalLocations !== 'undefined' && globalLocations[regionId]) {
+        const loc = globalLocations[regionId];
+        const populatedTypes = ['city', 'village', 'camp'];
+        if (loc.type && populatedTypes.includes(loc.type)) {
+            isPopulated = true;
+            locationType = loc.type;
+        }
+    }
+
+    if (!isPopulated) return;
+
+    // Отмечаем регион как заселённый
+    _bgNpcSpawnedRegions.add(regionId);
+
+    // Вызываем C++ команду через DualWriteGateway
+    try {
+        if (window.DualWriteGateway && DualWriteGateway.write) {
+            const result = await DualWriteGateway.write('spawnBackgroundNpcs', {
+                regionId: regionId,
+                autoCount: true
+            }, player.location);
+
+            if (result && result.status === 'ok') {
+                console.log(`[BackgroundNPCs] Автогенерация NPC в "${regionId}" (${locationType}): ${result.feedback || 'OK'}`);
+
+                // Синхронизируем мир с результатами C++
+                if (result.simResult && result.simResult.world) {
+                    if (typeof World !== 'undefined') {
+                        Object.assign(World, result.simResult.world);
+                    }
+                }
+            } else {
+                console.warn(`[BackgroundNPCs] Ошибка генерации в "${regionId}":`, result?.error || result);
+            }
+        } else if (window.electronAPI && window.electronAPI.nexusGmIntervention) {
+            // Fallback: прямая отправка
+            const result = await window.electronAPI.nexusGmIntervention(
+                { command: 'spawnBackgroundNpcs', args: { regionId, autoCount: true } },
+                player.location
+            );
+            if (result && result.status === 'ok') {
+                console.log(`[BackgroundNPCs] Автогенерация NPC в "${regionId}": ${result.feedback || 'OK'}`);
+                if (result.world) {
+                    if (typeof World !== 'undefined') Object.assign(World, result.world);
+                }
+            }
+        }
+    } catch (err) {
+        console.warn(`[BackgroundNPCs] Не удалось сгенерировать NPC в "${regionId}":`, err.message);
+    }
+}
+
+// Внешний API: ручной вызов генерации (из AI GM команды или консоли)
+window.spawnBackgroundNpcs = async function(regionId, count = 0) {
+    if (!regionId) {
+        // Использовать текущую локацию игрока
+        regionId = player.location;
+    }
+
+    _bgNpcSpawnedRegions.delete(regionId); // Разрешить повторную генерацию
+
+    return await _autoSpawnBackgroundNpcs(regionId);
+};
+
+
 function updateEnvironmentVisibility() {
     if (!player || !player.allKnownEntities) return;
     
@@ -15023,6 +15121,10 @@ async function executeNonInventoryCommand(command, args) {
                     if (!player.visitedLocations.includes(player.location)) {
                         player.visitedLocations.push(player.location);
                     }
+
+                    // === АВТОГЕНЕРАЦИЯ ФОНОВЫХ NPC при входе в населённую локацию ===
+                    await _autoSpawnBackgroundNpcs(locId);
+
                     feedback = t('gameInterface.commandFeedback.locationChanged', { location: player.location });
                     updateEnvironmentVisibility(); // Авто-скрытие/показ NPC
                     updateCharacterSheet();
@@ -17228,6 +17330,7 @@ case 'setEntityBinding':
             case 'gmSpreadRumor':
             case 'gmFrameForSabotage':
             case 'gmDirectResourceInjection':
+            case 'spawnBackgroundNpcs':
             case 'gmDeclareWar':
             case 'gmForcePeace':
             case 'gmChangeRulerTrait':

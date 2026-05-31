@@ -106,6 +106,12 @@ struct Database {
     std::unordered_map<std::string, std::string> faction_to_race;
     std::unordered_map<std::string, std::vector<std::string>> backgrounds; // key = "poor", "rich", "insane"
 
+    // Phase 1: Background Fragment Registry (composable backstories)
+    std::vector<BackgroundCategory> bg_categories;
+    BackgroundCompositionRules bg_rules;
+    std::unordered_map<std::string, size_t> bg_fragment_index;  // fragment_id → index in its category's fragments vector (for fast lookup)
+    std::unordered_map<std::string, size_t> bg_category_index;  // category name → index in bg_categories
+
     // Phase 1: Faction Relations Registry
     FactionRelationsDef faction_relations;
 
@@ -841,7 +847,14 @@ namespace NpcGen {
         return "Unknown " + std::to_string(gen() % 9999);
     }
 
+    // Legacy background (kept for backward compat — uses simple pools from npc_names.json)
     std::string generateBackground(int wealth_level, int paranoia, std::mt19937& gen) {
+        // If composable backgrounds are available, use them instead
+        if (!g_db.bg_categories.empty()) {
+            auto bg = composeBackground(g_db.bg_categories, g_db.bg_rules, gen);
+            return bg.text;
+        }
+
         std::string category;
         if (paranoia > 80) category = "insane";
         else if (wealth_level > 70) category = "rich";
@@ -860,6 +873,173 @@ namespace NpcGen {
         }
 
         return "No background available.";
+    }
+
+    // === BackgroundComposer: composable backstory system ===
+
+    /**
+     * Проверяет, совместим ли фрагмент с уже выбранными.
+     * Условия совместимости:
+     *   1. Все requires присутствуют в selected
+     *   2. Ни один excludes НЕ присутствует в selected
+     */
+    static bool isFragmentCompatible(const BackgroundFragment& frag,
+                                      const std::unordered_set<std::string>& selectedIds) {
+        // Check requires: at least one must be satisfied (if any exist)
+        // Actually: ALL requires must be in selected
+        for (const auto& req : frag.requires) {
+            if (selectedIds.find(req) == selectedIds.end()) return false;
+        }
+        // Check excludes: NONE may be in selected
+        for (const auto& exc : frag.excludes) {
+            if (selectedIds.find(exc) != selectedIds.end()) return false;
+        }
+        return true;
+    }
+
+    ComposedBackground composeBackground(
+        const std::vector<BackgroundCategory>& categories,
+        const BackgroundCompositionRules& rules,
+        std::mt19937& gen)
+    {
+        ComposedBackground result;
+        std::unordered_set<std::string> selectedIds;
+        std::vector<std::string> textParts;
+
+        // Step 1: Determine which categories to include
+        std::vector<size_t> includedCategoryIndices;
+
+        // Always include required/mandatory categories
+        for (size_t i = 0; i < categories.size(); i++) {
+            if (categories[i].required) {
+                includedCategoryIndices.push_back(i);
+            }
+        }
+
+        // Optional categories: include with probability = weight
+        std::uniform_real_distribution<double> dist(0.0, 1.0);
+        for (size_t i = 0; i < categories.size(); i++) {
+            if (!categories[i].required) {
+                if (dist(gen) < categories[i].weight) {
+                    includedCategoryIndices.push_back(i);
+                }
+            }
+        }
+
+        // Enforce min_categories
+        if ((int)includedCategoryIndices.size() < rules.min_categories) {
+            // Add more optional categories until we reach min
+            for (size_t i = 0; i < categories.size() && (int)includedCategoryIndices.size() < rules.min_categories; i++) {
+                if (!categories[i].required &&
+                    std::find(includedCategoryIndices.begin(), includedCategoryIndices.end(), i) == includedCategoryIndices.end()) {
+                    includedCategoryIndices.push_back(i);
+                }
+            }
+        }
+
+        // Step 2: For each included category, select one compatible fragment
+        for (size_t catIdx : includedCategoryIndices) {
+            const auto& cat = categories[catIdx];
+
+            // Collect compatible fragments
+            std::vector<size_t> compatibleIndices;
+            for (size_t fi = 0; fi < cat.fragments.size(); fi++) {
+                if (isFragmentCompatible(cat.fragments[fi], selectedIds)) {
+                    compatibleIndices.push_back(fi);
+                }
+            }
+
+            if (compatibleIndices.empty()) {
+                // No compatible fragment in this category — skip
+                continue;
+            }
+
+            // Select a random compatible fragment
+            size_t selectedIdx = compatibleIndices[gen() % compatibleIndices.size()];
+            const BackgroundFragment& frag = cat.fragments[selectedIdx];
+
+            // Record selection
+            selectedIds.insert(frag.id);
+            textParts.push_back(frag.text);
+            result.selected_fragment_ids.push_back(frag.id);
+
+            // Accumulate personality bias
+            for (const auto& [key, val] : frag.personality_bias) {
+                result.personality_delta[key] += val;
+            }
+
+            // Collect tags
+            for (const auto& tag : frag.tags) {
+                result.tags.push_back(tag);
+            }
+        }
+
+        // Step 3: Compose text
+        std::string composedText;
+        for (size_t i = 0; i < textParts.size(); i++) {
+            if (i > 0) composedText += rules.joiner;
+            composedText += textParts[i];
+        }
+        if (!composedText.empty() && !rules.suffix.empty()) {
+            composedText += rules.suffix;
+        }
+        result.text = composedText;
+
+        return result;
+    }
+
+    std::unordered_map<std::string, int> generatePersonalityFromBackground(
+        const std::unordered_map<std::string, int>& personality_delta,
+        const BackgroundCompositionRules& rules,
+        std::mt19937& gen)
+    {
+        // Base personality: 30-70 for each dimension
+        std::uniform_int_distribution<int> baseDist(30, 70);
+        std::uniform_int_distribution<int> noiseDist(-5, 5);
+
+        const std::vector<std::string> dimensions = {"aggression", "sociability", "greed", "loyalty", "lust"};
+
+        std::unordered_map<std::string, int> personality;
+        for (const auto& dim : dimensions) {
+            int base = baseDist(gen);
+            int noise = noiseDist(gen);
+
+            // Apply delta from background, clamped by max_personality_delta
+            auto it = personality_delta.find(dim);
+            int delta = 0;
+            if (it != personality_delta.end()) {
+                delta = std::max(-rules.max_personality_delta, std::min(rules.max_personality_delta, it->second));
+            }
+
+            int value = base + delta + noise;
+            value = std::max(rules.min_personality_value, std::min(rules.max_personality_value, value));
+            personality[dim] = value;
+        }
+
+        return personality;
+    }
+
+    int calculateBackgroundNpcCount(int population, const std::string& locationType) {
+        if (population <= 0) return 0;
+
+        // Density factor based on location type
+        double densityFactor = 0.1; // default
+        if (locationType == "city") densityFactor = 0.3;
+        else if (locationType == "village") densityFactor = 0.15;
+        else if (locationType == "camp") densityFactor = 0.08;
+        else if (locationType == "anomaly") densityFactor = 0.02;
+        else if (locationType == "ruins") densityFactor = 0.03;
+        else if (locationType == "observatory") densityFactor = 0.01;
+
+        // sqrt(population) * density_factor gives a reasonable count
+        // that scales sub-linearly with population
+        int count = (int)(std::sqrt((double)population) * densityFactor);
+
+        // Clamp: at least 1 for populated areas, max 30
+        if (population > 10 && count < 1) count = 1;
+        if (count > 30) count = 30;
+
+        return count;
     }
 }
 
@@ -9887,6 +10067,186 @@ std::string processGmIntervention(const JsonValue& command) {
         } else {
             feedback = locStr("engine.gm.inject_no_region");
         }
+    } else if (cmd == "spawnBackgroundNpcs") {
+        std::string regionId = args["regionId"].asString();
+        int count = args.has("count") ? args["count"].asInt() : 0;
+        bool autoCount = args.has("autoCount") ? args["autoCount"].asBool() : false;
+
+        if (!g_world.regions.count(regionId)) {
+            feedback = locStr("engine.gm.inject_no_region");
+        } else {
+            auto& region = g_world.regions[regionId];
+
+            // If autoCount, calculate from population and location type
+            if (autoCount || count <= 0) {
+                // Determine location type from globalLocations or default
+                std::string locType = "village";
+                // Check if the region has a base_type hint
+                if (!region.base_type.empty()) locType = region.base_type;
+                count = NpcGen::calculateBackgroundNpcCount(region.population, locType);
+            }
+
+            // Clamp count
+            if (count > 50) count = 50;
+            if (count <= 0) {
+                feedback = "No background NPCs generated (population too low or count is 0).";
+            } else {
+                std::string homeFaction = region.factionId;
+                int spawned = 0;
+
+                for (int i = 0; i < count; i++) {
+                    NPC npc;
+                    npc.id = "npc_bg_" + generateUUID();
+
+                    // Race from faction
+                    npc.race = g_gameplay_runtime.default_race_id;
+                    auto ftrIt = g_db.faction_to_race.find(homeFaction);
+                    if (ftrIt != g_db.faction_to_race.end()) npc.race = ftrIt->second;
+                    else if (!g_db.race_ids.empty()) npc.race = g_db.race_ids[rand() % g_db.race_ids.size()];
+
+                    // Profession
+                    std::string profId = g_db.profession_ids.empty() ? "farmer" : g_db.profession_ids[rand() % g_db.profession_ids.size()];
+                    npc.profession = profId;
+                    auto profIt = g_db.professions.find(profId);
+                    npc.economy.profession_type = (profIt != g_db.professions.end()) ? profIt->second.profession_type : "farmer";
+
+                    // Name
+                    std::mt19937 nameGen(rand());
+                    npc.name = NpcGen::generateName(homeFaction, nameGen);
+                    npc.type = "background_npc";
+
+                    // Location
+                    npc.homeLocation = regionId;
+                    npc.currentLocation = regionId;
+                    npc.currentActivity = "Resting";
+
+                    // Demographics
+                    npc.age_days = (18 + rand() % 40) * 360 + (rand() % 360);
+                    npc.is_male = (rand() % 2 == 0);
+                    npc.immunity = 50 + rand() % 50;
+                    npc.isAlive = true;
+                    npc.alive = true;
+
+                    // Composed background + personality
+                    if (!g_db.bg_categories.empty()) {
+                        std::mt19937 bgGen(rand());
+                        auto bg = NpcGen::composeBackground(g_db.bg_categories, g_db.bg_rules, bgGen);
+                        auto personality = NpcGen::generatePersonalityFromBackground(bg.personality_delta, g_db.bg_rules, bgGen);
+
+                        npc.personality.aggression = personality["aggression"];
+                        npc.personality.sociability = personality["sociability"];
+                        npc.personality.greed = personality["greed"];
+                        npc.personality.loyalty = personality["loyalty"];
+                        npc.personality.lust = personality["lust"];
+
+                        // Store backstory in NPC memory (first entry)
+                        npc.memory.push_back("[Предыстория] " + bg.text);
+
+                        // Assign traits based on personality extremes
+                        if (npc.personality.aggression > 70 && !g_db.trait_ids.empty()) {
+                            // Look for aggressive trait
+                            for (const auto& tid : g_db.trait_ids) {
+                                auto tIt = g_db.traits.find(tid);
+                                if (tIt != g_db.traits.end()) {
+                                    auto abIt = tIt->second.personality_bias.find("aggression");
+                                    if (abIt != tIt->second.personality_bias.end() && abIt->second > 10) {
+                                        npc.traits.push_back(tid);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (npc.personality.greed > 70 && npc.traits.size() < 2) {
+                            for (const auto& tid : g_db.trait_ids) {
+                                auto tIt = g_db.traits.find(tid);
+                                if (tIt != g_db.traits.end()) {
+                                    auto gbIt = tIt->second.personality_bias.find("greed");
+                                    if (gbIt != tIt->second.personality_bias.end() && gbIt->second > 10) {
+                                        npc.traits.push_back(tid);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (npc.personality.loyalty > 70 && npc.traits.size() < 2) {
+                            for (const auto& tid : g_db.trait_ids) {
+                                auto tIt = g_db.traits.find(tid);
+                                if (tIt != g_db.traits.end()) {
+                                    auto lbIt = tIt->second.personality_bias.find("loyalty");
+                                    if (lbIt != tIt->second.personality_bias.end() && lbIt->second > 10) {
+                                        npc.traits.push_back(tid);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Fallback: random personality (legacy)
+                        npc.personality.aggression = rand() % 100;
+                        npc.personality.sociability = rand() % 100;
+                        npc.personality.greed = rand() % 100;
+                        npc.personality.loyalty = rand() % 100;
+                        npc.personality.lust = rand() % 100;
+
+                        // Legacy background
+                        std::mt19937 bgGen(rand());
+                        int wealth = npc.economy.savings;
+                        npc.memory.push_back("[Предыстория] " + NpcGen::generateBackground(wealth, npc.personality.aggression, bgGen));
+                    }
+
+                    // Stats (simple: 8+1d6, adjusted by race modifiers)
+                    auto raceIt = g_db.races.find(npc.race);
+                    npc.str = 8 + rand() % 6 + (raceIt != g_db.races.end() && raceIt->second.stat_modifiers.count("str") ? raceIt->second.stat_modifiers.at("str") : 0);
+                    npc.dex = 8 + rand() % 6 + (raceIt != g_db.races.end() && raceIt->second.stat_modifiers.count("dex") ? raceIt->second.stat_modifiers.at("dex") : 0);
+                    npc.con = 8 + rand() % 6 + (raceIt != g_db.races.end() && raceIt->second.stat_modifiers.count("con") ? raceIt->second.stat_modifiers.at("con") : 0);
+                    npc.int_ = 8 + rand() % 6 + (raceIt != g_db.races.end() && raceIt->second.stat_modifiers.count("int") ? raceIt->second.stat_modifiers.at("int") : 0);
+                    npc.cha = 8 + rand() % 6 + (raceIt != g_db.races.end() && raceIt->second.stat_modifiers.count("cha") ? raceIt->second.stat_modifiers.at("cha") : 0);
+                    npc.res = 8 + rand() % 6;
+
+                    npc.hp = 20 + (npc.con - 10) * 2;
+                    npc.maxHp = npc.hp;
+                    npc.min_damage = 1;
+                    npc.max_damage = 4;
+                    npc.armor_class = 10 + (npc.dex - 10) / 2;
+
+                    // Schedule
+                    npc.schedule = {
+                        {0, 6, "Sleeping", npc.homeLocation},
+                        {7, 8, "Eating", npc.homeLocation},
+                        {9, 18, "Working", npc.homeLocation},
+                        {19, 21, "Resting", npc.homeLocation},
+                        {22, 23, "Sleeping", npc.homeLocation}
+                    };
+
+                    // Economy
+                    npc.economy.skillLevel = 1 + (rand() % 5);  // Background NPCs: lower skill
+                    npc.economy.savings = rand() % 200;
+                    npc.gold = rand() % 50;
+
+                    // Inventory
+                    int initialGoldMax = std::max(1, g_gameplay_runtime.npc_initial_gold_max / 3);
+                    npc.gold = rand() % initialGoldMax;
+                    npc.inventory_id = createContainer("npc_inventory", npc.id, 100, 20, npc.homeLocation, npc.id);
+
+                    // Merchant containers
+                    if (npc.economy.profession_type == "merchant") {
+                        std::string officeId = createContainer("merchant_office", npc.id, 999999, 1000, npc.homeLocation);
+                        createContainer("inbox", npc.id, 999999, 1000, npc.homeLocation, "", officeId);
+                        createContainer("outbox", npc.id, 999999, 1000, npc.homeLocation, "", officeId);
+                        createContainer("archive", npc.id, 999999, 1000, npc.homeLocation, "", officeId);
+                        createContainer("safe", npc.id, 999999, 1000, npc.homeLocation, "", officeId);
+                        npc.economy.workplaceId = officeId;
+                        npc.economy.isEmployed = true;
+                    }
+
+                    g_world.npcs[npc.id] = npc;
+                    spawned++;
+                }
+
+                feedback = "Spawned " + std::to_string(spawned) + " background NPCs in " + region.name;
+                g_world.gmInterventionHistory.push_back(cmd);
+            }
+        }
     } else if (cmd == "killMonster") {
         std::string monsterId = args["monsterId"].asString();
         bool found = false;
@@ -15135,6 +15495,9 @@ int main() {
             g_db.name_groups.clear();
             g_db.faction_to_race.clear();
             g_db.backgrounds.clear();
+            g_db.bg_categories.clear();
+            g_db.bg_fragment_index.clear();
+            g_db.bg_category_index.clear();
             if (command.has("npc_names") && command["npc_names"].type == JsonValue::OBJECT) {
                 JsonValue nn = command["npc_names"];
                 if (nn.has("races") && nn["races"].type == JsonValue::OBJECT) {
@@ -15162,6 +15525,77 @@ int main() {
                             for (size_t i = 0; i < bv.size(); i++) bgs.push_back(bv[i].asString());
                         }
                         g_db.backgrounds[bk] = bgs;
+                    }
+                }
+            }
+
+            // Parse NPC Backgrounds (composable backstory system)
+            if (command.has("npc_backgrounds") && command["npc_backgrounds"].type == JsonValue::OBJECT) {
+                JsonValue nb = command["npc_backgrounds"];
+
+                // Parse categories
+                if (nb.has("categories") && nb["categories"].type == JsonValue::OBJECT) {
+                    for (const auto& [catKey, catVal] : nb["categories"].obj_val) {
+                        BackgroundCategory cat;
+                        cat.name = catKey;
+                        cat.weight = catVal.has("weight") ? catVal["weight"].asDouble() : 0.5;
+                        cat.required = catVal.has("required") ? catVal["required"].asBool() : false;
+
+                        if (catVal.has("fragments") && catVal["fragments"].type == JsonValue::ARRAY) {
+                            for (size_t fi = 0; fi < catVal["fragments"].size(); fi++) {
+                                const JsonValue& fv = catVal["fragments"][fi];
+                                BackgroundFragment frag;
+                                frag.id = fv.has("id") ? fv["id"].asString() : "";
+                                frag.text = fv.has("text") ? fv["text"].asString() : "";
+
+                                if (fv.has("requires") && fv["requires"].type == JsonValue::ARRAY) {
+                                    for (size_t ri = 0; ri < fv["requires"].size(); ri++)
+                                        frag.requires.push_back(fv["requires"][ri].asString());
+                                }
+                                if (fv.has("excludes") && fv["excludes"].type == JsonValue::ARRAY) {
+                                    for (size_t ei = 0; ei < fv["excludes"].size(); ei++)
+                                        frag.excludes.push_back(fv["excludes"][ei].asString());
+                                }
+                                if (fv.has("personality_bias") && fv["personality_bias"].type == JsonValue::OBJECT) {
+                                    for (const auto& [bk2, bv2] : fv["personality_bias"].obj_val)
+                                        frag.personality_bias[bk2] = bv2.asInt();
+                                }
+                                if (fv.has("tags") && fv["tags"].type == JsonValue::ARRAY) {
+                                    for (size_t ti = 0; ti < fv["tags"].size(); ti++)
+                                        frag.tags.push_back(fv["tags"][ti].asString());
+                                }
+
+                                // Build fragment index for fast lookup
+                                if (!frag.id.empty()) {
+                                    g_db.bg_fragment_index[frag.id] = cat.fragments.size();
+                                }
+                                cat.fragments.push_back(frag);
+                            }
+                        }
+
+                        g_db.bg_category_index[catKey] = g_db.bg_categories.size();
+                        g_db.bg_categories.push_back(cat);
+                    }
+                }
+
+                // Parse composition rules
+                if (nb.has("composition_rules") && nb["composition_rules"].type == JsonValue::OBJECT) {
+                    const JsonValue& cr = nb["composition_rules"];
+                    g_db.bg_rules.min_categories = cr.has("min_categories") ? cr["min_categories"].asInt() : 3;
+                    g_db.bg_rules.max_categories = cr.has("max_categories") ? cr["max_categories"].asInt() : 6;
+                    g_db.bg_rules.joiner = cr.has("joiner") ? cr["joiner"].asString() : ". ";
+                    g_db.bg_rules.suffix = cr.has("suffix") ? cr["suffix"].asString() : ".";
+                    g_db.bg_rules.max_personality_delta = cr.has("max_personality_delta") ? cr["max_personality_delta"].asInt() : 25;
+                    g_db.bg_rules.min_personality_value = cr.has("min_personality_value") ? cr["min_personality_value"].asInt() : 0;
+                    g_db.bg_rules.max_personality_value = cr.has("max_personality_value") ? cr["max_personality_value"].asInt() : 100;
+
+                    if (cr.has("always_include") && cr["always_include"].type == JsonValue::ARRAY) {
+                        for (size_t i = 0; i < cr["always_include"].size(); i++)
+                            g_db.bg_rules.always_include.push_back(cr["always_include"][i].asString());
+                    }
+                    if (cr.has("optional_categories") && cr["optional_categories"].type == JsonValue::ARRAY) {
+                        for (size_t i = 0; i < cr["optional_categories"].size(); i++)
+                            g_db.bg_rules.optional_categories.push_back(cr["optional_categories"][i].asString());
                     }
                 }
             }

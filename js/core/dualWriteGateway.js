@@ -54,7 +54,8 @@ window.DualWriteGateway = (() => {
         'gmSpreadRumor', 'gmFrameForSabotage', 'gmDirectResourceInjection',
         'buildShip', 'buildPort', 'upgradePort', 'navalBlockade',
         'gmBuildHighway', 'gmModifyTerrain',
-        'spawnMonster', 'killMonster', 'triggerDisaster'
+        'spawnMonster', 'killMonster', 'triggerDisaster',
+        'spawnBackgroundNpcs'
     ]);
 
     // ========================================================================
@@ -505,6 +506,20 @@ window.DualWriteGateway = (() => {
                     manifestImpact: 'stability↓↓ threat↑ economy↓ (катастрофа)'
                 });
                 if (args.regionId) delta.regions[args.regionId] = { disaster: args.disasterType };
+                break;
+            }
+
+            case 'spawnBackgroundNpcs': {
+                const regionId = args.regionId;
+                const count = args.count || 0;
+                delta.events.push({
+                    type: 'background_npcs_spawned',
+                    region: regionId,
+                    count: count || 'auto',
+                    autoCount: args.autoCount || false,
+                    manifestImpact: 'sociability↑ атмосфера↑ население оживлено'
+                });
+                if (regionId) delta.regions[regionId] = { backgroundNpcsSpawned: true };
                 break;
             }
 
