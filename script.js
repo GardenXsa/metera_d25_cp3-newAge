@@ -1081,12 +1081,89 @@ function executeLocalInventoryCommand(action, args) {
             }
             return { status: 'error', success: false, error: getInventoryFeedbackText('container_not_found', 'Container not found') };
         }
+        case 'equipItem': {
+            // Локальная реализация equipItem: перемещаем предмет в equipment container,
+            // снимаем существующий предмет из слота в рюкзак
+            const itemId = args.itemId;
+            const targetSlot = args.slot;
+            const eqContId = args.equipmentContainerId;
+            const bpContId = args.backpackContainerId;
+            const item = ItemRegistry.get(itemId);
+            const eqCont = ContainerRegistry.get(eqContId);
+            const bpCont = ContainerRegistry.get(bpContId);
+            if (!item || !eqCont) {
+                return { status: 'error', success: false, error: 'Item or equipment container not found' };
+            }
+            // Найти предмет, уже экипированный в этот слот — снять в рюкзак
+            if (targetSlot && eqCont.item_ids) {
+                const existingId = eqCont.item_ids.find(id => {
+                    const it = ItemRegistry.get(id);
+                    return it && it.slot_index === targetSlot;
+                });
+                if (existingId && bpCont) {
+                    // Снимаем существующий предмет в рюкзак
+                    OldCoreInventorySystem.moveItem(existingId, eqContId, bpContId, null, getInventoryTransferOptions('player_ui'));
+                    const existingItem = ItemRegistry.get(existingId);
+                    if (existingItem) { existingItem.slot_index = ''; existingItem.state = 'idle'; }
+                }
+            }
+            // Экипируем предмет: перемещаем в equipment container
+            OldCoreInventorySystem.moveItem(itemId, item.container_id || bpContId, eqContId, null, getInventoryTransferOptions('player_ui'));
+            item.slot_index = targetSlot || '';
+            item.state = 'equipped';
+            return { status: 'ok', success: true };
+        }
+        case 'unequipItem': {
+            // Локальная реализация unequipItem: снимаем предмет из слота в рюкзак
+            const slot = args.slot;
+            const eqContId = args.equipmentContainerId;
+            const bpContId = args.backpackContainerId;
+            const eqCont = ContainerRegistry.get(eqContId);
+            const bpCont = ContainerRegistry.get(bpContId);
+            if (!eqCont || !bpCont) {
+                return { status: 'error', success: false, error: 'Containers not found' };
+            }
+            const itemId = (eqCont.item_ids || []).find(id => {
+                const it = ItemRegistry.get(id);
+                return it && it.slot_index === slot;
+            });
+            if (itemId) {
+                OldCoreInventorySystem.moveItem(itemId, eqContId, bpContId, null, getInventoryTransferOptions('player_ui'));
+                const item = ItemRegistry.get(itemId);
+                if (item) { item.slot_index = ''; item.state = 'idle'; }
+                return { status: 'ok', success: true };
+            }
+            return { status: 'error', success: false, error: 'Slot is empty' };
+        }
         case 'syncEntity':
-        case 'updateEntityStat':
-        case 'updateItemStat':
             // Команды синхронизации NPC/Entity -- работают только через C++ движок.
             // Локально нет реестра NPC, поэтому просто возвращаем OK (fire-and-forget).
             return { status: 'ok', success: true };
+        case 'updateEntityStat':
+            // NPC stat update — нет локального реестра, fire-and-forget
+            return { status: 'ok', success: true };
+        case 'updateItemStat': {
+            // Локальная реализация: обновляем stat предмета в ItemRegistry
+            const targetItem = ItemRegistry.get(args.itemId);
+            if (!targetItem) {
+                return { status: 'error', success: false, error: 'Item not found' };
+            }
+            const stat = args.stat;
+            const change = parseInt(args.change, 10) || 0;
+            if (stat === 'durability') {
+                targetItem.durability = (targetItem.durability || 0) + change;
+            } else if (stat === 'stack_size') {
+                targetItem.stack_size = (targetItem.stack_size || 1) + change;
+            } else {
+                // Generic stat update
+                if (targetItem.custom_props && typeof targetItem.custom_props[stat] === 'number') {
+                    targetItem.custom_props[stat] += change;
+                } else {
+                    targetItem[stat] = (targetItem[stat] || 0) + change;
+                }
+            }
+            return { status: 'ok', success: true };
+        }
         default:
             console.warn(`[Inventory] Unknown local command: ${action}`);
             return { status: 'error', success: false, error: getInventoryFeedbackText('unknown_command', 'Unknown command: {action}', { action }) };
@@ -8977,6 +9054,39 @@ function _startDeferredWorldFileSync() {
                 const recovered = InventoryModeManager.tryRecoverToServer();
                 if (recovered) {
                     console.log('[InventoryMode] Восстановлен server mode после завершения world file sync');
+                }
+            }
+
+            // После loadWorldFile движок C++ имеет СТАРЫЕ данные (snapshot на момент записи файла).
+            // JS-память (ItemRegistry/ContainerRegistry) может иметь НОВЫЕ предметы,
+            // созданные AI-командами во время loadWorldFile.
+            // Делаем повторную синхронизацию — отправляем свежий snapshot в движок.
+            if (window.electronAPI && window.electronAPI.nexusWriteSyncFile && window.electronAPI.nexusLoadWorldFile) {
+                console.log('[Nexus] Post-sync: повторная синхронизация свежих данных...');
+                try {
+                    const freshItems = Array.from(ItemRegistry.entries());
+                    const freshContainers = Array.from(ContainerRegistry.entries());
+                    const freshData = { world: World, items: freshItems, containers: freshContainers };
+                    const freshWriteRes = await Promise.race([
+                        window.electronAPI.nexusWriteSyncFile(freshData),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('post-sync write timeout')), 30000))
+                    ]);
+                    if (freshWriteRes.status === 'ok' && freshWriteRes.path) {
+                        window._engineHeavyOpInProgress = true;
+                        const freshLoadRes = await Promise.race([
+                            window.electronAPI.nexusLoadWorldFile(freshWriteRes.path),
+                            new Promise((_, reject) => setTimeout(() => reject(new Error('post-sync load timeout')), 120000))
+                        ]);
+                        window._engineHeavyOpInProgress = false;
+                        if (freshLoadRes.status === 'ok') {
+                            console.log('[Nexus] Post-sync: свежие данные успешно загружены в движок');
+                        } else {
+                            console.warn('[Nexus] Post-sync: loadWorldFile не удался:', freshLoadRes.message || 'unknown');
+                        }
+                    }
+                } catch (postSyncErr) {
+                    window._engineHeavyOpInProgress = false;
+                    console.warn('[Nexus] Post-sync: ошибка повторной синхронизации:', postSyncErr.message || postSyncErr);
                 }
             }
         }
