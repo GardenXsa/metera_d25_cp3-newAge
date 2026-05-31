@@ -8737,30 +8737,46 @@ async function finalizeWorldSetupAndStart() {
     // Для предзагруженного мира: синхронизация через ФАЙЛ, а не через stdin.
     // syncState через stdin блокирует движок (1.5MB+ JSON → 64KB pipe buffer → timeout).
     // Новый подход: записываем мир в файл, движок читает его напрямую через loadWorldFile.
+    //
+    // ВАЖНО: Файловая синхронизация запускается В ФОНЕ (fire-and-forget),
+    // чтобы НЕ блокировать отправку AI-запроса. Движок получит данные мира
+    // позже — для первого AI-запроса World уже доступен в JS-памяти.
     if (preloadedWorldData && window.electronAPI && window.electronAPI.nexusWriteSyncFile) {
         const syncItems = Array.from(ItemRegistry.entries());
         const syncContainers = Array.from(ContainerRegistry.entries());
         const worldFileData = { world: World, items: syncItems, containers: syncContainers };
-        console.log('[Nexus] Запуск файловой синхронизации предзагруженного мира...');
-        try {
-            // Шаг 1: Записываем данные мира во временный файл через IPC
-            const writeRes = await window.electronAPI.nexusWriteSyncFile(worldFileData);
-            if (writeRes.status === 'ok' && writeRes.path) {
-                // Шаг 2: Отправляем команду движку прочитать файл напрямую
-                const loadRes = await window.electronAPI.nexusLoadWorldFile(writeRes.path);
-                if (loadRes.status === 'ok') {
-                    console.log('[Nexus] Файловая синхронизация мира завершена:', loadRes.message);
+        console.log('[Nexus] Запуск файловой синхронизации предзагруженного мира (фон)...');
+
+        // Fire-and-forget: не await'им результат
+        (async () => {
+            try {
+                // Шаг 1: Записываем данные мира во временный файл через IPC
+                console.log('[Nexus] Шаг 1: Запись world-данных во временный файл...');
+                const writeRes = await Promise.race([
+                    window.electronAPI.nexusWriteSyncFile(worldFileData),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('nexusWriteSyncFile timeout (30s)')), 30000))
+                ]);
+                if (writeRes.status === 'ok' && writeRes.path) {
+                    console.log('[Nexus] Шаг 2: Файл записан, отправка loadWorldFile...');
+                    // Шаг 2: Отправляем команду движку прочитать файл напрямую
+                    const loadRes = await Promise.race([
+                        window.electronAPI.nexusLoadWorldFile(writeRes.path),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('nexusLoadWorldFile timeout (60s)')), 60000))
+                    ]);
+                    if (loadRes.status === 'ok') {
+                        console.log('[Nexus] Файловая синхронизация мира завершена:', loadRes.message);
+                    } else {
+                        const errVal = loadRes.message || loadRes.error || 'unknown error';
+                        const errStr = typeof errVal === 'string' ? errVal : JSON.stringify(errVal);
+                        console.warn('[Nexus] loadWorldFile не удался:', errStr);
+                    }
                 } else {
-                    const errVal = loadRes.message || loadRes.error || 'unknown error';
-                    const errStr = typeof errVal === 'string' ? errVal : JSON.stringify(errVal);
-                    console.warn('[Nexus] loadWorldFile не удался:', errStr);
+                    console.warn('[Nexus] Не удалось записать временный файл:', writeRes.message);
                 }
-            } else {
-                console.warn('[Nexus] Не удалось записать временный файл:', writeRes.message);
+            } catch (err) {
+                console.warn('[Nexus] Ошибка файловой синхронизации:', err.message || err);
             }
-        } catch (err) {
-            console.warn('[Nexus] Ошибка файловой синхронизации:', err.message || err);
-        }
+        })();
     }
 
     const narratorStyleGuide = `
