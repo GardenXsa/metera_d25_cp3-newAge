@@ -14750,7 +14750,7 @@ function validateGMCommand(command, args) {
             if (!destExists) return { valid: false, error: `Локация '${testArgs.destinationId}' не найдена на карте. Используй только существующие ID.` };
             break;
         case 'setPlayerDescription':
-            if (!testArgs.text && !testArgs.description && !testArgs.bio && !testArgs.value && !testArgs.narrative && !testArgs.biography && !testArgs.background && !testArgs.history && !testArgs.lore) return { valid: false, error: "Не указан text или description." };
+            if (!testArgs.text && !testArgs.description && !testArgs.full_text && !testArgs.bio && !testArgs.value && !testArgs.narrative && !testArgs.biography && !testArgs.background && !testArgs.history && !testArgs.lore && !Object.values(testArgs).find(v => typeof v === 'string' && v.length > 20)) return { valid: false, error: "Не указан text или description." };
             break;
         case 'updateStat':
         case 'setStat':
@@ -14897,7 +14897,12 @@ async function executeNonInventoryCommand(command, args) {
                     console.warn('[BACKSTORY GUARD] setPlayerDescription заблокирован — _backstoryLocked=true');
                     break;
                 }
-                let bioText = args.text || args.description || args.bio || args.value || args.narrative || args.biography || args.background || args.history || args.lore;
+                let bioText = args.text || args.description || args.full_text || args.bio || args.value || args.narrative || args.biography || args.background || args.history || args.lore;
+                // Fallback: если ни один из известных ключей не подошёл, берём первое строковое значение
+                if (!bioText) {
+                    const firstStringVal = Object.values(args).find(v => typeof v === 'string' && v.length > 20);
+                    if (firstStringVal) bioText = firstStringVal;
+                }
                 if (bioText) {
                     player.description = bioText;
                     feedback = `[СИСТЕМА] Предыстория персонажа успешно обновлена и сохранена в профиль.`;
