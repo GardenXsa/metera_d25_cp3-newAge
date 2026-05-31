@@ -845,6 +845,10 @@ const InventoryModeManager = {
     /** Попробовать вернуться на серверный режим */
     tryRecoverToServer() {
         if (this._mode === 'server') return true;
+        // Не восстанавливаем server mode пока движок занят тяжёлой операцией
+        if (typeof window._engineHeavyOpInProgress !== 'undefined' && window._engineHeavyOpInProgress) {
+            return false;
+        }
         const isServerAvailable = !!(window.electronAPI && window.electronAPI.nexusInventoryCommand);
         if (isServerAvailable) {
             this._setMode('server', 'recovery');
@@ -931,6 +935,15 @@ const InventoryModeManager = {
 async function sendInventoryCommand(action, args, _retryCount = 0) {
     const retryConfig = getInventoryEngineRuntimeConfig().ipc_retry; const MAX_RETRIES = retryConfig.max_retries; const RETRY_DELAY_MS = retryConfig.delay_ms; const RETRY_BACKOFF_MULTIPLIER = retryConfig.backoff_multiplier;
 
+    // Если движок занят тяжёлой операцией (loadWorldFile, preSimulate и т.д.)
+    // — сразу локальный режим, без попыток IPC
+    if (typeof window._engineHeavyOpInProgress !== 'undefined' && window._engineHeavyOpInProgress) {
+        if (_retryCount === 0) {
+            console.log(`[Inventory] Engine busy with heavy op — using local mode for '${action}'`);
+        }
+        return executeLocalInventoryCommand(action, args);
+    }
+
     // Если мы уже в local-режиме — сразу используем локальную реализацию,
     // но периодически пробуем восстановить серверный режим
     if (typeof InventoryModeManager !== 'undefined' && InventoryModeManager.isLocal()) {
@@ -951,7 +964,15 @@ async function sendInventoryCommand(action, args, _retryCount = 0) {
         return executeLocalInventoryCommand(action, args);
     }
     try {
-        const res = await window.electronAPI.nexusInventoryCommand({ action, args });
+        // IPC-вызов с таймаутом: если движок занят (например loadWorldFile блокирует очередь),
+        // не ждём бесконечно — через 10 секунд fallback на локальный режим
+        const IPC_TIMEOUT_MS = 10000;
+        const res = await Promise.race([
+            window.electronAPI.nexusInventoryCommand({ action, args }),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error(`IPC timeout (${IPC_TIMEOUT_MS / 1000}s) for '${action}'`)), IPC_TIMEOUT_MS)
+            )
+        ]);
         if (res.status === 'ok') {
             if (res.items) res.items.forEach(([k, v]) => ItemRegistry.set(k, v));
             if (res.containers) res.containers.forEach(([k, v]) => setContainer(k, v));
@@ -985,6 +1006,16 @@ async function sendInventoryCommand(action, args, _retryCount = 0) {
         }
         return executeLocalInventoryCommand(action, args);
     } catch (e) {
+        // IPC timeout — движок занят тяжёлой операцией (loadWorldFile и т.д.)
+        // НЕ ретрайим — сразу fallback на локальный режим
+        const isIPCTimeout = (e.message || '').includes('IPC timeout');
+        if (isIPCTimeout) {
+            console.warn(`[Inventory] IPC timeout for '${action}': engine likely busy. Falling back to local immediately.`);
+            if (typeof InventoryModeManager !== 'undefined') {
+                InventoryModeManager.switchToLocal('ipc_timeout_engine_busy');
+            }
+            return executeLocalInventoryCommand(action, args);
+        }
         if (_retryCount < MAX_RETRIES && (e.message || '').includes('not ready')) {
             const delay = RETRY_DELAY_MS * (_retryCount + 1);
             console.warn(`[Inventory] IPC exception for '${action}' (attempt ${_retryCount + 1}/${MAX_RETRIES}). Retrying in ${delay}ms...`);
@@ -3432,6 +3463,7 @@ async function showLoadGameScreen() {
                                         const syncItems = typeof ItemRegistry !== 'undefined' ? Array.from(ItemRegistry.entries()) : [];
                                         const syncContainers = typeof ContainerRegistry !== 'undefined' ? Array.from(ContainerRegistry.entries()) : [];
                                         const worldFileData = { world: World, items: syncItems, containers: syncContainers };
+                                        window._engineHeavyOpInProgress = true;
                                         const writeRes = await window.electronAPI.nexusWriteSyncFile(worldFileData);
                                         if (writeRes.status === 'ok') {
                                             const syncTempPath = path.join ? null : null; // Use known temp filename
@@ -3442,6 +3474,8 @@ async function showLoadGameScreen() {
                                         }
                                     } catch (syncErr) {
                                         console.warn('[LoadGame] Engine sync failed:', syncErr);
+                                    } finally {
+                                        window._engineHeavyOpInProgress = false;
                                     }
                                 }
 
@@ -8877,6 +8911,79 @@ const WorldStartupPipeline = {
 };
 
 
+/**
+ * Отложенная файловая синхронизация мира с C++ движком.
+ * Запускается ПОСЛЕ отправки AI-запроса, чтобы не блокировать
+ * очередь команд движка при старте игры.
+ *
+ * loadWorldFile — тяжёлая операция: C++ движок читает файл с диска,
+ * парсит JSON, загружает world/items/containers и перестраивает индексы.
+ * Во время этой операции движок не может обрабатывать другие команды
+ * (inventory, game commands и т.д.), поэтому:
+ *   1. Устанавливаем флаг _engineHeavyOpInProgress, чтобы инвентарь
+ *      сразу использовал локальный режим вместо IPC
+ *   2. Запускаем с задержкой в 5 секунд — даём AI-запросу уйти
+ *   3. После завершения sync снимаем флаг и пытаемся вернуть серверный режим
+ */
+function _startDeferredWorldFileSync() {
+    if (!preloadedWorldData || !window.electronAPI || !window.electronAPI.nexusWriteSyncFile) {
+        return; // Нет предзагруженных данных или IPC — нечего синхронизировать
+    }
+
+    // Даем AI-запросу 5 секунд на отправку, потом запускаем sync
+    setTimeout(async () => {
+        const syncItems = Array.from(ItemRegistry.entries());
+        const syncContainers = Array.from(ContainerRegistry.entries());
+        const worldFileData = { world: World, items: syncItems, containers: syncContainers };
+
+        // Флаг: движок занят тяжёлой операцией — инвентарь должен использовать local mode
+        window._engineHeavyOpInProgress = true;
+        console.log('[Nexus] Запуск отложенной файловой синхронизации мира...');
+
+        try {
+            // Шаг 1: Записываем данные мира во временный файл через IPC
+            console.log('[Nexus] Шаг 1: Запись world-данных во временный файл...');
+            const writeRes = await Promise.race([
+                window.electronAPI.nexusWriteSyncFile(worldFileData),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('nexusWriteSyncFile timeout (30s)')), 30000))
+            ]);
+            if (writeRes.status === 'ok' && writeRes.path) {
+                console.log('[Nexus] Шаг 2: Файл записан, отправка loadWorldFile...');
+                // Шаг 2: Отправляем команду движку прочитать файл напрямую
+                // Увеличиваем таймаут до 180s — loadWorldFile может быть медленным
+                const loadRes = await Promise.race([
+                    window.electronAPI.nexusLoadWorldFile(writeRes.path),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('nexusLoadWorldFile timeout (180s)')), 180000))
+                ]);
+                if (loadRes.status === 'ok') {
+                    console.log('[Nexus] Файловая синхронизация мира завершена:', loadRes.message);
+                } else {
+                    const errVal = loadRes.message || loadRes.error || 'unknown error';
+                    const errStr = typeof errVal === 'string' ? errVal : JSON.stringify(errVal);
+                    console.warn('[Nexus] loadWorldFile не удался:', errStr);
+                }
+            } else {
+                console.warn('[Nexus] Не удалось записать временный файл:', writeRes.message);
+            }
+        } catch (err) {
+            console.warn('[Nexus] Ошибка файловой синхронизации:', err.message || err);
+        } finally {
+            // Снимаем флаг тяжёлой операции в ЛЮБОМ случае
+            window._engineHeavyOpInProgress = false;
+            console.log('[Nexus] Флаг _engineHeavyOpInProgress снят. Инвентарь может вернуться в server mode.');
+
+            // Пытаемся вернуть инвентарь в серверный режим
+            if (typeof InventoryModeManager !== 'undefined' && InventoryModeManager.isLocal()) {
+                const recovered = InventoryModeManager.tryRecoverToServer();
+                if (recovered) {
+                    console.log('[InventoryMode] Восстановлен server mode после завершения world file sync');
+                }
+            }
+        }
+    }, 5000); // 5-секундная задержка перед началом sync
+}
+
+
 async function finalizeWorldSetupAndStart() {
     const yearsToSimulate = parseInt(worldYearsSlider.value, 10);
     const initialAgents = parseInt(worldAgentsSlider.value, 10);
@@ -9030,46 +9137,14 @@ async function finalizeWorldSetupAndStart() {
     // syncState через stdin блокирует движок (1.5MB+ JSON → 64KB pipe buffer → timeout).
     // Новый подход: записываем мир в файл, движок читает его напрямую через loadWorldFile.
     //
-    // ВАЖНО: Файловая синхронизация запускается В ФОНЕ (fire-and-forget),
-    // чтобы НЕ блокировать отправку AI-запроса. Движок получит данные мира
-    // позже — для первого AI-запроса World уже доступен в JS-памяти.
-    if (preloadedWorldData && window.electronAPI && window.electronAPI.nexusWriteSyncFile) {
-        const syncItems = Array.from(ItemRegistry.entries());
-        const syncContainers = Array.from(ContainerRegistry.entries());
-        const worldFileData = { world: World, items: syncItems, containers: syncContainers };
-        console.log('[Nexus] Запуск файловой синхронизации предзагруженного мира (фон)...');
-
-        // Fire-and-forget: не await'им результат
-        (async () => {
-            try {
-                // Шаг 1: Записываем данные мира во временный файл через IPC
-                console.log('[Nexus] Шаг 1: Запись world-данных во временный файл...');
-                const writeRes = await Promise.race([
-                    window.electronAPI.nexusWriteSyncFile(worldFileData),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('nexusWriteSyncFile timeout (30s)')), 30000))
-                ]);
-                if (writeRes.status === 'ok' && writeRes.path) {
-                    console.log('[Nexus] Шаг 2: Файл записан, отправка loadWorldFile...');
-                    // Шаг 2: Отправляем команду движку прочитать файл напрямую
-                    const loadRes = await Promise.race([
-                        window.electronAPI.nexusLoadWorldFile(writeRes.path),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('nexusLoadWorldFile timeout (60s)')), 60000))
-                    ]);
-                    if (loadRes.status === 'ok') {
-                        console.log('[Nexus] Файловая синхронизация мира завершена:', loadRes.message);
-                    } else {
-                        const errVal = loadRes.message || loadRes.error || 'unknown error';
-                        const errStr = typeof errVal === 'string' ? errVal : JSON.stringify(errVal);
-                        console.warn('[Nexus] loadWorldFile не удался:', errStr);
-                    }
-                } else {
-                    console.warn('[Nexus] Не удалось записать временный файл:', writeRes.message);
-                }
-            } catch (err) {
-                console.warn('[Nexus] Ошибка файловой синхронизации:', err.message || err);
-            }
-        })();
-    }
+    // ВАЖНО: Файловая синхронизация ОТЛОЖЕНА до после отправки AI-запроса.
+    // Раньше она запускалась здесь (fire-and-forget), но loadWorldFile блокирует
+    // очередь команд движка на 60+ секунд, из-за чего инвентарь не может работать
+    // через IPC. Теперь world data sync запускается в _startDeferredWorldFileSync()
+    // ПОСЛЕ AI_REQUESTED, чтобы не мешать стартовым операциям.
+    //
+    // Данные мира уже доступны в JS-памяти (World, ItemRegistry, ContainerRegistry),
+    // поэтому первый AI-запрос работает корректно без C++ sync.
 
     const narratorStyleGuide = `
     ### ТВОЙ СТИЛЬ: THE PRISM MASTER
@@ -9252,6 +9327,12 @@ async function finalizeWorldSetupAndStart() {
     // ===== STEP: AI_REQUESTED =====
     WorldStartupPipeline.transition('AI_REQUESTED');
     sendApiRequest(startPrompt, true);
+
+    // Отложенная файловая синхронизация — запускается ПОСЛЕ AI-запроса,
+    // чтобы не блокировать очередь команд движка при старте.
+    // loadWorldFile — тяжёлая операция (может занимать 60+ секунд),
+    // во время которой движок не может обрабатывать другие команды.
+    _startDeferredWorldFileSync();
 
     tempPlayer = null;
     stopMenuMusic();

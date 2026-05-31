@@ -350,6 +350,7 @@ async function loadGame(slotType, slotId) {
 
             if (window.electronAPI.nexusWriteSyncFile && window.electronAPI.nexusLoadWorldFile) {
                 try {
+                    window._engineHeavyOpInProgress = true;
                     const writeRes = await window.electronAPI.nexusWriteSyncFile(worldFileData);
                     if (writeRes.status === 'ok' && writeRes.path) {
                         const loadRes = await window.electronAPI.nexusLoadWorldFile(writeRes.path);
@@ -363,6 +364,8 @@ async function loadGame(slotType, slotId) {
                     }
                 } catch (err) {
                     console.warn("[SaveManager] Ошибка файловой синхронизации:", err.message || err);
+                } finally {
+                    window._engineHeavyOpInProgress = false;
                 }
             } else if (window.electronAPI.nexusSyncState) {
                 // Fallback на stdin-синхронизацию если файловые IPC недоступны
