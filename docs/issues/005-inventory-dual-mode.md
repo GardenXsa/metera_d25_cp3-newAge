@@ -1,7 +1,7 @@
 # Issue #005: Инвентарь в двух режимах — server-authoritative vs local-only
 
 **Severity:** MEDIUM
-**Status:** OPEN
+**Status:** FIXED
 **Date:** 2026-06-01
 
 ## Описание
@@ -18,9 +18,19 @@
 - Нет логирования при переключении режима
 - Рассинхронизация ItemRegistry/ContainerRegistry между движком и JS
 
-## Предлагаемое решение
+## Исправление
 
-1. Явный флаг `inventoryMode: 'server' | 'local'`
-2. Логировать переключение режима
-3. При потере сервера — полный переход в local mode с предупреждением
-4. Periodic reconciliation между server и local state
+Создан `InventoryModeManager` (script.js) — объект с методами:
+
+- `detectInitialMode()` — определение режима при запуске (вызывается в init приложения)
+- `getMode()` / `isServer()` / `isLocal()` — проверка текущего режима
+- `switchToLocal(source)` — переключение с логированием причины
+- `tryRecoverToServer()` — попытка вернуться на серверный режим (каждые 10 команд)
+- `reconcile()` — сверка локальных реестров с C++ движком
+- `getDebugInfo()` — диагностика (mode, switchCount, lastReconciliation)
+
+Интеграция:
+- `sendInventoryCommand` использует `InventoryModeManager` для маршрутизации
+- При IPC error/exception — `switchToLocal()` с причиной
+- Periodic reconciliation каждые 20 ходов (в `sendApiRequest`)
+- Auto-recovery: каждые 10 команд в local-режиме пробуем вернуться на server

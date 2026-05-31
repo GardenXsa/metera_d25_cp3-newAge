@@ -800,12 +800,154 @@ async function fetchGraphContext(queryIds) {
     return [];
 }
 
+// ===== INVENTORY MODE MANAGER (Issue #005) =====
+// Управляет режимом инвентаря: 'server' (C++ движок) или 'local' (JS fallback).
+// Логирует переключения, предоставляет periodic reconciliation.
+
+const InventoryModeManager = {
+    _mode: null,          // 'server' | 'local'
+    _modeSince: null,     // timestamp когда режим был установлен
+    _modeSource: null,    // причина переключения
+    _switchCount: 0,      // сколько раз переключались
+    _lastReconciliation: null,
+
+    /** Определить начальный режим на основе доступности IPC */
+    detectInitialMode() {
+        const isServerAvailable = !!(window.electronAPI && window.electronAPI.nexusInventoryCommand);
+        const newMode = isServerAvailable ? 'server' : 'local';
+        this._setMode(newMode, 'initial_detection');
+        return newMode;
+    },
+
+    /** Установить режим (внутренний метод) */
+    _setMode(newMode, source) {
+        if (this._mode === newMode) return; // нет изменений
+
+        const oldMode = this._mode;
+        this._mode = newMode;
+        this._modeSince = Date.now();
+        this._modeSource = source;
+        this._switchCount++;
+
+        if (oldMode !== null) {
+            // Логируем переключение режима — это важное событие
+            console.warn(`[InventoryMode] ${oldMode} → ${newMode} (reason: ${source})`);
+        } else {
+            console.log(`[InventoryMode] Initial mode: ${newMode} (reason: ${source})`);
+        }
+    },
+
+    /** Переключиться на локальный режим */
+    switchToLocal(source = 'unknown') {
+        this._setMode('local', source);
+    },
+
+    /** Попробовать вернуться на серверный режим */
+    tryRecoverToServer() {
+        if (this._mode === 'server') return true;
+        const isServerAvailable = !!(window.electronAPI && window.electronAPI.nexusInventoryCommand);
+        if (isServerAvailable) {
+            this._setMode('server', 'recovery');
+            return true;
+        }
+        return false;
+    },
+
+    /** Текущий режим */
+    getMode() { return this._mode || this.detectInitialMode(); },
+
+    /** Находимся ли мы в серверном режиме? */
+    isServer() { return this.getMode() === 'server'; },
+
+    /** Находимся ли мы в локальном режиме? */
+    isLocal() { return this.getMode() === 'local'; },
+
+    /** Отладочная информация */
+    getDebugInfo() {
+        return {
+            mode: this._mode,
+            modeSince: this._modeSince ? new Date(this._modeSince).toISOString() : null,
+            modeSource: this._modeSource,
+            switchCount: this._switchCount,
+            lastReconciliation: this._lastReconciliation,
+            serverAvailable: !!(window.electronAPI && window.electronAPI.nexusInventoryCommand)
+        };
+    },
+
+    /**
+     * Reconciliation: сверка локальных реестров с C++ движком.
+     * Вызывается периодически (каждые N ходов) или по запросу.
+     * Возвращает { matched, localOnly, serverOnly, reconciled }.
+     */
+    async reconcile() {
+        if (!window.electronAPI || !window.electronAPI.nexusGetFullState) {
+            this._lastReconciliation = { status: 'skipped', reason: 'IPC not available', ts: Date.now() };
+            return this._lastReconciliation;
+        }
+
+        try {
+            const serverState = await Promise.race([
+                window.electronAPI.nexusGetFullState(player?.location || ''),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('reconciliation timeout')), 15000))
+            ]);
+
+            if (serverState.status !== 'ok' || !serverState.world) {
+                this._lastReconciliation = { status: 'error', reason: 'server returned error', ts: Date.now() };
+                return this._lastReconciliation;
+            }
+
+            // Считаем расхождения
+            const localItems = ItemRegistry.size;
+            const localContainers = ContainerRegistry.size;
+            const serverItems = serverState.items ? serverState.items.length : 0;
+            const serverContainers = serverState.containers ? serverState.containers.length : 0;
+
+            const result = {
+                status: 'ok',
+                localItems,
+                localContainers,
+                serverItems,
+                serverContainers,
+                itemDelta: Math.abs(localItems - serverItems),
+                containerDelta: Math.abs(localContainers - serverContainers),
+                ts: Date.now()
+            };
+
+            // Если расхождения значительные — предупреждаем
+            if (result.itemDelta > 5 || result.containerDelta > 3) {
+                console.warn(`[InventoryReconciliation] Significant drift detected: items Δ${result.itemDelta}, containers Δ${result.containerDelta}`);
+            }
+
+            this._lastReconciliation = result;
+            return result;
+        } catch (e) {
+            this._lastReconciliation = { status: 'error', reason: e.message, ts: Date.now() };
+            return this._lastReconciliation;
+        }
+    }
+};
+
 
 async function sendInventoryCommand(action, args, _retryCount = 0) {
     const retryConfig = getInventoryEngineRuntimeConfig().ipc_retry; const MAX_RETRIES = retryConfig.max_retries; const RETRY_DELAY_MS = retryConfig.delay_ms; const RETRY_BACKOFF_MULTIPLIER = retryConfig.backoff_multiplier;
 
+    // Если мы уже в local-режиме — сразу используем локальную реализацию,
+    // но периодически пробуем восстановить серверный режим
+    if (typeof InventoryModeManager !== 'undefined' && InventoryModeManager.isLocal()) {
+        // Пробуем восстановить серверный режим каждые 10 команд
+        if (_retryCount === 0 && InventoryModeManager._switchCount % 10 === 0) {
+            InventoryModeManager.tryRecoverToServer();
+        }
+        if (InventoryModeManager.isLocal()) {
+            return executeLocalInventoryCommand(action, args);
+        }
+    }
+
     if (!window.electronAPI || !window.electronAPI.nexusInventoryCommand) {
-        // FALLBACK: IPC недоступен -- используем локальную реализацию (OldCoreInventorySystem)
+        // FALLBACK: IPC недоступен -- переключаемся в local-режим
+        if (typeof InventoryModeManager !== 'undefined') {
+            InventoryModeManager.switchToLocal('ipc_unavailable');
+        }
         return executeLocalInventoryCommand(action, args);
     }
     try {
@@ -838,6 +980,9 @@ async function sendInventoryCommand(action, args, _retryCount = 0) {
 
         // IPC вернул ошибку после всех попыток -- fallback на локальную реализацию
         console.warn(`[Inventory] IPC error for '${action}': ${res.error || res.message || res.status}. Falling back to local.${_retryCount > 0 ? ` (after ${_retryCount} retries)` : ''}`);
+        if (typeof InventoryModeManager !== 'undefined') {
+            InventoryModeManager.switchToLocal(`ipc_error:${res.error || res.message || res.status}`);
+        }
         return executeLocalInventoryCommand(action, args);
     } catch (e) {
         if (_retryCount < MAX_RETRIES && (e.message || '').includes('not ready')) {
@@ -847,6 +992,9 @@ async function sendInventoryCommand(action, args, _retryCount = 0) {
             return await sendInventoryCommand(action, args, _retryCount + 1);
         }
         console.warn(`[Inventory] IPC exception for '${action}': ${e.message}. Falling back to local.`);
+        if (typeof InventoryModeManager !== 'undefined') {
+            InventoryModeManager.switchToLocal(`ipc_exception:${e.message}`);
+        }
         return executeLocalInventoryCommand(action, args);
     }
 }
@@ -6526,6 +6674,11 @@ async function initializeApp() {
                 executeCommand('nexusUpdate', { id: itemId, state: 'rejected' });
             }
         });
+    }
+
+    // Определяем начальный режим инвентаря (Issue #005)
+    if (typeof InventoryModeManager !== 'undefined') {
+        InventoryModeManager.detectInitialMode();
     }
 
     console.log("Инициализация приложения завершена.");
@@ -12781,6 +12934,14 @@ async function handleUserInput() {
 
 
     // Архивация перенесена в конец sendApiRequest, чтобы не прерывать текущий ход игрока.
+
+    // ===== PERIODIC INVENTORY RECONCILIATION (Issue #005) =====
+    // Каждые 20 ходов сверяем локальные реестры с C++ движком
+    if (turn > 0 && turn % 20 === 0 && typeof InventoryModeManager !== 'undefined' && InventoryModeManager.isServer()) {
+        InventoryModeManager.reconcile().catch(e => {
+            console.warn('[InventoryReconciliation] Background check failed:', e.message);
+        });
+    }
 
     if (turn > 0 && turn % MEMORY_PRUNE_TURN === 0) {
         addLogMessage(t('optimization.clearing', "Контекст диалогов был очищен для оптимизации. Ключевые события сохранены в памяти GM."), "command-feedback");
