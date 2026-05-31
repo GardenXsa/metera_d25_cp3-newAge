@@ -4266,9 +4266,11 @@ function showGenericTooltip(event, header, body) {
         itemTooltipElement.className = 'item-tooltip';
         document.body.appendChild(itemTooltipElement);
     }
+    // header — всегда простой текст (имя предмета, название стата), экранируем
+    // body — может содержать HTML-разметку (тултипы статов, описания предметов), санитизируем
     itemTooltipElement.innerHTML = `
         <div class="item-card-header">${escapeHTML(header)}</div>
-        <div class="item-card-body">${escapeHTML(body)}</div>
+        <div class="item-card-body">${sanitizeHTML(body)}</div>
     `;
     itemTooltipElement.style.display = 'block';
     moveGenericTooltip(event);
