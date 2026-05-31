@@ -161,7 +161,7 @@ function buildContentSecurityPolicy() {
     `style-src 'self' 'unsafe-inline' ${origin} ${styleSources}`,
     `font-src 'self' ${origin} ${fontSources}`,
     `img-src 'self' data: ${origin} https:`,
-    `media-src 'self' ${origin} https:`,
+    `media-src 'self' data: ${origin} https:`,
     `connect-src 'self' ${origin} ${connectSources}`
   ].join('; ');
 }
