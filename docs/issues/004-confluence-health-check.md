@@ -1,7 +1,7 @@
 # Issue #004: Confluence Protocol — нет health-check для подсистем
 
 **Severity:** MEDIUM
-**Status:** OPEN
+**Status:** FIXED
 **Date:** 2026-06-01
 
 ## Описание
@@ -16,9 +16,14 @@ Confluence Protocol v2 состоит из 4 подсистем:
 Нет единой проверки «все ли подсистемы живы» и нет логирования, когда подсистема
 отключается.
 
-## Предлагаемое решение
+## Исправление (commit d014dce)
 
-1. Создать `ConfluenceHealthCheck.check()` — возвращает статус каждой подсистемы
-2. Логировать при отключении подсистемы (уровень WARN)
-3. Показывать в UI индикатор здоровья Confluence (для отладки)
-4. Добавить periodic health-check (каждые N ходов)
+Создан `ConfluenceHealthCheck` (js/core/confluenceHealthCheck.js):
+
+- `check()` — проверяет 5 подсистем (DualWriteGateway, PredictiveFeed, CommandFeedback, ReconciliationBuffer, WorldManifest)
+- `isHealthy()` — быстрая проверка
+- `getLastResult()` — кэшированный результат
+- `getDebugInfo()` — диагностика
+- Логирование WARN при обнаружении отключённой подсистемы
+- Вызов в `finalizeWorldSetupAndStart()` после CONTAINERS_READY
+- Подключён в index.html

@@ -1,7 +1,7 @@
 # Issue #001: Хрупкий запуск мира — finalizeWorldSetupAndStart без таймаутов
 
 **Severity:** CRITICAL
-**Status:** OPEN
+**Status:** FIXED
 **Date:** 2026-06-01
 
 ## Описание
@@ -22,11 +22,24 @@
 - `ensurePlayerContainers()` может зависнуть при IPC к движку
 - `TransportSystem.init()` может зависнуть
 
-## План исправления
+## Исправление (commit d014dce)
 
-1. Обернуть КАЖДЫЙ критический `await` в `Promise.race` с таймаутом
-2. Реализовать state machine для запуска мира (см. Issue #002)
-3. Каждый шаг state machine имеет свой таймаут и error recovery
+1. ✅ Каждый критический `await` обёрнут в `withTimeout(promise, ms, label)`
+2. ✅ Все таймауты non-fatal — код продолжает с предупреждением
+3. ✅ State machine `WorldStartupPipeline` отслеживает переходы
+4. ✅ Watchdog теперь знает `pipelineState` + `pipelineHistory` при timeout
+
+Таймауты:
+- loadActiveEraLore + loadGlobalLocations: 15s
+- initializeGameInterface: 10s
+- initWorldSimulator (preloaded): 60s
+- initWorldSimulator (new): 120s
+- nexusBootstrap: 120s
+- preSimulateWorldHistory: 180s
+- promptSaveWorldModal: 300s
+- ensurePlayerContainers: 15s
+- loadPromptFromFile: 10s
+- TransportSystem.init: 5s
 
 ## Связанные issues
 

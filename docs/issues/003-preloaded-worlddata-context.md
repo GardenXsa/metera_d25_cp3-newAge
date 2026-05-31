@@ -1,7 +1,7 @@
 # Issue #003: Неуправляемый preloadedWorldData — глобальный mutable state
 
 **Severity:** MEDIUM
-**Status:** OPEN
+**Status:** FIXED
 **Date:** 2026-06-01
 
 ## Описание
@@ -20,21 +20,19 @@
 3. **Нет владения**: Ни один объект не «владеет» `preloadedWorldData`.
    Любая часть кода может его прочитать или перезаписать.
 
-## Предлагаемое решение
+## Исправление (commit d014dce)
 
-Создать `WorldStartupContext` — объект с методами:
+Создан `WorldStartupContext` (js/core/globals.js) — объект с методами:
 
-```javascript
-const WorldStartupContext = {
-    _data: null,
-    _worldId: null,
+- `set(data, source)` — установка с source tracking и логированием
+- `get()` — получение данных
+- `clear(source)` — очистка с source tracking
+- `isActive()` — проверка
+- `validate()` — структурная валидация (regions, factions)
+- `getDebugInfo()` — диагностика (ageMs, source, validation)
 
-    set(data) { /* валидация + логирование */ },
-    get() { /* возвращает копию */ },
-    clear() { /* полный сброс + логирование */ },
-    isActive() { /* проверка */ },
-    validate() { /* структурная валидация */ }
-};
-```
-
-Заменить все прямые обращения к `preloadedWorldData` на методы контекста.
+Все точки использования `preloadedWorldData` обновлены:
+- `openLoadWorldModal()` → `WorldStartupContext.set(wData, 'openLoadWorldModal')`
+- `startNewGameSetup()` → `WorldStartupContext.clear('startNewGameSetup')`
+- `exitToMainMenu()` → `WorldStartupContext.clear('exitToMainMenu')`
+- `finalizeWorldSetupAndStart()` → валидация через `WorldStartupContext.validate()`
