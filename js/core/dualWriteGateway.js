@@ -55,7 +55,7 @@ window.DualWriteGateway = (() => {
         'buildShip', 'buildPort', 'upgradePort', 'navalBlockade',
         'gmBuildHighway', 'gmModifyTerrain',
         'spawnMonster', 'killMonster', 'triggerDisaster',
-        'spawnBackgroundNpcs'
+        'spawnBackgroundNpcs', 'evolveRegionNpcs'
     ]);
 
     // ========================================================================
@@ -520,6 +520,19 @@ window.DualWriteGateway = (() => {
                     manifestImpact: 'sociability↑ атмосфера↑ население оживлено'
                 });
                 if (regionId) delta.regions[regionId] = { backgroundNpcsSpawned: true };
+                break;
+            }
+
+            case 'evolveRegionNpcs': {
+                const regionId = args.regionId;
+                const daysAbsent = args.daysAbsent || 0;
+                delta.events.push({
+                    type: 'npcs_evolved',
+                    region: regionId,
+                    daysAbsent: daysAbsent,
+                    manifestImpact: `NPC эволюционировали за ${daysAbsent} дней отсутствия`
+                });
+                if (regionId) delta.regions[regionId] = { npcsEvolved: true, daysAbsent };
                 break;
             }
 

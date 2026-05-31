@@ -435,6 +435,33 @@ async function loadGame(slotType, slotId) {
         currentSaveSlot = { type: slotType, id: slotId };
         if (window.Cartographer) Cartographer.isMapInitialized = false;
 
+        // === МОСТ: Восстановить фоновых NPC из World.npcs в player.allKnownEntities ===
+        // При загрузке сохранения World.npcs уже восстановлен, но allKnownEntities может
+        // не содержать фоновых NPC (если они не были сохранены как part of player).
+        // Мост переносит недостающих NPC.
+        if (typeof bridgeBackgroundNpcsToPlayer === 'function' && player.location) {
+            // Найти regionId для текущей локации
+            let currentRegionId = null;
+            if (typeof World !== 'undefined' && World && World.regions) {
+                for (const [rid, region] of Object.entries(World.regions)) {
+                    if (region.name === player.location) {
+                        currentRegionId = rid;
+                        break;
+                    }
+                }
+            }
+            if (currentRegionId) {
+                const bridged = bridgeBackgroundNpcsToPlayer(currentRegionId);
+                if (bridged > 0) {
+                    console.log(`[SaveManager] Мост перенёс ${bridged} фоновых NPC при загрузке`);
+                }
+            }
+            // Также отметить этот регион как уже заселённый (чтобы не генерировать заново)
+            if (currentRegionId && typeof _bgNpcSpawnedRegions !== 'undefined') {
+                _bgNpcSpawnedRegions.add(currentRegionId);
+            }
+        }
+
         stopMenuMusic();
         await initializeGameInterface();
         setActiveScreen('game-interface');

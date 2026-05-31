@@ -6489,7 +6489,7 @@ function updateDynamicUIText() {
     statIncreaseButtons.forEach(button => {
         const stat = button.getAttribute('data-stat');
         if (stat) {
-            button.title = t('gameInterface.characterPanel.increaseStatTooltip', { statName: stat.toUpperCase() });
+            button.title = t('gameInterface.characterPanel.increaseStatTooltip', { statName: getLocalizedStatName(stat) });
         }
     });
 
@@ -6608,6 +6608,14 @@ async function initializeApp() {
 
             if (data.trek_events && data.trek_events.length > 0) {
                 LivingRoads.handleEvents(data.trek_events);
+            }
+
+            // Синхронизация данных фоновых NPC из C++ → JS
+            // (currentActivity, needs, schedule changes)
+            if (data.npc_deltas && typeof syncNpcEngineDataFromDeltas === 'function') {
+                syncNpcEngineDataFromDeltas(data.npc_deltas);
+            } else if (typeof syncNpcEngineDataToJs === 'function' && World.npcs) {
+                // Fallback: полная синхронизация (реже, через интервал)
             }
 
             if (typeof updateEnvironmentPanel === 'function') updateEnvironmentPanel();
@@ -9697,6 +9705,16 @@ function getCharacterStatBaseline(statKey) {
   return requireRuntimeNumber(baselines[statKey], pathMap[statKey] || `gameplay_runtime.character_creation.stat_baselines.${statKey}`);
 }
 
+/**
+ * Локализованное имя характеристики (str→"Сила (STR)", dex→"Ловкость (DEX)" и т.д.)
+ * Используется везде вместо stat.toUpperCase() для отображения пользователю.
+ */
+function getLocalizedStatName(statKey) {
+    if (!statKey) return '';
+    const key = String(statKey).toLowerCase();
+    return t(`characterCreation.stat${key.charAt(0).toUpperCase() + key.slice(1)}`, null, statKey.toUpperCase());
+}
+
 function getEnvironmentDefaultStat(statKey) {
   const defaults = requireRuntimeConfigValue(
     getEnvironmentCommandDefaults(),
@@ -10510,8 +10528,8 @@ function processAutomatedNexusEffects() {
                         const change = parseInt(subEffect.action.change, 10);
                         if (player.stats[stat] !== undefined && !isNaN(change)) {
                             player.stats[stat] += change;
-                            addLogMessage(`Константа '${nexusItem.name}' повлияла на вас! (${stat.toUpperCase()} ${change > 0 ? '+' : ''}${change})`, 'level-up');
-                            addCalculationMessage(`[NEXUS_AUTO] Эффект '${key}' применен. ${stat.toUpperCase()} ${change > 0 ? '+' : ''}${change}.`);
+                            addLogMessage(`Константа '${nexusItem.name}' повлияла на вас! (${getLocalizedStatName(stat)} ${change > 0 ? '+' : ''}${change})`, 'level-up');
+                            addCalculationMessage(`[NEXUS_AUTO] Эффект '${key}' применен. ${getLocalizedStatName(stat)} ${change > 0 ? '+' : ''}${change}.`);
                         }
                     }
                     // НОВОЕ: Поддержка unlock_child — автоматически разблокировать детей при активации
@@ -10647,7 +10665,7 @@ async function initializeGameInterface() {
  else if (selectedEvent.type === 'check') {
             player.currentJourney.isPausedForCheck = true;
             updateCharacterSheet();
-            addLogMessage(`(( СИСТЕМА: Путь прерван препятствием. Требуется проверка: ${selectedEvent.stat.toUpperCase()} (Сложность: ${selectedEvent.dc}). Совершите действие или бросок! ))`, "system-message");
+            addLogMessage(`(( СИСТЕМА: Путь прерван препятствием. Требуется проверка: ${getLocalizedStatName(selectedEvent.stat)} (Сложность: ${selectedEvent.dc}). Совершите действие или бросок! ))`, "system-message");
         } else if (selectedEvent.type === getInventoryLootRuntimeConfig().event_type) {
             if (selectedEvent.itemId) {
                 executeCommand('addItem', { aiIdentifier: selectedEvent.itemId, name: selectedEvent.itemName || "Находка", quantity: selectedEvent.amount ?? requireRuntimeNumber(getInventoryLootRuntimeConfig().default_quantity, 'gameplay_runtime.inventory_loot.default_quantity') });
@@ -11172,7 +11190,7 @@ function showItemExamineModal(item) {
 
     let statsHtml = '';
     if (item.effects && item.effects.length > 0) {
-        statsHtml += `<div><strong>Эффекты:</strong> ${item.effects.map(e => `${e.stat.toUpperCase()} ${e.change > 0 ? '+' : ''}${e.change}`).join(', ')}</div>`;
+        statsHtml += `<div><strong>Эффекты:</strong> ${item.effects.map(e => `${getLocalizedStatName(e.stat)} ${e.change > 0 ? '+' : ''}${e.change}`).join(', ')}</div>`;
     }
     statsHtml += `<div><strong>Ценность:</strong> ${(typeof item.value === 'object' ? JSON.stringify(item.value) : item.value) || 0} 💰</div>`;
     document.getElementById('examine-stats').innerHTML = statsHtml || 'Нет характеристик';
@@ -11719,18 +11737,61 @@ function updateEnvironmentPanel() {
                 nameSpan.style.fontStyle = "italic";
             }
 
+            // Фоновый NPC: показать текущую деятельность (из _engineData)
+            if (entity._engineData && entity._engineData.currentActivity && !entity.isSleeping) {
+                const activityMap = {
+                    'Working': 'Работает', 'Sleeping': 'Спит', 'Resting': 'Отдыхает',
+                    'Eating': 'Ест', 'Drinking': 'Пьёт', 'Walking': 'Гуляет',
+                    'Trading': 'Торговля', 'Guarding': 'На посту', 'Crafting': 'Мастерит'
+                };
+                const activityText = activityMap[entity._engineData.currentActivity] || entity._engineData.currentActivity;
+                const activitySpan = document.createElement('span');
+                activitySpan.classList.add('entity-activity');
+                activitySpan.textContent = ` (${activityText})`;
+                activitySpan.style.color = '#7f8c8d';
+                activitySpan.style.fontSize = '0.85em';
+                nameSpan.appendChild(activitySpan);
+            }
+
+            // Фоновый NPC: визуальный индикатор (едва заметная точка)
+            if (entity.isBackgroundNpc) {
+                const bgIndicator = document.createElement('span');
+                bgIndicator.classList.add('bg-npc-indicator');
+                bgIndicator.textContent = ' ●';
+                bgIndicator.style.color = '#5d6d7e';
+                bgIndicator.style.fontSize = '0.6em';
+                bgIndicator.title = 'Фоновый NPC (движок)';
+                nameSpan.appendChild(bgIndicator);
+            }
+
             li.appendChild(iconEl);
             li.appendChild(nameSpan);
 
-            // Store data for tooltip
+            // Store data for tooltip — обогащаем из _engineData для фоновых NPC
             let profType = 'none';
             let savings = 0;
             let lustVal = 0;
-            if (typeof World !== 'undefined' && World && World.npcs && World.npcs[entity.aiIdentifier]) {
+            let currentActivity = '';
+            let backstory = '';
+            let npcPersonality = null;
+            let npcNeeds = null;
+            let isBackground = entity.isBackgroundNpc || false;
+
+            // Приоритет: _engineData (мост C++→JS) → World.npcs (прямой доступ) → defaults
+            if (entity._engineData) {
+                profType = entity._engineData.professionType || 'none';
+                savings = entity._engineData.economy?.savings || 0;
+                lustVal = entity._engineData.personality?.lust || 0;
+                currentActivity = entity._engineData.currentActivity || '';
+                backstory = entity._engineData.backstory || '';
+                npcPersonality = entity._engineData.personality || null;
+                npcNeeds = entity._engineData.needs || null;
+            } else if (typeof World !== 'undefined' && World && World.npcs && World.npcs[entity.aiIdentifier]) {
                 let wNpc = World.npcs[entity.aiIdentifier];
                 profType = wNpc.economy?.profession_type || 'none';
                 savings = wNpc.economy?.savings || 0;
                 lustVal = wNpc.personality?.lust || 0;
+                currentActivity = wNpc.currentActivity || '';
             }
 
             li.dataset.tooltipData = JSON.stringify({
@@ -11748,7 +11809,12 @@ function updateEnvironmentPanel() {
                 con: entity.stats?.con,
                 int: entity.stats?.int,
                 isHostile: entity.isHostile,
-                traits: entity.traits || []
+                traits: entity.traits || [],
+                currentActivity: currentActivity,
+                backstory: backstory,
+                personality: npcPersonality,
+                needs: npcNeeds,
+                isBackgroundNpc: isBackground
             });
 
             li.addEventListener('mouseover', showEntityTooltip);
@@ -11790,7 +11856,7 @@ function createItemTooltip(event, item) {
     let effectsHtml = '';
     if (item.effects && item.effects.length > 0) {
         effectsHtml = `<div style="margin-top:8px; border-top:1px dashed #2c1e14; padding-top:5px; font-weight:bold;">
-            Эффекты: ${item.effects.map(e => `${e.stat.toUpperCase()} ${e.change > 0 ? '+' : ''}${e.change}`).join(', ')}
+            Эффекты: ${item.effects.map(e => `${getLocalizedStatName(e.stat)} ${e.change > 0 ? '+' : ''}${e.change}`).join(', ')}
         </div>`;
     }
 
@@ -11859,7 +11925,7 @@ function showEntityTooltip(event) {
     let statsHtml = '';
     if (data.str !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.str', '⚔️ Сила')}:</span> <span class="stat-value">${data.str}</span></p>`;
     if (data.dex !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.dex', '🤸 Ловкость')}:</span> <span class="stat-value">${data.dex}</span></p>`;
-    if (data.con !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.con', '맷 Выносливость')}:</span> <span class="stat-value">${data.con}</span></p>`;
+    if (data.con !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.con', '🫀 Выносливость')}:</span> <span class="stat-value">${data.con}</span></p>`;
     if (data.int !== undefined) statsHtml += `<p><span class="stat-label">${t('gameInterface.characterPanel.int', '💡 Интеллект')}:</span> <span class="stat-value">${data.int}</span></p>`;
     if (allowNSFW && data.lust !== undefined) statsHtml += `<p><span class="stat-label" style="color:#e91e63;">💋 Похоть:</span> <span class="stat-value" style="color:#e91e63;">${data.lust}%</span></p>`;
 
@@ -11881,7 +11947,7 @@ function showEntityTooltip(event) {
                 <div class="health-bar ${barClass}" style="width: ${healthPercentage}%;">${healthText}</div>
             </div>
         `;
-        healthText = `<p><strong>${t('gameInterface.environmentPanel.tooltip.health', 'Р--доровье')}:</strong> <span class="stat-value">${data.hp} / ${data.maxHp}</span></p>`;
+        healthText = `<p><strong>${t('gameInterface.environmentPanel.tooltip.health', 'Здоровье')}:</strong> <span class="stat-value">${data.hp} / ${data.maxHp}</span></p>`;
     }
 
 
@@ -12360,11 +12426,408 @@ function clearEroticJournal() {
 
 const _bgNpcSpawnedRegions = new Set();
 
+// ============================================================================
+// МОСТ: C++ World.npcs → JS player.allKnownEntities
+// ============================================================================
+// Решает 4 проблемы:
+//   1) Фоновые NPC из C++ становятся видимыми игроку
+//   2) ГМ может управлять ими через стандартные команды
+//   3) NPC отображаются с текущей деятельностью (не статики)
+//   4) Единый источник истины (C++ — мастер, JS — зеркало)
+// ============================================================================
+
+function bridgeBackgroundNpcsToPlayer(regionId) {
+    if (!regionId || typeof World === 'undefined' || !World || !World.npcs) return 0;
+
+    let bridged = 0;
+    const locationName = (World.regions && World.regions[regionId])
+        ? World.regions[regionId].name
+        : regionId;
+
+    for (const [npcId, npc] of Object.entries(World.npcs)) {
+        // Только NPC в этом регионе, живые, и фонового типа
+        if (!npc.isAlive && !npc.alive) continue;
+        if (npc.currentLocation !== regionId && npc.homeLocation !== regionId) continue;
+
+        // Пропускать не-NPC типы (правители обрабатываются отдельно)
+        if (npc.type === 'ruler') continue;
+
+        // Если уже в allKnownEntities — обновить currentActivity и _engineData
+        if (player.allKnownEntities[npcId]) {
+            const existing = player.allKnownEntities[npcId];
+            existing._engineData = _extractEngineData(npc);
+            existing.boundTo = locationName;
+            // Синхронизировать HP из C++ (источник истины)
+            if (existing.stats && npc.hp !== undefined) {
+                existing.stats.hp = Math.min(npc.hp, npc.maxHp || existing.stats.maxHp);
+                existing.stats.maxHp = npc.maxHp || existing.stats.maxHp;
+            }
+            continue;
+        }
+
+        // Создать новую запись в allKnownEntities — 1:1 с GM-созданными
+        const npcName = npc.name || 'Неизвестный';
+        const boundLocation = locationName;
+
+        // Извлечь backstory из memory (первая запись обычно предыстория)
+        let backstory = '';
+        if (npc.memory && npc.memory.length > 0) {
+            const bgEntry = npc.memory.find(m => typeof m === 'string' && m.startsWith('[Предыстория]'));
+            if (bgEntry) backstory = bgEntry.replace('[Предыстория] ', '');
+        }
+
+        // Описание генерируется из данных C++
+        const description = _generateNpcDescription(npc, backstory);
+
+        // Трейты из C++ (уже назначены движком на основе personality)
+        const traits = (npc.traits || []).slice();
+
+        player.allKnownEntities[npcId] = {
+            aiIdentifier: npcId,
+            name: npcName,
+            type: 'npc',       // Для GM — всегда npc, не background_npc
+            description: description,
+            stats: {
+                hp: npc.hp || 20,
+                maxHp: npc.maxHp || 20,
+                str: npc.str || 10,
+                dex: npc.dex || 10,
+                con: npc.con || 10,
+                int: npc.int || npc.int_ || 10
+            },
+            min_damage: npc.min_damage || 1,
+            max_damage: npc.max_damage || 4,
+            armor_class: npc.armor_class || 10,
+            isHostile: npc.isHostile || false,
+            xpReward: npc.xpReward || 10,
+            boundTo: boundLocation,
+            traits: traits,
+            relationships: {
+                player: {
+                    affection: 0,
+                    attraction: 0,
+                    trust: 0,
+                    intimacy: 0,
+                    sexualHistory: []
+                }
+            },
+            // === Расширенные данные из C++ (доступны через examine/tooltip) ===
+            _engineData: _extractEngineData(npc),
+            // === Мета: фоновый NPC, может быть промоутирован GM ===
+            isBackgroundNpc: true,
+            source: 'engine'
+        };
+
+        bridged++;
+    }
+
+    if (bridged > 0) {
+        console.log(`[NPC Bridge] ${bridged} фоновых NPC перенесены в player.allKnownEntities для региона "${regionId}"`);
+        updateEnvironmentVisibility();
+    }
+
+    return bridged;
+}
+
+/**
+ * Извлечь расширенные данные C++ NPC для JS-зеркала.
+ * Эти данные доступны через tooltip/examine, но не через стандартные GM-команды.
+ */
+function _extractEngineData(npc) {
+    return {
+        race: npc.race || 'human',
+        age: npc.age_days ? Math.floor(npc.age_days / 360) : null,
+        isMale: npc.is_male,
+        profession: npc.profession || '',
+        professionType: npc.economy?.profession_type || 'farmer',
+        personality: {
+            aggression: npc.personality?.aggression ?? 50,
+            sociability: npc.personality?.sociability ?? 50,
+            greed: npc.personality?.greed ?? 50,
+            loyalty: npc.personality?.loyalty ?? 50,
+            lust: npc.personality?.lust ?? 0
+        },
+        needs: {
+            hunger: npc.needs?.hunger ?? 100,
+            rest: npc.needs?.rest ?? 100,
+            social: npc.needs?.social ?? 100,
+            safety: npc.needs?.safety ?? 100
+        },
+        schedule: npc.schedule || [],
+        backstory: (npc.memory || []).find(m => typeof m === 'string' && m.startsWith('[Предыстория]'))
+            ?.replace('[Предыстория] ', '') || '',
+        economy: {
+            skillLevel: npc.economy?.skillLevel ?? 1,
+            savings: npc.economy?.savings ?? 0,
+            isEmployed: npc.economy?.isEmployed ?? false,
+            dailyWage: npc.economy?.dailyWage ?? 0
+        },
+        currentActivity: npc.currentActivity || 'Resting',
+        gold: npc.gold || 0,
+        homeLocation: npc.homeLocation || ''
+    };
+}
+
+/**
+ * Сгенерировать описание NPC из C++ данных.
+ * Собирается из расы, пола, возраста, профессии и предыстории.
+ */
+function _generateNpcDescription(npc, backstory) {
+    const raceMap = {
+        'human': 'человек', 'dwarf': 'дварф', 'elf': 'эльф', 'orc': 'орк',
+        'human_male': 'человек', 'human_female': 'человек'
+    };
+    const raceName = raceMap[npc.race] || npc.race || 'человек';
+    const genderWord = npc.is_male ? 'Мужчина' : 'Женщина';
+    const age = npc.age_days ? Math.floor(npc.age_days / 360) : '';
+    const ageWord = age ? `, ~${age} лет` : '';
+
+    let desc = `${genderWord}-${raceName}${ageWord}`;
+
+    if (npc.profession) {
+        const profMap = {
+            'farmer': 'фермер', 'blacksmith': 'кузнец', 'merchant': 'торговец',
+            'guard': 'стражник', 'hunter': 'охотник', 'fisherman': 'рыбак',
+            'healer': 'целитель', 'bard': 'бард', 'innkeeper': 'трактирщик',
+            'baker': 'пекарь', 'carpenter': 'плотник', 'weaver': 'ткачиха',
+            'leatherworker': 'кожевник', 'alchemist': 'алхимик', 'scholar': 'учёный'
+        };
+        const profName = profMap[npc.profession] || npc.profession;
+        desc += `. ${profName.charAt(0).toUpperCase() + profName.slice(1)} по профессии`;
+    }
+
+    // Добавить ключевую черту характера
+    if (npc.personality) {
+        const traits = [];
+        if (npc.personality.aggression > 70) traits.push('агрессивен');
+        if (npc.personality.sociability > 70) traits.push('общителен');
+        if (npc.personality.greed > 70) traits.push('жаден');
+        if (npc.personality.loyalty > 70) traits.push('верен');
+        if (npc.personality.sociability < 30) traits.push('замкнут');
+        if (traits.length > 0) {
+            const genderAdj = npc.is_male ? traits.join(', ') : traits.map(t => t.replace(/ен$/, 'на')).join(', ');
+            desc += `. ${genderAdj.charAt(0).toUpperCase() + genderAdj.slice(1)}`;
+        }
+    }
+
+    return desc;
+}
+
+/**
+ * Обратная синхронизация: JS → C++.
+ * Вызывается при изменении GM-командами сущности, которая имеет _engineData.
+ */
+function syncEntityToEngine(entityId) {
+    const entity = player.allKnownEntities[entityId];
+    if (!entity || !entity._engineData) return;
+
+    // Обновить World.npcs из JS-сущности
+    if (typeof World !== 'undefined' && World && World.npcs && World.npcs[entityId]) {
+        const npc = World.npcs[entityId];
+        // Синхронизируем только статы и состояние — C++ управляет остальным
+        if (entity.stats) {
+            npc.hp = entity.stats.hp;
+            npc.maxHp = entity.stats.maxHp;
+            npc.str = entity.stats.str;
+            npc.dex = entity.stats.dex;
+            npc.con = entity.stats.con;
+            npc.int = entity.stats.int || entity.stats.int_;
+        }
+        npc.isHostile = entity.isHostile;
+        npc.isAlive = entity.stats.hp > 0;
+        npc.alive = entity.stats.hp > 0;
+        npc.traits = entity.traits || npc.traits;
+
+        // Если GM переименовал — обновить
+        if (entity.name && entity.name !== npc.name) {
+            npc.name = entity.name;
+        }
+    }
+
+    // Отправить синхронизацию в C++ движок (неблокирующая)
+    if (window.electronAPI && window.electronAPI.nexusInventoryCommand) {
+        window.electronAPI.nexusInventoryCommand({
+            action: 'syncEntity',
+            id: entityId,
+            name: entity.name,
+            type: entity.type,
+            hp: entity.stats?.hp,
+            maxHp: entity.stats?.maxHp,
+            str: entity.stats?.str,
+            dex: entity.stats?.dex,
+            con: entity.stats?.con,
+            int: entity.stats?.int || entity.stats?.int_,
+            isHostile: entity.isHostile,
+            xpReward: entity.xpReward,
+            min_damage: entity.min_damage,
+            max_damage: entity.max_damage,
+            armor_class: entity.armor_class
+        }).catch(err => console.warn('[NPC Bridge] syncEntityToEngine failed:', err.message));
+    }
+}
+
+/**
+ * Промоутер фонового NPC → сюжетный NPC.
+ * Когда GM вызывает addEnvironment для NPC, который уже существует как фоновый,
+ * вместо создания дубликата — промоутируем существующего.
+ * Возвращает промоутированную сущность или null.
+ */
+function _promoteBackgroundNpc(aiIdentifier, args) {
+    const existing = player.allKnownEntities[aiIdentifier];
+    if (!existing || !existing.isBackgroundNpc) return null;
+
+    // Промоутировать: снять флаг фонового, обогатить данными GM
+    existing.isBackgroundNpc = false;
+    existing.source = 'gm_promoted';
+
+    // GM может добавить/заменить описание
+    if (args.description) {
+        existing.description = args.description;
+    }
+
+    // GM может обновить статы (делает NPC более детальным)
+    if (args.hp !== undefined) existing.stats.hp = args.hp;
+    if (args.maxHp !== undefined) existing.stats.maxHp = args.maxHp;
+    if (args.str !== undefined) existing.stats.str = args.str;
+    if (args.dex !== undefined) existing.stats.dex = args.dex;
+    if (args.con !== undefined) existing.stats.con = args.con;
+    if (args.int !== undefined) existing.stats.int = args.int;
+    if (args.isHostile !== undefined) existing.isHostile = args.isHostile;
+    if (args.xpReward !== undefined) existing.xpReward = args.xpReward;
+
+    // GM может добавить трейты
+    if (args.traits && args.traits.length > 0) {
+        existing.traits = [...new Set([...existing.traits, ...args.traits])];
+    }
+
+    // Обновить привязку
+    if (args.boundTo) {
+        existing.boundTo = args.boundTo;
+    }
+
+    // Синхронизировать обратно в C++
+    syncEntityToEngine(aiIdentifier);
+
+    console.log(`[NPC Bridge] Фоновый NPC "${existing.name}" (${aiIdentifier}) промоутирован GM в сюжетного`);
+    return existing;
+}
+
+/**
+ * Найти фонового NPC по имени и локации (для fuzzy-match промоутера).
+ * Если GM создаёт NPC с новым aiIdentifier, но имя совпадает с фоновым — промоутировать.
+ */
+function _findBackgroundNpcByName(name, location) {
+    if (!name) return null;
+    for (const [id, entity] of Object.entries(player.allKnownEntities)) {
+        if (entity.isBackgroundNpc &&
+            entity.name?.toLowerCase() === name?.toLowerCase() &&
+            (entity.boundTo === location || entity.boundTo === player.location)) {
+            return id;
+        }
+    }
+    return null;
+}
+
+/**
+ * Периодическая синхронизация C++ NPC → JS (currentActivity, needs, schedule).
+ * Вызывается из simulation tick или при смене часа.
+ */
+function syncNpcEngineDataToJs() {
+    if (typeof World === 'undefined' || !World || !World.npcs) return;
+
+    for (const [npcId, npc] of Object.entries(World.npcs)) {
+        const entity = player.allKnownEntities[npcId];
+        if (!entity || !entity._engineData) continue;
+
+        // Обновить currentActivity
+        entity._engineData.currentActivity = npc.currentActivity || entity._engineData.currentActivity;
+
+        // Обновить needs (если C++ их обновил через симуляцию)
+        if (npc.needs) {
+            entity._engineData.needs.hunger = npc.needs.hunger;
+            entity._engineData.needs.rest = npc.needs.rest;
+            entity._engineData.needs.social = npc.needs.social;
+            entity._engineData.needs.safety = npc.needs.safety;
+        }
+
+        // Обновить текущую локацию (NPC может переместиться по расписанию)
+        const locName = (World.regions && World.regions[npc.currentLocation])
+            ? World.regions[npc.currentLocation].name
+            : npc.currentLocation;
+        if (locName && entity.boundTo !== 'player') {
+            entity.boundTo = locName;
+        }
+
+        // Обновить gold/economy
+        if (npc.economy) {
+            entity._engineData.economy.savings = npc.economy.savings;
+            entity._engineData.economy.isEmployed = npc.economy.isEmployed;
+        }
+        if (npc.gold !== undefined) entity._engineData.gold = npc.gold;
+
+        // Жив/мёртв
+        if (!npc.isAlive && !npc.alive && entity.stats.hp > 0) {
+            entity.stats.hp = 0;
+        }
+    }
+
+    updateEnvironmentVisibility();
+}
+
+/**
+ * Лёгкая синхронизация из delta-обновлений (realtime hook).
+ * Получает только изменившихся NPC — быстрее полной синхронизации.
+ */
+function syncNpcEngineDataFromDeltas(npcDeltas) {
+    if (!npcDeltas || !Array.isArray(npcDeltas)) return;
+
+    for (const delta of npcDeltas) {
+        const npcId = delta.id;
+        const entity = player.allKnownEntities[npcId];
+        if (!entity || !entity._engineData) continue;
+
+        if (delta.currentActivity) entity._engineData.currentActivity = delta.currentActivity;
+        if (delta.needs) {
+            Object.assign(entity._engineData.needs, delta.needs);
+        }
+        if (delta.gold !== undefined) entity._engineData.gold = delta.gold;
+        if (delta.currentLocation) {
+            const locName = (World.regions && World.regions[delta.currentLocation])
+                ? World.regions[delta.currentLocation].name
+                : delta.currentLocation;
+            if (locName && entity.boundTo !== 'player') {
+                entity.boundTo = locName;
+            }
+        }
+        if (delta.hp !== undefined) {
+            entity.stats.hp = Math.min(delta.hp, entity.stats.maxHp);
+        }
+        if (delta.isAlive === false || delta.alive === false) {
+            entity.stats.hp = 0;
+        }
+    }
+}
+
+// Внешний API для вызова из консоли или тестов
+window.bridgeBackgroundNpcs = function(regionId) {
+    return bridgeBackgroundNpcsToPlayer(regionId || player.location);
+};
+window.syncNpcData = syncNpcEngineDataToJs;
+
+// ============================================================================
+// АВТОГЕНЕРАЦИЯ ФОНОВЫХ NPC при входе в населённые локации
+// ============================================================================
+
 async function _autoSpawnBackgroundNpcs(regionId) {
-    if (!regionId) return;
+    if (!regionId) return 0;
 
     // Проверяем, были ли уже заселены фоновыми NPC в этой сессии
-    if (_bgNpcSpawnedRegions.has(regionId)) return;
+    if (_bgNpcSpawnedRegions.has(regionId)) {
+        // Даже если уже заселён — обновляем мост (NPC могли появится через save load)
+        const bridged = bridgeBackgroundNpcsToPlayer(regionId);
+        console.log(`[BackgroundNPCs] Регион "${regionId}" уже обработан. Мост обновлён: ${bridged} NPC.`);
+        return bridged;
+    }
 
     // Определяем тип локации
     let locationType = 'village'; // default
@@ -12389,9 +12852,31 @@ async function _autoSpawnBackgroundNpcs(regionId) {
         }
     }
 
-    if (!isPopulated) return;
+    if (!isPopulated) return 0;
 
-    // Отмечаем регион как заселённый
+    // ЗАЩИТА ОТ ДУБЛИРОВАНИЯ: Проверяем, есть ли уже фоновые NPC в World.npcs
+    // Если C++ уже сгенерировал NPC (например, при предыдущем входе) — не генерируем ещё
+    let existingBgNpcCount = 0;
+    if (typeof World !== 'undefined' && World && World.npcs) {
+        for (const [npcId, npc] of Object.entries(World.npcs)) {
+            if ((npc.currentLocation === regionId || npc.homeLocation === regionId) &&
+                npc.type === 'background_npc' && (npc.isAlive || npc.alive)) {
+                existingBgNpcCount++;
+            }
+        }
+    }
+    if (existingBgNpcCount > 0) {
+        // NPC уже есть — просто мостим и отмечаем регион
+        console.log(`[BackgroundNPCs] Регион "${regionId}" уже содержит ${existingBgNpcCount} фоновых NPC — пропускаем генерацию`);
+        _bgNpcSpawnedRegions.add(regionId);
+        const bridged = bridgeBackgroundNpcsToPlayer(regionId);
+        return bridged;
+    }
+
+    // ВАЖНО: Отмечаем регион как заселённый ДО await вызова C++.
+    // Это гарантирует, что если ГМ одновременно вызвал spawnBackgroundNpcs
+    // (в том же ответе что и setLocation), вторая команда увидит флаг
+    // и НЕ отправит дублирующий запрос в C++.
     _bgNpcSpawnedRegions.add(regionId);
 
     // Вызываем C++ команду через DualWriteGateway
@@ -12411,6 +12896,10 @@ async function _autoSpawnBackgroundNpcs(regionId) {
                         Object.assign(World, result.simResult.world);
                     }
                 }
+
+                // === МОСТ: Перенести C++ NPC в player.allKnownEntities ===
+                const bridged = bridgeBackgroundNpcsToPlayer(regionId);
+                return bridged;
             } else {
                 console.warn(`[BackgroundNPCs] Ошибка генерации в "${regionId}":`, result?.error || result);
             }
@@ -12425,21 +12914,26 @@ async function _autoSpawnBackgroundNpcs(regionId) {
                 if (result.world) {
                     if (typeof World !== 'undefined') Object.assign(World, result.world);
                 }
+
+                // === МОСТ: Перенести C++ NPC в player.allKnownEntities ===
+                const bridged = bridgeBackgroundNpcsToPlayer(regionId);
+                return bridged;
             }
         }
     } catch (err) {
         console.warn(`[BackgroundNPCs] Не удалось сгенерировать NPC в "${regionId}":`, err.message);
     }
+    return 0;
 }
 
-// Внешний API: ручной вызов генерации (из AI GM команды или консоли)
+// Внешний API: ручной вызов генерации (из консоли)
+// Идемпотентен: если NPC уже сгенерированы — просто мостит и возвращает.
+// НЕ удаляет _bgNpcSpawnedRegions — защита от удвоения при вызове ГМом.
 window.spawnBackgroundNpcs = async function(regionId, count = 0) {
     if (!regionId) {
         // Использовать текущую локацию игрока
         regionId = player.location;
     }
-
-    _bgNpcSpawnedRegions.delete(regionId); // Разрешить повторную генерацию
 
     return await _autoSpawnBackgroundNpcs(regionId);
 };
@@ -15118,6 +15612,38 @@ async function executeNonInventoryCommand(command, args) {
                             await CoreInventorySystemAsync.updateContainerLocation(cont.id, { world_coords: [0,0,0], parent_entity: 'player', parent_container: null, region_id: player.location });
                         }
                     }
+
+                    // === ЭВОЛЮЦИЯ NPC: если игрок возвращается в регион после отсутствия ===
+                    const prevLocation = player._previousRegionId;
+                    const isReturning = prevLocation && prevLocation !== locId && _bgNpcSpawnedRegions.has(locId);
+                    if (isReturning && typeof World !== 'undefined' && World && World.tick !== undefined) {
+                        const daysSinceLastVisit = player._lastVisitDay
+                            ? Math.max(0, Math.floor((World.tick - player._lastVisitDay) / 24))
+                            : 0;
+                        if (daysSinceLastVisit > 0) {
+                            try {
+                                if (window.DualWriteGateway && DualWriteGateway.write) {
+                                    const evoResult = await DualWriteGateway.write('evolveRegionNpcs', {
+                                        regionId: locId,
+                                        daysAbsent: daysSinceLastVisit
+                                    }, player.location);
+                                    if (evoResult && evoResult.status === 'ok') {
+                                        console.log(`[NPC Evolve] Регион "${locId}" эволюционировал за ${daysSinceLastVisit} дней: ${evoResult.simResult?.feedback || 'OK'}`);
+                                        if (evoResult.simResult && evoResult.simResult.world && typeof World !== 'undefined') {
+                                            Object.assign(World, evoResult.simResult.world);
+                                        }
+                                    }
+                                }
+                            } catch (evoErr) {
+                                console.warn('[NPC Evolve] Ошибка эволюции:', evoErr.message);
+                            }
+                        }
+                    }
+
+                    // Запомнить текущую локацию и время визита для эволюции
+                    player._previousRegionId = locId;
+                    player._lastVisitDay = (typeof World !== 'undefined' && World) ? World.tick : 0;
+
                     if (!player.visitedLocations.includes(player.location)) {
                         player.visitedLocations.push(player.location);
                     }
@@ -16617,11 +17143,33 @@ if (player.nexusData && player.nexusData[args.id]) {
                     let ac = args.armorClass ?? args.armor_class ?? (armorClassBase + Math.floor((resolvedDex - armorClassDexterityBaseline) / 2));
 
                     if (player.allKnownEntities[args.aiIdentifier]) {
-                        // Существо уже существует. Обновляем только привязку, чтобы не сбросить HP и статы.
+                        // Существо уже существует.
+                        // ПРОВЕРКА: Если это фоновый NPC — промоутировать вместо обновления привязки
+                        if (player.allKnownEntities[args.aiIdentifier].isBackgroundNpc) {
+                            const promoted = _promoteBackgroundNpc(args.aiIdentifier, args);
+                            if (promoted) {
+                                updateEnvironmentVisibility();
+                                feedback = `[NPC Bridge] Фоновый NPC "${promoted.name}" промоутирован в сюжетного (обогащён данными GM)`;
+                                break;
+                            }
+                        }
+                        // Обычное обновление привязки (не фоновый NPC)
                         player.allKnownEntities[args.aiIdentifier].boundTo = binding;
                         updateEnvironmentVisibility();
                         feedback = t('gameInterface.commandFeedback.entityAlreadyInEnv', { name: args.name, id: args.aiIdentifier });
                     } else {
+                        // ПРОВЕРКА: Нет ли фонового NPC с таким же именем в этой локации?
+                        // Если GM создаёт сюжетного NPC с именем совпадающим с фоновым — промоутировать
+                        const bgMatch = _findBackgroundNpcByName(args.name, binding);
+                        if (bgMatch) {
+                            const promoted = _promoteBackgroundNpc(bgMatch, args);
+                            if (promoted) {
+                                updateEnvironmentVisibility();
+                                feedback = `[NPC Bridge] Фоновый NPC "${promoted.name}" (${bgMatch}) промоутирован в сюжетного (имя совпало с GM-созданным)`;
+                                break;
+                            }
+                        }
+
                         // Создаем новое существо
                         player.allKnownEntities[args.aiIdentifier] = {
                             aiIdentifier: args.aiIdentifier,
@@ -16644,7 +17192,10 @@ if (player.nexusData && player.nexusData[args.id]) {
                                     intimacy: 0,       // 0-100 (близость, растёт после секса)
                                     sexualHistory: []  // массив { day, location, type, timestamp }
                                 }
-                            }
+                            },
+                            // GM-созданные сущности не являются фоновыми
+                            isBackgroundNpc: false,
+                            source: 'gm'
                         };
                         
                         sendInventoryCommand('syncEntity', {
@@ -16760,6 +17311,9 @@ if (player.nexusData && player.nexusData[args.id]) {
                             
                             sendInventoryCommand('updateEntityStat', { id: entId, stat: systemStatName, value: validatedValue })
                                 .catch(err => console.warn('[Inventory] updateEntityStat failed:', err.message || err));
+                            
+                            // Синхронизировать обратно в C++ (для фоновых NPC с _engineData)
+                            syncEntityToEngine(entId);
                             
                             // Для фидбека используем уже валидированное значение
                             args.value = validatedValue;
@@ -17316,6 +17870,40 @@ case 'setEntityBinding':
                 }
                 break;
 
+            // --- SPAWN BACKGROUND NPCs: Единый путь через _autoSpawnBackgroundNpcs ---
+            // ГМ может вызвать эту команду, но она ПРОПУСКАЕТСЯ если движок уже
+            // автосгенерировал NPC при входе в локацию (setLocation → _autoSpawnBackgroundNpcs).
+            // Это предотвращает удвоение: ГМ говорит "создай NPC" + движок уже создал = 1x, не 2x.
+            case 'spawnBackgroundNpcs': {
+                const _spawnRegionId = args.regionId || args.id || args.locationName || player.location;
+                if (!_spawnRegionId) {
+                    feedback = '[ERROR] spawnBackgroundNpcs: не указан regionId.';
+                    break;
+                }
+                // Умный поиск региона (как в DualWriteGateway path)
+                if (typeof World !== 'undefined' && World && World.regions && !World.regions[_spawnRegionId]) {
+                    const _searchStr = String(_spawnRegionId).toLowerCase().trim();
+                    for (let _rKey in World.regions) {
+                        const _rName = World.regions[_rKey].name.toLowerCase().trim();
+                        if (_searchStr === _rName || _searchStr.includes(_rName) || _rName.includes(_searchStr)) {
+                            args.regionId = _rKey;
+                            break;
+                        }
+                    }
+                }
+                // ЕДИНЫЙ ПУТЬ: через _autoSpawnBackgroundNpcs (с проверкой _bgNpcSpawnedRegions)
+                const resolvedRegionId = args.regionId || _spawnRegionId;
+                const spawnResult = await _autoSpawnBackgroundNpcs(resolvedRegionId);
+                if (_bgNpcSpawnedRegions.has(resolvedRegionId) && spawnResult >= 0) {
+                    feedback = `[BackgroundNPCs] Регион "${resolvedRegionId}" уже обработан. ${spawnResult} NPC в мосту.`;
+                } else if (spawnResult > 0) {
+                    feedback = `[BackgroundNPCs] Сгенерировано и bridged ${spawnResult} NPC в "${resolvedRegionId}".`;
+                } else {
+                    feedback = `[BackgroundNPCs] Регион "${resolvedRegionId}" не является населённым или ошибка генерации.`;
+                }
+                break;
+            }
+
             // --- ЛЕГИТИМНЫЕ ВМЕШАТЕЛЬСТВА ГМ (СТРАТЕГ) ---
             case 'buildShip':
             case 'buildPort':
@@ -17330,7 +17918,6 @@ case 'setEntityBinding':
             case 'gmSpreadRumor':
             case 'gmFrameForSabotage':
             case 'gmDirectResourceInjection':
-            case 'spawnBackgroundNpcs':
             case 'gmDeclareWar':
             case 'gmForcePeace':
             case 'gmChangeRulerTrait':
@@ -17788,7 +18375,7 @@ function updateEquipmentDisplay() {
 
             let bonusText = (props.effects || [])
                 .filter(e => e.type === 'modify_stat' && e.stat)
-                .map(e => `${e.stat.toUpperCase()}: ${e.change > 0 ? '+' : ''}${e.change}`)
+                .map(e => `${getLocalizedStatName(e.stat)}: ${e.change > 0 ? '+' : ''}${e.change}`)
                 .join(', ');
 
             let titleText = props.description || '';
