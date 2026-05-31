@@ -8132,7 +8132,11 @@ function startNewGameSetup() {
     player = null;
     conversationHistory = [];
     currentSaveSlot = null;
-        preloadedWorldData = null;
+        if (typeof WorldStartupContext !== 'undefined') {
+            WorldStartupContext.clear('startNewGameSetup');
+        } else {
+            preloadedWorldData = null;
+        }
         if (selectedWorldInfo) {
             selectedWorldInfo.style.display = 'none';
             selectedWorldInfo.textContent = '';
@@ -8602,7 +8606,9 @@ function armWorldGenerationWatchdog(phase, options = {}) {
             timeoutMs,
             elapsedMs: Date.now() - armedAt,
             screen: document.querySelector('.active-screen')?.id || null,
-            loadingText: document.getElementById('loading-text')?.textContent || null
+            loadingText: document.getElementById('loading-text')?.textContent || null,
+            pipelineState: typeof WorldStartupPipeline !== 'undefined' ? WorldStartupPipeline.getState() : 'unknown',
+            pipelineHistory: typeof WorldStartupPipeline !== 'undefined' ? WorldStartupPipeline.getHistory() : []
         };
 
         const decision = shouldWorldStartupWatchdogAutoDisable(detail);
@@ -8653,15 +8659,94 @@ function disarmWorldGenerationWatchdog(watchdog, reason = 'completed') {
 }
 
 
+// ===== WORLD STARTUP UTILITIES (Issue #001, #002) =====
+
+/**
+ * Оборачивает Promise в таймаут. Если promise не resolve'ится за timeoutMs,
+    * reject'ится с Error(message).
+ * @param {Promise} promise
+ * @param {number} timeoutMs - таймаут в миллисекундах
+ * @param {string} label - метка для логирования
+ * @returns {Promise}
+ */
+function withTimeout(promise, timeoutMs, label = 'operation') {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`)), timeoutMs)
+        )
+    ]);
+}
+
+/**
+ * State machine для запуска мира. Каждый шаг имеет:
+ * - чёткий контракт (что должно быть готово)
+ * - таймаут
+ * - error recovery
+ *
+ * Состояния: INIT → LORE_LOADED → ENGINE_READY → WORLD_LOADED →
+ *            CONTAINERS_READY → PROMPT_LOADED → AI_REQUESTED
+ */
+const WorldStartupPipeline = {
+    _state: 'INIT',
+    _stepStartTime: 0,
+    _history: [],
+
+    /** Переводит pipeline в новое состояние с логированием */
+    transition(newState) {
+        const elapsed = this._stepStartTime ? Date.now() - this._stepStartTime : 0;
+        const record = { from: this._state, to: newState, elapsedMs: elapsed, ts: Date.now() };
+        this._history.push(record);
+        console.log(`[WorldStartup] ${this._state} → ${newState} (${elapsed}ms)`);
+        this._state = newState;
+        this._stepStartTime = Date.now();
+        return record;
+    },
+
+    /** Возвращает текущее состояние */
+    getState() { return this._state; },
+
+    /** Возвращает историю переходов (для диагностики при watchdog timeout) */
+    getHistory() { return this._history; },
+
+    /** Сброс pipeline (для нового запуска) */
+    reset() {
+        this._state = 'INIT';
+        this._stepStartTime = Date.now();
+        this._history = [];
+    },
+
+    /** Обновляет текст на экране загрузки */
+    updateLoadingText(text) {
+        const loadingText = document.getElementById('loading-text');
+        if (loadingText) loadingText.textContent = text;
+    }
+};
+
+
 async function finalizeWorldSetupAndStart() {
     const yearsToSimulate = parseInt(worldYearsSlider.value, 10);
     const initialAgents = parseInt(worldAgentsSlider.value, 10);
 
     const worldGenerationWatchdog = armWorldGenerationWatchdog('finalizeWorldSetupAndStart');
+    WorldStartupPipeline.reset();
 
+    // ===== STEP: LORE_LOADED =====
     player = tempPlayer;
-    await loadActiveEraLore(player.era);
-    await loadGlobalLocations(DEFAULT_WORLD_ID, currentLanguage, player.era);
+    try {
+        await withTimeout(
+            Promise.all([
+                loadActiveEraLore(player.era),
+                loadGlobalLocations(DEFAULT_WORLD_ID, currentLanguage, player.era)
+            ]),
+            15000,
+            'loadActiveEraLore + loadGlobalLocations'
+        );
+    } catch (e) {
+        console.warn('[WorldStartup] Lore loading timed out or failed:', e.message);
+        // Non-fatal: продолжаем, лор может быть неполным
+    }
+    WorldStartupPipeline.transition('LORE_LOADED');
 
     conversationHistory = [];
     currentSaveSlot = null;
@@ -8671,7 +8756,12 @@ async function finalizeWorldSetupAndStart() {
 
     console.log("Игра начинается с персонажем:", player);
 
-    await initializeGameInterface();
+    // ===== STEP: ENGINE_READY + WORLD_LOADED =====
+    try {
+        await withTimeout(initializeGameInterface(), 10000, 'initializeGameInterface');
+    } catch (e) {
+        console.warn('[WorldStartup] Game interface init timed out:', e.message);
+    }
     setActiveScreen('game-interface');
     showLoadingScreen('loadingScreen.generatingWorld', 'Генерация мира...');
 
@@ -8679,50 +8769,84 @@ async function finalizeWorldSetupAndStart() {
 
     if (preloadedWorldData) {
         console.log("Используется предзагруженный мир.");
+        // Валидация данных мира через WorldStartupContext
+        if (typeof WorldStartupContext !== 'undefined') {
+            const validation = WorldStartupContext.validate();
+            if (!validation.valid) {
+                console.warn('[WorldStartup] Preloaded world validation failed:', validation.error);
+            } else {
+                console.log('[WorldStartup] Preloaded world validated:', validation);
+            }
+        }
         setWorld(preloadedWorldData);
         // Полная инициализация движка через ModLoader (nexusInit + nexusLoadDatabase),
         // а не только nexusInit — без БД движок не сможет обработать loadWorldFile.
         // isLoadMode=true чтобы не перезаписывать World.
         try {
-            await initWorldSimulator(100, 0, true);
+            await withTimeout(initWorldSimulator(100, 0, true), 60000, 'initWorldSimulator(preloaded)');
             console.log('[Nexus] Движок инициализирован для предзагруженного мира (isLoadMode=true)');
+            WorldStartupPipeline.transition('ENGINE_READY');
         } catch (e) {
             console.warn('[Nexus] Init failed for preloaded world:', e.message);
+            // Non-fatal: продолжаем, движок может быть недоступен
         }
+        WorldStartupPipeline.transition('WORLD_LOADED');
     } else {
-        setWorld(await initWorldSimulator(initialAgents, absoluteStartDay));
+        try {
+            setWorld(await withTimeout(initWorldSimulator(initialAgents, absoluteStartDay), 120000, 'initWorldSimulator(new)'));
+        } catch (e) {
+            console.error('[Nexus] World generation failed:', e.message);
+            setWorld(null);
+        }
         if (!World) {
             disarmWorldGenerationWatchdog(worldGenerationWatchdog, 'world simulator returned empty world');
             hideLoadingScreen();
             return; // Прерываем запуск, так как ядро упало или не инициализировалось
         }
+        WorldStartupPipeline.transition('ENGINE_READY');
+        WorldStartupPipeline.transition('WORLD_LOADED');
 
         // --- BOOTSTRAP PHASE ---
         if (window.electronAPI && window.electronAPI.nexusBootstrap) {
             const totalPop = Object.values(World.regions).reduce((sum, r) => sum + r.population, 0);
             const bootstrapDays = calculateBootstrapDays(totalPop);
-            
-            const loadingText = document.getElementById('loading-text');
-            if (loadingText) loadingText.textContent = `Экономическая балансировка (${bootstrapDays} дн.)...`;
+
+            WorldStartupPipeline.updateLoadingText(`Экономическая балансировка (${bootstrapDays} дн.)...`);
             console.log(`[Nexus] Запуск Bootstrap на ${bootstrapDays} дней...`);
-            
-            const res = await window.electronAPI.nexusBootstrap(bootstrapDays, absoluteStartDay);
-            if (res.status === 'ok') {
-                setWorld(res.world);
-                if (res.items) { ItemRegistry.clear(); res.items.forEach(([k, v]) => ItemRegistry.set(k, v)); }
-                if (res.containers) { ContainerRegistry.clear(); res.containers.forEach(([k, v]) => setContainer(k, v)); }
+
+            try {
+                const res = await withTimeout(
+                    window.electronAPI.nexusBootstrap(bootstrapDays, absoluteStartDay),
+                    120000,
+                    'nexusBootstrap'
+                );
+                if (res.status === 'ok') {
+                    setWorld(res.world);
+                    if (res.items) { ItemRegistry.clear(); res.items.forEach(([k, v]) => ItemRegistry.set(k, v)); }
+                    if (res.containers) { ContainerRegistry.clear(); res.containers.forEach(([k, v]) => setContainer(k, v)); }
+                }
+            } catch (e) {
+                console.warn('[Nexus] Bootstrap timed out or failed:', e.message);
+                // Non-fatal: продолжаем без bootstrap-балансировки
             }
         }
 
         if (enableWorldSim) {
-            await preSimulateWorldHistory(yearsToSimulate);
-            const loadingText = document.getElementById('loading-text');
-            if (loadingText) loadingText.textContent = t('loadingScreen.finalizing', null, 'Завершение...');
+            try {
+                await withTimeout(preSimulateWorldHistory(yearsToSimulate), 180000, 'preSimulateWorldHistory');
+            } catch (e) {
+                console.warn('[Nexus] Pre-simulation timed out:', e.message);
+            }
+            WorldStartupPipeline.updateLoadingText(t('loadingScreen.finalizing', null, 'Завершение...'));
         }
 
         if (window.electronAPI && window.electronAPI.isElectron) {
             hideLoadingScreen();
-            await promptSaveWorldModal();
+            try {
+                await withTimeout(promptSaveWorldModal(), 300000, 'promptSaveWorldModal');
+            } catch (e) {
+                console.warn('[WorldStartup] Save world modal timed out:', e.message);
+            }
             showLoadingScreen('loadingScreen.generatingWorld', 'Завершение настройки...');
         }
     }
@@ -8732,7 +8856,22 @@ async function finalizeWorldSetupAndStart() {
     // Т3 ФИКС: Передаем ответственность за выбор стартовой локации Гейм-Мастеру
     player.location = "Не определена (ГМ ОБЯЗАН выбрать логичную стартовую локацию)";
 
-    await ensurePlayerContainers();
+    // ===== STEP: CONTAINERS_READY =====
+    try {
+        await withTimeout(ensurePlayerContainers(), 15000, 'ensurePlayerContainers');
+    } catch (e) {
+        console.warn('[WorldStartup] Player containers init timed out:', e.message);
+        // Non-fatal: инвентарь будет работать в fallback-режиме
+    }
+    WorldStartupPipeline.transition('CONTAINERS_READY');
+
+    // ===== CONFLUENCE HEALTH CHECK (Issue #004) =====
+    if (typeof ConfluenceHealthCheck !== 'undefined') {
+        const health = ConfluenceHealthCheck.check();
+        if (health.healthy < health.total) {
+            console.warn(`[WorldStartup] Confluence health: ${health.healthy}/${health.total} subsystems OK`);
+        }
+    }
 
     // Для предзагруженного мира: синхронизация через ФАЙЛ, а не через stdin.
     // syncState через stdin блокирует движок (1.5MB+ JSON → 64KB pipe buffer → timeout).
@@ -8802,8 +8941,16 @@ async function finalizeWorldSetupAndStart() {
     ].filter(p => p && p.name && !isNaN(Number(p.x)));
     const mapCoordsString = allMapPoints.map(p => `${p.name} [ID: ${p.id}] (x:${Math.round(p.x)}, y:${Math.round(p.y)})`).join('; ');
 
+    // ===== STEP: PROMPT_LOADED =====
     console.log(`Загрузка стартового промпта для эпохи '${player.era}': ${initialPromptFile}`);
-    const initialPromptTemplate = await loadPromptFromFile(initialPromptFile);
+    let initialPromptTemplate;
+    try {
+        initialPromptTemplate = await withTimeout(loadPromptFromFile(initialPromptFile), 10000, 'loadPromptFromFile');
+    } catch (e) {
+        console.error('[WorldStartup] Initial prompt loading timed out:', e.message);
+        initialPromptTemplate = 'Ошибка: Промпт не загружен (таймаут).';
+    }
+    WorldStartupPipeline.transition('PROMPT_LOADED');
 
     if (initialPromptTemplate.startsWith('Ошибка:')) {
         addLogMessage(t('error.loadPromptFailed', { filePath: initialPromptFile }), 'system-message');
@@ -8826,7 +8973,11 @@ async function finalizeWorldSetupAndStart() {
 
     // Автоматически генерируем актуальную документацию по транспорту
     // Убеждаемся, что реестр загружен
-    await TransportSystem.init();
+    try {
+        await withTimeout(TransportSystem.init(), 5000, 'TransportSystem.init');
+    } catch (e) {
+        console.warn('[WorldStartup] TransportSystem init timed out:', e.message);
+    }
     const transportDocs = TransportSystem.generateGMDocumentation();
     if (transportDocs) {
         itemsRefStringInitial = transportDocs + '\n\n' + itemsRefStringInitial;
@@ -8945,6 +9096,8 @@ async function finalizeWorldSetupAndStart() {
 
     disarmWorldGenerationWatchdog(worldGenerationWatchdog, 'initial prompt ready');
 
+    // ===== STEP: AI_REQUESTED =====
+    WorldStartupPipeline.transition('AI_REQUESTED');
     sendApiRequest(startPrompt, true);
 
     tempPlayer = null;
@@ -17421,7 +17574,11 @@ async function exitToMainMenu() {
         World = null;
         conversationHistory = [];
         currentSaveSlot = null;
-        preloadedWorldData = null;
+        if (typeof WorldStartupContext !== 'undefined') {
+            WorldStartupContext.clear('exitToMainMenu');
+        } else {
+            preloadedWorldData = null;
+        }
         if (gameLog) gameLog.innerHTML = `<p class="system-message">${t('gameInterface.log.loading')}</p>`;
 
         if (gameInterface) {
@@ -19588,7 +19745,11 @@ async function openLoadWorldModal() {
             worldSlotsContainer.innerHTML = '<p style="text-align:center; color:#f1c40f; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Загрузка мира...</p>';
             const wData = await window.electronAPI.loadWorldState(file);
             if (wData) {
-                preloadedWorldData = wData;
+                if (typeof WorldStartupContext !== 'undefined') {
+                    WorldStartupContext.set(wData, 'openLoadWorldModal');
+                } else {
+                    preloadedWorldData = wData;
+                }
                 if (selectedWorldInfo) {
                     selectedWorldInfo.textContent = `Выбран мир: ${wData.name || file}`;
                     selectedWorldInfo.style.display = 'block';
