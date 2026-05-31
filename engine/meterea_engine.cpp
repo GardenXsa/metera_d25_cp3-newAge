@@ -10077,19 +10077,33 @@ std::string processGmIntervention(const JsonValue& command) {
         } else {
             auto& region = g_world.regions[regionId];
 
+            // Подсчитать СУЩЕСТВУЮЩИХ фоновых NPC в этом регионе
+            int existingNpcCount = 0;
+            for (const auto& [npcId, npc] : g_world.npcs) {
+                if ((npc.currentLocation == regionId || npc.homeLocation == regionId) &&
+                    npc.type == "background_npc" && (npc.isAlive || npc.alive)) {
+                    existingNpcCount++;
+                }
+            }
+
             // If autoCount, calculate from population and location type
             if (autoCount || count <= 0) {
-                // Determine location type from globalLocations or default
                 std::string locType = "village";
-                // Check if the region has a base_type hint
                 if (!region.base_type.empty()) locType = region.base_type;
                 count = NpcGen::calculateBackgroundNpcCount(region.population, locType);
             }
 
+            // КЛЮЧЕВОЙ ФИКС: Генерируем только НЕДОСТАЮЩИХ NPC
+            // Если в регионе уже есть 12 NPC, а нужно 15 — генерируем только 3
+            // Если уже достаточно — НЕ генерируем вообще (ГМ мог вызвать команду вручную)
+            count = count - existingNpcCount;
+            if (count < 0) count = 0;
+
             // Clamp count
             if (count > 50) count = 50;
             if (count <= 0) {
-                feedback = "No background NPCs generated (population too low or count is 0).";
+                feedback = "Region already has " + std::to_string(existingNpcCount) +
+                           " background NPCs. No additional NPCs needed.";
             } else {
                 std::string homeFaction = region.factionId;
                 int spawned = 0;
@@ -10246,6 +10260,81 @@ std::string processGmIntervention(const JsonValue& command) {
                 feedback = "Spawned " + std::to_string(spawned) + " background NPCs in " + region.name;
                 g_world.gmInterventionHistory.push_back(cmd);
             }
+        }
+    } else if (cmd == "evolveRegionNpcs") {
+        // ====================================================================
+        // ЭВОЛЮЦИЯ NPC: Симуляция изменений за время отсутствия игрока
+        // Вызывается когда игрок возвращается в регион после отсутствия
+        // ====================================================================
+        std::string regionId = args["regionId"].asString();
+        int daysAbsent = args.has("daysAbsent") ? args["daysAbsent"].asInt() : 0;
+
+        if (!g_world.regions.count(regionId)) {
+            feedback = "Region not found: " + regionId;
+        } else {
+            int evolved = 0;
+            for (auto& [npcId, npc] : g_world.npcs) {
+                if (npc.currentLocation != regionId && npc.homeLocation != regionId) continue;
+                if (!npc.isAlive && !npc.alive) continue;
+                if (npc.type == "ruler") continue;
+
+                if (daysAbsent > 0) {
+                    // Нужды деградируют за время отсутствия
+                    npc.needs.hunger = std::max(0, npc.needs.hunger - daysAbsent * 3);
+                    npc.needs.rest = std::min(100, npc.needs.rest + daysAbsent * 2); // Отдых восстанавливается
+                    npc.needs.social = std::max(0, npc.needs.social - daysAbsent * 2);
+                    npc.needs.safety = std::max(0, npc.needs.safety - daysAbsent);
+
+                    // Экономика: зарабатывают за дни работы
+                    if (npc.economy.isEmployed) {
+                        int workDays = std::min(daysAbsent, 22); // Не больше 22 рабочих дней
+                        npc.economy.savings += npc.economy.dailyWage * workDays;
+                    }
+                    npc.gold += npc.economy.dailyWage * std::min(daysAbsent, 5) / 3; // Часть в карман
+
+                    // Возраст
+                    npc.age_days += daysAbsent;
+
+                    // Отношения деградируют без контакта
+                    if (npc.relationships.count("player")) {
+                        int decay = std::min(daysAbsent / 7, 5); // Максимум -5 за неделю
+                        npc.relationships["player"] = std::max(-100, npc.relationships["player"] - decay);
+                    }
+
+                    // HP восстанавливается при отдыхе (если не в бою)
+                    if (npc.hp < npc.maxHp && npc.hp > 0) {
+                        int healRate = daysAbsent * 2; // 2 HP в день
+                        npc.hp = std::min(npc.maxHp, npc.hp + healRate);
+                    }
+
+                    // Крайний голод → потеря HP
+                    if (npc.needs.hunger < 10) {
+                        npc.hp = std::max(0, npc.hp - daysAbsent);
+                        if (npc.hp <= 0) {
+                            npc.isAlive = false;
+                            npc.alive = false;
+                            npc.death_cause = "starvation";
+                            npc.death_day = g_world.tick;
+                        }
+                    }
+
+                    // Обновить текущую деятельность по расписанию
+                    int currentHour = g_world.time.internalHour;
+                    npc.currentActivity = "Resting";
+                    for (const auto& entry : npc.schedule) {
+                        if (currentHour >= entry.start && currentHour <= entry.end) {
+                            npc.currentActivity = entry.activity;
+                            break;
+                        }
+                    }
+                }
+
+                evolved++;
+            }
+
+            feedback = "Evolved " + std::to_string(evolved) + " NPCs in " + g_world.regions[regionId].name +
+                       " (absent " + std::to_string(daysAbsent) + " days)";
+            g_world.gmInterventionHistory.push_back(cmd);
         }
     } else if (cmd == "killMonster") {
         std::string monsterId = args["monsterId"].asString();
