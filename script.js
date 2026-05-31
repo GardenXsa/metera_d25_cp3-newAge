@@ -8037,6 +8037,21 @@ function startNewGameSetup() {
 
     clearPromptCache(); // Сбрасываем кэш промпта при новой игре
 
+    // Сброс зависших состояний API от предыдущей неудачной попытки
+    if (isWaitingForAI) {
+        console.log('[startNewGameSetup] Сброс isWaitingForAI → false');
+        isWaitingForAI = false;
+    }
+    if (window.isSimulatingTime) {
+        console.log('[startNewGameSetup] Сброс isSimulatingTime → false');
+        window.isSimulatingTime = false;
+    }
+    // Отменяем висящий API-запрос и сбрасываем очередь
+    if (typeof window.cancelCurrentApiRequest === 'function') {
+        window.cancelCurrentApiRequest();
+    }
+    apiRequestQueue = Promise.resolve();
+
     // --- [ИСПРАВЛЕНИЕ] Универсальная проверка API ключа ---
     let keyIsMissing = false;
     let requiredKey = '';
@@ -17342,6 +17357,23 @@ async function exitToMainMenu() {
         if (speechSynthesis && speechSynthesis.speaking) {
             speechSynthesis.cancel();
         }
+
+        // Сброс зависших состояний API (сеть, таймаут, abort)
+        if (isWaitingForAI) {
+            console.log('[exitToMainMenu] Сброс isWaitingForAI → false');
+            isWaitingForAI = false;
+        }
+        if (window.isSimulatingTime) {
+            console.log('[exitToMainMenu] Сброс isSimulatingTime → false');
+            window.isSimulatingTime = false;
+        }
+        // Отменяем текущий API-запрос, если он ещё висит
+        if (typeof window.cancelCurrentApiRequest === 'function') {
+            window.cancelCurrentApiRequest();
+        }
+        // Сбрасываем очередь API-запросов, чтобы новый запрос не ждал зависший старый
+        apiRequestQueue = Promise.resolve();
+
         player = null;
         World = null;
         conversationHistory = [];
