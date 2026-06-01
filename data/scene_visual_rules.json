@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "defaultSettings": {
+    "enabled": true,
+    "allowRemote": false,
+    "memeMode": false,
+    "explicitMode": false,
+    "enabledRatings": ["sfw"]
+  },
+  "scoring": {
+    "tagMatch": 12,
+    "toneMatch": 5,
+    "combatMatch": 8,
+    "intensityDistancePenalty": 3,
+    "localSourceBonus": 4,
+    "weightDivisor": 20
+  },
+  "blockedPairs": [
+    { "tag": "death", "rating": "meme", "unlessTone": "comedy" },
+    { "tag": "combat", "rating": "explicit" },
+    { "tag": "combat", "rating": "adult" }
+  ],
+  "tagHints": {
+    "combat": ["бой", "битва", "атака", "удар", "клинок", "меч", "алебарда", "blood", "attack", "combat", "battle", "blade"],
+    "rain": ["дожд", "ливень", "rain", "storm"],
+    "fire": ["огонь", "плам", "горящ", "гарь", "fire", "flame", "burn"],
+    "camp": ["лагерь", "палат", "camp", "tent"],
+    "blood": ["кров", "рана", "blood", "wound"],
+    "travel": ["дорог", "тракт", "путь", "travel", "road"],
+    "tavern": ["таверн", "трактир", "tavern", "inn"],
+    "city": ["город", "столиц", "рынок", "city", "market"],
+    "horror": ["ужас", "кошмар", "тень", "monster", "horror", "nightmare"],
+    "dice_fail": ["провал", "промах", "неудач", "fail", "miss"],
+    "critical_success": ["критический успех", "натуральная 20", "critical success", "natural 20"],
+    "sex": ["секс", "похоть", "бордель", "brothel", "sex"],
+    "romance": ["роман", "поцел", "нежн", "romance", "kiss"],
+    "consensual": ["соглас", "consensual"]
+  }
+}

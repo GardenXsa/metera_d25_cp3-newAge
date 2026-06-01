@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "packs": [
+    {
+      "id": "base_atmosphere",
+      "name": "Base Atmosphere",
+      "description": "Core SFW fantasy mood slots for combat, weather, travel, cities, taverns, and horror scenes.",
+      "root": "assets/gifs",
+      "ratings": ["sfw"],
+      "enabledByDefault": true,
+      "requiresExplicitMode": false,
+      "expectedFiles": [
+        "combat/rain_fire_01.gif",
+        "combat/duel_steel_01.gif",
+        "weather/rain_camp_01.gif",
+        "travel/muddy_road_01.gif",
+        "tavern/warm_room_01.gif",
+        "horror/shadow_forest_01.gif"
+      ]
+    },
+    {
+      "id": "meme_reactions",
+      "name": "Meme Reactions",
+      "description": "Optional reaction GIF slots for failed rolls, critical successes, and absurd turns.",
+      "root": "assets/gifs/reactions",
+      "ratings": ["meme"],
+      "enabledByDefault": false,
+      "requiresExplicitMode": false,
+      "expectedFiles": [
+        "dice_fail_01.gif",
+        "critical_success_01.gif"
+      ]
+    },
+    {
+      "id": "adult_local_pack",
+      "name": "Adult Local Pack",
+      "description": "User-supplied adult/explicit local GIF slots. Disabled by default and never downloaded automatically.",
+      "root": "assets/gifs/adult/local_pack",
+      "ratings": ["adult", "explicit"],
+      "enabledByDefault": false,
+      "requiresExplicitMode": true,
+      "expectedFiles": [
+        "romance_brothel_01.gif",
+        "private_romance_01.gif"
+      ]
+    }
+  ]
+}

@@ -1293,6 +1293,21 @@ bool itemHasTag(const std::string& itemId, const std::string& tag) {
     return tpl && tpl->hasTag(tag);
 }
 
+double getPopulationDemandWeight(const std::string& itemId) {
+    const ItemTemplate* tpl = g_itemRegistry.getTemplate(itemId);
+    if (!tpl) return 0.0;
+
+    if (tpl->hasTag("food")) return 1.0;
+    if (tpl->hasTag("tool") || tpl->hasTag("weapon") || tpl->hasTag("armor") || tpl->hasTag("medical")) return 0.1;
+    if (tpl->hasTag("luxury") || tpl->hasTag("potion")) return 0.05;
+
+    auto itemIt = g_db.items.find(itemId);
+    const std::string category = (itemIt != g_db.items.end()) ? itemIt->second.category : "";
+    if (category == "consumable") return 0.2;
+
+    return 0.0;
+}
+
 double getFoodPriority(const std::string& itemId, const std::string& propertyKey = "army_supply_priority") {
     double explicitPriority = getItemNumericProperty(itemId, propertyKey, -1.0);
     if (explicitPriority >= 0.0) return explicitPriority;
@@ -1416,6 +1431,7 @@ std::string createItem(const std::string& requestedPrototypeId, int quantity, co
     item.created_at = currentDay;
     item.last_moved_at = currentDay;
     item.batch_day = currentDay;
+    item.is_dirty = true;
     item.history.push_back({currentDay, event});
     
     if (g_db.items.count(prototypeId)) {
@@ -6542,7 +6558,8 @@ void processDailyEconomy() {
                     int stock = vaultStocks[gt];
                     int reserve = region.reserveTargets[gt];
                     int effective_stock = std::max(1, stock - reserve);
-                    double demand = region.population * 0.01;
+                    double demandWeight = getPopulationDemandWeight(gt);
+                    double demand = std::max(1.0, region.population * 0.01 * demandWeight);
                     
                     double ratio = demand / (double)effective_stock;
                     
@@ -6577,13 +6594,13 @@ void processDailyEconomy() {
                     region.markets[gt] = final_price;
                     region.priceHistory[gt].add(final_price);
                     
-                    if ((final_price >= base * 2.0 && final_price < base * 3.0) || (final_price <= base * 0.5 && final_price > base * 0.3)) {
+                    if (demandWeight > 0.0 && ((final_price >= base * 2.0 && final_price < base * 3.0) || (final_price <= base * 0.5 && final_price > base * 0.3))) {
                         if (thread_safe_rand() % 100 < 15) {
                             std::string direction = (final_price > base) ? "up" : "down";
                             addNews(locStr("engine.news.price_" + direction, {{"good", gt}, {"region", region.name}}), rid, 1, "market");
                         }
                     }
-                    if (final_price >= base * 3.0 && effective_stock < demand * 0.2 && (thread_safe_rand() % 100 < 3)) {
+                    if (demandWeight > 0.0 && final_price >= base * 3.0 && effective_stock < demand * 0.2 && (thread_safe_rand() % 100 < 3)) {
                         addNews(locStr("engine.news.acute_shortage", {{"good", gt}, {"region", region.name}}), rid, 2, "market");
                     }
                     if (final_price <= base * 0.35 && effective_stock > demand * 10) {
@@ -6674,13 +6691,19 @@ void processMarkets() {
                 std::map<std::string, int> demand;
                 
                 for (const auto& gt : g_db.all_item_ids) {
-                    double baseDemand = r.population * 0.03;
+                    double demandWeight = getPopulationDemandWeight(gt);
+                    if (demandWeight <= 0.0) {
+                        demand[gt] = 0;
+                        continue;
+                    }
+
+                    double baseDemand = r.population * 0.03 * demandWeight;
                     
                     std::string cat = g_db.items[gt].category;
                     if (cat == "consumable" || cat == "raw_food" || cat == "processed_food") {
-                        baseDemand = r.population * g_gameplay_runtime.sim_pop_food_demand_ratio;
+                        baseDemand = r.population * g_gameplay_runtime.sim_pop_food_demand_ratio * demandWeight;
                     } else if (cat == "luxury" || cat == "potion") {
-                        baseDemand = r.population * g_gameplay_runtime.sim_pop_luxury_demand_ratio;
+                        baseDemand = r.population * g_gameplay_runtime.sim_pop_luxury_demand_ratio * demandWeight;
                     }
                     
                     baseDemand *= getSeasonalDemandMultiplier(gt, r.current_season);
@@ -14155,10 +14178,31 @@ void seedRegionInitialSupplies(Region& region) {
 }
 
 bool recipeUsesRegionResources(const RecipeDef& recipe, const Region& region) {
-    for (const auto& [inputId, qty] : recipe.inputs) {
-        if (region.available_raw_resources.count(inputId)) return true;
+    std::set<std::string> reachable = region.available_raw_resources;
+    bool changed = true;
+    int guard = 0;
+
+    while (changed && guard++ < static_cast<int>(g_db.recipes.size()) + 1) {
+        changed = false;
+        for (const auto& candidate : g_db.recipes) {
+            bool canCraft = true;
+            for (const auto& [inputId, qty] : candidate.inputs) {
+                if (!reachable.count(inputId)) {
+                    canCraft = false;
+                    break;
+                }
+            }
+            if (!canCraft) continue;
+            for (const auto& [outputId, qty] : candidate.outputs) {
+                if (reachable.insert(outputId).second) changed = true;
+            }
+        }
     }
-    return false;
+
+    for (const auto& [inputId, qty] : recipe.inputs) {
+        if (!reachable.count(inputId)) return false;
+    }
+    return !recipe.inputs.empty();
 }
 
 bool facilityHasMatchingRegionalOutput(const FacilityTemplate& tpl, const Region& region) {
@@ -14270,6 +14314,49 @@ std::string chooseMonopolyProductionFocus(const std::string& facilityId, const R
     return chooseBestItemCandidate(outputs, "", {}, {"food", "raw_material"});
 }
 
+void addBootstrapStarterTools(Region& region) {
+    if (region.vault_id.empty()) return;
+
+    std::map<std::string, int> requiredTools;
+    for (const auto& [facilityId, facility] : region.facilities) {
+        if (facility.level <= 0) continue;
+        const FacilityTemplate* tpl = g_facilityRegistry.getTemplate(facilityId);
+        if (!tpl || tpl->required_tool.empty()) continue;
+        if (!g_db.items.count(tpl->required_tool)) continue;
+        requiredTools[tpl->required_tool] += std::max(5, facility.level * 4);
+    }
+    for (const auto& [toolId, amount] : requiredTools) {
+        createItem(toolId, amount, region.vault_id, 0, "Bootstrap Tools");
+    }
+}
+
+void ensureBootstrapFoodReserve(Region& region) {
+    if (region.vault_id.empty() || region.population <= 0) return;
+
+    const int targetFood = static_cast<int>(region.population * 0.8);
+    int currentFood = 0;
+    {
+        std::lock_guard<std::recursive_mutex> lock(g_registry_mutex);
+        if (g_containers.count(region.vault_id)) {
+            for (const auto& itemId : g_containers[region.vault_id].item_ids) {
+                if (!g_items.count(itemId)) continue;
+                const PhysicalItem& item = g_items[itemId];
+                if (itemHasTag(item.prototype_id, "food")) currentFood += item.stack_size;
+            }
+        }
+    }
+    if (currentFood >= targetFood) {
+        region.starvation_days = 0;
+        return;
+    }
+
+    const std::string reserveFoodId = getPreferredGlobalItemByTag("food", {"bread", "smoked_meat", "meat"}, {"processed_food", "bakery_product", "raw_food"}, "reserve_priority");
+    if (!reserveFoodId.empty()) {
+        createItem(reserveFoodId, targetFood - currentFood, region.vault_id, 0, "Bootstrap Reserve");
+        region.starvation_days = 0;
+    }
+}
+
 void addBootstrapStarterResources(Region& region) {
     if (region.vault_id.empty()) return;
 
@@ -14286,6 +14373,8 @@ void addBootstrapStarterResources(Region& region) {
     if (!oreId.empty()) createItem(oreId, 100 + thread_safe_rand() % 200, region.vault_id, 0, "Bootstrap");
     if (!currencyId.empty()) createItem(currencyId, 500 + thread_safe_rand() % 500, region.vault_id, 0, "Bootstrap");
     if (!weaponId.empty()) createItem(weaponId, 50 + thread_safe_rand() % 50, region.vault_id, 0, "Bootstrap");
+
+    addBootstrapStarterTools(region);
 }
 
 std::string inferLegacyPlacementTypeFromRegionName(const std::string& regionName) {
@@ -15038,6 +15127,11 @@ void bootstrapWorld(int days, int targetStartDay) {
         g_world.tick++;
     }
 
+    for (auto& [rid, r] : g_world.regions) {
+        addBootstrapStarterTools(r);
+        ensureBootstrapFoodReserve(r);
+    }
+
     // 4. Cleanup
     g_world.news.clear();
     g_world.needsGlobalEvent = false;
@@ -15634,8 +15728,9 @@ int main() {
                         cat.required = catVal.has("required") ? catVal["required"].asBool() : false;
 
                         if (catVal.has("fragments") && catVal["fragments"].type == JsonValue::ARRAY) {
-                            for (size_t fi = 0; fi < catVal["fragments"].size(); fi++) {
-                                const JsonValue& fv = catVal["fragments"][fi];
+                            const JsonValue fragments = catVal["fragments"];
+                            for (size_t fi = 0; fi < fragments.size(); fi++) {
+                                const JsonValue& fv = fragments.arr_val[fi];
                                 BackgroundFragment frag;
                                 frag.id = fv.has("id") ? fv["id"].asString() : "";
                                 frag.text = fv.has("text") ? fv["text"].asString() : "";
@@ -16516,6 +16611,13 @@ else if (cmd == "playerManageBusiness") {
             }
             
             simulateTicks(ticks);
+
+            if (cmd == "preSimulate") {
+                for (auto& [rid, r] : g_world.regions) {
+                    addBootstrapStarterTools(r);
+                    ensureBootstrapFoodReserve(r);
+                }
+            }
             
             response.set("status", "ok");
             response.set("tick", g_world.tick);

@@ -31,7 +31,7 @@ class EngineSession:
                 stderr = self.proc.stderr.read()
                 raise AssertionError(f"engine stopped unexpectedly: {stderr}")
             data = json.loads(line)
-            if data.get("status") == "progress":
+            if data.get("status") in ("progress", "ready"):
                 continue
             return data
 

@@ -1,0 +1,41 @@
+{
+  "name": "Хроники Метерии",
+  "kind": "meterea_chronicles",
+  "rules": [
+    "Return JSON patches for AI Patcher Pro.",
+    "Do not suggest Codex.",
+    "Avoid unnecessary Python scripts unless explicitly requested.",
+    "Prefer data-driven architecture over hardcoded IDs.",
+    "Keep docs/AI_PATCHER_WORKLOG.md updated after meaningful changes.",
+    "Keep docs/DATA_DRIVEN_MIGRATION_PLAN.md updated after meaningful migration changes.",
+    "After green checks, recommend commit/push checkpoint."
+  ],
+  "check_profiles": {
+    "quick": [
+      "node tools/runtime_smoke_check.js"
+    ],
+    "runtime": [
+      "node tools/runtime_smoke_check.js"
+    ],
+    "data_contract": [
+      "node tools/runtime_smoke_check.js",
+      "py tools/validate_data_contract.py"
+    ],
+    "engine_build": [
+      "g++ -std=c++17 -O2 -static -o engine/meterea_engine.exe engine/meterea_engine.cpp engine/item_system.cpp"
+    ],
+    "git_status": [
+      "git status --short",
+      "git log --oneline --decorate --graph --all -10"
+    ]
+  },
+  "required_files_for_runtime_changes": [
+    "docs/AI_PATCHER_WORKLOG.md",
+    "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+  ],
+  "forbidden_patterns": [
+    "hardcoded",
+    "HARDCODED",
+    "TODO hardcode"
+  ]
+}

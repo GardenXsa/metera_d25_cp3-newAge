@@ -439,6 +439,53 @@
                                                         </div>
                                                 </div>
                                         </div>
+
+                                        <div class="bus-card-modern" style="margin-bottom: 12px; border-left: 3px solid #5dade2;">
+                                                <h4 class="bus-card-title-modern"><i class="fas fa-photo-video"></i> Scene Visual Library</h4>
+                                                <p style="font-size: 0.85em; color: #9ba4b5; margin-bottom: 10px;">Локальные GIF/visual-паки для сцен ГМ. Реальные файлы кладутся в <code>assets/gifs</code>; случайная внешняя загрузка выключена по умолчанию.</p>
+
+                                                <div class="scene-visual-settings-grid">
+                                                        <label class="scene-visual-setting-row">
+                                                                <input type="checkbox" id="scene-visuals-enabled-checkbox">
+                                                                <span>
+                                                                        <strong>Включить визуальные карточки сцен</strong>
+                                                                        <small>Добавляет mood-слот к художественным ответам ГМ.</small>
+                                                                </span>
+                                                        </label>
+                                                        <label class="scene-visual-setting-row">
+                                                                <input type="checkbox" id="scene-visual-meme-checkbox">
+                                                                <span>
+                                                                        <strong>Мемные реакции</strong>
+                                                                        <small>Использовать meme-рейтинг для провалов, критов и абсурдных сцен.</small>
+                                                                </span>
+                                                        </label>
+                                                        <label class="scene-visual-setting-row scene-visual-explicit-setting">
+                                                                <input type="checkbox" id="scene-visual-explicit-checkbox">
+                                                                <span>
+                                                                        <strong>Adult / explicit visual pack</strong>
+                                                                        <small>Только локальные пользовательские файлы. Выключено по умолчанию.</small>
+                                                                </span>
+                                                        </label>
+                                                        <label class="scene-visual-setting-row">
+                                                                <input type="checkbox" id="scene-visual-remote-checkbox">
+                                                                <span>
+                                                                        <strong>Разрешить внешние visual sources</strong>
+                                                                        <small>Зарезервировано под будущий поиск. Сейчас лучше держать выключенным.</small>
+                                                                </span>
+                                                        </label>
+                                                </div>
+
+                                                <div class="form-group" style="margin-top: 12px; margin-bottom: 0;">
+                                                        <label class="bus-label" for="scene-visual-display-mode-select">Режим отображения visual-карточек:</label>
+                                                        <select id="scene-visual-display-mode-select" class="bus-input">
+                                                                <option value="wide">Cinematic wide</option>
+                                                                <option value="card">Compact card</option>
+                                                                <option value="minimal">Minimal strip</option>
+                                                        </select>
+                                                </div>
+
+                                                <div id="scene-visual-pack-status" class="scene-visual-pack-status">Паки визуалов еще не загружены.</div>
+                                        </div>
                                 </div>
 
                                 <!-- Вкладка: Данные -->
@@ -1301,6 +1348,10 @@
     <script src="js/core/dom_elements.js"></script>
 
     <script src="js/core/runtimeLog.js"></script>
+    <script src="js/core/turnIntentRouter.js"></script>
+    <script src="js/core/economicDeficitVector.js"></script>
+    <script src="js/core/sceneTagger.js"></script>
+    <script src="js/core/sceneAssetPicker.js"></script>
 
     <!-- Модули системы сохранений -->
     <script src="js/saves/StorageProvider.js"></script>

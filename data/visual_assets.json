@@ -1,0 +1,244 @@
+{
+  "version": 1,
+  "description": "Local visual asset registry for scene mood GIFs, meme reactions, and opt-in adult packs.",
+  "assets": [
+    {
+      "id": "combat_rain_fire_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/rain_fire_01.gif",
+      "rating": "sfw",
+      "source": "local_generated",
+      "license": "project_generated",
+      "artist": "OpenAI Codex / project procedural pack",
+      "tags": [
+        "combat",
+        "rain",
+        "fire",
+        "camp",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_duel_steel_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/duel_steel_01.gif",
+      "rating": "sfw",
+      "source": "local_generated",
+      "license": "project_generated",
+      "artist": "OpenAI Codex / project procedural pack",
+      "tags": [
+        "combat",
+        "duel",
+        "steel",
+        "blood",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "tense"
+      ],
+      "intensity": 4,
+      "weight": 85,
+      "loop": true
+    },
+    {
+      "id": "weather_rain_camp_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/weather/rain_camp_01.gif",
+      "rating": "sfw",
+      "source": "local_generated",
+      "license": "project_generated",
+      "artist": "OpenAI Codex / project procedural pack",
+      "tags": [
+        "rain",
+        "camp",
+        "night",
+        "travel"
+      ],
+      "tone": [
+        "quiet",
+        "melancholy"
+      ],
+      "intensity": 2,
+      "weight": 60,
+      "loop": true
+    },
+    {
+      "id": "travel_muddy_road_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/travel/muddy_road_01.gif",
+      "rating": "sfw",
+      "source": "local_generated",
+      "license": "project_generated",
+      "artist": "OpenAI Codex / project procedural pack",
+      "tags": [
+        "travel",
+        "road",
+        "rain",
+        "wilderness"
+      ],
+      "tone": [
+        "grim",
+        "quiet"
+      ],
+      "intensity": 2,
+      "weight": 55,
+      "loop": true
+    },
+    {
+      "id": "city_tavern_warm_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/tavern/warm_room_01.gif",
+      "rating": "sfw",
+      "source": "local_generated",
+      "license": "project_generated",
+      "artist": "OpenAI Codex / project procedural pack",
+      "tags": [
+        "tavern",
+        "city",
+        "dialogue",
+        "fire"
+      ],
+      "tone": [
+        "social",
+        "warm"
+      ],
+      "intensity": 2,
+      "weight": 65,
+      "loop": true
+    },
+    {
+      "id": "horror_shadow_forest_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/horror/shadow_forest_01.gif",
+      "rating": "sfw",
+      "source": "local_generated",
+      "license": "project_generated",
+      "artist": "OpenAI Codex / project procedural pack",
+      "tags": [
+        "horror",
+        "forest",
+        "night",
+        "monster"
+      ],
+      "tone": [
+        "horror",
+        "tense"
+      ],
+      "intensity": 5,
+      "weight": 80,
+      "loop": true
+    },
+    {
+      "id": "reaction_dice_fail_01",
+      "pack": "meme_reactions",
+      "type": "gif",
+      "path": "assets/gifs/reactions/dice_fail_01.gif",
+      "rating": "meme",
+      "source": "local_generated",
+      "license": "project_generated",
+      "artist": "OpenAI Codex / project procedural pack",
+      "tags": [
+        "dice_fail",
+        "combat_miss",
+        "fail"
+      ],
+      "tone": [
+        "comedy",
+        "absurd"
+      ],
+      "intensity": 2,
+      "weight": 120,
+      "loop": true,
+      "allowedModes": [
+        "meme"
+      ]
+    },
+    {
+      "id": "reaction_critical_success_01",
+      "pack": "meme_reactions",
+      "type": "gif",
+      "path": "assets/gifs/reactions/critical_success_01.gif",
+      "rating": "meme",
+      "source": "local_generated",
+      "license": "project_generated",
+      "artist": "OpenAI Codex / project procedural pack",
+      "tags": [
+        "critical_success",
+        "victory",
+        "dice"
+      ],
+      "tone": [
+        "comedy",
+        "heroic"
+      ],
+      "intensity": 3,
+      "weight": 95,
+      "loop": true,
+      "allowedModes": [
+        "meme"
+      ]
+    },
+    {
+      "id": "adult_romance_brothel_slot_01",
+      "pack": "adult_local_pack",
+      "type": "gif",
+      "path": "assets/gifs/adult/local_pack/romance_brothel_01.gif",
+      "rating": "explicit",
+      "source": "local",
+      "license": "user_supplied_pack",
+      "tags": [
+        "sex",
+        "brothel",
+        "romance",
+        "consensual"
+      ],
+      "tone": [
+        "erotic"
+      ],
+      "intensity": 3,
+      "weight": 100,
+      "loop": true,
+      "requiresOptIn": true,
+      "blockedInCombat": true,
+      "placeholder": true
+    },
+    {
+      "id": "adult_romance_private_slot_01",
+      "pack": "adult_local_pack",
+      "type": "gif",
+      "path": "assets/gifs/adult/local_pack/private_romance_01.gif",
+      "rating": "adult",
+      "source": "local",
+      "license": "user_supplied_pack",
+      "tags": [
+        "romance",
+        "intimacy",
+        "consensual"
+      ],
+      "tone": [
+        "erotic",
+        "tender"
+      ],
+      "intensity": 2,
+      "weight": 80,
+      "loop": true,
+      "requiresOptIn": true,
+      "blockedInCombat": true,
+      "placeholder": true
+    }
+  ]
+}

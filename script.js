@@ -1795,8 +1795,37 @@ const TradeSystemAsync = {
     }
 };
 
+function isAtmosphericDeepSetupStartGuardActive() {
+    if (!player || !player._deepSetupActive) return false;
+    const startMode = String(player.startMode || '').toLowerCase();
+    return startMode === 'atmospheric' || startMode === 'атмосферный';
+}
+
+function commandWantsActiveCombat(command, args) {
+    if (command !== 'setCombatState' || !args) return false;
+    if (args.isActive === undefined) return Array.isArray(args.participants) && args.participants.length > 0;
+    if (typeof args.isActive === 'string') return args.isActive.toLowerCase() === 'true';
+    return args.isActive === true;
+}
+
+function shouldBlockAtmosphericStartupCombat(command, args) {
+    return isAtmosphericDeepSetupStartGuardActive() && commandWantsActiveCombat(command, args);
+}
+
+function sanitizeAtmosphericStartupEnvironmentArgs(command, args) {
+    if (!isAtmosphericDeepSetupStartGuardActive() || command !== 'addEnvironment' || !args) return args;
+    const nextArgs = { ...args };
+    const type = String(nextArgs.type || '').toLowerCase();
+    const hostile = nextArgs.isHostile === true || String(nextArgs.isHostile).toLowerCase() === 'true' || type === 'enemy';
+    if (!hostile) return nextArgs;
+
+    nextArgs.type = 'npc';
+    nextArgs.isHostile = false;
+    nextArgs.startupThreat = true;
+    return nextArgs;
+}
+
 async function executeCommand(command, args) {
-    if (window.ModAPI) ModAPI.emit('onCommandExecuted', {command, args});
     if (!command) return null;
     if (!player) return t('gameInterface.commandFeedback.errorPlayerMissing');
 
@@ -1817,6 +1846,16 @@ async function executeCommand(command, args) {
         }
     }
 
+    if (shouldBlockAtmosphericStartupCombat(command, args)) {
+        const feedback = `[STARTUP GUARD] Атмосферный старт не может начинаться с принудительного боя. Команда '${command}' заблокирована до первого осознанного действия игрока.`;
+        addCalculationMessage(feedback);
+        if (window.GRAIL) GRAIL.onCommandExecuted(command, args, feedback);
+        return feedback;
+    }
+
+    args = sanitizeAtmosphericStartupEnvironmentArgs(command, args);
+
+    if (window.ModAPI) ModAPI.emit('onCommandExecuted', {command, args});
     console.log("Выполнение команды (ASYNC):", command, args);
     let feedback = null;
 
@@ -4959,23 +4998,14 @@ function buildFullPlayerSnapshot() {
             }
             worldContextString += facVecs.join('\n') + '\n';
 
-            let goodsStats = {};
-            for (let rId in World.regions) {
-                let r = World.regions[rId];
-                if (!r.vault_id) continue;
-                let pop = r.population || 0;
-                for (let good in ECONOMY_ITEMS) {
-                    if (!goodsStats[good]) goodsStats[good] = { stock: 0, demand: 0 };
-                    goodsStats[good].stock += countRealItems(r.vault_id, good);
-                    goodsStats[good].demand += pop * 0.01;
-                }
-            }
-            let deficitArray = [];
-            for (let good in goodsStats) {
-                let ratio = goodsStats[good].demand / (goodsStats[good].stock + 1);
-                deficitArray.push({ good: good, ratio: ratio });
-            }
-            deficitArray.sort((a, b) => b.ratio - a.ratio);
+            let deficitArray = (window.EconomicDeficitVector && typeof window.EconomicDeficitVector.computeGlobalEconomicDeficits === 'function')
+                ? window.EconomicDeficitVector.computeGlobalEconomicDeficits({
+                    regions: World.regions,
+                    economyItems: ECONOMY_ITEMS,
+                    countItems: countRealItems,
+                    maxResults: 3
+                })
+                : [];
             let top3 = deficitArray.slice(0, 3).map(item => item.good).join(',');
             worldContextString += `[GLOB_ECON_VEC | DEFICIT:${top3 || 'none'}]\n`;
 
@@ -6971,6 +7001,7 @@ if (aiPlayerProvSelect) {
     }
 
     if (imgKeyInput) imgKeyInput.value = imgApiKey;
+    initSceneVisualSettingsUI();
 
     // Инициализация внутренних вкладок (Sub-tabs) только для настроек
     const settingsMenuEl = document.getElementById('settings-menu');
@@ -7688,6 +7719,7 @@ function saveSettings() {
         enableDeepSetup = deepSetupCheckbox.checked;
         localStorage.setItem('enableDeepSetup', enableDeepSetup);
     }
+    saveSceneVisualSettingsFromUI();
     
     imgApiProvider = document.getElementById('img-provider-select')?.value || 'pollinations';
     imgModelId = document.getElementById('img-model-input')?.value.trim() || 'dall-e-3';
@@ -13023,6 +13055,324 @@ function closeInGameMenu() {
     }, 300); // Время анимации
 }
 
+let sceneVisualRegistryBundle = null;
+let sceneVisualRegistryPromise = null;
+let sceneVisualPacksBundle = null;
+let sceneVisualPacksPromise = null;
+
+async function ensureSceneVisualRegistry() {
+    if (sceneVisualRegistryBundle) return sceneVisualRegistryBundle;
+    if (!sceneVisualRegistryPromise) {
+        sceneVisualRegistryPromise = Promise.all([
+            fetch('data/visual_assets.json').then(res => res.ok ? res.json() : Promise.reject(new Error(`visual_assets.json ${res.status}`))),
+            fetch('data/scene_visual_rules.json').then(res => res.ok ? res.json() : Promise.reject(new Error(`scene_visual_rules.json ${res.status}`)))
+        ]).then(([registry, rules]) => {
+            sceneVisualRegistryBundle = { registry, rules };
+            return sceneVisualRegistryBundle;
+        }).catch(err => {
+            console.warn('[SceneVisuals] Registry load failed:', err);
+            sceneVisualRegistryPromise = null;
+            return null;
+        });
+    }
+    return sceneVisualRegistryPromise;
+}
+
+async function ensureSceneVisualPacks() {
+    if (sceneVisualPacksBundle) return sceneVisualPacksBundle;
+    if (!sceneVisualPacksPromise) {
+        sceneVisualPacksPromise = fetch('data/visual_asset_packs.json')
+            .then(res => res.ok ? res.json() : Promise.reject(new Error(`visual_asset_packs.json ${res.status}`)))
+            .then(packs => {
+                sceneVisualPacksBundle = packs;
+                return packs;
+            })
+            .catch(err => {
+                console.warn('[SceneVisuals] Pack metadata load failed:', err);
+                sceneVisualPacksPromise = null;
+                return null;
+            });
+    }
+    return sceneVisualPacksPromise;
+}
+
+function getSceneVisualSettings() {
+    const memeMode = localStorage.getItem('sceneVisualMemeMode') === 'true';
+    const explicitMode = localStorage.getItem('sceneVisualExplicitMode') === 'true';
+    const enabled = localStorage.getItem('sceneVisualsEnabled') !== 'false';
+    const displayMode = localStorage.getItem('sceneVisualDisplayMode') || 'wide';
+    const enabledRatings = ['sfw'];
+    if (memeMode) enabledRatings.push('meme');
+    if (explicitMode) enabledRatings.push('adult', 'explicit');
+    return {
+        enabled,
+        allowRemote: localStorage.getItem('sceneVisualAllowRemote') === 'true',
+        memeMode,
+        explicitMode,
+        displayMode,
+        enabledRatings,
+        activePackIds: [
+            'base_atmosphere',
+            ...(memeMode ? ['meme_reactions'] : []),
+            ...(explicitMode ? ['adult_local_pack'] : [])
+        ]
+    };
+}
+
+async function renderSceneVisualPackStatus() {
+    const status = document.getElementById('scene-visual-pack-status');
+    if (!status) return;
+
+    const packs = await ensureSceneVisualPacks();
+    if (!packs || !Array.isArray(packs.packs)) {
+        status.textContent = 'Не удалось загрузить manifest visual-паков.';
+        status.classList.add('scene-visual-pack-status-error');
+        return;
+    }
+
+    const settings = getSceneVisualSettings();
+    status.classList.remove('scene-visual-pack-status-error');
+    status.innerHTML = packs.packs.map(pack => {
+        const active = settings.activePackIds.includes(pack.id);
+        const ratings = (pack.ratings || []).join('/');
+        const expected = (pack.expectedFiles || []).length;
+        return `<span class="scene-visual-pack-pill ${active ? 'active' : 'inactive'}">${pack.name} · ${ratings} · ${expected} slots</span>`;
+    }).join('');
+}
+
+function initSceneVisualSettingsUI() {
+    const enabledCb = document.getElementById('scene-visuals-enabled-checkbox');
+    const memeCb = document.getElementById('scene-visual-meme-checkbox');
+    const explicitCb = document.getElementById('scene-visual-explicit-checkbox');
+    const remoteCb = document.getElementById('scene-visual-remote-checkbox');
+    const displayModeSelect = document.getElementById('scene-visual-display-mode-select');
+    const settings = getSceneVisualSettings();
+
+    if (enabledCb) enabledCb.checked = settings.enabled;
+    if (memeCb) memeCb.checked = settings.memeMode;
+    if (explicitCb) explicitCb.checked = settings.explicitMode;
+    if (remoteCb) remoteCb.checked = settings.allowRemote;
+    if (displayModeSelect) displayModeSelect.value = settings.displayMode;
+
+    [enabledCb, memeCb, explicitCb, remoteCb, displayModeSelect].filter(Boolean).forEach(control => {
+        control.addEventListener('change', () => {
+            saveSceneVisualSettingsFromUI();
+            renderSceneVisualPackStatus();
+        });
+    });
+
+    renderSceneVisualPackStatus();
+}
+
+function saveSceneVisualSettingsFromUI() {
+    const enabledCb = document.getElementById('scene-visuals-enabled-checkbox');
+    const memeCb = document.getElementById('scene-visual-meme-checkbox');
+    const explicitCb = document.getElementById('scene-visual-explicit-checkbox');
+    const remoteCb = document.getElementById('scene-visual-remote-checkbox');
+    const displayModeSelect = document.getElementById('scene-visual-display-mode-select');
+
+    if (enabledCb) localStorage.setItem('sceneVisualsEnabled', enabledCb.checked ? 'true' : 'false');
+    if (memeCb) localStorage.setItem('sceneVisualMemeMode', memeCb.checked ? 'true' : 'false');
+    if (explicitCb) localStorage.setItem('sceneVisualExplicitMode', explicitCb.checked ? 'true' : 'false');
+    if (remoteCb) localStorage.setItem('sceneVisualAllowRemote', remoteCb.checked ? 'true' : 'false');
+    if (displayModeSelect) localStorage.setItem('sceneVisualDisplayMode', displayModeSelect.value || 'wide');
+}
+
+function createSceneVisualCard(asset, scene, settings = getSceneVisualSettings(), message = '', currentHistoryEntry = null) {
+    const card = document.createElement('div');
+    const displayMode = settings.displayMode || 'wide';
+    card.className = `scene-visual-card scene-visual-${asset.rating || 'sfw'} scene-visual-mode-${displayMode}`;
+    card.dataset.assetId = asset.id || '';
+    card.dataset.sceneMessage = message || '';
+
+    const media = document.createElement('div');
+    media.className = 'scene-visual-media';
+
+    if (asset.path && !asset.placeholder) {
+        const img = document.createElement('img');
+        img.src = asset.path;
+        img.alt = asset.id || 'scene visual';
+        img.loading = 'lazy';
+        media.appendChild(img);
+    } else {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'scene-visual-placeholder';
+        placeholder.textContent = (asset.tags || []).slice(0, 3).join(' / ') || 'scene';
+        media.appendChild(placeholder);
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'scene-visual-meta';
+
+    const title = document.createElement('div');
+    title.className = 'scene-visual-title';
+    title.textContent = asset.rating === 'meme'
+        ? 'Реакция сцены'
+        : (asset.rating === 'adult' || asset.rating === 'explicit')
+            ? 'Adult visual pack slot'
+            : 'Атмосфера сцены';
+
+    const tags = document.createElement('div');
+    tags.className = 'scene-visual-tags';
+    tags.textContent = (scene.tags || []).slice(0, 6).join(' · ');
+
+    meta.appendChild(title);
+    meta.appendChild(tags);
+
+    const actions = document.createElement('div');
+    actions.className = 'scene-visual-actions';
+
+    const rerollBtn = document.createElement('button');
+    rerollBtn.type = 'button';
+    rerollBtn.className = 'scene-visual-action-btn scene-visual-reroll-btn';
+    rerollBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
+    rerollBtn.title = 'Подобрать другой визуал';
+    rerollBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        rerollSceneVisualCard(card, message, currentHistoryEntry);
+    });
+
+    const hideBtn = document.createElement('button');
+    hideBtn.type = 'button';
+    hideBtn.className = 'scene-visual-action-btn scene-visual-hide-btn';
+    hideBtn.innerHTML = '<i class="fas fa-eye-slash"></i>';
+    hideBtn.title = 'Скрыть визуал этой сцены';
+    hideBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        card.remove();
+        if (currentHistoryEntry) currentHistoryEntry.sceneVisualHidden = true;
+    });
+
+    actions.appendChild(rerollBtn);
+    actions.appendChild(hideBtn);
+    card.appendChild(media);
+    card.appendChild(meta);
+    card.appendChild(actions);
+    return card;
+}
+
+function createSceneEpisodeHeader(scene, asset = null) {
+    const presentation = SceneTagger.buildScenePresentation(scene, player || {});
+    const header = document.createElement('div');
+    header.className = `scene-episode-header scene-episode-${presentation.kind}`;
+
+    const main = document.createElement('div');
+    main.className = 'scene-episode-main';
+
+    const title = document.createElement('div');
+    title.className = 'scene-episode-title';
+    title.textContent = presentation.kindLabel;
+
+    const meta = document.createElement('div');
+    meta.className = 'scene-episode-meta';
+
+    const location = document.createElement('span');
+    location.className = 'scene-episode-location';
+    location.textContent = presentation.location || 'unknown location';
+
+    const threat = document.createElement('span');
+    threat.className = 'scene-episode-threat';
+    threat.textContent = presentation.threatLabel;
+
+    meta.appendChild(location);
+    meta.appendChild(threat);
+    main.appendChild(title);
+    main.appendChild(meta);
+
+    const tags = document.createElement('div');
+    tags.className = 'scene-episode-tags';
+    const primaryTags = presentation.primaryTags.length > 0 ? presentation.primaryTags : (asset?.tags || []).slice(0, 4);
+    for (const tag of primaryTags.slice(0, 5)) {
+        const pill = document.createElement('span');
+        pill.className = 'scene-episode-tag';
+        pill.textContent = tag;
+        tags.appendChild(pill);
+    }
+
+    header.appendChild(main);
+    header.appendChild(tags);
+    return header;
+}
+
+function findSceneAssetById(registry, assetId) {
+    if (!registry || !assetId) return null;
+    return (registry.assets || []).find(asset => asset.id === assetId) || null;
+}
+
+async function rerollSceneVisualCard(card, message, currentHistoryEntry = null) {
+    if (!card || !card.parentElement || !window.SceneTagger || !window.SceneAssetPicker) return;
+    const bundle = await ensureSceneVisualRegistry();
+    if (!bundle) return;
+
+    const scene = SceneTagger.analyzeScene(message, player || {}, bundle.rules);
+    const settings = getSceneVisualSettings();
+    settings.excludeAssetIds = [card.dataset.assetId].filter(Boolean);
+    const asset = SceneAssetPicker.pickAsset({
+        scene,
+        registry: bundle.registry,
+        rules: bundle.rules,
+        settings
+    });
+    if (!asset) return;
+
+    if (currentHistoryEntry) {
+        currentHistoryEntry.sceneAssetId = asset.id;
+        currentHistoryEntry.sceneTags = scene.tags;
+        currentHistoryEntry.sceneVisualHidden = false;
+    }
+
+    const replacement = createSceneVisualCard(asset, scene, settings, message, currentHistoryEntry);
+    card.replaceWith(replacement);
+}
+
+async function attachSceneVisualToBubble(bubbleElement, message, currentHistoryEntry = null) {
+    if (!bubbleElement || !window.SceneTagger || !window.SceneAssetPicker) return;
+    if (bubbleElement.querySelector('.scene-visual-card')) return;
+    if (currentHistoryEntry?.sceneVisualHidden) return;
+
+    const bundle = await ensureSceneVisualRegistry();
+    if (!bundle || !document.body.contains(bubbleElement)) return;
+
+    const scene = SceneTagger.analyzeScene(message, player || {}, bundle.rules);
+    if (currentHistoryEntry?.sceneTags) scene.tags = currentHistoryEntry.sceneTags;
+    const savedAsset = findSceneAssetById(bundle.registry, currentHistoryEntry?.sceneAssetId);
+    const settings = getSceneVisualSettings();
+    const asset = savedAsset || SceneAssetPicker.pickAsset({
+        scene,
+        registry: bundle.registry,
+        rules: bundle.rules,
+        settings
+    });
+    if (!asset) return;
+
+    if (currentHistoryEntry) {
+        currentHistoryEntry.sceneAssetId = asset.id;
+        currentHistoryEntry.sceneTags = scene.tags;
+    }
+
+    let episodeFrame = bubbleElement.querySelector('.scene-episode-frame');
+    if (!episodeFrame) {
+        episodeFrame = document.createElement('div');
+        episodeFrame.className = 'scene-episode-frame';
+        const narrativeNodes = Array.from(bubbleElement.childNodes).filter(node => {
+            return !(node.nodeType === Node.ELEMENT_NODE && node.classList && node.classList.contains('tts-controls-wrapper'));
+        });
+        for (const node of narrativeNodes) episodeFrame.appendChild(node);
+        bubbleElement.insertBefore(episodeFrame, bubbleElement.firstChild);
+    }
+
+    if (!episodeFrame.querySelector('.scene-episode-header')) {
+        episodeFrame.insertBefore(createSceneEpisodeHeader(scene, asset), episodeFrame.firstChild);
+    }
+
+    const card = createSceneVisualCard(asset, scene, settings, message, currentHistoryEntry);
+    const controls = bubbleElement.querySelector('.tts-controls-wrapper');
+    const narrativeBody = episodeFrame.querySelector('.scene-narrative-body');
+    if (narrativeBody) episodeFrame.insertBefore(card, narrativeBody);
+    else if (controls) bubbleElement.insertBefore(card, controls);
+    else episodeFrame.appendChild(card);
+}
+
 // --- Лог и Ввод ---
 function addLogMessage(message, type = "gm-message", isRestoring = false, imagePrompt = "", savedImageBase64 = null) {
     if (!gameLog) return;
@@ -13087,7 +13437,7 @@ function addLogMessage(message, type = "gm-message", isRestoring = false, imageP
             });
 
             let markdownHtml = marked.parse(processedHtml);
-            cleanHtml = DOMPurify.sanitize(markdownHtml, { ADD_ATTR: ['data-ooc-text'], USE_PROFILES: { html: true } });
+            cleanHtml = `<div class="scene-narrative-body">${DOMPurify.sanitize(markdownHtml, { ADD_ATTR: ['data-ooc-text'], USE_PROFILES: { html: true } })}</div>`;
 
             // Готовим текст для озвучки (без OOC)
             const speechTempDiv = document.createElement('div');
@@ -13160,6 +13510,9 @@ function addLogMessage(message, type = "gm-message", isRestoring = false, imageP
 
         wrapper.appendChild(bubble);
         gameLog.appendChild(wrapper);
+        if (category === 'gm') {
+            attachSceneVisualToBubble(bubble, message, currentHistoryEntry);
+        }
     }
 
     // --- КНОПКА РУЧНОЙ ОЗВУЧКИ (TTS) ---
@@ -14318,6 +14671,55 @@ function renderSuggestedActions(actions) {
     });
 }
 
+let turnIntentRegistry = null;
+let turnIntentRegistryPromise = null;
+
+async function ensureTurnIntentRegistry() {
+    if (turnIntentRegistry) return turnIntentRegistry;
+    if (!window.TurnIntentRouter || typeof TurnIntentRouter.loadRegistry !== 'function') return null;
+    if (!turnIntentRegistryPromise) {
+        turnIntentRegistryPromise = TurnIntentRouter.loadRegistry('data/intent_registry.json')
+            .then((registry) => {
+                turnIntentRegistry = registry;
+                return registry;
+            })
+            .catch((err) => {
+                console.warn('[TurnIntentRouter] Registry load failed:', err);
+                turnIntentRegistryPromise = null;
+                return null;
+            });
+    }
+    return turnIntentRegistryPromise;
+}
+
+function getTurnIntentLanguage() {
+    return currentLanguage || DEFAULT_LANGUAGE || 'en';
+}
+
+function buildTurnIntentPromptPatch(routedInput) {
+    if (!routedInput || !routedInput.promptPatch) return '';
+    return `\n\n=== TURN INTENT ROUTER ===\n${routedInput.promptPatch}\n=== END TURN INTENT ROUTER ===`;
+}
+
+function guardTurnIntentActions(actions, registry) {
+    if (!window.TurnIntentRouter || !registry || !player) {
+        return { safeActions: Array.isArray(actions) ? actions : [], blockedFeedback: [] };
+    }
+
+    const guarded = TurnIntentRouter.guardActions(actions, {
+        player,
+        registry,
+        language: getTurnIntentLanguage()
+    });
+
+    const blockedFeedback = guarded.blockedActions.map((blocked) => {
+        const command = blocked.action?.command || 'unknown';
+        return `[TURN INTENT ROUTER] ${blocked.message || 'Action blocked by current game state.'} Blocked command: ${command}.`;
+    });
+
+    return { safeActions: guarded.safeActions, blockedFeedback };
+}
+
 
 async function sendApiRequest(promptTextForAI, isInitialPrompt = false, isDiceRollResponse = false, expiredEffects = [], isSummarizationRequest = false, timeRetryCount = 0) {
     isWaitingForAI = true;
@@ -14381,6 +14783,8 @@ async function sendApiRequest(promptTextForAI, isInitialPrompt = false, isDiceRo
 
         let allPendingActions = [];
         let timeToApply = null;
+        let blockedIntentFeedback = [];
+        const activeIntentRegistry = !isSummarizationRequest ? await ensureTurnIntentRegistry() : null;
 
         const validateTime = (res) => {
             if (isSummarizationRequest) return true;
@@ -14401,9 +14805,16 @@ async function sendApiRequest(promptTextForAI, isInitialPrompt = false, isDiceRo
             timeToApply = result.time_passed;
             removeEtherLoader();
             allPendingActions = result.actions || [];
+            const guardedIntentActions = guardTurnIntentActions(allPendingActions, activeIntentRegistry);
+            allPendingActions = guardedIntentActions.safeActions;
+            blockedIntentFeedback = guardedIntentActions.blockedFeedback;
             window.lastGeneratedNarrative = result.narrative;
 
             addLogMessage(result.narrative, "gm-message", false, result.image_prompt);
+            for (const feedback of blockedIntentFeedback) {
+                addLogMessage(feedback, "command-feedback");
+                addCalculationMessage(feedback);
+            }
 
             renderSuggestedActions(result.suggested_actions);
             conversationHistory.push({ role: "model", parts: [{ text: result.narrative }] });
@@ -14473,7 +14884,18 @@ async function sendApiRequest(promptTextForAI, isInitialPrompt = false, isDiceRo
             
             const unifiedPrompt = await prepareUnifiedPrompt();
             const dynamicContext = buildDynamicContext(expiredEffects);
-            const finalInput = `${dynamicContext}\n\n=== ВВОД ИГРОКА И СИСТЕМНЫЕ ДАННЫЕ ХОДА ===\n${promptTextForAI}`;
+            const routedPlayerInput = window.TurnIntentRouter && activeIntentRegistry
+                ? TurnIntentRouter.routePlayerInput(promptTextForAI, {
+                    player,
+                    registry: activeIntentRegistry,
+                    language: getTurnIntentLanguage()
+                })
+                : null;
+            const intentPromptPatch = buildTurnIntentPromptPatch(routedPlayerInput);
+            if (routedPlayerInput?.notice && timeRetryCount === 0) {
+                addLogMessage(`[TURN INTENT ROUTER] ${routedPlayerInput.notice}`, "system-message");
+            }
+            const finalInput = `${dynamicContext}\n\n=== ВВОД ИГРОКА И СИСТЕМНЫЕ ДАННЫЕ ХОДА ===\n${promptTextForAI}${intentPromptPatch}`;
 
             const rawResponse = await performAiFetch(unifiedPrompt, conversationHistory, modelIdForRequest, finalInput);
             const result = parseAIResponse(rawResponse);
@@ -14483,6 +14905,9 @@ async function sendApiRequest(promptTextForAI, isInitialPrompt = false, isDiceRo
 
             timeToApply = result.time_passed;
             allPendingActions = result.actions || [];
+            const guardedIntentActions = guardTurnIntentActions(allPendingActions, activeIntentRegistry);
+            allPendingActions = guardedIntentActions.safeActions;
+            blockedIntentFeedback = guardedIntentActions.blockedFeedback;
             
             let valErrors = validateActionsArray(allPendingActions);
             if (valErrors.length > 0) throw new Error("VALIDATION_FAILED|" + valErrors.join("; "));
@@ -14497,6 +14922,10 @@ async function sendApiRequest(promptTextForAI, isInitialPrompt = false, isDiceRo
             }
             
             addLogMessage(narrativeText, "gm-message", false, result.image_prompt);
+            for (const feedback of blockedIntentFeedback) {
+                addLogMessage(feedback, "command-feedback");
+                addCalculationMessage(feedback);
+            }
 
             renderSuggestedActions(result.suggested_actions);
 
@@ -19435,6 +19864,9 @@ async function runDeepSetupPipeline(narratorStyleGuide) {
         }
     };
 
+    if (player) player._deepSetupActive = true;
+    if (window.GRAIL && player) GRAIL.onTurnStart(player);
+
     try {
         let modelIdForRequest = localModelId;
         if (currentApiProvider === 'gemini') modelIdForRequest = geminiModelId;
@@ -19589,6 +20021,14 @@ async function runDeepSetupPipeline(narratorStyleGuide) {
         updateInventoryDisplay();
         updateEnvironmentPanel();
 
+        if (window.GRAIL && player) {
+            const grailResult = GRAIL.onTurnEnd(res5.narrative || '', player);
+            if (grailResult.corrections && grailResult.corrections.length > 0) {
+                if (!player.gmErrors) player.gmErrors = [];
+                player.gmErrors.push(grailResult.corrections);
+            }
+        }
+
         tempPlayer = null;
         await autoSaveGame();
         stopMenuMusic();
@@ -19604,6 +20044,8 @@ async function runDeepSetupPipeline(narratorStyleGuide) {
                 runDeepSetupPipeline(narratorStyleGuide);
             }
         );
+    } finally {
+        if (player) delete player._deepSetupActive;
     }
 }
 

@@ -1,0 +1,1368 @@
+# local_diff.txt
+
+Project: metera_d25_cp3-01-21
+Created: 2026-05-25 07:10:02
+
+Этот файл показывает локальные изменения, которых может не быть в GitHub.
+Если GitHub уже актуален и локальных изменений нет, этот файл можно не давать GPT.
+
+## Git status --short
+
+~~~text
+ M data/runtime_manifest.json
+ M engine/item_system.cpp
+ M engine/test_engine.py
+ M js/mods/ModLoader.js
+ M js/mods/runtimeData.js
+ D tests/check_modkit_3.js
+ M tests/runtime_data.test.js
+ M tools/validate_modding_contract.js
+ M tools/validate_runtime_configs.js
+?? docs/MODDING_RUNTIME_CONFIGS.md
+?? docs/archive/
+?? engine/test_gameplay_runtime_inventory.py
+~~~
+
+## Git diff
+
+~~~diff
+diff --git a/data/runtime_manifest.json b/data/runtime_manifest.json
+index 237ff09..bcb724a 100644
+--- a/data/runtime_manifest.json
++++ b/data/runtime_manifest.json
+@@ -7,11 +7,11 @@
+     }
+   },
+   "modding_contract": { "schema_version": 1, "base_game_mod_id": "base_game", "descriptor_defaults": { "owner": "base_game", "source": "base_data", "required": true }, "total_conversion": { "skip_base_database_files_by_default": true, "allowed_base_passthrough_keys": [], "required_database_keys": ["items", "eras", "classes", "races", "biomes", "world_config", "tag_defaults"] }, "merge_policies": ["deepMerge", "append", "appendUnique", "upsertById", "replace"] }, "database_files": {
+-    "items": { "path": "./data/economy_items.json", "default_type": "object", "merge_policy": "deepMerge" },
+-    "recipes": { "path": "./data/economy_recipes.json", "default_type": "array", "merge_policy": "append" },
+-    "facilities": { "path": "./data/facility_names.json", "default_type": "object", "merge_policy": "deepMerge" },
+-    "eras": { "path": "./data/eras.json", "default_type": "array", "merge_policy": "upsertById" },
+-    "classes": { "path": "./data/classes.json", "default_type": "array", "merge_policy": "upsertById" },
++    "items": { "path": "./data/economy_items.json", "default_type": "object", "merge_policy": "deepMerge", "key_aliases": ["economy_items"], "replace_on_total_conversion": true },
++    "recipes": { "path": "./data/economy_recipes.json", "default_type": "array", "merge_policy": "append", "key_aliases": ["economy_recipes"], "replace_on_total_conversion": true },
++    "facilities": { "path": "./data/facility_names.json", "default_type": "object", "merge_policy": "deepMerge", "key_aliases": ["facility_names"], "replace_on_total_conversion": true },
++    "eras": { "path": "./data/eras.json", "default_type": "array", "merge_policy": "upsertById", "replace_on_total_conversion": true },
++    "classes": { "path": "./data/classes.json", "default_type": "array", "merge_policy": "upsertById", "replace_on_total_conversion": true },
+     "biomes": { "path": "./data/biomes.json", "default_type": "array", "merge_policy": "upsertById" },
+     "city_gen": { "path": "./data/city_gen.json", "default_type": "object", "merge_policy": "deepMerge" },
+     "monsters": { "path": "./data/monsters.json", "default_type": "array", "merge_policy": "upsertById" },
+@@ -29,11 +29,11 @@
+     "casus_belli": { "path": "./data/casus_belli.json", "default_type": "object", "merge_policy": "deepMerge" },
+     "furniture_catalog": { "path": "./data/furniture_catalog.json", "default_type": "object", "merge_policy": "deepMerge" },
+     "tag_defaults": { "path": "./data/tag_defaults.json", "default_type": "object", "merge_policy": "deepMerge" },
+-    "transport_registry": { "path": "./data/transport_registry.json", "default_type": "object", "merge_policy": "deepMerge" },
+-    "trek_config": { "path": "./data/trek_config.json", "default_type": "object", "merge_policy": "deepMerge" },
+-    "narrators": { "path": "./data/narrators.json", "default_type": "array", "merge_policy": "upsertById" },
+-    "prompt_pack": { "path": "./data/prompt_pack.json", "default_type": "object", "merge_policy": "deepMerge" },
+-    "world_assets": { "path": "./data/world_assets.json", "default_type": "object", "merge_policy": "deepMerge" },
+-    "tile_dictionary": { "path": "./data/tile_dictionary.json", "default_type": "object", "merge_policy": "deepMerge" },
+-    "predefined_effects": { "path": "./assets/res/predefined_effects.json", "default_type": "array", "merge_policy": "upsertById" }, "ui_runtime": { "path": "./data/ui_runtime.json", "default_type": "object", "merge_policy": "deepMerge" }, "prompt_runtime": { "path": "./data/prompt_runtime.json", "default_type": "object", "merge_policy": "deepMerge" }, "gameplay_runtime": { "path": "./data/gameplay_runtime.json", "default_type": "object", "merge_policy": "deepMerge" } }, "era_location_fallback_file": "locations_rebirth.json"
++    "transport_registry": { "path": "./data/transport_registry.json", "default_type": "object", "merge_policy": "deepMerge", "replace_on_total_conversion": true },
++    "trek_config": { "path": "./data/trek_config.json", "default_type": "object", "merge_policy": "deepMerge", "replace_on_total_conversion": true },
++    "narrators": { "path": "./data/narrators.json", "default_type": "array", "merge_policy": "upsertById", "replace_on_total_conversion": true },
++    "prompt_pack": { "path": "./data/prompt_pack.json", "default_type": "object", "merge_policy": "deepMerge", "replace_on_total_conversion": true },
++    "world_assets": { "path": "./data/world_assets.json", "default_type": "object", "merge_policy": "deepMerge", "replace_on_total_conversion": true },
++    "tile_dictionary": { "path": "./data/tile_dictionary.json", "default_type": "object", "merge_policy": "deepMerge", "replace_on_total_conversion": true },
++    "predefined_effects": { "path": "./assets/res/predefined_effects.json", "default_type": "array", "merge_policy": "upsertById", "replace_on_total_conversion": true }, "ui_runtime": { "path": "./data/ui_runtime.json", "default_type": "object", "merge_policy": "deepMerge" }, "prompt_runtime": { "path": "./data/prompt_runtime.json", "default_type": "object", "merge_policy": "deepMerge" }, "gameplay_runtime": { "path": "./data/gameplay_runtime.json", "default_type": "object", "merge_policy": "deepMerge" } }, "era_location_fallback_file": "locations_rebirth.json"
+ }
+diff --git a/engine/item_system.cpp b/engine/item_system.cpp
+index 7fa1f55..7da7ee4 100755
+--- a/engine/item_system.cpp
++++ b/engine/item_system.cpp
+@@ -1,12 +1,35 @@
+ #include "item_system.h"
++#include <filesystem>
+ #include <fstream>
+ #include <iostream>
+ 
+ // Definition of the global registry instance
+ ItemRegistry g_itemRegistry;
+ 
++namespace {
++std::filesystem::path resolveItemTemplatePath(const std::string& filePath) {
++    const std::filesystem::path inputPath(filePath);
++    const std::filesystem::path currentPath = std::filesystem::current_path();
++
++    const std::filesystem::path candidates[] = {
++        inputPath,
++        currentPath / inputPath,
++        currentPath.parent_path() / inputPath
++    };
++
++    for (const auto& candidate : candidates) {
++        if (std::filesystem::exists(candidate)) {
++            return candidate;
++        }
++    }
++
++    return inputPath;
++}
++}
++
+ void ItemRegistry::loadItemsFromJSON(const std::string& filePath) {
+-    std::ifstream f(filePath);
++    const std::filesystem::path resolvedPath = resolveItemTemplatePath(filePath);
++    std::ifstream f(resolvedPath);
+     if (!f.is_open()) {
+         std::cerr << "Failed to open " << filePath << std::endl;
+         return;
+diff --git a/engine/test_engine.py b/engine/test_engine.py
+index 34dfa7a..23bf3dc 100755
+--- a/engine/test_engine.py
++++ b/engine/test_engine.py
+@@ -2,6 +2,10 @@
+ import subprocess
+ import json
+ import sys
++import os
++
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++from engine_client import build_runtime_database, resolve_era_location_file
+ 
+ def run_command(cmd_data):
+     exe_name = './meterea_engine.exe' if sys.platform == 'win32' else './meterea_engine'
+@@ -32,46 +36,48 @@ def run_command(cmd_data):
+             else:
+                 final_result = data
+         except json.JSONDecodeError as e:
+-            print(f"❌ Ошибка парсинга строки: {line}")
++            print(f"[FAIL] Ошибка парсинга строки: {line}")
+             raise e
+             
+     return final_result
+ 
+-print("🧪 Тест 1: init команда")
++print("[TEST] Тест 1: init команда")
+ result = run_command({"command": "init"})
+ assert result["status"] == "ok", f"Ожидался 'ok', получено: {result}"
+-print(f"   ✅ init: {result['message']}")
+-
+-print("\n🧪 Тест 1.5: loadDatabase команда (обязательна перед buildWorld)")
++print(f"   [OK] init: {result['message']}")
++
++print("\n[TEST] Тест 1.5: loadDatabase команда (обязательна перед buildWorld)")
++repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++runtime_db = build_runtime_database(os.path.join(repo_root, "data"))
++era_location = resolve_era_location_file(
++    runtime_db.get("eras", []),
++    "rebirth",
++    runtime_db.get("runtime_manifest", {}).get("era_location_fallback_file")
++)
++location_file_name = era_location["file_name"]
++location_file_path = os.path.join(repo_root, "data", location_file_name)
++if not os.path.exists(location_file_path):
++    location_file_name = runtime_db.get("runtime_manifest", {}).get("era_location_fallback_file") or "locations_rebirth.json"
++    location_file_path = os.path.join(repo_root, "data", location_file_name)
++with open(location_file_path, "r", encoding="utf-8") as handle:
++    global_locations = json.load(handle)
+ result_db = run_command({
+     "command": "loadDatabase",
+-    "items": {},
+-    "recipes": [],
+-    "facilities": {},
+-    "biomes": [],
+-    "city_gen": {},
+-    "monsters": [],
+-    "disasters": [],
+-    "races": [],
+-    "professions": [],
+-    "traits": [],
+-    "npc_names": {},
+-    "faction_relations": {},
+-    "world_config": {}
++    **runtime_db
+ })
+ assert result_db["status"] == "ok", f"Ожидался 'ok' для loadDatabase, получено: {result_db}"
+-print(f"   ✅ loadDatabase: {result_db.get('message', 'OK')}")
++print(f"   [OK] loadDatabase: {result_db.get('message', 'OK')}")
+ 
+-print("\n🧪 Тест 2: buildWorld команда")
+-result = run_command({"command": "buildWorld", "player_id": 1})
++print("\n[TEST] Тест 2: buildWorld команда")
++result = run_command({"command": "buildWorld", "player_id": 1, "global_locations": global_locations})
+ assert result["status"] == "ok", f"Ожидался 'ok', получено: {result}"
+ assert "world" in result, "Отсутствует поле 'world'"
+ world = result["world"]
+ assert world["tick"] == 0, f"Ожидался tick=0, получено: {world['tick']}"
+ assert len(world["regions"]) > 0, "Нет регионов в мире"
+-print(f"   ✅ buildWorld: tick={world['tick']}, регионов={len(world['regions'])}")
++print(f"   [OK] buildWorld: tick={world['tick']}, регионов={len(world['regions'])}")
+ 
+-print("\n🧪 Тест 2.5: bootstrapWorld команда (Экономическая балансировка)")
++print("\n[TEST] Тест 2.5: bootstrapWorld команда (Экономическая балансировка)")
+ result_boot = run_command({
+     "command": "bootstrapWorld",
+     "days": 30
+@@ -80,9 +86,9 @@ assert result_boot["status"] == "ok", f"Ожидался 'ok', получено:
+ assert "world" in result_boot, "Отсутствует поле 'world'"
+ world = result_boot["world"]
+ assert world["tick"] == 0, "После bootstrap tick должен быть сброшен в 0"
+-print(f"   ✅ bootstrapWorld: балансировка завершена")
++print(f"   [OK] bootstrapWorld: балансировка завершена")
+ 
+-print("\n🧪 Тест 3: simulateTicks команда (передача состояния)")
++print("\n[TEST] Тест 3: simulateTicks команда (передача состояния)")
+ world_json = json.dumps(world)
+ result = run_command({
+     "command": "simulateTicks",
+@@ -94,9 +100,9 @@ assert result["tick"] == 5, f"Ожидался tick=5, получено: {result
+ assert "world" in result, "Отсутствует поле 'world' в ответе"
+ new_world = result["world"]
+ assert new_world["tick"] == 5, f"Мир не обновился: tick={new_world['tick']}"
+-print(f"   ✅ simulateTicks: tick={result['tick']}, news_count={result['news_count']}")
++print(f"   [OK] simulateTicks: tick={result['tick']}, news_count={result['news_count']}")
+ 
+-print("\n🧪 Тест 4: непрерывная симуляция (сохранение состояния)")
++print("\n[TEST] Тест 4: непрерывная симуляция (сохранение состояния)")
+ # Передаём мир из предыдущего шага дальше
+ result2 = run_command({
+     "command": "simulateTicks",
+@@ -104,9 +110,9 @@ result2 = run_command({
+     "ticks": 10
+ })
+ assert result2["tick"] == 15, f"Ожидался tick=15, получено: {result2['tick']}"
+-print(f"   ✅ Непрерывная симуляция: tick={result2['tick']}")
++print(f"   [OK] Непрерывная симуляция: tick={result2['tick']}")
+ 
+-print("\n🧪 Тест 5: проверка структуры мира")
++print("\n[TEST] Тест 5: проверка структуры мира")
+ w = result2["world"]
+ assert "era" in w, "Отсутствует era"
+ assert "regions" in w, "Отсутствуют regions"
+@@ -117,9 +123,9 @@ region = list(w["regions"].values())[0]
+ assert "id" in region, "У региона нет id"
+ assert "name" in region, "У региона нет name"
+ assert "facilities" in region, "У региона нет facilities"
+-print(f"   ✅ Структура мира корректна")
++print(f"   [OK] Структура мира корректна")
+ 
+-print("\n🧪 Тест 6: Длительная симуляция (30 дней = 720 тиков)")
++print("\n[TEST] Тест 6: Длительная симуляция (30 дней = 720 тиков)")
+ items = result2.get("items", [])
+ containers = result2.get("containers", [])
+ result3 = run_command({
+@@ -131,9 +137,9 @@ result3 = run_command({
+ })
+ assert result3["status"] == "ok", f"Ожидался 'ok', получено: {result3['status']}"
+ assert result3["tick"] == 735, f"Ожидался tick=735, получено: {result3['tick']}"
+-print(f"   ✅ Длительная симуляция пройдена: tick={result3['tick']}, новостей={result3['news_count']}")
++print(f"   [OK] Длительная симуляция пройдена: tick={result3['tick']}, новостей={result3['news_count']}")
+ 
+-print("\n🧪 Тест 7: Стресс-тест (1 год = 8640 тиков)")
++print("\n[TEST] Тест 7: Стресс-тест (1 год = 8640 тиков)")
+ result4 = run_command({
+     "command": "simulateTicks",
+     "world": result3["world"],
+@@ -142,9 +148,9 @@ result4 = run_command({
+     "ticks": 8640
+ })
+ assert result4["status"] == "ok", f"Ожидался 'ok', получено: {result4['status']}"
+-print(f"   ✅ Стресс-тест пройден: tick={result4['tick']}, новостей={result4['news_count']}")
++print(f"   [OK] Стресс-тест пройден: tick={result4['tick']}, новостей={result4['news_count']}")
+ 
+-print("\n🧪 Тест 8: Проверка Т3 Экономики (Профессии и Расы NPC)")
++print("\n[TEST] Тест 8: Проверка Т3 Экономики (Профессии и Расы NPC)")
+ w_final = result4["world"]
+ npc_with_prof = 0
+ for npc_id, npc in w_final["npcs"].items():
+@@ -153,56 +159,56 @@ for npc_id, npc in w_final["npcs"].items():
+         if npc["economy"]["profession_type"] != "none":
+             npc_with_prof += 1
+ assert npc_with_prof > 0, "Ни одному NPC не назначена профессия!"
+-print(f"   ✅ Профессии назначены: {npc_with_prof} NPC")
++print(f"   [OK] Профессии назначены: {npc_with_prof} NPC")
+ 
+-print("\n🧪 Тест 9: Проверка Т3 Экономики (Рыночные площади)")
++print("\n[TEST] Тест 9: Проверка Т3 Экономики (Рыночные площади)")
+ market_offers_found = 0
+ for reg_id, reg in w_final["regions"].items():
+     if "market_square" in reg:
+         market_offers_found += len(reg["market_square"])
+-print(f"   ✅ Лотов на рынках после года симуляции: {market_offers_found}")
++print(f"   [OK] Лотов на рынках после года симуляции: {market_offers_found}")
+ 
+-print("\n🧪 Тест 10: Проверка Т3 Экономики (Монополии Лордов)")
++print("\n[TEST] Тест 10: Проверка Т3 Экономики (Монополии Лордов)")
+ lord_monopolies = 0
+ for bus_id, bus in w_final["businesses"].items():
+     for owner in bus.get("owner_ids", []):
+         if owner.startswith("ruler_"):
+             lord_monopolies += 1
+ assert lord_monopolies > 0, "Не найдено ни одной монополии лорда!"
+-print(f"   ✅ Монополий лордов: {lord_monopolies}")
++print(f"   [OK] Монополий лордов: {lord_monopolies}")
+ 
+-print("\n🧪 Тест 11: Проверка Т3 Экономики (Купеческие караваны)")
++print("\n[TEST] Тест 11: Проверка Т3 Экономики (Купеческие караваны)")
+ merchant_caravans = 0
+ for reg_id, reg in w_final["regions"].items():
+     for caravan in reg.get("caravans", []):
+         if "merchant_id" in caravan and caravan["merchant_id"]:
+             merchant_caravans += 1
+-print(f"   ✅ Активных купеческих караванов в пути: {merchant_caravans}")
++print(f"   [OK] Активных купеческих караванов в пути: {merchant_caravans}")
+ 
+-print("\n🧪 Тест 12: Проверка микро-циклов (Услуги: Трактирщики и Жрецы)")
++print("\n[TEST] Тест 12: Проверка микро-циклов (Услуги: Трактирщики и Жрецы)")
+ services_profit = 0
+ for npc_id, npc in w_final["npcs"].items():
+     if "economy" in npc and npc["economy"].get("profession_type") in ["innkeeper", "cleric"]:
+         if npc["economy"].get("savings", 0) > 0:
+             services_profit += 1
+-print(f"   ✅ Успешных поставщиков услуг с прибылью: {services_profit}")
++print(f"   [OK] Успешных поставщиков услуг с прибылью: {services_profit}")
+ 
+-print("\n🧪 Тест 13: Проверка микро-циклов (Маги и Зелья)")
++print("\n[TEST] Тест 13: Проверка микро-циклов (Маги и Зелья)")
+ potions_found = 0
+ for reg_id, reg in w_final["regions"].items():
+     for offer in reg.get("market_square", []):
+         if offer.get("good") == "potions":
+             potions_found += offer.get("quantity", 0)
+-print(f"   ✅ Зелий на рынках (созданных магами): {potions_found}")
++print(f"   [OK] Зелий на рынках (созданных магами): {potions_found}")
+ 
+-print("\n🧪 Тест 14: Проверка системы дорог (Блокады монстрами)")
++print("\n[TEST] Тест 14: Проверка системы дорог (Блокады монстрами)")
+ roads_ok = True
+ for road in w_final["map"].get("roads", []):
+     if "condition" not in road:
+         roads_ok = False
+ assert roads_ok, "У дорог отсутствует поле condition для блокировки"
+-print(f"   ✅ Дороги поддерживают состояния (blocked/paved/dirt)")
++print(f"   [OK] Дороги поддерживают состояния (blocked/paved/dirt)")
+ 
+ print("\n" + "="*50)
+-print("✅ ВСЕ ТЕСТЫ (ВКЛЮЧАЯ ПОЛНУЮ Т3 МИКРОЭКОНОМИКУ) УСПЕШНО ПРОЙДЕНЫ!")
++print("[OK] ВСЕ ТЕСТЫ (ВКЛЮЧАЯ ПОЛНУЮ Т3 МИКРОЭКОНОМИКУ) УСПЕШНО ПРОЙДЕНЫ!")
+ print("="*50)
+diff --git a/js/mods/ModLoader.js b/js/mods/ModLoader.js
+index 85e4cb4..d17e609 100755
+--- a/js/mods/ModLoader.js
++++ b/js/mods/ModLoader.js
+@@ -1009,68 +1009,28 @@ class ModLoader {
+             if (mod.data && isObject(mod.data)) {
+                 window.ModAPI.on('onDatabaseLoad', async (db) => {
+                     const runtimeUtils = window.RuntimeDataUtils;
+-                    const keyAliases = {
+-                        economy_items: 'items',
+-                        economy_recipes: 'recipes',
+-                        facility_names: 'facilities'
+-                    };
+-                    const mergePolicies = {
+-                        items: 'deepMerge',
+-                        recipes: 'append',
+-                        facilities: 'deepMerge',
+-                        eras: 'upsertById',
+-                        classes: 'upsertById',
+-                        biomes: 'upsertById',
+-                        city_gen: 'deepMerge',
+-                        monsters: 'upsertById',
+-                        disasters: 'upsertById',
+-                        races: 'upsertById',
+-                        professions: 'upsertById',
+-                        traits: 'upsertById',
+-                        npc_names: 'deepMerge',
+-                        faction_relations: 'deepMerge',
+-                        world_config: 'deepMerge',
+-                        equipment_slots: 'appendUnique',
+-                        container_types: 'deepMerge',
+-                        ship_types: 'deepMerge',
+-                        diplomacy: 'deepMerge',
+-                        casus_belli: 'deepMerge',
+-                        furniture_catalog: 'deepMerge',
+-                        tag_defaults: 'deepMerge',
+-                        transport_registry: 'deepMerge',
+-                        trek_config: 'deepMerge',
+-                        narrators: 'upsertById',
+-                        predefined_effects: 'upsertById',
+-                        prompt_pack: 'deepMerge',
+-                        world_assets: 'deepMerge',
+-                        tile_dictionary: 'deepMerge'
+-                    };
+-                    const replaceOnTotalConversion = new Set([
+-                        'items',
+-                        'recipes',
+-                        'facilities',
+-                        'eras',
+-                        'classes',
+-                        'transport_registry',
+-                        'trek_config',
+-                        'narrators',
+-                        'predefined_effects',
+-                        'prompt_pack',
+-                        'world_assets',
+-                        'tile_dictionary'
+-                    ]);
++                    const runtimeManifest = db.runtime_manifest || {};
+ 
+                     for (const [rawKey, fileList] of Object.entries(mod.data)) {
+                         if (!Array.isArray(fileList) || rawKey === 'lore' || rawKey === 'locations') {
+                             continue;
+                         }
+ 
+-                        const targetKey = keyAliases[rawKey] || rawKey;
+-                        const mergePolicy = mergePolicies[targetKey] || 'deepMerge';
+-
+-                        if (mod.total_conversion && replaceOnTotalConversion.has(targetKey) && !mod._runtimeResetKeys?.includes(targetKey)) {
++                        const targetKey = runtimeUtils && typeof runtimeUtils.resolveRuntimeDatabaseKey === 'function'
++                            ? runtimeUtils.resolveRuntimeDatabaseKey(rawKey, runtimeManifest)
++                            : rawKey;
++                        const descriptor = runtimeUtils && typeof runtimeUtils.getRuntimeDatabaseDescriptor === 'function'
++                            ? runtimeUtils.getRuntimeDatabaseDescriptor(rawKey, runtimeManifest)
++                            : null;
++                        const mergePolicy = descriptor && typeof descriptor.merge_policy === 'string'
++                            ? descriptor.merge_policy
++                            : 'deepMerge';
++
++                        if (mod.total_conversion && descriptor && descriptor.replace_on_total_conversion === true && !mod._runtimeResetKeys?.includes(targetKey)) {
+                             if (!mod._runtimeResetKeys) mod._runtimeResetKeys = [];
+-                            db[targetKey] = mergePolicy === 'deepMerge' ? {} : [];
++                            db[targetKey] = runtimeUtils && typeof runtimeUtils.createDefaultValue === 'function'
++                                ? runtimeUtils.createDefaultValue(descriptor.default_type)
++                                : (mergePolicy === 'deepMerge' ? {} : []);
+                             mod._runtimeResetKeys.push(targetKey);
+                         }
+ 
+@@ -1079,7 +1039,12 @@ class ModLoader {
+                             if (data === null || data === undefined) continue;
+ 
+                             if (db[targetKey] === undefined) {
+-                                db[targetKey] = Array.isArray(data) ? [] : {};
++                                const descriptorDefaultType = descriptor && typeof descriptor.default_type === 'string'
++                                    ? descriptor.default_type
++                                    : (Array.isArray(data) ? 'array' : 'object');
++                                db[targetKey] = runtimeUtils && typeof runtimeUtils.createDefaultValue === 'function'
++                                    ? runtimeUtils.createDefaultValue(descriptorDefaultType)
++                                    : (Array.isArray(data) ? [] : {});
+                             }
+ 
+                             if (runtimeUtils && typeof runtimeUtils.mergeRuntimeValue === 'function') {
+diff --git a/js/mods/runtimeData.js b/js/mods/runtimeData.js
+index b130d0d..1720b9d 100644
+--- a/js/mods/runtimeData.js
++++ b/js/mods/runtimeData.js
+@@ -117,10 +117,82 @@
+         }
+     }
+ 
++    function createDefaultValue(defaultType) {
++        if (defaultType === 'array') return [];
++        if (defaultType === 'string') return '';
++        if (defaultType === 'number') return 0;
++        if (defaultType === 'boolean') return false;
++        if (defaultType === 'null') return null;
++        return {};
++    }
++
++    function normalizeRuntimeManifest(manifest) {
++        const safeManifest = isPlainObject(manifest) ? cloneValue(manifest) : {};
++        const contract = isPlainObject(safeManifest.modding_contract) ? safeManifest.modding_contract : {};
++        const descriptorDefaults = isPlainObject(contract.descriptor_defaults) ? contract.descriptor_defaults : {};
++        const rawDatabaseFiles = isPlainObject(safeManifest.database_files) ? safeManifest.database_files : {};
++        const databaseFiles = {};
++        const aliasToRuntimeKey = {};
++
++        Object.entries(rawDatabaseFiles).forEach(([runtimeKey, rawDescriptor]) => {
++            const descriptor = isPlainObject(rawDescriptor) ? cloneValue(rawDescriptor) : {};
++            const aliases = Array.isArray(descriptor.key_aliases) ? descriptor.key_aliases.filter((entry) => typeof entry === 'string' && entry.length > 0) : [];
++            const normalizedDescriptor = {
++                ...descriptor,
++                owner: typeof descriptor.owner === 'string' && descriptor.owner.length > 0
++                    ? descriptor.owner
++                    : descriptorDefaults.owner,
++                source: typeof descriptor.source === 'string' && descriptor.source.length > 0
++                    ? descriptor.source
++                    : descriptorDefaults.source,
++                required: typeof descriptor.required === 'boolean'
++                    ? descriptor.required
++                    : descriptorDefaults.required !== false,
++                key_aliases: aliases,
++                replace_on_total_conversion: descriptor.replace_on_total_conversion === true,
++                runtime_key: runtimeKey
++            };
++
++            databaseFiles[runtimeKey] = normalizedDescriptor;
++            aliasToRuntimeKey[runtimeKey] = runtimeKey;
++            aliases.forEach((alias) => {
++                aliasToRuntimeKey[alias] = runtimeKey;
++            });
++        });
++
++        safeManifest.database_files = databaseFiles;
++        safeManifest._normalized_database_aliases = aliasToRuntimeKey;
++
++        return {
++            manifest: safeManifest,
++            databaseFiles,
++            aliasToRuntimeKey
++        };
++    }
++
++    function resolveRuntimeDatabaseKey(rawKey, manifest) {
++        if (typeof rawKey !== 'string' || rawKey.length === 0) {
++            return rawKey;
++        }
++        const normalized = normalizeRuntimeManifest(manifest);
++        return normalized.aliasToRuntimeKey[rawKey] || rawKey;
++    }
++
++    function getRuntimeDatabaseDescriptor(rawKey, manifest) {
++        const normalized = normalizeRuntimeManifest(manifest);
++        const runtimeKey = resolveRuntimeDatabaseKey(rawKey, normalized.manifest);
++        return normalized.databaseFiles[runtimeKey] || null;
++    }
++
+     function resolveEraLocationFile(eras, eraId, fallbackFileName) {
+-        const safeFallback = fallbackFileName || 'locations_rebirth.json';
+         const eraList = Array.isArray(eras) ? eras : [];
++        const safeFallback = fallbackFileName
++            || eraList.find((item) => item && typeof item.default_location_file === 'string' && item.default_location_file)?.default_location_file
++            || '';
+         const era = eraList.find((item) => item && item.id === eraId);
++        if (!safeFallback) {
++            throw new Error('[RuntimeData] No era location fallback file is defined.');
++        }
+         if (!era) {
+             return {
+                 fileName: safeFallback,
+@@ -169,6 +241,10 @@
+         cloneValue,
+         mergeDeep,
+         mergeRuntimeValue,
++        createDefaultValue,
++        normalizeRuntimeManifest,
++        resolveRuntimeDatabaseKey,
++        getRuntimeDatabaseDescriptor,
+         resolveEraLocationFile,
+         resolvePromptEntry,
+         ensurePromptAlias,
+diff --git a/tests/check_modkit_3.js b/tests/check_modkit_3.js
+deleted file mode 100644
+index eff973a..0000000
+--- a/tests/check_modkit_3.js
++++ /dev/null
+@@ -1,474 +0,0 @@
+-/**
+- * check_modkit_3.js — ModKit 3.0 Verification Test Suite
+- *
+- * Tests:
+- *   1. Asset loading through metera-mod:// protocol
+- *   2. C-API function calls (via applyModChanges command)
+- *   3. Non-blocking simulation during JS hook execution
+- *   4. ModAPI.resolveAsset generates correct URLs
+- *   5. ModAPI.applyModChanges sends mutations correctly
+- *
+- * Run: node tests/check_modkit_3.js
+- * (Can also be loaded in Electron renderer context for full integration test)
+- */
+-
+-const fs = require('fs');
+-const path = require('path');
+-
+-let passed = 0;
+-let failed = 0;
+-const results = [];
+-
+-function test(name, fn) {
+-    try {
+-        const result = fn();
+-        if (result === true) {
+-            passed++;
+-            results.push(`  ✅ PASS: ${name}`);
+-        } else {
+-            failed++;
+-            results.push(`  ❌ FAIL: ${name} — ${result}`);
+-        }
+-    } catch (e) {
+-        failed++;
+-        results.push(`  ❌ FAIL: ${name} — Exception: ${e.message}`);
+-    }
+-}
+-
+-function assert(condition, message) {
+-    if (!condition) return message || 'Assertion failed';
+-    return true;
+-}
+-
+-// ============================================================================
+-// TEST GROUP 1: ModAPI.resolveAsset
+-// ============================================================================
+-
+-test('ModAPI.resolveAsset — generates correct metera-mod:// URL', () => {
+-    // Simulate the ModAPI.resolveAsset function (works outside Electron)
+-    function resolveAsset(modId, assetPath) {
+-        if (!modId || typeof modId !== 'string') return '';
+-        if (!assetPath || typeof assetPath !== 'string') return '';
+-        const cleanPath = assetPath.replace(/^\/+/, '');
+-        return `metera-mod://${modId}/${cleanPath}`;
+-    }
+-
+-    const url = resolveAsset('cyberpunk_total_conversion', 'assets/icons/blade.png');
+-    return assert(url === 'metera-mod://cyberpunk_total_conversion/assets/icons/blade.png',
+-                  `Expected metera-mod:// URL, got: ${url}`);
+-});
+-
+-test('ModAPI.resolveAsset — strips leading slashes from assetPath', () => {
+-    function resolveAsset(modId, assetPath) {
+-        if (!modId || typeof modId !== 'string') return '';
+-        if (!assetPath || typeof assetPath !== 'string') return '';
+-        const cleanPath = assetPath.replace(/^\/+/, '');
+-        return `metera-mod://${modId}/${cleanPath}`;
+-    }
+-
+-    const url = resolveAsset('test_mod', '/images/bg.png');
+-    return assert(url === 'metera-mod://test_mod/images/bg.png',
+-                  `Should strip leading slashes, got: ${url}`);
+-});
+-
+-test('ModAPI.resolveAsset — rejects empty modId', () => {
+-    function resolveAsset(modId, assetPath) {
+-        if (!modId || typeof modId !== 'string') return '';
+-        if (!assetPath || typeof assetPath !== 'string') return '';
+-        const cleanPath = assetPath.replace(/^\/+/, '');
+-        return `metera-mod://${modId}/${cleanPath}`;
+-    }
+-
+-    const url = resolveAsset('', 'test.png');
+-    return assert(url === '', `Should return empty for empty modId, got: ${url}`);
+-});
+-
+-test('ModAPI.resolveAsset — rejects empty assetPath', () => {
+-    function resolveAsset(modId, assetPath) {
+-        if (!modId || typeof modId !== 'string') return '';
+-        if (!assetPath || typeof assetPath !== 'string') return '';
+-        const cleanPath = assetPath.replace(/^\/+/, '');
+-        return `metera-mod://${modId}/${cleanPath}`;
+-    }
+-
+-    const url = resolveAsset('test_mod', '');
+-    return assert(url === '', `Should return empty for empty assetPath, got: ${url}`);
+-});
+-
+-// ============================================================================
+-// TEST GROUP 2: ModAPI.applyModChanges — mutation format
+-// ============================================================================
+-
+-test('applyModChanges — correct mutation format for multiplyAllPrices', () => {
+-    const mutation = { type: 'multiplyAllPrices', factor: 2.0 };
+-    return assert(mutation.type === 'multiplyAllPrices' && mutation.factor === 2.0,
+-                  'Mutation format incorrect');
+-});
+-
+-test('applyModChanges — correct mutation format for setStability', () => {
+-    const mutation = { type: 'setStability', region_id: 'test_region', value: 50 };
+-    return assert(mutation.type === 'setStability' &&
+-                  mutation.region_id === 'test_region' &&
+-                  mutation.value === 50,
+-                  'setStability mutation format incorrect');
+-});
+-
+-test('applyModChanges — correct mutation format for modifyPopulation', () => {
+-    const mutation = { type: 'modifyPopulation', region_id: 'region_1', delta: -100 };
+-    return assert(mutation.type === 'modifyPopulation' &&
+-                  mutation.region_id === 'region_1' &&
+-                  mutation.delta === -100,
+-                  'modifyPopulation mutation format incorrect');
+-});
+-
+-// ============================================================================
+-// TEST GROUP 3: C-API SDK header exists and is well-formed
+-// ============================================================================
+-
+-test('meterea_mod_sdk.h — file exists', () => {
+-    const sdkPath = path.join(__dirname, '..', 'engine', 'meterea_mod_sdk.h');
+-    return assert(fs.existsSync(sdkPath), `SDK header not found at: ${sdkPath}`);
+-});
+-
+-test('meterea_mod_sdk.h — contains MeteraAPI struct', () => {
+-    const sdkPath = path.join(__dirname, '..', 'engine', 'meterea_mod_sdk.h');
+-    const content = fs.readFileSync(sdkPath, 'utf-8');
+-    return assert(content.includes('typedef struct MeteraAPI'), 'MeteraAPI struct not found in SDK header');
+-});
+-
+-test('meterea_mod_sdk.h — contains required plugin exports', () => {
+-    const sdkPath = path.join(__dirname, '..', 'engine', 'meterea_mod_sdk.h');
+-    const content = fs.readFileSync(sdkPath, 'utf-8');
+-    const required = ['MeteraPlugin_GetName', 'MeteraPlugin_GetVersion',
+-                      'MeteraPlugin_GetAPI', 'MeteraPlugin_Init',
+-                      'MeteraPlugin_OnLoad', 'MeteraPlugin_Shutdown'];
+-    for (const name of required) {
+-        if (!content.includes(name)) return `Missing required export: ${name}`;
+-    }
+-    return true;
+-});
+-
+-test('meterea_mod_sdk.h — contains API version constants', () => {
+-    const sdkPath = path.join(__dirname, '..', 'engine', 'meterea_mod_sdk.h');
+-    const content = fs.readFileSync(sdkPath, 'utf-8');
+-    return assert(content.includes('METERA_API_VERSION_MAJOR') &&
+-                  content.includes('METERA_API_VERSION_MINOR') &&
+-                  content.includes('METERA_API_VERSION_PATCH'),
+-                  'API version constants not found');
+-});
+-
+-test('meterea_mod_sdk.h — contains opaque API functions (getRegionPopulation, etc.)', () => {
+-    const sdkPath = path.join(__dirname, '..', 'engine', 'meterea_mod_sdk.h');
+-    const content = fs.readFileSync(sdkPath, 'utf-8');
+-    const funcs = ['getRegionPopulation', 'getRegionStability', 'setRegionStability',
+-                   'modifyRegionPopulation', 'multiplyAllPrices', 'multiplyItemPrice',
+-                   'getItemPrice', 'getWorldPopulation', 'getCurrentDay'];
+-    for (const name of funcs) {
+-        if (!content.includes(name)) return `Missing API function: ${name}`;
+-    }
+-    return true;
+-});
+-
+-// ============================================================================
+-// TEST GROUP 4: Native plugin source exists
+-// ============================================================================
+-
+-test('cyberpunk_economy.cpp — native plugin source exists', () => {
+-    const pluginPath = path.join(__dirname, '..', 'mods', 'cyberpunk_total_conversion',
+-                                  'native', 'cyberpunk_economy.cpp');
+-    return assert(fs.existsSync(pluginPath), `Native plugin source not found at: ${pluginPath}`);
+-});
+-
+-test('cyberpunk_economy.cpp — uses MeteraPlugin_GetName export', () => {
+-    const pluginPath = path.join(__dirname, '..', 'mods', 'cyberpunk_total_conversion',
+-                                  'native', 'cyberpunk_economy.cpp');
+-    const content = fs.readFileSync(pluginPath, 'utf-8');
+-    return assert(content.includes('MeteraPlugin_GetName') &&
+-                  content.includes('METERA_EXPORT'),
+-                  'Plugin does not use proper METERA_EXPORT pattern');
+-});
+-
+-test('cyberpunk_economy.cpp — calls multiplyAllPrices API', () => {
+-    const pluginPath = path.join(__dirname, '..', 'mods', 'cyberpunk_total_conversion',
+-                                  'native', 'cyberpunk_economy.cpp');
+-    const content = fs.readFileSync(pluginPath, 'utf-8');
+-    return assert(content.includes('multiplyAllPrices'),
+-                  'Plugin does not call multiplyAllPrices');
+-});
+-
+-// ============================================================================
+-// TEST GROUP 5: Engine binary exists and responds to init
+-// ============================================================================
+-
+-test('meterea_engine binary — exists', () => {
+-    const enginePath = path.join(__dirname, '..', 'engine', 'meterea_engine');
+-    return assert(fs.existsSync(enginePath), `Engine binary not found at: ${enginePath}`);
+-});
+-
+-// ============================================================================
+-// TEST GROUP 6: mod.json updated for ModKit 3.0
+-// ============================================================================
+-
+-test('cyberpunk mod.json — apiVersion is 3.0', () => {
+-    const modJsonPath = path.join(__dirname, '..', 'mods', 'cyberpunk_total_conversion', 'mod.json');
+-    const content = JSON.parse(fs.readFileSync(modJsonPath, 'utf-8'));
+-    return assert(content.apiVersion === '3.0',
+-                  `Expected apiVersion 3.0, got: ${content.apiVersion}`);
+-});
+-
+-test('cyberpunk mod.json — version bumped to 3.0.0', () => {
+-    const modJsonPath = path.join(__dirname, '..', 'mods', 'cyberpunk_total_conversion', 'mod.json');
+-    const content = JSON.parse(fs.readFileSync(modJsonPath, 'utf-8'));
+-    return assert(content.version === '3.0.0',
+-                  `Expected version 3.0.0, got: ${content.version}`);
+-});
+-
+-test('cyberpunk mod.json — has native_plugins field', () => {
+-    const modJsonPath = path.join(__dirname, '..', 'mods', 'cyberpunk_total_conversion', 'mod.json');
+-    const content = JSON.parse(fs.readFileSync(modJsonPath, 'utf-8'));
+-    return assert(Array.isArray(content.native_plugins) && content.native_plugins.length > 0,
+-                  'native_plugins field missing or empty');
+-});
+-
+-// ============================================================================
+-// TEST GROUP 7: mergeDeep — $delete, $replace, $push sentinels
+-// ============================================================================
+-
+-test('mergeDeep — $delete sentinel removes key', () => {
+-    function isObject(item) { return (item && typeof item === 'object' && !Array.isArray(item)); }
+-    function mergeDeep(target, ...sources) {
+-        if (!sources.length) return target;
+-        const source = sources.shift();
+-        if (isObject(target) && isObject(source)) {
+-            for (const key in source) {
+-                const sourceVal = source[key];
+-                if (sourceVal === '$delete') { delete target[key]; continue; }
+-                if (sourceVal && typeof sourceVal === 'object' && sourceVal.$replace !== undefined) { target[key] = sourceVal.$replace; continue; }
+-                if (sourceVal && typeof sourceVal === 'object' && Array.isArray(sourceVal.$push)) {
+-                    if (Array.isArray(target[key])) { target[key] = target[key].concat(sourceVal.$push); } else { target[key] = sourceVal.$push; }
+-                    continue;
+-                }
+-                if (isObject(sourceVal)) { if (!target[key] || typeof target[key] !== 'object') { target[key] = {}; } mergeDeep(target[key], sourceVal); }
+-                else { target[key] = sourceVal; }
+-            }
+-        }
+-        return mergeDeep(target, ...sources);
+-    }
+-
+-    const target = { name: 'sword', damage: 10, magic: true };
+-    mergeDeep(target, { magic: '$delete' });
+-    return assert(!('magic' in target) && target.name === 'sword' && target.damage === 10,
+-                  `$delete did not remove key, target: ${JSON.stringify(target)}`);
+-});
+-
+-test('mergeDeep — $replace sentinel replaces array entirely', () => {
+-    function isObject(item) { return (item && typeof item === 'object' && !Array.isArray(item)); }
+-    function mergeDeep(target, ...sources) {
+-        if (!sources.length) return target;
+-        const source = sources.shift();
+-        if (isObject(target) && isObject(source)) {
+-            for (const key in source) {
+-                const sourceVal = source[key];
+-                if (sourceVal === '$delete') { delete target[key]; continue; }
+-                if (sourceVal && typeof sourceVal === 'object' && sourceVal.$replace !== undefined) { target[key] = sourceVal.$replace; continue; }
+-                if (sourceVal && typeof sourceVal === 'object' && Array.isArray(sourceVal.$push)) {
+-                    if (Array.isArray(target[key])) { target[key] = target[key].concat(sourceVal.$push); } else { target[key] = sourceVal.$push; }
+-                    continue;
+-                }
+-                if (isObject(sourceVal)) { if (!target[key] || typeof target[key] !== 'object') { target[key] = {}; } mergeDeep(target[key], sourceVal); }
+-                else { target[key] = sourceVal; }
+-            }
+-        }
+-        return mergeDeep(target, ...sources);
+-    }
+-
+-    const target = { enemies: ['goblin', 'orc', 'troll'] };
+-    mergeDeep(target, { enemies: { $replace: ['cyber_drone'] } });
+-    return assert(Array.isArray(target.enemies) && target.enemies.length === 1 && target.enemies[0] === 'cyber_drone',
+-                  `$replace did not replace array, got: ${JSON.stringify(target.enemies)}`);
+-});
+-
+-test('mergeDeep — $push sentinel appends to array', () => {
+-    function isObject(item) { return (item && typeof item === 'object' && !Array.isArray(item)); }
+-    function mergeDeep(target, ...sources) {
+-        if (!sources.length) return target;
+-        const source = sources.shift();
+-        if (isObject(target) && isObject(source)) {
+-            for (const key in source) {
+-                const sourceVal = source[key];
+-                if (sourceVal === '$delete') { delete target[key]; continue; }
+-                if (sourceVal && typeof sourceVal === 'object' && sourceVal.$replace !== undefined) { target[key] = sourceVal.$replace; continue; }
+-                if (sourceVal && typeof sourceVal === 'object' && Array.isArray(sourceVal.$push)) {
+-                    if (Array.isArray(target[key])) { target[key] = target[key].concat(sourceVal.$push); } else { target[key] = sourceVal.$push; }
+-                    continue;
+-                }
+-                if (isObject(sourceVal)) { if (!target[key] || typeof target[key] !== 'object') { target[key] = {}; } mergeDeep(target[key], sourceVal); }
+-                else { target[key] = sourceVal; }
+-            }
+-        }
+-        return mergeDeep(target, ...sources);
+-    }
+-
+-    const target = { items: ['sword', 'shield'] };
+-    mergeDeep(target, { items: { $push: ['potion'] } });
+-    return assert(target.items.length === 3 && target.items[2] === 'potion',
+-                  `$push did not append, got: ${JSON.stringify(target.items)}`);
+-});
+-
+-// ============================================================================
+-// TEST GROUP 8: Hook chain system
+-// ============================================================================
+-
+-test('hookFunction — hook chain with priorities', () => {
+-    // Simulate the hook chain logic
+-    const _hookChains = {};
+-    const _originalFunctions = {};
+-
+-    function hookFunction(obj, funcName, modId, hookCallback, priority) {
+-        priority = priority || 100;
+-        if (!_originalFunctions[funcName]) _originalFunctions[funcName] = obj[funcName];
+-        if (!_hookChains[funcName]) _hookChains[funcName] = [];
+-        _hookChains[funcName].push({ modId, priority, callback: hookCallback });
+-        _hookChains[funcName].sort((a, b) => a.priority - b.priority);
+-        rebuildHookChain(obj, funcName);
+-    }
+-
+-    function rebuildHookChain(obj, funcName) {
+-        const original = _originalFunctions[funcName];
+-        const hooks = _hookChains[funcName];
+-        obj[funcName] = function(...args) {
+-            let result;
+-            let currentFn = original.bind(this);
+-            for (const hook of hooks) {
+-                const hookResult = hook.callback(currentFn, ...args);
+-                if (hookResult !== undefined) { result = hookResult; currentFn = () => result; }
+-                else { result = currentFn(...args); }
+-            }
+-            return result;
+-        };
+-    }
+-
+-    const obj = { multiply: (x) => x * 2 };
+-    hookFunction(obj, 'multiply', 'mod_a', (orig, x) => orig(x) + 10, 100);  // post-hook
+-    hookFunction(obj, 'multiply', 'mod_b', (orig, x) => orig(x * 3), 50);    // pre-hook (lower priority = runs first)
+-
+-    // mod_b (priority 50) runs first: orig(x*3) → x*3*2 = 6x. Returns 6x
+-    // mod_a (priority 100) runs second: orig(6x) + 10 → but currentFn returns 6x, so result = 6x + 10
+-    const result = obj.multiply(5);
+-    // mod_b: orig is bind of original → orig(5*3) = orig(15) = 30, hookResult=30
+-    // mod_a: orig is () => 30, hookResult = 30 + 10 = 40
+-    return assert(result === 40, `Expected 40, got ${result}`);
+-});
+-
+-test('hookFunction — unhook restores chain correctly', () => {
+-    const _hookChains = {};
+-    const _originalFunctions = {};
+-
+-    function hookFunction(obj, funcName, modId, hookCallback, priority) {
+-        priority = priority || 100;
+-        if (!_originalFunctions[funcName]) _originalFunctions[funcName] = obj[funcName];
+-        if (!_hookChains[funcName]) _hookChains[funcName] = [];
+-        _hookChains[funcName].push({ modId, priority, callback: hookCallback });
+-        _hookChains[funcName].sort((a, b) => a.priority - b.priority);
+-    }
+-
+-    const obj = { greet: (name) => `Hello ${name}` };
+-    const original = obj.greet;
+-    _originalFunctions['greet'] = original;
+-
+-    hookFunction(obj, 'greet', 'mod_a', (orig, name) => orig(name) + '!', 100);
+-    hookFunction(obj, 'greet', 'mod_b', (orig, name) => orig(name.toUpperCase()), 50);
+-
+-    // Remove mod_a — mod_b should still work
+-    _hookChains['greet'] = _hookChains['greet'].filter(h => h.modId !== 'mod_a');
+-
+-    return assert(_hookChains['greet'].length === 1 && _hookChains['greet'][0].modId === 'mod_b',
+-                  'unhook did not correctly remove only the specified mod hook');
+-});
+-
+-// ============================================================================
+-// TEST GROUP 9: Sandbox — no `with` statement in ModLoader.js
+-// ============================================================================
+-
+-test('ModLoader.js — does NOT use deprecated `with` statement', () => {
+-    const modLoaderPath = path.join(__dirname, '..', 'js', 'mods', 'ModLoader.js');
+-    const content = fs.readFileSync(modLoaderPath, 'utf-8');
+-    // Check that "with(this)" or "with(sandbox" is NOT present
+-    const hasWith = /\bwith\s*\(/.test(content) && content.includes('with(this)');
+-    return assert(!hasWith, 'ModLoader.js still uses deprecated `with` statement');
+-});
+-
+-test('ModLoader.js — uses "use strict" in sandbox wrapper', () => {
+-    const modLoaderPath = path.join(__dirname, '..', 'js', 'mods', 'ModLoader.js');
+-    const content = fs.readFileSync(modLoaderPath, 'utf-8');
+-    return assert(content.includes('"use strict"'), 'ModLoader.js sandbox does not use strict mode');
+-});
+-
+-test('ModLoader.js — contains hookFunction method', () => {
+-    const modLoaderPath = path.join(__dirname, '..', 'js', 'mods', 'ModLoader.js');
+-    const content = fs.readFileSync(modLoaderPath, 'utf-8');
+-    return assert(content.includes('hookFunction'), 'ModLoader.js does not contain hookFunction method');
+-});
+-
+-test('ModLoader.js — contains unhookFunction method', () => {
+-    const modLoaderPath = path.join(__dirname, '..', 'js', 'mods', 'ModLoader.js');
+-    const content = fs.readFileSync(modLoaderPath, 'utf-8');
+-    return assert(content.includes('unhookFunction'), 'ModLoader.js does not contain unhookFunction method');
+-});
+-
+-test('ModLoader.js — contains queueMutation for IPC batching', () => {
+-    const modLoaderPath = path.join(__dirname, '..', 'js', 'mods', 'ModLoader.js');
+-    const content = fs.readFileSync(modLoaderPath, 'utf-8');
+-    return assert(content.includes('queueMutation'), 'ModLoader.js does not contain queueMutation method');
+-});
+-
+-test('ModLoader.js — apiVersion is 3.0', () => {
+-    const modLoaderPath = path.join(__dirname, '..', 'js', 'mods', 'ModLoader.js');
+-    const content = fs.readFileSync(modLoaderPath, 'utf-8');
+-    return assert(content.includes("apiVersion: '3.0'"), 'ModLoader.js apiVersion is not 3.0');
+-});
+-
+-// ============================================================================
+-// TEST GROUP 10: VFS — comprehensive MIME types in main.js
+-// ============================================================================
+-
+-test('main.js — VFS handler supports font MIME types', () => {
+-    const mainPath = path.join(__dirname, '..', 'main.js');
+-    const content = fs.readFileSync(mainPath, 'utf-8');
+-    return assert(content.includes('.woff2') && content.includes('font/woff2'),
+-                  'main.js VFS does not support .woff2 font MIME type');
+-});
+-
+-test('main.js — VFS handler supports 3D model MIME types', () => {
+-    const mainPath = path.join(__dirname, '..', 'main.js');
+-    const content = fs.readFileSync(mainPath, 'utf-8');
+-    return assert(content.includes('.gltf') || content.includes('model/gltf'),
+-                  'main.js VFS does not support 3D model MIME types');
+-});
+-
+-test('main.js — VFS handler has file header sniffing fallback', () => {
+-    const mainPath = path.join(__dirname, '..', 'main.js');
+-    const content = fs.readFileSync(mainPath, 'utf-8');
+-    return assert(content.includes('0x89504E47') || content.includes('readUInt32BE'),
+-                  'main.js VFS does not have file header sniffing fallback');
+-});
+-
+-// ============================================================================
+-// RESULTS
+-// ============================================================================
+-
+-console.log('\n╔══════════════════════════════════════════════╗');
+-console.log('║     ModKit 3.0 Verification Test Suite      ║');
+-console.log('╚══════════════════════════════════════════════╝\n');
+-
+-results.forEach(r => console.log(r));
+-
+-console.log(`\n📊 Results: ${passed} passed, ${failed} failed, ${passed + failed} total\n`);
+-
+-if (failed > 0) {
+-    console.error('❌ SOME TESTS FAILED — review errors above');
+-    process.exit(1);
+-} else {
+-    console.log('✅ ALL TESTS PASSED — ModKit 3.0 is ready');
+-    process.exit(0);
+-}
+diff --git a/tests/runtime_data.test.js b/tests/runtime_data.test.js
+index 5ab78fb..590d570 100644
+--- a/tests/runtime_data.test.js
++++ b/tests/runtime_data.test.js
+@@ -1,5 +1,6 @@
+ const assert = require('assert');
+ const path = require('path');
++const fs = require('fs');
+ 
+ const runtimeData = require(path.join(__dirname, '..', 'js', 'mods', 'runtimeData.js'));
+ 
+@@ -75,6 +76,133 @@ test('resolvePromptEntry accepts semantic keys and legacy paths', () => {
+     );
+ });
+ 
++test('normalizeRuntimeManifest applies descriptor defaults and alias mapping', () => {
++    const normalized = runtimeData.normalizeRuntimeManifest({
++        modding_contract: {
++            descriptor_defaults: {
++                owner: 'base_game',
++                source: 'base_data',
++                required: true
++            }
++        },
++        database_files: {
++            items: {
++                path: './data/economy_items.json',
++                default_type: 'object',
++                merge_policy: 'deepMerge',
++                key_aliases: ['economy_items'],
++                replace_on_total_conversion: true
++            },
++            recipes: {
++                path: './data/economy_recipes.json',
++                default_type: 'array',
++                merge_policy: 'append',
++                owner: 'custom_owner',
++                source: 'mod_layer',
++                required: false
++            }
++        }
++    });
++
++    assert.strictEqual(normalized.databaseFiles.items.owner, 'base_game');
++    assert.strictEqual(normalized.databaseFiles.items.source, 'base_data');
++    assert.strictEqual(normalized.databaseFiles.items.required, true);
++    assert.deepStrictEqual(normalized.databaseFiles.items.key_aliases, ['economy_items']);
++    assert.strictEqual(normalized.databaseFiles.items.replace_on_total_conversion, true);
++
++    assert.strictEqual(normalized.databaseFiles.recipes.owner, 'custom_owner');
++    assert.strictEqual(normalized.databaseFiles.recipes.source, 'mod_layer');
++    assert.strictEqual(normalized.databaseFiles.recipes.required, false);
++    assert.strictEqual(normalized.aliasToRuntimeKey.economy_items, 'items');
++    assert.strictEqual(normalized.aliasToRuntimeKey.items, 'items');
++});
++
++test('resolveRuntimeDatabaseKey and getRuntimeDatabaseDescriptor support aliases', () => {
++    const manifest = {
++        modding_contract: {
++            descriptor_defaults: {
++                owner: 'base_game',
++                source: 'base_data',
++                required: true
++            }
++        },
++        database_files: {
++            facilities: {
++                path: './data/facility_names.json',
++                default_type: 'object',
++                merge_policy: 'deepMerge',
++                key_aliases: ['facility_names']
++            }
++        }
++    };
++
++    assert.strictEqual(runtimeData.resolveRuntimeDatabaseKey('facility_names', manifest), 'facilities');
++    assert.strictEqual(runtimeData.resolveRuntimeDatabaseKey('facilities', manifest), 'facilities');
++    assert.strictEqual(runtimeData.resolveRuntimeDatabaseKey('unknown_key', manifest), 'unknown_key');
++
++    const descriptor = runtimeData.getRuntimeDatabaseDescriptor('facility_names', manifest);
++    assert.strictEqual(descriptor.runtime_key, 'facilities');
++    assert.strictEqual(descriptor.path, './data/facility_names.json');
++    assert.strictEqual(descriptor.owner, 'base_game');
++});
++
++test('script gameplay commands do not rely on legacy hardcoded defaults', () => {
++    const scriptSource = fs.readFileSync(path.join(__dirname, '..', 'script.js'), 'utf8');
++    const forbiddenPatterns = [
++        /args\.maxWeight\s*\|\|\s*100/,
++        /args\.maxSlots\s*\|\|\s*30/,
++        /player\.bankAccount\.loanDays\s*=\s*args\.days\s*\|\|\s*14/,
++        /requiredProgress:\s*args\.requiredProgress\s*\|\|\s*60/,
++        /progressPerDay:\s*args\.progressPerDay\s*\|\|\s*5/,
++        /discoveryChance:\s*args\.discoveryChance\s*\|\|\s*3/,
++        /const resilience = player\.stats\.res\s*\|\|\s*10/,
++        /item\.durability\s*=\s*\(item\.durability\s*\|\|\s*100\)\s*\+\s*change/,
++        /player\.stats\.con\s*\|\|\s*10/,
++        /player\.stats\.dex\s*\|\|\s*10/,
++        /player\.stats\.cha\s*\|\|\s*10/,
++        /hp:\s*en\.hp\s*\|\|\s*20/,
++        /maxHp:\s*en\.hp\s*\|\|\s*20/,
++        /xpReward:\s*30/,
++        /args\.minDamage\s*\|\|\s*args\.min_damage\s*\|\|\s*1\s*\+/,
++        /args\.armorClass\s*\|\|\s*args\.armor_class\s*\|\|\s*10\s*\+/,
++        /stats:\s*\{\s*hp:\s*args\.hp\s*\?\?\s*10,\s*maxHp:\s*args\.maxHp\s*\?\?\s*10,\s*str:\s*args\.str\s*\?\?\s*10,\s*dex:\s*args\.dex\s*\?\?\s*10,\s*con:\s*args\.con\s*\?\?\s*10,\s*int:\s*args\.int\s*\?\?\s*10\s*\}/,
++        /stats:\s*\{\s*hp:\s*80,\s*maxHp:\s*80,\s*str:\s*10,\s*dex:\s*10,\s*int:\s*14,\s*con:\s*12,\s*cha:\s*16,\s*res:\s*10\s*\}/,
++        /xpReward:\s*1000/,
++        /bus\.wage_level\s*\|\|\s*100/,
++        /bus\.maintenance_budget\s*\|\|\s*100/,
++        /Math\.floor\(Math\.random\(\)\s*\*\s*40\)\s*\+\s*40/,
++        /Math\.floor\(Math\.random\(\)\s*\*\s*40\)\s*\+\s*30/,
++        /50\s*\+\s*Math\.floor\(Math\.random\(\)\s*\*\s*40\)/,
++        /health:\s*100/,
++        /needs:\s*\{\s*hunger:\s*100,\s*rest:\s*100,\s*social:\s*100,\s*safety:\s*100\s*\}/,
++        /inventory:\s*\{\s*gold:\s*10000,\s*items:\s*\{\}\s*\}/,
++        /dailyWage:\s*500/,
++        /savings:\s*50000/,
++        /plotArmor:\s*true/,
++        /Math\.floor\(Math\.random\(\)\s*\*\s*900\)\s*\+\s*100/,
++        /Math\.floor\(Math\.random\(\)\s*\*\s*20\)\s*\+\s*1/,
++        /markets\.bread\s*\|\|\s*5/,
++        /markets\.wood\s*\|\|\s*2/,
++        /markets\.iron_ore\s*\|\|\s*3/,
++        /markets\.weapons\s*\|\|\s*40/,
++        /gold:\s*0,/,
++        /population_soldier_ratio,\s*0\.1/,
++        /food_per_soldier,\s*0\.5/,
++        /weight_per_unit\s*\|\|\s*1/,
++        /quality:\s*args\.quality\s*\|\|\s*1/,
++        /quantity:\s*args\.quantity\s*\|\|\s*1/,
++        /parseInt\(item\.max,\s*10\)\s*\|\|\s*5/,
++        /basePrice\s*\|\|\s*1/,
++        /selectedEvent\.amount\s*\|\|\s*1/,
++        /50\s*\*\s*\(player\.stats\.level\s*\|\|\s*1\)/,
++        /applyDisease\(args\.severity\s*\|\|\s*2\)/
++    ];
++
++    forbiddenPatterns.forEach((pattern) => {
++        assert.ok(!pattern.test(scriptSource), `Forbidden gameplay hardcode remains: ${pattern}`);
++    });
++});
++
+ if (process.exitCode) {
+     process.exit(process.exitCode);
+ }
+diff --git a/tools/validate_modding_contract.js b/tools/validate_modding_contract.js
+index 7725942..0237c54 100644
+--- a/tools/validate_modding_contract.js
++++ b/tools/validate_modding_contract.js
+@@ -26,6 +26,9 @@ function main() {
+   check(isObject(contract && contract.descriptor_defaults), 'modding_contract.descriptor_defaults must be an object');
+   check(isObject(contract && contract.total_conversion), 'modding_contract.total_conversion must be an object');
+   check(Array.isArray(contract && contract.merge_policies), 'modding_contract.merge_policies must be an array');
++  check(typeof (contract && contract.descriptor_defaults && contract.descriptor_defaults.owner) === 'string', 'modding_contract.descriptor_defaults.owner must be a string');
++  check(typeof (contract && contract.descriptor_defaults && contract.descriptor_defaults.source) === 'string', 'modding_contract.descriptor_defaults.source must be a string');
++  check(typeof (contract && contract.descriptor_defaults && contract.descriptor_defaults.required) === 'boolean', 'modding_contract.descriptor_defaults.required must be a boolean');
+ 
+   const totalConversion = contract && contract.total_conversion ? contract.total_conversion : {};
+   check(totalConversion.skip_base_database_files_by_default === true, 'total_conversion must skip base database files by default');
+@@ -42,6 +45,26 @@ function main() {
+     check(typeof descriptor.path === 'string' && descriptor.path.length > 0, `database_files.${key}.path must be a non-empty string`);
+     check(typeof descriptor.default_type === 'string' && descriptor.default_type.length > 0, `database_files.${key}.default_type must be a non-empty string`);
+     check(typeof descriptor.merge_policy === 'string' && descriptor.merge_policy.length > 0, `database_files.${key}.merge_policy must be a non-empty string`);
++    if (Object.prototype.hasOwnProperty.call(descriptor, 'owner')) {
++      check(typeof descriptor.owner === 'string' && descriptor.owner.length > 0, `database_files.${key}.owner must be a non-empty string when present`);
++    }
++    if (Object.prototype.hasOwnProperty.call(descriptor, 'source')) {
++      check(typeof descriptor.source === 'string' && descriptor.source.length > 0, `database_files.${key}.source must be a non-empty string when present`);
++    }
++    if (Object.prototype.hasOwnProperty.call(descriptor, 'required')) {
++      check(typeof descriptor.required === 'boolean', `database_files.${key}.required must be a boolean when present`);
++    }
++    if (Object.prototype.hasOwnProperty.call(descriptor, 'key_aliases')) {
++      check(Array.isArray(descriptor.key_aliases), `database_files.${key}.key_aliases must be an array when present`);
++      if (Array.isArray(descriptor.key_aliases)) {
++        descriptor.key_aliases.forEach((alias, index) => {
++          check(typeof alias === 'string' && alias.length > 0, `database_files.${key}.key_aliases[${index}] must be a non-empty string`);
++        });
++      }
++    }
++    if (Object.prototype.hasOwnProperty.call(descriptor, 'replace_on_total_conversion')) {
++      check(typeof descriptor.replace_on_total_conversion === 'boolean', `database_files.${key}.replace_on_total_conversion must be a boolean when present`);
++    }
+     if (contract && Array.isArray(contract.merge_policies)) {
+       check(contract.merge_policies.includes(descriptor.merge_policy), `database_files.${key}.merge_policy is not declared in modding_contract.merge_policies`);
+     }
+@@ -51,6 +74,7 @@ function main() {
+   check(integration.includes('validateRuntimeDatabaseContract'), 'ModLoaderIntegration must validate total-conversion database contract');
+   check(integration.includes('attachRuntimeDatabaseContractMetadata'), 'ModLoaderIntegration must attach runtime contract metadata');
+   check(integration.includes('base-data-off database is missing required sections'), 'ModLoaderIntegration must fail loudly for incomplete base-data-off database');
++  check(integration.includes('database.runtime_manifest = normalizedManifest'), 'ModLoaderIntegration must attach normalized runtime manifest before onDatabaseLoad hooks');
+ 
+   if (errors.length > 0) {
+     console.error('modding contract errors:');
+diff --git a/tools/validate_runtime_configs.js b/tools/validate_runtime_configs.js
+index 156b8de..d144ff1 100644
+--- a/tools/validate_runtime_configs.js
++++ b/tools/validate_runtime_configs.js
+@@ -232,6 +232,7 @@ function checkGameplayRuntime(config) {
+   checkString(config, 'inventory_loot.event_type');
+   checkNumber(config, 'inventory_loot.default_quantity', { min: 1 });
+   checkString(config, 'inventory_loot.fallback_item_name');
++  checkNumber(config, 'item_display.clock_max_segments', { min: 1 });
+   checkString(config, 'inventory_unlock.lockpick_prototype_id');
+   checkString(config, 'inventory_unlock.ability_stat');
+   checkNumber(config, 'inventory_unlock.ability_baseline');
+@@ -240,6 +241,78 @@ function checkGameplayRuntime(config) {
+   checkObject(config, 'inventory_feedback.trade_errors');
+   ['item_not_found', 'source_container_not_found', 'target_container_not_found', 'invalid_quantity', 'unknown_command', 'not_locked_or_not_found', 'unlock_success', 'lockpick_broke'].forEach((key) => checkString(config, `inventory_feedback.inventory_errors.${key}`));
+   ['merchant_container_not_found', 'trade_not_found', 'trade_empty', 'trade_too_far', 'failed_lock_trade_item'].forEach((key) => checkString(config, `inventory_feedback.trade_errors.${key}`));
++  checkNumber(config, 'survival.trauma.resilience_baseline');
++  checkNumber(config, 'command_defaults.create_container.max_weight_kg', { min: 1 });
++  checkNumber(config, 'command_defaults.create_container.max_slots', { min: 1 });
++  checkNumber(config, 'command_defaults.bank_loan.default_days', { min: 1 });
++  checkNumber(config, 'command_defaults.intrigue.required_progress', { min: 0 });
++  checkNumber(config, 'command_defaults.intrigue.progress_per_day', { min: 0 });
++  checkNumber(config, 'command_defaults.intrigue.discovery_chance', { min: 0 });
++  checkNumber(config, 'command_defaults.business.default_wage_level_percent', { min: 0 });
++  checkNumber(config, 'command_defaults.business.default_maintenance_budget_percent', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.stats.hp', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.stats.strength');
++  checkNumber(config, 'command_defaults.ruler_entity.stats.dexterity');
++  checkNumber(config, 'command_defaults.ruler_entity.stats.intelligence');
++  checkNumber(config, 'command_defaults.ruler_entity.stats.constitution');
++  checkNumber(config, 'command_defaults.ruler_entity.stats.charisma');
++  checkNumber(config, 'command_defaults.ruler_entity.stats.resilience');
++  checkNumber(config, 'command_defaults.ruler_entity.xp_reward', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.health_percent', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.personality.ambition_min');
++  checkNumber(config, 'command_defaults.ruler_entity.personality.ambition_range', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.personality.paranoia_min');
++  checkNumber(config, 'command_defaults.ruler_entity.personality.paranoia_range', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.personality.wisdom_min');
++  checkNumber(config, 'command_defaults.ruler_entity.personality.wisdom_range', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.personality.wisdom_variance', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.personality.cruelty_min');
++  checkNumber(config, 'command_defaults.ruler_entity.personality.cruelty_range', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.personality.cruelty_variance', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.personality.diplomacy_min');
++  checkNumber(config, 'command_defaults.ruler_entity.personality.diplomacy_range', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.personality.diplomacy_variance', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.personality.military_min');
++  checkNumber(config, 'command_defaults.ruler_entity.personality.military_range', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.personality.military_variance', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.personality.stewardship_min');
++  checkNumber(config, 'command_defaults.ruler_entity.personality.stewardship_range', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.needs.hunger', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.needs.rest', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.needs.social', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.needs.safety', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.inventory.gold', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.economy.skill_level', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.economy.daily_wage', { min: 0 });
++  checkNumber(config, 'command_defaults.ruler_entity.economy.savings', { min: 0 });
++  checkNumber(config, 'command_defaults.environment.default_xp_reward', { min: 0 });
++  checkNumber(config, 'command_defaults.environment.default_hp', { min: 0 });
++  checkNumber(config, 'command_defaults.environment.default_stats.strength');
++  checkNumber(config, 'command_defaults.environment.default_stats.dexterity');
++  checkNumber(config, 'command_defaults.environment.default_stats.constitution');
++  checkNumber(config, 'command_defaults.environment.default_stats.intelligence');
++  checkNumber(config, 'command_defaults.environment.min_damage_base', { min: 0 });
++  checkNumber(config, 'command_defaults.environment.min_damage_hp_divisor', { min: 1 });
++  checkNumber(config, 'command_defaults.environment.creature_damage_dice_sides', { min: 1 });
++  checkNumber(config, 'command_defaults.environment.default_damage_dice_sides', { min: 1 });
++  checkNumber(config, 'command_defaults.environment.high_stat_damage_dice_sides', { min: 1 });
++  checkNumber(config, 'command_defaults.environment.high_stat_threshold');
++  checkNumber(config, 'command_defaults.environment.armor_class_base');
++  checkNumber(config, 'command_defaults.environment.armor_class_dexterity_baseline');
++  checkNumber(config, 'command_defaults.environment.journey_enemy_default_hp', { min: 0 });
++  checkNumber(config, 'command_defaults.environment.journey_enemy_default_xp_reward', { min: 0 });
++  checkNumber(config, 'command_defaults.environment.journey_bandit_default_hp', { min: 0 });
++  checkNumber(config, 'command_defaults.environment.journey_bandit_default_xp_reward', { min: 0 });
++  checkNumber(config, 'character_creation.quick_start.name_suffix_min', { min: 0 });
++  checkNumber(config, 'character_creation.quick_start.name_suffix_range', { min: 1 });
++  checkNumber(config, 'character_creation.quick_start.starting_gold', { min: 0 });
++  checkNumber(config, 'progression.quest_rewards.xp_per_level', { min: 0 });
++  checkNumber(config, 'survival.disease.default_severity', { min: 0 });
++  checkNumber(config, 'character_creation.stat_baselines.strength');
++  checkNumber(config, 'character_creation.stat_baselines.dexterity');
++  checkNumber(config, 'character_creation.stat_baselines.constitution');
++  checkNumber(config, 'character_creation.stat_baselines.charisma');
++  checkNumber(config, 'character_creation.stat_baselines.resilience');
+   checkString(config, 'inventory_engine.id_prefixes.container');
+   checkString(config, 'inventory_engine.id_prefixes.item');
+   checkString(config, 'inventory_engine.actors.default');
+@@ -249,6 +322,8 @@ function checkGameplayRuntime(config) {
+   checkNumber(config, 'inventory_engine.ipc_retry.backoff_multiplier', { min: 0 });
+   checkNumber(config, 'inventory.default_item_weight', { min: 0 });
+   checkNumber(config, 'inventory.default_item_durability', { min: 0 });
++  checkNumber(config, 'inventory.default_item_quality', { min: 0 });
++  checkNumber(config, 'inventory.default_stack_quantity', { min: 1 });
+   checkNumber(config, 'inventory.access_distance', { min: 0 });
+   checkNumber(config, 'inventory.default_lock_difficulty', { min: 0 });
+   checkNumber(config, 'inventory.default_container_health', { min: 0 });
+@@ -263,6 +338,46 @@ function checkGameplayRuntime(config) {
+   checkNumber(config, 'economy.buy_multiplier', { min: 0 });
+   checkNumber(config, 'economy.sell_multiplier', { min: 0 });
+   checkNumber(config, 'economy.min_price', { min: 0 });
++  checkNumber(config, 'economy.market_fallback_prices.bread', { min: 0 });
++  checkNumber(config, 'economy.market_fallback_prices.wood', { min: 0 });
++  checkNumber(config, 'economy.market_fallback_prices.iron_ore', { min: 0 });
++  checkNumber(config, 'economy.market_fallback_prices.weapons', { min: 0 });
++  checkNumber(config, 'dice.d20.sides', { min: 1 });
++  checkNumber(config, 'dice.d20.minimum', { min: 1 });
++  checkNumber(config, 'engine_economy.npc_reserve_gold', { min: 0 });
++  checkNumber(config, 'engine_economy.npc_initial_gold_max', { min: 1 });
++  checkNumber(config, 'engine_economy.build_port_gold_cost', { min: 1 });
++  checkNumber(config, 'engine_economy.npc_luxury_spend_threshold', { min: 0 });
++  checkNumber(config, 'engine_economy.npc_mercenary_medical_threshold', { min: 0 });
++  checkNumber(config, 'engine_economy.npc_mercenary_weapon_threshold', { min: 0 });
++  checkNumber(config, 'engine_economy.npc_merchant_vehicle_threshold', { min: 0 });
++  checkNumber(config, 'engine_economy.npc_merchant_vehicle_max_owned', { min: 0 });
++  checkNumber(config, 'engine_economy.infra_dam_gold_cost', { min: 1 });
++  checkNumber(config, 'engine_economy.infra_dam_wood_cost', { min: 1 });
++  checkNumber(config, 'engine_economy.infra_aqueduct_gold_cost', { min: 1 });
++  checkNumber(config, 'engine_economy.infra_aqueduct_iron_cost', { min: 1 });
++  checkNumber(config, 'engine_economy.infra_well_gold_cost', { min: 1 });
++  checkNumber(config, 'engine_economy.infra_road_gold_cost', { min: 1 });
++  checkNumber(config, 'engine_economy.infra_road_wood_cost', { min: 1 });
++  checkNumber(config, 'engine_economy.war_declare_min_desire', { min: 0 });
++  checkNumber(config, 'engine_economy.war_declare_min_wealth', { min: 0 });
++  checkNumber(config, 'engine_economy.war_imperialism_wealth_ceiling', { min: 0 });
++  checkNumber(config, 'engine_economy.war_total_food_threshold', { min: 0 });
++  checkNumber(config, 'engine_economy.war_total_weapons_threshold', { min: 0 });
++  checkNumber(config, 'engine_economy.war_total_gold_threshold', { min: 0 });
++  checkNumber(config, 'engine_economy.war_limited_food_threshold', { min: 0 });
++  checkNumber(config, 'engine_economy.war_limited_weapons_threshold', { min: 0 });
++  checkNumber(config, 'engine_economy.war_limited_gold_threshold', { min: 0 });
++  checkNumber(config, 'engine_economy.war_border_food_threshold', { min: 0 });
++  checkNumber(config, 'engine_economy.war_border_weapons_threshold', { min: 0 });
++  checkNumber(config, 'engine_economy.war_border_gold_threshold', { min: 0 });
++  checkNumber(config, 'engine_economy.gm_sabotage_cost', { min: 1 });
++  checkNumber(config, 'engine_economy.monster_bounty_gold_cost', { min: 1 });
++  checkNumber(config, 'engine_economy.path_impassable_cost_threshold', { min: 1 });
++  checkString(config, 'engine_world.default_race_id');
++  checkString(config, 'engine_world.faction_vault_container_type');
++  checkString(config, 'engine_world.ruins_stash_container_type');
++  checkString(config, 'engine_world.default_era_id');
+   checkStringArray(config, 'faction_manpower.weapon_good_ids');
+   checkStringArray(config, 'faction_manpower.food_good_ids');
+   checkNumber(config, 'faction_manpower.population_soldier_ratio', { min: 0 });
+~~~
+
+## Git diff --cached
+
+~~~diff
+(нет staged изменений)
+~~~

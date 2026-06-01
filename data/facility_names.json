@@ -395,9 +395,11 @@
         "min": 1,
         "max": 1,
         "resources": [
+          "meat",
+          "fur",
           "monster_parts"
         ],
-        "chance": 20
+        "chance": 100
       }
     },
     "forest": {
@@ -453,9 +455,11 @@
         "min": 1,
         "max": 1,
         "resources": [
+          "meat",
+          "fur",
           "monster_parts"
         ],
-        "chance": 20
+        "chance": 100
       }
     },
     "beach": {

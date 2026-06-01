@@ -1,0 +1,703 @@
+{
+  "version": 1,
+  "patches": [
+    {
+      "fingerprint": "68c0987974843f33c765c325d484813f800367add4608bd2ac7270cc9b9b54f1",
+      "patch_name": "phase6_data_driven_inventory_actor_routes",
+      "applied_at": "2026-05-24T18:46:16",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "script.js"
+      ],
+      "summary": "written_count=3"
+    },
+    {
+      "fingerprint": "e0cfe7e1ba5b956d93076aa1cc83a630db59f25580180df22545a050e68d3aba",
+      "patch_name": "mark_phase6_inventory_actor_routes_applied",
+      "applied_at": "2026-05-24T18:47:52",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "bcaacfd698e94ead6595bbbe921fa53c7aeda35dcabb7a933c015bb3a9f0552b",
+      "patch_name": "phase6_data_driven_build_container_defaults",
+      "applied_at": "2026-05-24T18:49:02",
+      "files": [
+        "data/gameplay_runtime.json",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "script.js",
+        "tools/validate_data_integrity.js",
+        "tools/validate_runtime_configs.js"
+      ],
+      "summary": "written_count=6"
+    },
+    {
+      "fingerprint": "e34e17d6dac19985f017f59b9c3bb5c71e27e1a5e7bddfc22454d0585ccbb961",
+      "patch_name": "mark_phase6_build_container_defaults_applied",
+      "applied_at": "2026-05-24T18:49:59",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "dd261694702ae69119cfb541fb764b5e265d266d093409973886e67cf30e06db",
+      "patch_name": "git_checkpoint_after_phase6_build_container_defaults",
+      "applied_at": "2026-05-24T18:50:55",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "0271762043f0529d5868cb972249e60d7901f62e6c2f7a23bd873cec418f7731",
+      "patch_name": "mark_git_checkpoint_applied_and_ignore_ai_patcher_state",
+      "applied_at": "2026-05-24T18:52:19",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "f886aec54002c07e7b7474ce36fa7cc91936e6daa3d6792b786064a2800e4927",
+      "patch_name": "mark_ignore_ai_patcher_state_applied",
+      "applied_at": "2026-05-24T18:54:54",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "4f78d5022f3504550d76933372fa2f7cf6cc9705c0c5ed5fa59665041e8e8a06",
+      "patch_name": "phase6_data_driven_inventory_movement_settings",
+      "applied_at": "2026-05-24T18:56:15",
+      "files": [
+        "data/gameplay_runtime.json",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "script.js",
+        "tools/validate_runtime_configs.js"
+      ],
+      "summary": "written_count=5"
+    },
+    {
+      "fingerprint": "53938653f6d02cca50671740ec4b6af809357ea1af1b22ffb3ecda366dde0c57",
+      "patch_name": "mark_phase6_movement_settings_applied_and_speed_up_strategy",
+      "applied_at": "2026-05-24T18:58:25",
+      "files": [
+        "docs/AI_ASSISTANT_PROJECT_RULES.md",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=3"
+    },
+    {
+      "fingerprint": "00fa5efc5636ce7af71070098e7babfa63b24e7f52de4f65ea181910736da68f",
+      "patch_name": "phase6_medium_inventory_transfer_loot_command_settings",
+      "applied_at": "2026-05-24T19:09:22",
+      "files": [
+        "data/gameplay_runtime.json",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "script.js",
+        "tools/validate_runtime_configs.js"
+      ],
+      "summary": "written_count=5"
+    },
+    {
+      "fingerprint": "c983269f66be813850e4c195c6e5e00c79ce75656fc85076e64236d68419274b",
+      "patch_name": "phase6_medium_inventory_transfer_loot_command_settings_fixed_blocks",
+      "applied_at": "2026-05-24T19:09:33",
+      "files": [
+        "script.js"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "8c862c30a8d23f106186a05fc4fbdabba88e9205103d3932d080c29a2e625461",
+      "patch_name": "verify_phase6_medium_patch_after_fixed_blocks",
+      "applied_at": "2026-05-24T19:11:06",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "d04aa05d994e88d8a6b58b03cfd2bcc4a376ed6bf6304e627c9c81579043cff8",
+      "patch_name": "mark_phase6_medium_patch_applied_and_allow_command_only_patches",
+      "applied_at": "2026-05-24T19:13:41",
+      "files": [
+        "docs/AI_ASSISTANT_PROJECT_RULES.md",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=3"
+    },
+    {
+      "fingerprint": "4da5021d89c9d2ca7c710c6107d494a8a793be1062a42a37e5e1c98870d7be62",
+      "patch_name": "improve_worklog_viewer_phase_progress_visibility",
+      "applied_at": "2026-05-24T19:17:11",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "tools/worklog_viewer.html"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "0afb7d79c8deac6b43d428aaa0ec82d11fbdfc45d1b304a3c8a6ecae36042378",
+      "patch_name": "mark_phase_progress_viewer_applied",
+      "applied_at": "2026-05-24T19:18:22",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "abc06cd73ea98ef6cab8733c263c8e35e34ae55e90763b6be62529be83e672f3",
+      "patch_name": "git_checkpoint_after_phase6_medium_inventory_and_viewer_progress",
+      "applied_at": "2026-05-24T19:20:18",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "60b3bc6201a239a65e26c7289c3d5fb67cf5885d5d7e8faaa9da6ea10b5a32e3",
+      "patch_name": "mark_phase6_git_checkpoint_applied",
+      "applied_at": "2026-05-24T19:21:32",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "c9d0657f992312d3c1f082d69c3d4b40efc22e6105ad6fed0e629b992c3a698b",
+      "patch_name": "reframe_data_driven_migration_to_v1_cutoff",
+      "applied_at": "2026-05-24T19:24:12",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "9245cb74cc99db753a85a5bcdb43fba2a72cb148f530a19050cb3a0aa1cab989",
+      "patch_name": "restore_full_data_driven_migration_mandate",
+      "applied_at": "2026-05-24T19:26:54",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "b6627c7c8a567956c77f127cd34d61a0a3c0e8b944a673d4f5ac9a1aba225f28",
+      "patch_name": "mark_full_migration_mandate_restored",
+      "applied_at": "2026-05-24T19:28:04",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "3c5e286c70cca56e80bf5fa3aeee628d6925b6a4ef8ddbd7aab7dce5144c08a5",
+      "patch_name": "fix_current_phase_progress_for_full_migration_mandate",
+      "applied_at": "2026-05-24T19:29:50",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "tools/worklog_viewer.html"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "6e99a7a35cca05e57af7d0c69e6480453c3d60e6ca59d8359cd8f9881be32b06",
+      "patch_name": "mark_full_migration_viewer_fix_applied_and_audit_phase6_errors",
+      "applied_at": "2026-05-24T19:30:48",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "81ce11edae5265135bf9d4f09774d119e5db24ad2060ebe1d11921b59bb2175e",
+      "patch_name": "git_checkpoint_after_full_migration_mandate_and_viewer_fix",
+      "applied_at": "2026-05-24T19:32:53",
+      "files": [],
+      "summary": "written_count=0"
+    },
+    {
+      "fingerprint": "76aea1bfdb1dfb4b351fdfb4eaf6e498856ec1e22e46d593a0d7b80145df99ef",
+      "patch_name": "phase6_big_inventory_action_feedback_errors",
+      "applied_at": "2026-05-24T19:36:32",
+      "files": [
+        "data/gameplay_runtime.json",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "script.js",
+        "tools/validate_runtime_configs.js"
+      ],
+      "summary": "written_count=5"
+    },
+    {
+      "fingerprint": "77e477ac95db7f18d57b0ca0a96b2c47f2a74796dd996e0b186d1af6996e60b9",
+      "patch_name": "mark_phase6_big_feedback_errors_applied_and_checkpoint",
+      "applied_at": "2026-05-24T19:42:41",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "23032971605cef569e24fd36d4fafd4bbcc62a5194b115128a79cb352970d216",
+      "patch_name": "phase8_big_city_gen_data_driven_layer",
+      "applied_at": "2026-05-24T19:49:00",
+      "files": [
+        "data/city_gen.json",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "tools/validate_city_gen.js"
+      ],
+      "summary": "written_count=5"
+    },
+    {
+      "fingerprint": "cfc36096d2ef1366fa6f55c2fdd5c6598a3fdac3cc8fa067abbbfa303c3e30e6",
+      "patch_name": "abort_wrong_phase8_sitygen_patch_and_audit_real_targets",
+      "applied_at": "2026-05-24T19:52:18",
+      "files": [],
+      "summary": "written_count=0"
+    },
+    {
+      "fingerprint": "70ed65fb700d354ed0b42af41cba61db8baa905c5e4acced38ac66eb77d4dd96",
+      "patch_name": "abort_stale_sitygen_refocus_on_core_modding_data_engine",
+      "applied_at": "2026-05-24T19:57:11",
+      "files": [
+        "docs/AI_ASSISTANT_PROJECT_RULES.md",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=3"
+    },
+    {
+      "fingerprint": "4771ee1599a75a8c067aa4a8fb232b3c890f5c70c10acb55fb9520bfc1b63fac",
+      "patch_name": "run_abort_sitygen_commands_and_mark_applied",
+      "applied_at": "2026-05-24T19:58:35",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "ce927005a9f936045f10340e27796feb5bc921d55cd62e4a1fce54ec3fc0d683",
+      "patch_name": "phase8_core_modding_data_contract_base_data_off",
+      "applied_at": "2026-05-24T20:08:25",
+      "files": [
+        "data/runtime_manifest.json",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "js/mods/ModLoaderIntegration.js",
+        "tools/validate_modding_contract.js"
+      ],
+      "summary": "written_count=5"
+    },
+    {
+      "fingerprint": "f81c836aac87db6c2c4ba74add40af4e1fc8b423dc467a0553e1f0802375970b",
+      "patch_name": "mark_phase8_core_modding_contract_applied_and_checkpoint",
+      "applied_at": "2026-05-24T20:10:33",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "tools/runtime_smoke_check.js"
+      ],
+      "summary": "written_count=3"
+    },
+    {
+      "fingerprint": "b8ce705465b917809d730cd815ad22dc9dbf16a9fee8f3e5c3997207e3d36371",
+      "patch_name": "phase8_modding_contract_smoke_checkpoint_current_state_safe",
+      "applied_at": "2026-05-24T20:22:15",
+      "files": [
+        "docs/AI_ASSISTANT_PROJECT_RULES.md",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "tools/runtime_smoke_check.js"
+      ],
+      "summary": "written_count=4"
+    },
+    {
+      "fingerprint": "c49c7adabf53b40ddade1e68da633cd3c015d89264051c51f85fd3005781ed25",
+      "patch_name": "sync_project_state_and_add_full_verify",
+      "applied_at": "2026-05-25T19:08:12",
+      "files": [
+        "NOTES.md",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "package.json",
+        "tools/full_verify.bat",
+        "tools/full_verify.js"
+      ],
+      "summary": "written_count=6"
+    },
+    {
+      "fingerprint": "3c11dcb261b84274c71e325d042f5d635f787a5d6cd4d8ebdddbfd348517bcb3",
+      "patch_name": "fix_full_verify_false_positive_and_mark_green",
+      "applied_at": "2026-05-25T19:09:31",
+      "files": [
+        "NOTES.md",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=3"
+    },
+    {
+      "fingerprint": "bcde0845e455acb1f44fae7da84854467742e4f6918476ee075a77df105ba214",
+      "patch_name": "git_checkpoint_after_full_verify_state_sync",
+      "applied_at": "2026-05-25T19:10:25",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "64c722d6b05ea9e7a8d39f76e41c1e81f82fe8bec791f1322edafc187b1c4dd6",
+      "patch_name": "finalize_full_verify_checkpoint_docs",
+      "applied_at": "2026-05-25T19:17:01",
+      "files": [
+        "NOTES.md",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=3"
+    },
+    {
+      "fingerprint": "89816152241c9077ef1210d64937adf0076d3e8080d0e1e9ff78687d5cc9c090",
+      "patch_name": "fix_map_roads_over_ocean_and_riverbank_mouth_artifacts",
+      "applied_at": "2026-05-25T19:27:51",
+      "files": [
+        "NOTES.md",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "js/cartographer/globalMap.js",
+        "tools/runtime_smoke_check.js"
+      ],
+      "summary": "written_count=5"
+    },
+    {
+      "fingerprint": "3c4a5e032d798d4720310a2db9a89255a7fe28ed9056defedbb428b7273834e5",
+      "patch_name": "fix_cyberpunk_map_riverbank_visuals_modlist_and_tag_defaults",
+      "applied_at": "2026-05-25T19:37:05",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "js/cartographer/globalMap.js",
+        "mods/cyberpunk_core/data/tag_defaults.json",
+        "mods/cyberpunk_core/mod.json"
+      ],
+      "summary": "written_count=5"
+    },
+    {
+      "fingerprint": "7da1bba8732b2f7ff8e70ade02bb7cc411dfc8c9d689dc22af4d049435bd4396",
+      "patch_name": "fix_cyberpunk_map_riverbank_visuals_modlist_and_tag_defaults_v2",
+      "applied_at": "2026-05-25T19:40:27",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "js/cartographer/globalMap.js",
+        "main.js",
+        "mods/cyberpunk_core/data/tag_defaults.json",
+        "mods/cyberpunk_core/mod.json"
+      ],
+      "summary": "written_count=5"
+    },
+    {
+      "fingerprint": "26402f648aa5b2859831a6b0203ecfdde7128d46e316ea20fdb34f8d90972fc8",
+      "patch_name": "git_checkpoint_cyberpunk_map_log_fix",
+      "applied_at": "2026-05-25T19:41:39",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "43e88c1fa66ff4e4acfa489c1ffc1edd2d71a342de02fa9d332e31beee2c017a",
+      "patch_name": "create_neon_siltlands_total_conversion_mod",
+      "applied_at": "2026-05-25T20:05:05",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "mods/neon_siltlands_core/data/biomes.json",
+        "mods/neon_siltlands_core/data/city_gen.json",
+        "mods/neon_siltlands_core/data/classes.json",
+        "mods/neon_siltlands_core/data/disasters.json",
+        "mods/neon_siltlands_core/data/eras.json",
+        "mods/neon_siltlands_core/data/facilities.json",
+        "mods/neon_siltlands_core/data/faction_relations.json",
+        "mods/neon_siltlands_core/data/items.json",
+        "mods/neon_siltlands_core/data/locations.json",
+        "mods/neon_siltlands_core/data/lore.txt",
+        "mods/neon_siltlands_core/data/monsters.json",
+        "mods/neon_siltlands_core/data/npc_names.json",
+        "mods/neon_siltlands_core/data/professions.json",
+        "mods/neon_siltlands_core/data/races.json",
+        "mods/neon_siltlands_core/data/recipes.json",
+        "mods/neon_siltlands_core/data/tag_defaults.json",
+        "mods/neon_siltlands_core/data/traits.json",
+        "mods/neon_siltlands_core/data/world_config.json",
+        "mods/neon_siltlands_core/mod.json"
+      ],
+      "summary": "written_count=20"
+    },
+    {
+      "fingerprint": "92c2fc78f7bc632ad5ee17ba76db39a18abd6731d4c532ebf4ea905dfa9e0aab",
+      "patch_name": "git_checkpoint_neon_siltlands_mod_replacement",
+      "applied_at": "2026-05-25T20:10:45",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "b21ab0d54513f89412e0a933734d698bb407e20a4a31e5a6c84f645c79146c0e",
+      "patch_name": "stabilize_neon_siltlands_schema",
+      "applied_at": "2026-05-25T20:24:14",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "mods/neon_siltlands_core/data/city_gen.json",
+        "mods/neon_siltlands_core/data/classes.json",
+        "mods/neon_siltlands_core/data/facilities.json",
+        "mods/neon_siltlands_core/data/items.json",
+        "mods/neon_siltlands_core/data/professions.json",
+        "mods/neon_siltlands_core/data/races.json",
+        "mods/neon_siltlands_core/data/world_config.json"
+      ],
+      "summary": "written_count=8"
+    },
+    {
+      "fingerprint": "7157e841d5c2f2106510e467c705069c84c7e6bd075d8fd46ae04e064e818fb6",
+      "patch_name": "fix_neon_siltlands_missing_era_location_file",
+      "applied_at": "2026-05-25T20:34:24",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "mods/neon_siltlands_core/data/eras.json",
+        "mods/neon_siltlands_core/data/locations_rebirth.json",
+        "mods/neon_siltlands_core/mod.json"
+      ],
+      "summary": "written_count=4"
+    },
+    {
+      "fingerprint": "d35eee8fff08e92cf843b2cfda4ac38b39872d2f64f36fff33cf94a9609047a4",
+      "patch_name": "add_runtime_log_and_auto_disable_broken_mods",
+      "applied_at": "2026-05-25T20:40:42",
+      "files": [
+        "NOTES.md",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "index.html",
+        "js/core/runtimeLog.js",
+        "js/mods/ModLoader.js",
+        "js/mods/ModLoaderIntegration.js",
+        "js/mods/ModManagerUI.js",
+        "main.js",
+        "preload.js",
+        "tools/runtime_smoke_check.js"
+      ],
+      "summary": "written_count=11"
+    },
+    {
+      "fingerprint": "537b638d95579eef21707534a0f1ceb4b21b5cf552b641a16aa46b3d9d5cc352",
+      "patch_name": "fix_character_creation_stats_runtime_resolver",
+      "applied_at": "2026-05-25T21:38:04",
+      "files": [
+        "NOTES.md",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "index.html",
+        "js/core/characterStatsResolver.js",
+        "script.js",
+        "tools/runtime_smoke_check.js"
+      ],
+      "summary": "written_count=7"
+    },
+    {
+      "fingerprint": "9965fc365bfa43bb9985016b3b0b97b2322d2a0f1d1dec0040b725f83fa76624",
+      "patch_name": "enforce_character_stats_contract_preflight",
+      "applied_at": "2026-05-25T22:53:04",
+      "files": [
+        "NOTES.md",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "js/core/characterStatsResolver.js",
+        "js/mods/ModLoader.js",
+        "js/mods/ModLoaderIntegration.js",
+        "tools/runtime_smoke_check.js",
+        "tools/verify_character_stats_contract.js"
+      ],
+      "summary": "written_count=8"
+    },
+    {
+      "fingerprint": "b0cbba13bdafbd85871bdbdb73ac5c046d6508ead84408da548446bc3c3bce24",
+      "patch_name": "git_checkpoint_runtime_log_mod_guard_and_character_stats_architecture",
+      "applied_at": "2026-05-25T22:59:31",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "f8473182498c459721dcce8826c1d08d8cc50c3b272b6c7faf3999db100575d9",
+      "patch_name": "harden_mod_runtime_followup_watchdog_tests_disabled_ui",
+      "applied_at": "2026-05-25T23:24:15",
+      "files": [
+        "NOTES.md",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "js/mods/ModManagerUI.js",
+        "script.js",
+        "tests/character_stats_resolver.test.js",
+        "tools/full_verify.js",
+        "tools/runtime_smoke_check.js"
+      ],
+      "summary": "written_count=8"
+    },
+    {
+      "fingerprint": "50dd77cdca8fc5155c6d9e66d6c18723528af3d473350296dd1cbcd56c984b56",
+      "patch_name": "git_checkpoint_mod_runtime_hardening_followup",
+      "applied_at": "2026-05-25T23:29:28",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "08faa97754ca6bb5551630a333b0b20b5e131d44b9a8cc9fb63b71cd0ef420c8",
+      "patch_name": "cleanup_legacy_character_stat_globals",
+      "applied_at": "2026-05-25T23:33:16",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "js/core/constants.js",
+        "js/mods/ModLoaderIntegration.js"
+      ],
+      "summary": "written_count=4"
+    },
+    {
+      "fingerprint": "f36a36a0ecdacd3a250867ad51c7312ff83873d5e33201c5cbd99d3f889bd09e",
+      "patch_name": "retry_legacy_character_stats_cleanup_checks",
+      "applied_at": "2026-05-25T23:38:58",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "fe395172ba7251148d210351c7ffcf9c561c44b32ac582b4bf1c87bb2f3c1762",
+      "patch_name": "git_checkpoint_cleanup_legacy_character_stats_globals",
+      "applied_at": "2026-05-25T23:42:13",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "6fb4356dc15e66cd07f3a7fbc42c480f023367ecb8f9d4d5a1c195dd33a88de3",
+      "patch_name": "git_checkpoint_cleanup_legacy_character_stats_globals",
+      "applied_at": "2026-05-26T13:32:34",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "82914988b5bbe4db10a3ad0387fbdff0604062eed5a633e91114d6c19718274d",
+      "patch_name": "add_mod_runtime_e2e_flow_test",
+      "applied_at": "2026-05-26T13:37:40",
+      "files": [
+        "NOTES.md",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "tests/mod_runtime_e2e.test.js",
+        "tools/full_verify.js",
+        "tools/runtime_smoke_check.js"
+      ],
+      "summary": "written_count=6"
+    },
+    {
+      "fingerprint": "91f424152591d7521e7311aaa4f6c671de56e181371dddb2cd6a802f5d6d1a71",
+      "patch_name": "retry_mod_runtime_e2e_vm_array_assert_fix",
+      "applied_at": "2026-05-26T13:38:52",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "tests/mod_runtime_e2e.test.js"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "64eaa915a97feae96be5c75c2f6083e3a931085526f8c3df1ecfd17cce87b8d8",
+      "patch_name": "git_checkpoint_mod_runtime_e2e_flow_test",
+      "applied_at": "2026-05-26T13:39:56",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "c11b68cc8f021d7c545b937e1aee5763623f97b281b8e4a99ab1349c0d3465bc",
+      "patch_name": "fix_mod_manager_restart_button_ipc",
+      "applied_at": "2026-05-26T13:44:50",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "js/mods/ModManagerUI.js",
+        "main.js",
+        "preload.js",
+        "tests/mod_runtime_e2e.test.js"
+      ],
+      "summary": "written_count=5"
+    },
+    {
+      "fingerprint": "bb1ff6dc559945a3649d8ad4e3f2e7543ce553972addcbeacffa200c1d0743cf",
+      "patch_name": "git_checkpoint_fix_mod_manager_restart_button_ipc",
+      "applied_at": "2026-05-26T13:45:47",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "58a63e304e8717d2013109e0c2f1c1b6c32d62921847db4041ed6372fdbd7d36",
+      "patch_name": "fix_mojibake_quick_tags_encoding_guard",
+      "applied_at": "2026-05-26T13:59:30",
+      "files": [
+        "NOTES.md",
+        "docs/AI_PATCHER_WORKLOG.md",
+        "docs/DATA_DRIVEN_MIGRATION_PLAN.md",
+        "index.html",
+        "js/core/textEncodingGuard.js",
+        "main.js",
+        "tests/text_encoding_guard.test.js",
+        "tools/full_verify.js",
+        "tools/runtime_smoke_check.js"
+      ],
+      "summary": "written_count=9"
+    },
+    {
+      "fingerprint": "87fed74ae6fd1087af268830d8a3a5bffd2f8523aa39af7404fbfdf3cd05e5c2",
+      "patch_name": "fix_world_startup_watchdog_false_positive",
+      "applied_at": "2026-05-26T14:04:42",
+      "files": [
+        "docs/AI_PATCHER_WORKLOG.md",
+        "script.js",
+        "tests/mod_runtime_e2e.test.js"
+      ],
+      "summary": "written_count=3"
+    }
+  ]
+}
