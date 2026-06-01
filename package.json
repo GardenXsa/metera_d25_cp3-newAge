@@ -8,7 +8,7 @@
     "dist": "electron-builder",
     "verify": "node tools/full_verify.js",
     "test": "bash test_runner.sh",
-    "test:unit": "node tests/character_stats_resolver.test.js && node tests/runtime_data.test.js && node tests/turn_intent_router.test.js && node tests/turn_intent_integration.test.js && node tests/economic_deficit_vector.test.js && node tests/deep_setup_start_mode_guard.test.js && node tests/scene_visual_assets.test.js && node tests/scene_visual_integration.test.js",
+    "test:unit": "node tests/character_stats_resolver.test.js && node tests/runtime_data.test.js && node tests/turn_intent_router.test.js && node tests/turn_intent_integration.test.js && node tests/economic_deficit_vector.test.js && node tests/deep_setup_start_mode_guard.test.js && node tests/save_manager.test.js && node tests/tts_text_filter.test.js && node tests/scene_visual_assets.test.js && node tests/scene_visual_integration.test.js",
     "test:smoke": "bash test_runner.sh --smoke-only"
   },
   "author": "MrKins_XP",

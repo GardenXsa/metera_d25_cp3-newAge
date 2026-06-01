@@ -47,6 +47,45 @@ function processSaveBlock(parsed, rawWorld) {
     return {};
 }
 
+function getSaveLoadWorldFileTimeoutMs() {
+    const override = Number(window && window.__saveLoadWorldFileTimeoutMs);
+    if (Number.isFinite(override) && override > 0) return override;
+    return 15000;
+}
+
+function waitForSaveLoadWorldFile(loadPromise, timeoutMs) {
+    return new Promise((resolve) => {
+        let settled = false;
+        const timeoutId = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            resolve({
+                status: 'timeout',
+                timedOut: true,
+                message: `nexusLoadWorldFile timed out after ${timeoutMs}ms`
+            });
+        }, timeoutMs);
+
+        Promise.resolve(loadPromise).then(
+            (result) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeoutId);
+                resolve(result);
+            },
+            (err) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeoutId);
+                resolve({
+                    status: 'error',
+                    message: err && err.message ? err.message : String(err)
+                });
+            }
+        );
+    });
+}
+
 async function saveGame(slotType, slotId) {
     if (_saving) return false;
     _saving = true;
@@ -349,13 +388,36 @@ async function loadGame(slotType, slotId) {
             console.log("[SaveManager] Файловая синхронизация загруженного мира с ядром...");
 
             if (window.electronAPI.nexusWriteSyncFile && window.electronAPI.nexusLoadWorldFile) {
+                let loadWorldFileStillPending = false;
                 try {
                     window._engineHeavyOpInProgress = true;
                     const writeRes = await window.electronAPI.nexusWriteSyncFile(worldFileData);
                     if (writeRes.status === 'ok' && writeRes.path) {
-                        const loadRes = await window.electronAPI.nexusLoadWorldFile(writeRes.path);
+                        const loadPromise = window.electronAPI.nexusLoadWorldFile(writeRes.path);
+                        const loadRes = await waitForSaveLoadWorldFile(loadPromise, getSaveLoadWorldFileTimeoutMs());
                         if (loadRes.status === 'ok') {
                             console.log("[SaveManager] Файловая синхронизация мира завершена:", loadRes.message);
+                        } else if (loadRes.timedOut) {
+                            loadWorldFileStillPending = true;
+                            window._saveLoadWorldFileSyncPromise = loadPromise;
+                            console.warn("[SaveManager] loadWorldFile timed out during save load; continuing UI restore:", loadRes.message);
+                            Promise.resolve(loadPromise)
+                                .then((lateRes) => {
+                                    if (lateRes && lateRes.status === 'ok') {
+                                        console.log("[SaveManager] Background loadWorldFile completed:", lateRes.message);
+                                    } else {
+                                        console.warn("[SaveManager] Background loadWorldFile failed:", lateRes && (lateRes.message || lateRes.error) || 'unknown error');
+                                    }
+                                })
+                                .catch((lateErr) => {
+                                    console.warn("[SaveManager] Background loadWorldFile error:", lateErr && lateErr.message || lateErr);
+                                })
+                                .finally(() => {
+                                    if (window._saveLoadWorldFileSyncPromise === loadPromise) {
+                                        window._saveLoadWorldFileSyncPromise = null;
+                                        window._engineHeavyOpInProgress = false;
+                                    }
+                                });
                         } else {
                             console.warn("[SaveManager] loadWorldFile не удался:", loadRes.message || loadRes.error || 'unknown error');
                         }
@@ -365,7 +427,7 @@ async function loadGame(slotType, slotId) {
                 } catch (err) {
                     console.warn("[SaveManager] Ошибка файловой синхронизации:", err.message || err);
                 } finally {
-                    window._engineHeavyOpInProgress = false;
+                    if (!loadWorldFileStillPending) window._engineHeavyOpInProgress = false;
                 }
             } else if (window.electronAPI.nexusSyncState) {
                 // Fallback на stdin-синхронизацию если файловые IPC недоступны

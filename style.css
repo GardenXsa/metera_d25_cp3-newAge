@@ -693,12 +693,16 @@ body {
 }
 
 .scene-visual-card {
+    position: relative;
     display: grid;
     grid-template-columns: minmax(118px, 34%) 1fr;
     gap: 12px;
     align-items: stretch;
+    width: 100%;
+    max-width: 100%;
     margin: 0 28px 14px 0;
     min-height: 94px;
+    box-sizing: border-box;
     border-radius: 8px;
     overflow: hidden;
     background: rgba(4, 8, 12, 0.52);
@@ -708,14 +712,19 @@ body {
 
 .scene-visual-card.scene-visual-mode-wide {
     grid-template-columns: 1fr;
-    min-height: 168px;
+    min-height: 128px;
     margin-right: 0;
 }
 
-.scene-visual-card.scene-visual-mode-wide .scene-visual-media,
+.scene-visual-card.scene-visual-mode-wide .scene-visual-media {
+    height: clamp(128px, 24vh, 220px);
+    min-height: 128px;
+}
+
 .scene-visual-card.scene-visual-mode-wide .scene-visual-media img,
 .scene-visual-card.scene-visual-mode-wide .scene-visual-placeholder {
-    min-height: 154px;
+    height: 100%;
+    min-height: 0;
 }
 
 .scene-visual-card.scene-visual-mode-wide .scene-visual-meta {
@@ -745,6 +754,7 @@ body {
     min-height: 94px;
     background: radial-gradient(circle at 30% 20%, rgba(93, 173, 226, 0.26), rgba(5, 8, 12, 0.94) 62%);
     position: relative;
+    overflow: hidden;
 }
 
 .scene-visual-media img {
@@ -817,6 +827,52 @@ body {
     background: rgba(93, 173, 226, 0.55);
     color: #fff;
     transform: translateY(-1px);
+}
+
+.scene-visual-restore {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    max-width: 100%;
+    margin: 0 0 12px 0;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px dashed rgba(93, 173, 226, 0.28);
+    background: rgba(4, 8, 12, 0.34);
+    color: rgba(207, 216, 227, 0.76);
+    font-size: 0.78em;
+    line-height: 1.25;
+}
+
+.scene-visual-restore-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.scene-visual-restore-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    margin: 0;
+    padding: 5px 8px;
+    border-radius: 5px;
+    border: 1px solid rgba(93, 173, 226, 0.26);
+    background: rgba(93, 173, 226, 0.12);
+    color: #d7e9f7;
+    font-size: 0.82em;
+    cursor: pointer;
+    box-shadow: none;
+}
+
+.scene-visual-restore-btn:hover {
+    background: rgba(93, 173, 226, 0.28);
+    color: #fff;
+    transform: none;
 }
 
 .scene-visual-title {
@@ -4460,6 +4516,21 @@ button:hover {
 .game-log {
     mask-image: linear-gradient(to bottom, transparent 0%, black 3%, black 97%, transparent 100%) !important;
     -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 3%, black 97%, transparent 100%) !important;
+}
+
+.game-log.panel {
+    transform: none !important;
+    transition: scrollbar-color 0.2s ease !important;
+}
+
+.game-log.panel:hover {
+    transform: none !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+}
+
+.game-log.panel::before {
+    display: none !important;
 }
 
 /* --- RPG CHAT BUBBLE ENHANCEMENTS --- */

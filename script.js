@@ -13239,8 +13239,8 @@ function createSceneVisualCard(asset, scene, settings = getSceneVisualSettings()
     hideBtn.title = 'Скрыть визуал этой сцены';
     hideBtn.addEventListener('click', (event) => {
         event.stopPropagation();
-        card.remove();
         if (currentHistoryEntry) currentHistoryEntry.sceneVisualHidden = true;
+        card.replaceWith(createSceneVisualRestoreCard(message, currentHistoryEntry));
     });
 
     actions.appendChild(rerollBtn);
@@ -13249,6 +13249,32 @@ function createSceneVisualCard(asset, scene, settings = getSceneVisualSettings()
     card.appendChild(meta);
     card.appendChild(actions);
     return card;
+}
+
+function createSceneVisualRestoreCard(message = '', currentHistoryEntry = null) {
+    const restore = document.createElement('div');
+    restore.className = 'scene-visual-restore';
+
+    const label = document.createElement('span');
+    label.className = 'scene-visual-restore-label';
+    label.textContent = 'Visual hidden';
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'scene-visual-restore-btn';
+    button.innerHTML = '<i class="fas fa-eye"></i><span>Restore</span>';
+    button.title = 'Restore scene visual';
+    button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (currentHistoryEntry) currentHistoryEntry.sceneVisualHidden = false;
+        const bubble = restore.closest('.message-bubble');
+        restore.remove();
+        if (bubble) attachSceneVisualToBubble(bubble, message, currentHistoryEntry);
+    });
+
+    restore.appendChild(label);
+    restore.appendChild(button);
+    return restore;
 }
 
 function createSceneEpisodeHeader(scene, asset = null) {
@@ -13299,6 +13325,20 @@ function findSceneAssetById(registry, assetId) {
     return (registry.assets || []).find(asset => asset.id === assetId) || null;
 }
 
+function ensureSceneEpisodeFrame(bubbleElement) {
+    let episodeFrame = bubbleElement.querySelector('.scene-episode-frame');
+    if (episodeFrame) return episodeFrame;
+
+    episodeFrame = document.createElement('div');
+    episodeFrame.className = 'scene-episode-frame';
+    const narrativeNodes = Array.from(bubbleElement.childNodes).filter(node => {
+        return !(node.nodeType === Node.ELEMENT_NODE && node.classList && node.classList.contains('tts-controls-wrapper'));
+    });
+    for (const node of narrativeNodes) episodeFrame.appendChild(node);
+    bubbleElement.insertBefore(episodeFrame, bubbleElement.firstChild);
+    return episodeFrame;
+}
+
 async function rerollSceneVisualCard(card, message, currentHistoryEntry = null) {
     if (!card || !card.parentElement || !window.SceneTagger || !window.SceneAssetPicker) return;
     const bundle = await ensureSceneVisualRegistry();
@@ -13328,7 +13368,16 @@ async function rerollSceneVisualCard(card, message, currentHistoryEntry = null) 
 async function attachSceneVisualToBubble(bubbleElement, message, currentHistoryEntry = null) {
     if (!bubbleElement || !window.SceneTagger || !window.SceneAssetPicker) return;
     if (bubbleElement.querySelector('.scene-visual-card')) return;
-    if (currentHistoryEntry?.sceneVisualHidden) return;
+    if (currentHistoryEntry?.sceneVisualHidden) {
+        const episodeFrame = ensureSceneEpisodeFrame(bubbleElement);
+        if (!episodeFrame.querySelector('.scene-visual-restore')) {
+            const restore = createSceneVisualRestoreCard(message, currentHistoryEntry);
+            const narrativeBody = episodeFrame.querySelector('.scene-narrative-body');
+            if (narrativeBody) episodeFrame.insertBefore(restore, narrativeBody);
+            else episodeFrame.appendChild(restore);
+        }
+        return;
+    }
 
     const bundle = await ensureSceneVisualRegistry();
     if (!bundle || !document.body.contains(bubbleElement)) return;
@@ -13350,16 +13399,7 @@ async function attachSceneVisualToBubble(bubbleElement, message, currentHistoryE
         currentHistoryEntry.sceneTags = scene.tags;
     }
 
-    let episodeFrame = bubbleElement.querySelector('.scene-episode-frame');
-    if (!episodeFrame) {
-        episodeFrame = document.createElement('div');
-        episodeFrame.className = 'scene-episode-frame';
-        const narrativeNodes = Array.from(bubbleElement.childNodes).filter(node => {
-            return !(node.nodeType === Node.ELEMENT_NODE && node.classList && node.classList.contains('tts-controls-wrapper'));
-        });
-        for (const node of narrativeNodes) episodeFrame.appendChild(node);
-        bubbleElement.insertBefore(episodeFrame, bubbleElement.firstChild);
-    }
+    const episodeFrame = ensureSceneEpisodeFrame(bubbleElement);
 
     if (!episodeFrame.querySelector('.scene-episode-header')) {
         episodeFrame.insertBefore(createSceneEpisodeHeader(scene, asset), episodeFrame.firstChild);
@@ -13402,7 +13442,9 @@ function addLogMessage(message, type = "gm-message", isRestoring = false, imageP
         else if (['system-message', 'command-feedback', 'level-up', 'calc-info'].includes(type)) category = 'system';
         else if (type === 'world-event') category = 'world-event';
 
-        let textToSpeak = message;
+        let textToSpeak = typeof TtsTextFilter !== 'undefined'
+            ? TtsTextFilter.prepareSpeechText(message)
+            : message;
     let cleanHtml = "";
 
     // Обработка текста (Markdown, RP-теги, Санитайзер)
@@ -13418,7 +13460,9 @@ function addLogMessage(message, type = "gm-message", isRestoring = false, imageP
                     </div>
                 </div>
             `;
-            textToSpeak = message.replace(/<[^>]*>?/gm, '');
+            textToSpeak = typeof TtsTextFilter !== 'undefined'
+                ? TtsTextFilter.prepareSpeechText(message)
+                : message.replace(/<[^>]*>?/gm, '');
         } else if (type === 'gm-message') {
             let cleanMessage = message.replace(/\[COMMAND:.+?\]/g, '').trim();
             const tempDiv = document.createElement('div');
@@ -13440,14 +13484,15 @@ function addLogMessage(message, type = "gm-message", isRestoring = false, imageP
             cleanHtml = `<div class="scene-narrative-body">${DOMPurify.sanitize(markdownHtml, { ADD_ATTR: ['data-ooc-text'], USE_PROFILES: { html: true } })}</div>`;
 
             // Готовим текст для озвучки (без OOC)
-            const speechTempDiv = document.createElement('div');
-            speechTempDiv.innerHTML = cleanHtml;
-            speechTempDiv.querySelectorAll('.ooc-marker').forEach(m => m.remove());
-            textToSpeak = speechTempDiv.textContent || speechTempDiv.innerText || "";
+            textToSpeak = typeof TtsTextFilter !== 'undefined'
+                ? TtsTextFilter.prepareSpeechTextFromHtml(cleanHtml)
+                : cleanMessage.replace(/\(\(.*?\)\)/g, '').trim();
         } else {
             // Для системных и пользовательских сообщений
             cleanHtml = `<p class="${type}">${DOMPurify.sanitize(message, { USE_PROFILES: { html: true } })}</p>`;
-            textToSpeak = message.replace(/<[^>]*>?/gm, '');
+            textToSpeak = typeof TtsTextFilter !== 'undefined'
+                ? TtsTextFilter.prepareSpeechText(message)
+                : message.replace(/<[^>]*>?/gm, '');
         }
     } catch (e) {
         console.error("Ошибка при рендеринге сообщения:", e);
@@ -13517,6 +13562,7 @@ function addLogMessage(message, type = "gm-message", isRestoring = false, imageP
 
     // --- КНОПКА РУЧНОЙ ОЗВУЧКИ (TTS) ---
     if (textToSpeak && textToSpeak.trim() !== '' && category !== 'system') {
+        const speechText = textToSpeak.trim();
         if (!bubbleElement.querySelector('.tts-controls-wrapper')) {
             const ttsWrapper = document.createElement('div');
             ttsWrapper.className = 'tts-controls-wrapper';
@@ -13563,7 +13609,7 @@ function addLogMessage(message, type = "gm-message", isRestoring = false, imageP
                 }
 
                 // Иначе (состояние idle) - генерируем и запускаем
-                let toRead = bubbleElement.innerText.replace('OOC', '').trim();
+                let toRead = speechText;
 
                 // Сбрасываем UI всех остальных кнопок на странице
                 document.querySelectorAll('.tts-controls-wrapper').forEach(wrapper => {

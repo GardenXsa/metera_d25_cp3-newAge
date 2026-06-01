@@ -16,6 +16,12 @@ assert.match(
 );
 
 assert.match(
+  indexHtml,
+  /<script src="js\/core\/ttsTextFilter\.js"><\/script>[\s\S]*<script src="script\.js"><\/script>/,
+  'index.html should load TTS text filter before script.js'
+);
+
+assert.match(
   script,
   /async function ensureSceneVisualRegistry\(\)/,
   'script.js should load the scene visual registry lazily'
@@ -25,6 +31,18 @@ assert.match(
   script,
   /function attachSceneVisualToBubble\(/,
   'script.js should attach a selected scene visual to GM bubbles'
+);
+
+assert.match(
+  script,
+  /TtsTextFilter\.prepareSpeechTextFromHtml/,
+  'script.js should derive TTS text from filtered narrative HTML'
+);
+
+assert.match(
+  script,
+  /let toRead = speechText;/,
+  'TTS click handler should read the pre-filtered speech text, not the whole bubble DOM'
 );
 
 assert.match(
@@ -123,6 +141,24 @@ assert.match(
 );
 
 assert.match(
+  script,
+  /function createSceneVisualRestoreCard\(/,
+  'script.js should render a restore affordance after a scene visual is hidden'
+);
+
+assert.match(
+  script,
+  /scene-visual-restore-btn/,
+  'script.js should expose a restore button for hidden scene visuals'
+);
+
+assert.match(
+  script,
+  /sceneVisualHidden\s*=\s*false[\s\S]*attachSceneVisualToBubble/,
+  'restore button should clear the hidden flag and reattach the visual'
+);
+
+assert.match(
   style,
   /\.scene-visual-card\.scene-visual-mode-wide/,
   'style.css should support a wide cinematic visual mode'
@@ -132,6 +168,36 @@ assert.match(
   style,
   /\.scene-visual-actions/,
   'style.css should style scene visual card controls'
+);
+
+assert.match(
+  style,
+  /\.scene-visual-restore/,
+  'style.css should style the hidden visual restore placeholder'
+);
+
+assert.match(
+  style,
+  /\.game-log\.panel:hover\s*\{[\s\S]*?transform:\s*none\s*!important;[\s\S]*?\}/,
+  'game log hover should not inherit panel movement that blurs chat text'
+);
+
+assert.match(
+  style,
+  /\.game-log\.panel::before\s*\{[\s\S]*?display:\s*none\s*!important;[\s\S]*?\}/,
+  'game log should not inherit decorative panel hover chrome'
+);
+
+assert.match(
+  style,
+  /\.scene-visual-card\s*\{[\s\S]*?position:\s*relative;[\s\S]*?\}/,
+  'scene visual card should contain absolute title/actions inside itself'
+);
+
+assert.match(
+  style,
+  /\.scene-visual-card\s*\{[\s\S]*?max-width:\s*100%;[\s\S]*?\}/,
+  'scene visual card should not force chat bubbles wider than their container'
 );
 
 assert.match(

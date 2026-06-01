@@ -562,6 +562,42 @@ async function runMutexTests() {
         // that we can call saveGame again without being permanently locked out.
     }
 
+    // --- Test loadGame does not keep the loading screen forever if loadWorldFile stalls ---
+    {
+        const { sandbox } = createSandbox();
+        const blocks = [
+            { block: 'player', data: { name: 'LoaderHero', stats: {}, location: 'town', allKnownEntities: {} } },
+            { block: 'history', data: [] },
+            { block: 'world_base', data: { tick: 12, regions: {}, npcs: {} } },
+            { block: 'item_registry', data: [] },
+            { block: 'container_registry', data: [] },
+        ];
+        const saveContent = blocks.map(block => JSON.stringify(block)).join('\n') + '\n';
+        let loadingHidden = false;
+
+        sandbox.getSaveFileName = () => 'manual_1';
+        sandbox.hideLoadingScreen = () => { loadingHidden = true; };
+        sandbox.window.__saveLoadWorldFileTimeoutMs = 20;
+        sandbox.window.electronAPI = {
+            isElectron: true,
+            getFileSize: async () => saveContent.length,
+            readSaveChunk: async (_fileName, position, length) => saveContent.slice(position, position + length),
+            nexusWriteSyncFile: async () => ({ status: 'ok', path: 'C:\\saves\\__nexus_sync_temp__.json' }),
+            nexusLoadWorldFile: () => new Promise(() => {}),
+        };
+
+        loadSaveManager(sandbox);
+
+        const result = await Promise.race([
+            sandbox.loadGame('manual', 1).then(() => 'loaded'),
+            new Promise(resolve => setTimeout(() => resolve('timeout'), 250))
+        ]);
+
+        assertEqual(result, 'loaded', 'loadGame completes when nexusLoadWorldFile stalls');
+        assert(loadingHidden, 'loadGame hides loading screen after stalled world-file sync timeout');
+        assert(sandbox.window._engineHeavyOpInProgress === true, 'engine heavy-op flag stays set while stalled sync is still pending');
+    }
+
 }
 
 // ===================================================================
