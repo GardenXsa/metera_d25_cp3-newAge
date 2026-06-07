@@ -154,15 +154,71 @@ class _AgentWorker(QThread):
                 temperature=self.cfg.temperature,
                 max_tokens=self.cfg.max_tokens,
             )
+            # ask_user: show a real dialog with buttons for each option
+            def _ask_user(payload: dict) -> str:
+                import threading
+
+                question = payload.get("question", "")
+                options = payload.get("options", [])
+                default_val = payload.get("default", "")
+                result_holder: dict = {"answer": None}
+                answer_event = threading.Event()
+
+                def _show_dialog() -> None:
+                    from PySide6.QtWidgets import QMessageBox
+
+                    msg_box = QMessageBox(self)
+                    msg_box.setWindowTitle("Вопрос агента")
+                    msg_box.setText(question)
+                    msg_box.setIcon(QMessageBox.Question)
+
+                    if options:
+                        buttons = []
+                        for i, opt in enumerate(options):
+                            label = opt if isinstance(opt, str) else opt.get("label", opt.get("value", str(opt)))
+                            value = opt if isinstance(opt, str) else opt.get("value", str(opt))
+                            btn = msg_box.addButton(label, QMessageBox.AcceptRole)
+                            btn.ask_value = value  # type: ignore[attr-defined]
+                            buttons.append(btn)
+                    else:
+                        msg_box.setStandardButtons(QMessageBox.Ok)
+                        msg_box.setInformativeText(f"По умолчанию: {default_val}" if default_val else "Нажмите OK для подтверждения")
+
+                    ret = msg_box.exec()
+
+                    # Find clicked button's value
+                    if options:
+                        for btn in buttons:
+                            if msg_box.clickedButton() == btn:
+                                result_holder["answer"] = getattr(btn, "ask_value", btn.text())
+                                break
+                    else:
+                        result_holder["answer"] = default_val
+                    answer_event.set()
+
+                # Schedule dialog on the GUI thread
+                try:
+                    from PySide6.QtCore import QMetaObject, Qt as QtCompat
+                    QMetaObject.invokeMethod(self, "show", QtCompat.ConnectionType.QueuedConnection)
+                    # Use QTimer to show dialog on main thread
+                    from PySide6.QtCore import QTimer
+                    QTimer.singleShot(0, _show_dialog)
+                except Exception:
+                    result_holder["answer"] = default_val
+                    answer_event.set()
+
+                # Wait up to 5 minutes
+                answer_event.wait(timeout=300)
+                return result_holder["answer"] or default_val
+
+            project_root = str(self.mods_root.parent) if self.mods_root.parent.exists() else str(self.mods_root)
+
             ctx = ToolContext(
                 mods_root=self.mods_root,
                 mod_root=self.mod_path,
                 mode=Mode(self.cfg.permission_mode),
                 confirm=lambda name, args: True,
-                extra={
-                    "ask_user": lambda payload: payload.get("default", "")
-                    or (payload.get("options", [""])[0] if payload.get("options") else ""),
-                },
+                extra={"ask_user": _ask_user, "project_root": project_root},
             )
             registry = build_default_registry(include_shell=False)
             def safe_emit(ev):

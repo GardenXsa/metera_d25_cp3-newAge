@@ -164,8 +164,7 @@ def _drain(
         if len(log_lines) >= MAX_LOG_LINES or total_bytes[0] >= MAX_LOG_BYTES:
             break
         if time.monotonic() >= deadline:
-            # don't break — let the outer loop decide when to stop
-            continue
+            break
 
 
 def _run(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
@@ -222,7 +221,7 @@ def _run(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
         # DevConsole.
         log_body = "\n".join(js_error_lines) or "All mods passed preflight."
         return ToolResult(
-            ok=js_total_errors == 0,
+            ok=False,
             content=log_body,
             data={
                 "engine_path": None,

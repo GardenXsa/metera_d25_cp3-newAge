@@ -415,6 +415,9 @@ def _build_runtime_context(
             return options[chosen]
         return ui.ask(question, default=default_val)
 
+    # project_root = parent of mods_root (game project directory)
+    project_root = str(mods_root.parent) if mods_root.parent.exists() else str(mods_root)
+
     ctx = ToolContext(
         mods_root=mods_root,
         mod_root=mod_root,
@@ -422,7 +425,7 @@ def _build_runtime_context(
         confirm=confirm,
         log=lambda msg: ui.hint(msg),
         shell_cwd=mod_root or mods_root,
-        extra={"ask_user": _ask_user},
+        extra={"ask_user": _ask_user, "project_root": project_root},
     )
     return registry, ctx
 

@@ -903,25 +903,82 @@ class ModKitApp(App):
         mods_root = self._mods_root
         mod_root = (mods_root / self.current_mod) if self.current_mod else None
         def _ask_user(payload: dict) -> str:
-            """TUI ask_user handler: log question, return default or first option."""
+            """TUI ask_user handler: show dialog and wait for user response."""
+            import threading
+
             question = payload.get("question", "")
             options = payload.get("options", [])
             default_val = payload.get("default", "")
-            self.call_from_thread(
-                log.write,
-                f"[yellow]? {question}[/yellow]"
-                + (f" (default: {default_val})" if default_val else ""),
-            )
-            if options:
-                return options[0] if isinstance(options[0], str) else options[0].get("value", str(options[0]))
-            return default_val
+            result_holder: dict = {"answer": None}
+            answer_event = threading.Event()
+
+            def _show_dialog() -> None:
+                from textual.widgets import Static, Button
+                from textual.containers import Vertical
+
+                class AskDialog(ModalScreen[str]):
+                    """Modal dialog that asks the user a question."""
+
+                    def __init__(self, q: str, opts: list, dv: str) -> None:
+                        super().__init__()
+                        self.q = q
+                        self.opts = opts
+                        self.dv = dv
+
+                    def compose(self) -> ComposeResult:
+                        with Vertical(id="ask-dialog"):
+                            yield Static(self.q)
+                            if self.opts:
+                                for i, opt in enumerate(self.opts):
+                                    label = opt if isinstance(opt, str) else opt.get("label", opt.get("value", str(opt)))
+                                    value = opt if isinstance(opt, str) else opt.get("value", str(opt))
+                                    btn = Button(label, id=f"opt-{i}", classes="ask-option")
+                                    btn.ask_value = value  # type: ignore[attr-defined]
+                                    yield btn
+                            else:
+                                yield Static(f"[default: {self.dv}]" if self.dv else "(press Enter to confirm)")
+
+                    @on(Button.Pressed, ".ask-option")
+                    def _on_option(self, event: Button.Pressed) -> None:
+                        val = getattr(event.button, "ask_value", event.button.label.plain)
+                        result_holder["answer"] = val
+                        answer_event.set()
+                        self.dismiss(val)
+
+                    def key_enter(self) -> None:
+                        result_holder["answer"] = self.dv
+                        answer_event.set()
+                        self.dismiss(self.dv)
+
+                    def key_escape(self) -> None:
+                        result_holder["answer"] = self.dv
+                        answer_event.set()
+                        self.dismiss(self.dv)
+
+                try:
+                    app_inst = self.app
+                    dialog = AskDialog(question, options, default_val)
+                    app_inst.call_from_thread(app_inst.push_screen, dialog)
+                except Exception:
+                    # Fallback: return default if dialog fails
+                    result_holder["answer"] = default_val
+                    answer_event.set()
+
+            _show_dialog()
+
+            # Wait up to 5 minutes for the user to answer
+            answer_event.wait(timeout=300)
+            return result_holder["answer"] or default_val
+
+        # project_root = parent of mods_root (game project directory)
+        project_root = str(mods_root.parent) if mods_root.parent.exists() else str(mods_root)
 
         ctx = ToolContext(
             mods_root=mods_root,
             mod_root=mod_root,
             mode=Mode(self.cfg.permission_mode),
             confirm=lambda name, args: True,  # UI handles prompting via Dialog
-            extra={"ask_user": _ask_user},
+            extra={"ask_user": _ask_user, "project_root": project_root},
         )
         registry = build_default_registry(include_shell=bool(self.cfg.provider))
 

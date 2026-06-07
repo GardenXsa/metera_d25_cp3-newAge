@@ -155,6 +155,7 @@ def run_agent(
                 notify(AgentEvent(kind="assistant_text", text=f"[autonomous nudge] {nudge}"))
                 continue
             notify(AgentEvent(kind="done", text=turn.text))
+            notify(AgentEvent(kind="operation_log", text=json.dumps(operation_log, ensure_ascii=False)))
             return messages
 
         for call in all_calls:
