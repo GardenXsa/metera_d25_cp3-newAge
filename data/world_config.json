@@ -1,0 +1,134 @@
+{
+  "map_width": 256,
+  "map_height": 256,
+  "landform": "continent",
+  "continent": {
+    "noise_frequency": 2.5,
+    "noise_octaves": 6,
+    "elevation_shift": 0.3,
+    "edge_falloff_power": 2.0,
+    "edge_falloff_range": 0.6,
+    "edge_ocean_elevation": -0.5,
+    "min_land_ratio": 0.5,
+    "connectivity_pass": true,
+    "land_bridge_max_gap": 4,
+    "remove_islands_under": 80,
+    "smoothing_passes": 2
+  },
+  "rivers": {
+    "noise_frequency": 3.0,
+    "noise_octaves": 3,
+    "threshold_default": 0.02,
+    "threshold_plains": 0.035,
+    "threshold_mountains": 0.012
+  },
+  "volcanoes": {
+    "count": 5,
+    "min_radius": 3,
+    "max_radius": 6
+  },
+  "location_size_thresholds": {
+    "city": 5000,
+    "village": 1,
+    "ruins": -1
+  },
+  "default_era": "rebirth",
+  "default_race_field": "base_race",
+  "months": [
+    {
+      "id": "morning_star",
+      "name_i18n_key": "months.morningStar"
+    },
+    {
+      "id": "ice_break",
+      "name_i18n_key": "months.iceBreak"
+    },
+    {
+      "id": "wind_blow",
+      "name_i18n_key": "months.windBlow"
+    },
+    {
+      "id": "blossom",
+      "name_i18n_key": "months.blossom"
+    },
+    {
+      "id": "solstice",
+      "name_i18n_key": "months.solstice"
+    },
+    {
+      "id": "heat_month",
+      "name_i18n_key": "months.heatMonth"
+    },
+    {
+      "id": "harvest",
+      "name_i18n_key": "months.harvest"
+    },
+    {
+      "id": "leaf_fall",
+      "name_i18n_key": "months.leafFall"
+    },
+    {
+      "id": "chill",
+      "name_i18n_key": "months.chill"
+    },
+    {
+      "id": "dead_moon",
+      "name_i18n_key": "months.deadMoon"
+    },
+    {
+      "id": "dark_frontier",
+      "name_i18n_key": "months.darkFrontier"
+    },
+    {
+      "id": "year_end",
+      "name_i18n_key": "months.yearEnd"
+    }
+  ],
+  "time_periods": [
+    {
+      "id": "night",
+      "name_i18n_key": "time.night",
+      "start_hour": 22,
+      "end_hour": 6
+    },
+    {
+      "id": "morning",
+      "name_i18n_key": "time.morning",
+      "start_hour": 6,
+      "end_hour": 10
+    },
+    {
+      "id": "day",
+      "name_i18n_key": "time.day",
+      "start_hour": 10,
+      "end_hour": 18
+    },
+    {
+      "id": "evening",
+      "name_i18n_key": "time.evening",
+      "start_hour": 18,
+      "end_hour": 22
+    }
+  ],
+  "biomes_legacy_numeric_ids": [
+    "ocean",
+    "shallow_water",
+    "beach",
+    "plains",
+    "forest",
+    "mountains",
+    "hills",
+    "desert",
+    "swamp",
+    "tundra",
+    "ruins",
+    "anomaly",
+    "river",
+    "volcano",
+    "riverbank",
+    "lake",
+    "floodplain",
+    "lava",
+    "ash"
+  ]
+}

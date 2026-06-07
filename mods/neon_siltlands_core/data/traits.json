@@ -1,0 +1,5 @@
+[
+  { "id": "salt_patient", "name": "Соляное терпение", "personality_bias": { "aggression": -1, "greed": 0, "curiosity": 1 } },
+  { "id": "blackwater_nerve", "name": "Нерв Чёрной воды", "personality_bias": { "aggression": 1, "greed": 0, "curiosity": 0 } },
+  { "id": "memory_hungry", "name": "Голод памяти", "personality_bias": { "aggression": 0, "greed": 2, "curiosity": 2 } }
+]

@@ -1,0 +1,8 @@
+{
+  "black_lantern": { "name": "Чёрный Фонарь", "type": "city", "description": "Главный город на иловом берегу. Его маяк больше не светит, но всё ещё гудит по ночам.", "placement": "center", "x": 0, "y": 0 },
+  "saltmarket": { "name": "Соляной Рынок", "type": "village", "description": "Торговая стоянка на дамбе между тёмными водами.", "placement": "coast", "x": 80, "y": -40 },
+  "glassfall": { "name": "Стеклопад", "type": "ruins", "description": "Руины старого завода, засыпанные стеклянной пылью.", "placement": "desert", "x": -90, "y": 70 },
+  "memory_spire": { "name": "Шпиль Памяти", "type": "observatory", "description": "Башня Люменов, где осколки прошлого хранятся как валюта.", "placement": "mountain", "x": 110, "y": 90 },
+  "tar_harbor": { "name": "Смоляная Гавань", "type": "village", "description": "Грязный порт, где чинят лодки, телеги и старые механизмы.", "placement": "swamp", "x": -120, "y": -80 },
+  "warden_fort": { "name": "Форт Стражей", "type": "fort", "description": "Каменный форт на дороге к Чёрной воде.", "placement": "hills", "x": 60, "y": 120 }
+}

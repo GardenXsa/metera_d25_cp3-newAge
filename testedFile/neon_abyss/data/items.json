@@ -1,0 +1,17 @@
+{
+    "neon_injector": { 
+        "basePrice": 150, 
+        "category": "potion", 
+        "names": {"rebirth": "Неоновый Инъектор", "architects": "Неоновый Инъектор", "sundering": "Неоновый Инъектор", "silence": "Неоновый Инъектор"} 
+    },
+    "scrap_blade": { 
+        "basePrice": 50, 
+        "category": "weapon", 
+        "names": {"rebirth": "Термо-Резак из Мусора", "architects": "Термо-Резак из Мусора", "sundering": "Термо-Резак из Мусора", "silence": "Термо-Резак из Мусора"} 
+    },
+    "cyber_deck": { 
+        "basePrice": 500, 
+        "category": "tool", 
+        "names": {"rebirth": "Кибер-Дека 'Нейромант'", "architects": "Кибер-Дека 'Нейромант'", "sundering": "Кибер-Дека 'Нейромант'", "silence": "Кибер-Дека 'Нейромант'"} 
+    }
+}

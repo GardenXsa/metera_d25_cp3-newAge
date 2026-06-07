@@ -1,0 +1,53 @@
+{
+  "name": "chronicles-of-meterea",
+  "version": "0.4.0",
+  "description": "AI Text RPG Adventure",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "verify": "node tools/full_verify.js",
+    "test": "bash test_runner.sh",
+    "test:unit": "node tests/character_stats_resolver.test.js && node tests/runtime_data.test.js && node tests/vanilla_data_lore_conformance.test.js && node tests/vanilla_map_palette.test.js && node tests/cartographer_bridge_rendering.test.js && node tests/turn_intent_router.test.js && node tests/turn_intent_integration.test.js && node tests/gm_response_contract.test.js && node tests/combat_start_guard.test.js && node tests/scene_pressure_clock.test.js && node tests/quest_deadline.test.js && node tests/suggested_action_presenter.test.js && node tests/combat_turn_presenter.test.js && node tests/combat_intent_resolver.test.js && node tests/level_progression_presenter.test.js && node tests/objective_tracker_presenter.test.js && node tests/objective_tracker_layout_static.test.js && node tests/travel_choice_router.test.js && node tests/entity_stat_validator.test.js && node tests/skill_cost_resolver.test.js && node tests/game_state_stability_static.test.js && node tests/environment_feedback_static.test.js && node tests/economic_deficit_vector.test.js && node tests/deep_setup_start_mode_guard.test.js && node tests/save_manager.test.js && node tests/tts_text_filter.test.js && node tests/scene_visual_assets.test.js && node tests/scene_visual_integration.test.js && node tests/live_game_simulation.test.js && node tests/ai_error_retry_button.test.js && node tests/environment_visibility_fuzzy.test.js && node tests/world_lore_cache_invalidation.test.js && node tests/era_lore_cyberpunk_removal.test.js && node tests/genre_lock_high_fantasy.test.js",
+    "test:smoke": "bash test_runner.sh --smoke-only"
+  },
+  "author": "MrKins_XP",
+  "license": "UNLICENSED",
+  "private": true,
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.0",
+    "puppeteer-core": "^25.1.0"
+  },
+  "build": {
+    "appId": "com.mrkins.meterea",
+    "productName": "Chronicles of Meterea",
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Chronicles of Meterea",
+      "runAfterFinish": true
+    },
+    "asarUnpack": [
+      "assets/tts/**/*"
+    ],
+    "extraResources": [
+      "engine/meterea_engine.exe",
+      "engine/meterea_engine"
+    ],
+    "directories": {
+      "output": "dist"
+    }
+  }
+}

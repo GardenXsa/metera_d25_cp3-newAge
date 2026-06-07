@@ -1,0 +1,231 @@
+{
+  "version": 1,
+  "patches": [
+    {
+      "fingerprint": "bed2901630bc32ace7e5ecfb5aef249fa34b8f4ce3924786f4625cb2a609ac23",
+      "patch_name": "Improve AI chat UI with bubbles",
+      "applied_at": "2026-06-03T23:47:36",
+      "files": [
+        "modkit/gui/main_window.py",
+        "tests/test_gui.py"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "f0deae0de371007b558d4d5eaec42d6ee4d857d161629021ad9fc1c473975bc3",
+      "patch_name": "Fix textual crash when launched without console",
+      "applied_at": "2026-06-03T23:51:58",
+      "files": [
+        "modkit/__main__.py",
+        "modkit/cli.py"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "4f78bc774e0c40b06ef66d94180a508c682c319aed353f683c6942ec2cd14277",
+      "patch_name": "Fix PyInstaller missing PySide6",
+      "applied_at": "2026-06-03T23:56:17",
+      "files": [
+        "build.bat",
+        "modkit/cli.py"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "3187bc0affb91f2d9a6b8a4f44e0af8d6efe794a79ac56d1caf9e8e5690a11f8",
+      "patch_name": "Show real GUI traceback",
+      "applied_at": "2026-06-04T00:05:27",
+      "files": [
+        "modkit/cli.py"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "ee7afcff28c84b09553488670bea195a888cb3b77fc826c6dedaa8f1e0ff8b7e",
+      "patch_name": "Fix PyInstaller cache and imports",
+      "applied_at": "2026-06-04T00:38:40",
+      "files": [
+        "build.bat",
+        "modkit/cli.py"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "e55ec81533232e33a728ca12eb922aa816d195656efb1256c686810d898e726b",
+      "patch_name": "Fix Syntax Errors in main_window.py",
+      "applied_at": "2026-06-04T00:44:10",
+      "files": [
+        "modkit/gui/main_window.py"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "89e13dfd0d2f2c49f81896c23e43d310e47a28a0420cb9eaad0d2cfc744672e8",
+      "patch_name": "Fix Agent Context Loss",
+      "applied_at": "2026-06-04T01:20:32",
+      "files": [
+        "modkit/gui/main_window.py",
+        "modkit/tui/app.py"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "d500af15e01e23828c1ca2e1d29055b37dc1d23c7a5e2fa267a4169d3024ef24",
+      "patch_name": "Add Ping and Model Fetching",
+      "applied_at": "2026-06-04T02:12:15",
+      "files": [
+        "modkit/gui/dialogs.py",
+        "modkit/providers/anthropic.py",
+        "modkit/providers/base.py",
+        "modkit/providers/gemini.py",
+        "modkit/providers/http.py",
+        "modkit/providers/openai.py"
+      ],
+      "summary": "written_count=6"
+    },
+    {
+      "fingerprint": "d3ed725958b8a58c80619a503f9019d60242cf658b9baa01fba5e7d27c7f8a95",
+      "patch_name": "Fix tool_choice and HTML errors",
+      "applied_at": "2026-06-04T03:21:36",
+      "files": [
+        "modkit/providers/anthropic.py",
+        "modkit/providers/gemini.py",
+        "modkit/providers/openai.py"
+      ],
+      "summary": "written_count=3"
+    },
+    {
+      "fingerprint": "92905508b5777d3c7c06253f1077235809029a2aa514d24b3e24930903ce169a",
+      "patch_name": "Fix silent crashes on AI agent response",
+      "applied_at": "2026-06-04T03:33:40",
+      "files": [
+        "modkit/gui/main_window.py",
+        "modkit/providers/anthropic.py",
+        "modkit/providers/gemini.py",
+        "modkit/providers/openai.py",
+        "modkit/tui/app.py"
+      ],
+      "summary": "written_count=5"
+    },
+    {
+      "fingerprint": "9701087ba2bec3c26707e1e2bc536bc20b9b0019a1e39b87544105b29785c1ce",
+      "patch_name": "Separate ping and model loading, cache models",
+      "applied_at": "2026-06-04T03:49:10",
+      "files": [
+        "modkit/gui/dialogs.py"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "228a7fd51cfd41d528c2f4a1bd12b17449e206b1075d963b3324916614cef087",
+      "patch_name": "Add chat commands, planning mode, save/load and backups",
+      "applied_at": "2026-06-04T03:56:02",
+      "files": [
+        "modkit/gui/main_window.py",
+        "modkit/providers/base.py",
+        "modkit/tui/app.py"
+      ],
+      "summary": "written_count=4"
+    },
+    {
+      "fingerprint": "eaeb5dc6c42faca70f0ec53ff26a944431c420332de228210621fa7f2120147f",
+      "patch_name": "Fix CLI chat commands (encoding issue)",
+      "applied_at": "2026-06-04T03:57:47",
+      "files": [
+        "modkit/cli.py"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "0a61dadeddf838722b1a2889f9045060be63946b1bfc9e4b605bac0847e056fc",
+      "patch_name": "Fix Base URL not clearing on provider switch",
+      "applied_at": "2026-06-04T04:09:53",
+      "files": [
+        "modkit/gui/dialogs.py"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "64b114ddfda4c31038a3ebf39d00c6e03afbb722b9b7935a45b70d09f444d07d",
+      "patch_name": "Add LLMost provider",
+      "applied_at": "2026-06-04T04:12:28",
+      "files": [
+        "modkit/providers/registry.py"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "b78a828da7e80f15712dbf3f2886104d32e0a3de12290842fcd4c7ee39a2a2ae",
+      "patch_name": "Fix model list caching and clearing on provider switch",
+      "applied_at": "2026-06-04T04:19:39",
+      "files": [
+        "modkit/gui/dialogs.py"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "2f3beeb7302a99075d143caa264bc4dcd87ea22fdd5d86efedb02e362fd4de9e",
+      "patch_name": "Fix missing _run_agent method in GUI",
+      "applied_at": "2026-06-04T04:30:23",
+      "files": [
+        "modkit/gui/main_window.py"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "e4b2d89946c825fe2c0709d92d730703580549bc35064c8af8ef07e233eeb77a",
+      "patch_name": "Add autocompletion for chat commands in GUI and TUI",
+      "applied_at": "2026-06-04T04:32:28",
+      "files": [
+        "modkit/gui/main_window.py",
+        "modkit/tui/app.py"
+      ],
+      "summary": "written_count=2"
+    },
+    {
+      "fingerprint": "7679c65e1b183766b63b73661844f3130e063ddc18cd76e39ce33c94f92502f4",
+      "patch_name": "Update system prompt to make agent a proactive modder",
+      "applied_at": "2026-06-04T04:40:13",
+      "files": [
+        "modkit/agent.py"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "515a15d55fb23686c476938094537a85400432467b64756cdc86867ccc11b9a8",
+      "patch_name": "Force agent to write extensive, deep and complete game content",
+      "applied_at": "2026-06-04T04:41:36",
+      "files": [
+        "modkit/agent.py"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "facfae6765db829b3a71cd78f6bcc4df33ad6e76e16de3f04045f95c38463ac8",
+      "patch_name": "Deeply detailed master-modder system prompt in f-string format",
+      "applied_at": "2026-06-04T04:44:22",
+      "files": [
+        "modkit/agent.py"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "b74b6276ab780400600ff5abaa153b47073ec1a54fe8f142606285ccc90cd6c1",
+      "patch_name": "Fix stray parentheses in agent.py",
+      "applied_at": "2026-06-04T04:46:45",
+      "files": [
+        "modkit/agent.py"
+      ],
+      "summary": "written_count=1"
+    },
+    {
+      "fingerprint": "525a4ba529682e763b5dabd160783d3b92dd6700e0b5ffd1d0513a906b4ec856",
+      "patch_name": "Enforce strict research-first and specification conformance protocols",
+      "applied_at": "2026-06-04T04:57:58",
+      "files": [
+        "modkit/agent.py"
+      ],
+      "summary": "written_count=1"
+    }
+  ]
+}

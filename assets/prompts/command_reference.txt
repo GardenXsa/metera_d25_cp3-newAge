@@ -1,0 +1,158 @@
+### IMPLEMENTED COMMAND REFERENCE
+This is the canonical command catalog for the GM. These commands are implemented by `executeCommand`.
+
+STRICT RULES:
+- Use only command names from this reference unless a mod explicitly injects more command docs.
+- Every command must be placed inside the JSON `actions` array.
+- Do not invent aliases. Known aliases are listed explicitly.
+- If a command requires an existing ID, use IDs from Snapshot/World Manifest/current entities/current containers.
+- Narrative is not state. If the story changes inventory, HP, location, quest, NPC, memory, combat, travel, faction, or world state, emit the matching command.
+
+COMBAT STATE:
+- `setCombatState`: turns combat on/off. Start syntax: `{ "isActive": true, "participants": ["enemy_id"], "reason": "player_attack|npc_attack|ambush_event|travel_ambush|scripted_combat|failed_negotiation|hostile_contact" }`. Stop syntax: `{ "isActive": false }`.
+- `endCombat`: immediately clears combat participants and removes combat UI. Use when fighting stops while enemies are still alive: surrender, parley, successful escape, seduction, capture, intervention, or scene transition.
+- `updateEntityStat`: absolute entity stat update. For enemy damage set new HP, not delta. If an enemy dies, set `{ "stat": "hp", "value": 0 }`; this triggers death cleanup and XP.
+- `updateStat`: player stat delta. For enemy counterattack damage from the system block, send `{ "stat": "hp", "change": -X }` exactly once. Direct HP healing via positive `updateStat hp` is blocked.
+- `setEntityState`: changes entity boolean state such as `{ "property": "isHostile", "value": true }`.
+
+COMBAT END CHECKLIST:
+- If all hostile participants are dead or gone: use `updateEntityStat hp 0` for killed enemies; engine will auto-end on the next processing pass, but you may also call `endCombat` when the scene is clearly over.
+- If combat ends without killing all enemies: always call `endCombat` or `setCombatState false`.
+- If the player succeeds at `escape` or `talk`: create distance, pause, surrender, parley, intimidation, or de-escalation; if the fight no longer continues, call `endCombat`.
+- Never leave `scene_state.mode = "combat"` while also ending combat. After ending, set `scene_state.mode` to `exploration`, `dialogue`, `travel`, or `rest`.
+
+MEMORY AND LOG:
+- `echoMemory`: pin a short critical fact visible every turn.
+- `removeEchoMemoryItem`: remove echo memory item by substring.
+- `clearEchoMemory`: clear all echo memory; requires `{ "confirm": true }`.
+- `setMemory`: write/update persistent GM memory block.
+- `deleteMemory`: delete persistent memory block by `id`.
+- `archiveMemory`: archive old memory into a compact summary.
+- `calculationLog`: show mechanical calculation log for rolls, damage, DC, prices, or command reasoning.
+
+PLAYER STATS AND DESCRIPTION:
+- `setPlayerDescription`: set generated/enhanced biography text. Use only when startup flags allow it.
+- `updateStat`: change player stat by delta. Supports hp, mana, gold, xp, nested reputation keys. Gold is physical inventory-backed.
+- `setStat`: set player stat to absolute value. Use sparingly for setup/corrections, not normal damage.
+- `applyConsequence`: apply special consequence: pregnancy, disease, reputation, or stat_change.
+- `recordEroticScene`: record intimacy scene metadata.
+- `recordIntimacy`: record intimacy with partner ID.
+
+INVENTORY AND CONTAINERS:
+- `addItem`: create new item stack in a container, default player backpack. Equipment needs slot/effects to matter.
+- `removeItem`: destroy/remove item by `itemId` or `aiIdentifier`.
+- `moveItem`: move one existing item between containers.
+- `moveItems`: move multiple existing items between containers.
+- Alias: `move_items` -> `moveItems`.
+- `giveItem`: move player item to NPC inventory.
+- `equipItem`: equip item from backpack by `aiIdentifier`; optional slot.
+- `unequipItem`: unequip by slot.
+- `updateItemStat`: change item durability/stat by delta.
+- `createContainer`: create container for owner/location.
+- `buildContainer`: player crafts/builds a static container at current location.
+- `destroyContainer`: destroy container.
+- `lockContainer`: set lock/trap data on container.
+- `unlockContainer`: attempt/unlock container.
+- `confiscateStolen`: move stolen items from target container/player to guard confiscation.
+- `applyAoEDamage`: damage containers/items in a location; use for fire, explosions, collapse, flood, or area hazards.
+- `castMagicalPocket`: create/activate magical pocket container.
+- `dispelMagicPocket`: destroy magical pocket and drop contents back into world.
+- `fleePackAnimal`: move pack animal container to unknown wilderness.
+
+TRADE:
+- `initiateTrade`: start sale/barter with NPC. Use existing item/container IDs.
+- Alias: `initiate_trade` -> `initiateTrade`.
+- `confirmTrade`: complete active trade.
+- Alias: `confirm_trade` -> `confirmTrade`.
+- `negotiateTrade`: adjust trade offer.
+- Alias: `negotiate` -> `negotiateTrade`.
+
+QUESTS:
+- `addQuest`: create active quest. Use stable `aiIdentifier`; include deadline metadata when time pressure exists.
+- `updateQuest`: update quest status/objective/stage. Completed status grants quest XP automatically.
+- `editQuest`: edit a quest field.
+- `removeQuest`: remove quest.
+
+SKILLS AND STATUS EFFECTS:
+- `addSkill`: teach skill.
+- `removeSkill`: remove skill.
+- `applyPredefinedEffect`: apply known predefined effect by id/effectId.
+- `addStatusEffect`: create custom status effect with effects/effectsJSON.
+- `removeStatusEffect`: remove status effect.
+
+ENTITIES AND ENVIRONMENT:
+- `addEnvironment`: create NPC/creature/enemy. Required: aiIdentifier, name, type. Always include hp/maxHp, isHostile, xpReward, and `boundTo`.
+- `removeEnvironment`: remove living NPC/creature that left, vanished, escaped, or was dismissed. Do not use for killed enemies; use `updateEntityStat hp 0`.
+- `setEntityBinding`: bind NPC to location/player using `{ "id": "npc_id", "boundTo": "location_id|player" }`.
+- `revealEntityTrait`: reveal hidden entity trait.
+- `spawnBackgroundNpcs`: generate/bridge background NPCs for populated region. Does not replace story NPCs.
+
+LOCATION, MAP, AND TRAVEL:
+- `addMapMarker`: create global map location/region marker.
+- `removeMapMarker`: remove global map marker.
+- `addDiscoveredLocation`: add discovered known location.
+- `addSubLocation`: create interior/room/camp/cave under an existing global location.
+- `removeSubLocation`: remove sublocation.
+- `setLocation`: instant move to existing global location or sublocation. Create missing sublocation first.
+- `renderLocation`: generate/update tactical/local map for a room/area.
+- `startTravel`: begin global travel to destination.
+- `pauseTravel`: pause travel.
+- `resumeTravel`: resume paused travel.
+- `cancelTravel`: cancel current travel.
+- `fastForwardTravel`: advance travel time.
+- `startJourney`: start journey flow.
+- `endJourney`: end journey flow.
+- `setJourneyLocation`: during active journey, set actual intermediate/current location.
+- `mountTransport`: mount/use transport.
+- `dismountTransport`: leave transport.
+
+NEXUS CONSTANTS:
+- `nexusDefine`: create fact/constant/title/tree node/request. Always include id, name, description/category when meaningful, displayType/value, and icon.
+- `nexusUpdate`: update value/state/metadata.
+- `nexusRemove`: remove constant.
+- `nexusLink`: link constants.
+- `nexusUnlink`: unlink constants.
+
+NEXUS usage is mandatory for durable state. Use it for: titles, ranks, citizenship, faction membership, guild applications, noble claims, debts, oaths, curses, blessings, diseases, injuries with long-term meaning, wanted/criminal status, licenses, property rights, businesses, talent trees, unlocked/locked abilities, relationship milestones, discovered secrets, long-running clocks, and world threats. Use memory for GM notes; use NEXUS for state the player and mechanics should keep seeing.
+
+RELATIONSHIPS, FACTIONS, AND INTRIGUES:
+- `updateRelationship`: change relationship between player/NPC/factions.
+- `defineFaction`: define local faction label.
+- `startIntrigue`: create intrigue plot.
+- `cancelIntrigue`: cancel intrigue.
+- `revealIntrigue`: mark intrigue discovered.
+- `assassinateRuler`: kill ruler by id.
+- `overthrowRuler`: trigger revolt/overthrow in faction.
+- `setFactionGoal`: override ruler/faction goal.
+
+PLAYER ECONOMY:
+- `buildBusiness`: create player business/facility; also charge gold separately with `updateStat`.
+- `buyHolding`: add holding/property.
+- `sellHolding`: sell/remove holding.
+- `bankTransaction`: deposit, withdraw, loan, or repay.
+
+WORLD STRATEGY / C++ WORLD SIM:
+- `gmPurchaseGoods`: faction buys goods in region.
+- `gmSellGoods`: faction sells goods in region.
+- `gmInvestInFacility`: faction invests in/repairs/upgrades facility.
+- `gmModifyTradeSecurity`: change regional trade security.
+- `gmRaiseMilitia`: raise militia in region.
+- `gmSpreadRumor`: spend resources to spread rumor.
+- `gmFrameForSabotage`: frame faction for sabotage.
+- `gmDirectResourceInjection`: inject goods into region.
+- `gmDeclareWar`: declare war between factions.
+- `gmForcePeace`: force peace between factions.
+- `gmChangeRulerTrait`: change ruler trait.
+- `gmCreateFaction`: create faction.
+- `gmTransferRegion`: transfer region to faction.
+- `gmRaisePlayerArmy`: raise player faction army.
+- `gmCommandArmy`: command army movement/action.
+- `buildShip`: build ship.
+- `buildPort`: build port.
+- `upgradePort`: upgrade port.
+- `repairFacility`: repair facility.
+- `navalBlockade`: start/resolve naval blockade.
+
+COMMANDS NOT IMPLEMENTED IN `executeCommand`:
+- Do not use `searchArchive`; it is not an executable GM command here. Use `setMemory`, `archiveMemory`, `echoMemory`, or `deleteMemory`.
+- Do not use obsolete uppercase commands like `ADD_TRAIT`, `DEFINE_HOLDING`, or `UPDATE_HOLDING`; use NEXUS commands instead.

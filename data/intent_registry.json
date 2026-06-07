@@ -1,0 +1,159 @@
+{
+  "version": 1,
+  "languages": {
+    "default": "en",
+    "fallbackOrder": ["en", "ru", "es", "fr", "de", "pt", "it", "uk", "pl", "tr", "zh", "ja", "ko"]
+  },
+  "intents": {
+    "travel": {
+      "priority": 80,
+      "markers": {
+        "en": ["go to", "travel to", "head to", "leave for", "set out to", "move to"],
+        "ru": ["иду в", "идем в", "иду на", "идем на", "отправляюсь", "отправляемся", "путешествуем", "в путь"],
+        "es": ["ir a", "viajar a", "salir hacia", "vamos a"],
+        "fr": ["aller a", "voyager vers", "partir pour", "nous allons"],
+        "de": ["gehe nach", "reisen nach", "aufbrechen nach"],
+        "pt": ["ir para", "viajar para", "partir para"],
+        "it": ["andare a", "viaggiare verso", "partire per"],
+        "uk": ["йду до", "йдемо до", "вирушаю", "вирушаємо"],
+        "pl": ["ide do", "idziemy do", "podroz do", "wyruszamy"],
+        "tr": ["git", "gidiyoruz", "yola cik", "seyahat et"],
+        "zh": ["去", "前往", "旅行到", "出发去"],
+        "ja": ["行く", "向かう", "旅する", "出発する"],
+        "ko": ["가다", "향하다", "여행하다", "출발하다"]
+      }
+    },
+    "escape": {
+      "priority": 90,
+      "markers": {
+        "en": ["run", "retreat", "escape", "flee", "break through", "withdraw"],
+        "ru": ["бегу", "бежим", "отступаю", "отступаем", "уходим", "прорываюсь", "прорываемся"],
+        "es": ["huir", "retirada", "escapar", "romper el cerco"],
+        "fr": ["fuir", "retraite", "s echapper", "percer"],
+        "de": ["fliehen", "ruckzug", "entkommen", "durchbrechen"],
+        "pt": ["fugir", "recuar", "escapar", "romper"],
+        "it": ["fuggire", "ritirata", "scappare", "sfondare"],
+        "uk": ["тікаю", "відступаємо", "прориваємося"],
+        "pl": ["uciekam", "odwrot", "wycofujemy", "przebijamy"],
+        "tr": ["kac", "geri cekil", "kurtul"],
+        "zh": ["逃", "撤退", "突围"],
+        "ja": ["逃げる", "撤退", "突破"],
+        "ko": ["도망", "후퇴", "돌파"]
+      }
+    },
+    "combat_attack": {
+      "priority": 70,
+      "markers": {
+        "en": ["attack", "hit", "strike", "shoot", "stab"],
+        "ru": ["атакую", "бью", "ударяю", "стреляю", "колю"],
+        "es": ["ataco", "golpeo", "disparo"],
+        "fr": ["attaque", "frappe", "tire"],
+        "de": ["angreifen", "schlagen", "schiesse"],
+        "pt": ["ataco", "golpeio", "atirar"],
+        "it": ["attacco", "colpisco", "sparo"],
+        "uk": ["атакую", "б'ю", "стріляю"],
+        "pl": ["atakuje", "uderzam", "strzelam"],
+        "tr": ["saldir", "vur", "ates et"],
+        "zh": ["攻击", "打击", "射击"],
+        "ja": ["攻撃", "撃つ", "斬る"],
+        "ko": ["공격", "때리", "쏘"]
+      }
+    },
+    "dialogue": {
+      "priority": 50,
+      "markers": {
+        "en": ["talk to", "ask", "say to", "speak with"],
+        "ru": ["говорю", "спрашиваю", "разговариваю", "обращаюсь"],
+        "es": ["hablo", "pregunto"],
+        "fr": ["parle", "demande"],
+        "de": ["spreche", "frage"],
+        "pt": ["falo", "pergunto"],
+        "it": ["parlo", "chiedo"],
+        "uk": ["говорю", "питаю"],
+        "pl": ["mowie", "pytam"],
+        "tr": ["konus", "sor"],
+        "zh": ["说", "问"],
+        "ja": ["話す", "尋ねる"],
+        "ko": ["말하", "묻"]
+      }
+    },
+    "inspect": {
+      "priority": 40,
+      "markers": {
+        "en": ["look", "inspect", "examine", "search"],
+        "ru": ["осматриваю", "смотрю", "изучаю", "обыскиваю"],
+        "es": ["miro", "examino", "inspecciono"],
+        "fr": ["regarde", "inspecte", "examine"],
+        "de": ["ansehen", "untersuchen", "suchen"],
+        "pt": ["olho", "examino", "inspeciono"],
+        "it": ["guardo", "esamino", "ispeziono"],
+        "uk": ["оглядаю", "дивлюся", "вивчаю"],
+        "pl": ["patrze", "badam", "przeszukuje"],
+        "tr": ["bak", "incele", "ara"],
+        "zh": ["看", "检查", "搜索"],
+        "ja": ["見る", "調べる", "探す"],
+        "ko": ["보다", "조사", "수색"]
+      }
+    },
+    "inventory": {
+      "priority": 45,
+      "markers": {
+        "en": ["equip", "wear", "use item", "drink", "take out"],
+        "ru": ["экипирую", "надеваю", "использую предмет", "пью", "достаю"],
+        "es": ["equipo", "uso", "bebo"],
+        "fr": ["equipe", "utilise", "bois"],
+        "de": ["ausrusten", "benutze", "trinke"],
+        "pt": ["equipo", "uso", "bebo"],
+        "it": ["equipaggio", "uso", "bevo"],
+        "uk": ["одягаю", "використовую", "п'ю"],
+        "pl": ["zakladam", "uzywam", "pije"],
+        "tr": ["kusand", "kullan", "ic"],
+        "zh": ["装备", "使用", "喝"],
+        "ja": ["装備", "使う", "飲む"],
+        "ko": ["장비", "사용", "마시"]
+      }
+    },
+    "party_command": {
+      "priority": 60,
+      "markers": {
+        "en": ["order", "command", "tell everyone", "signal"],
+        "ru": ["приказываю", "командую", "говорю всем", "подаю сигнал"],
+        "es": ["ordeno", "mando", "senal"],
+        "fr": ["ordonne", "commande", "signal"],
+        "de": ["befehle", "kommando", "signal"],
+        "pt": ["ordeno", "comando", "sinal"],
+        "it": ["ordino", "comando", "segnale"],
+        "uk": ["наказую", "командую", "сигнал"],
+        "pl": ["rozkazuje", "komenda", "sygnal"],
+        "tr": ["emret", "komut", "isaret"],
+        "zh": ["命令", "指挥", "信号"],
+        "ja": ["命令", "指揮", "合図"],
+        "ko": ["명령", "지휘", "신호"]
+      }
+    }
+  },
+  "guards": [
+    {
+      "id": "no_travel_during_active_combat",
+      "when": {
+        "combatActive": true,
+        "hostilesAlive": true
+      },
+      "blockCommands": ["startTravel", "setLocation"],
+      "conflictingIntents": ["travel"],
+      "reinterpretAs": "combat_escape",
+      "promptPatchKey": "intent.prompt.travelDuringCombat",
+      "noticeKey": "intent.notice.travelDuringCombat"
+    }
+  ],
+  "messages": {
+    "en": {
+      "intent.prompt.travelDuringCombat": "The player wants to travel or relocate, but active combat with living hostiles is in progress. Do not execute ordinary travel, setLocation, or startTravel. Treat the player intent as an attempt to withdraw, break through, reposition, or organize an escape inside the combat scene. Explain the combat constraint clearly and offer concrete combat-safe options.",
+      "intent.notice.travelDuringCombat": "You are in combat. Ordinary travel is unavailable, but you can try to break through, withdraw, reposition, or give an order."
+    },
+    "ru": {
+      "intent.prompt.travelDuringCombat": "Игрок хочет переместиться или отправиться в путь, но сейчас идет бой с живыми врагами. Не выполняй обычное путешествие, setLocation или startTravel. Трактуй намерение как попытку отступить, прорваться, сменить позицию или организовать отход внутри боевой сцены. Объясни ограничение ясно и предложи конкретные боевые варианты.",
+      "intent.notice.travelDuringCombat": "Вы в бою. Обычное путешествие недоступно, но можно попытаться прорваться, отступить, сменить позицию или отдать приказ."
+    }
+  }
+}

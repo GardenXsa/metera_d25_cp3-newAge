@@ -1,0 +1,50 @@
+{
+  "sword_short": {
+    "i18n_key": "itemDescriptions.shortSword",
+    "fallback": "Простой, но надежный короткий меч. Базовое оружие ближнего боя."
+  },
+  "shield_wooden": {
+    "i18n_key": "itemDescriptions.woodenShield",
+    "fallback": "Круглый деревянный щит. Обеспечивает минимальную защиту."
+  },
+  "potion_heal_small": {
+    "i18n_key": "itemDescriptions.smallHealthPotion",
+    "fallback": "Маленькая склянка с красной жидкостью. Восстанавливает немного здоровья."
+  },
+  "staff_simple": {
+    "i18n_key": "itemDescriptions.simpleStaff",
+    "fallback": "Гладкий деревянный посох. Помогает фокусировать магическую энергию."
+  },
+  "robe_novice": {
+    "i18n_key": "itemDescriptions.noviceRobe",
+    "fallback": "Простая роба, которую носят начинающие маги. Практически не защищает."
+  },
+  "mana_potion_small": {
+    "i18n_key": "itemDescriptions.smallManaPotion",
+    "fallback": "Маленькая склянка с синей жидкостью. Восстанавливает немного маны."
+  },
+  "dagger_basic": {
+    "i18n_key": "itemDescriptions.basicDagger",
+    "fallback": "Обычный кинжал. Быстрое, но слабое оружие."
+  },
+  "leather_armor_light": {
+    "i18n_key": "itemDescriptions.lightLeatherArmor",
+    "fallback": "Легкий доспех из обработанной кожи. Дает небольшую защиту, не стесняя движений."
+  },
+  "lockpicks": {
+    "i18n_key": "itemDescriptions.lockpicks",
+    "fallback": "Набор тонких металлических инструментов для вскрытия замков."
+  },
+  "lute_simple": {
+    "i18n_key": "itemDescriptions.simpleLute",
+    "fallback": "Простая лютня. Инструмент для бардовских песен и заклинаний."
+  },
+  "colorful_clothes": {
+    "i18n_key": "itemDescriptions.colorfulClothes",
+    "fallback": "Яркая и удобная одежда, подходящая для выступлений."
+  },
+  "gold": {
+    "i18n_key": "itemDescriptions.gold",
+    "fallback": "Блестящие золотые монеты. Основная валюта."
+  }
+}

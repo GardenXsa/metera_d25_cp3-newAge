@@ -1,0 +1,37 @@
+{
+  "default_world_id": "world_metera",
+  "lore_template": "assets/lor/{worldId}/{langCode}/lor.txt",
+  "locations_template": "assets/lor/{worldId}/{langCode}/{fileName}",
+  "localized_assets": {
+    "items_reference_default": "assets/prompts/items_reference.json",
+    "items_reference_template": "assets/prompts/items_reference_{lang}.json",
+    "predefined_effects_default": "assets/res/predefined_effects.json",
+    "predefined_effects_template": "assets/res/predefined_effects_{lang}.json"
+  },
+  "resource_icons": {
+    "wheat": "🌾",
+    "meat": "🥩",
+    "fish": "🐟",
+    "wood": "🌲",
+    "iron_ore": "⛏️",
+    "gold_ore": "💎",
+    "cotton": "⁃️",
+    "herbs": "🌿",
+    "salt": "🧂",
+    "stone": "🪨",
+    "bread": "🍞",
+    "weapons": "⚔️",
+    "gold": "🪙",
+    "gold_ingot": "🏅",
+    "potions": "🧪",
+    "armor": "🛡️",
+    "fur": "🦊",
+    "honey": "🍯",
+    "wax": "🕯️",
+    "monster_parts": "🦷",
+    "wine": "🍷",
+    "beer": "🍺",
+    "wood_boards": "🪵"
+  },
+  "resource_icon_default": "📦"
+}

@@ -1,0 +1,19 @@
+{
+  "faction_biome_preference": {
+    "free_harbors": "silt_shore",
+    "ash_cartels": "glass_desert",
+    "lumen_synod": "aether_scar"
+  },
+  "faction_corrupt_biome": {
+    "free_harbors": "old_ruins",
+    "ash_cartels": "ashfall",
+    "lumen_synod": "aether_scar"
+  },
+  "era_relations": {
+    "rebirth": [
+      { "f1": "free_harbors", "f2": "ash_cartels", "modifier": -15 },
+      { "f1": "free_harbors", "f2": "lumen_synod", "modifier": 5 },
+      { "f1": "ash_cartels", "f2": "lumen_synod", "modifier": -5 }
+    ]
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "defaultSettings": {
+    "enabled": true,
+    "allowRemote": false,
+    "memeMode": false,
+    "explicitMode": false,
+    "enabledRatings": ["sfw"]
+  },
+  "scoring": {
+    "tagMatch": 12,
+    "toneMatch": 5,
+    "combatMatch": 8,
+    "intensityDistancePenalty": 3,
+    "localSourceBonus": 4,
+    "weightDivisor": 20
+  },
+  "blockedPairs": [
+    { "tag": "death", "rating": "meme", "unlessTone": "comedy" },
+    { "tag": "combat", "rating": "explicit" },
+    { "tag": "combat", "rating": "adult" }
+  ],
+  "tagHints": {
+    "combat": ["бой", "битва", "атака", "удар", "клинок", "меч", "алебарда", "blood", "attack", "combat", "battle", "blade"],
+    "army": ["армия", "войск", "солдат", "арм", "army", "soldier", "legion", "shield"],
+    "shield": ["щит", "стена щитов", "фаланг", "shield", "wall", "phalanx"],
+    "magic": ["маг", "закл", "колд", "чар", "волш", "magic", "spell", "sorcery", "enchant", "cast"],
+    "sorcery": ["колдун", "чернокниж", "ведьм", "sorcery", "warlock", "witch"],
+    "rain": ["дожд", "ливень", "rain", "storm"],
+    "storm": ["гроз", "бур", "молни", "гром", "storm", "thunder", "lightning"],
+    "lightning": ["молни", "электр", "lightning", "thunderbolt"],
+    "snow": ["снег", "метел", "вьюг", "мороз", "snow", "winter", "blizzard", "frost", "cold"],
+    "winter": ["зим", "мороз", "холод", "winter", "frost", "cold", "ice"],
+    "fog": ["туман", "мгл", "дымк", "fog", "mist", "haze"],
+    "mist": ["туман", "мгл", "mist", "misty"],
+    "fire": ["огонь", "плам", "горящ", "гарь", "fire", "flame", "burn"],
+    "campfire": ["костёр", "костер", "костр", "искр", "campfire", "bonfire", "ember"],
+    "camp": ["лагерь", "палат", "camp", "tent"],
+    "blood": ["кров", "рана", "blood", "wound"],
+    "travel": ["дорог", "тракт", "путь", "travel", "road", "journey"],
+    "ruins": ["руин", "развал", "заброш", "разруш", "ruins", "abandoned", "destroyed"],
+    "castle": ["замок", "крепост", "башн", "castle", "fortress", "tower"],
+    "gothic": ["готич", "готическ", "мрачн", "gothic", "grim", "dark"],
+    "night_sky": ["ночн", "небо", "звезд", "лун", "night sky", "stars", "moon", "starry"],
+    "stars": ["звезд", "созвезд", "stars", "constellation", "stellar"],
+    "tavern": ["таверн", "трактир", "tavern", "inn", "пивн", "кабак"],
+    "candle": ["свеч", "канделябр", "candle", "candelabra", "факел", "torch"],
+    "city": ["город", "столиц", "рынок", "city", "market"],
+    "horror": ["ужас", "кошмар", "тень", "monster", "horror", "nightmare"],
+    "creature": ["сущест", "твар", "монстр", "creature", "monster", "beast"],
+    "howl": ["вой", "воет", "завыв", "howl", "howling", "wolf", "волк"],
+    "wolf": ["волк", "волч", "wolf", "werewolf"],
+    "silhouette": ["силуэт", "тень", "фигур", "silhouette", "shadow", "figure"],
+    "eerie": ["жутк", "зловещ", "мрачн", "eerie", "creepy", "unsettling"],
+    "mysterious": ["тайн", "загад", "мист", "mysterious", "enigma", "secret"],
+    "peaceful": ["тиш", "покой", "спокойн", "peaceful", "calm", "serene", "tranquil"],
+    "dice_fail": ["провал", "промах", "неудач", "fail", "miss"],
+    "critical_success": ["критический успех", "натуральная 20", "critical success", "natural 20"],
+    "sex": ["секс", "похоть", "бордель", "brothel", "sex"],
+    "romance": ["роман", "поцел", "нежн", "romance", "kiss"],
+    "consensual": ["соглас", "consensual"]
+  }
+}

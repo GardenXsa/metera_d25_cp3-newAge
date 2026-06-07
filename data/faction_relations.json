@@ -1,0 +1,36 @@
+{
+  "faction_biome_preference": {
+    "khazadrim": "mountains",
+    "sylvanesti": "forest",
+    "greencode": "forest",
+    "forest_circle": "forest",
+    "gronnar": "desert",
+    "kharash": "hills",
+    "consortium": "beach",
+    "aquilon": "plains",
+    "magisterium": "plains",
+    "seekers": "ruins",
+    "crimson": "plains",
+    "shattered_sky": "anomaly"
+  },
+  "faction_corrupt_biome": {
+    "sylvanesti": "swamp",
+    "greencode": "swamp",
+    "forest_circle": "swamp",
+    "khazadrim": "hills",
+    "shattered_sky": "anomaly"
+  },
+  "faction_base_relations": {
+    "rebirth": [
+      { "f1": "aquilon", "f2": "sylvanesti", "modifier": -30 },
+      { "f1": "crimson", "f2": "gronnar", "modifier": -60 },
+      { "f1": "aquilon", "f2": "khazadrim", "modifier": 40 },
+      { "f1": "consortium", "f2": "aquilon", "modifier": -15 },
+      { "f1": "magisterium", "f2": "seekers", "modifier": -25 },
+      { "f1": "seekers", "f2": "shattered_sky", "modifier": -55 },
+      { "f1": "crimson", "f2": "shattered_sky", "modifier": -80 },
+      { "f1": "forest_circle", "f2": "aquilon", "modifier": -35 },
+      { "f1": "kharash", "f2": "consortium", "modifier": 10 }
+    ]
+  }
+}

@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "metera-modkit"
+version = "0.1.0"
+description = "AI-assisted CLI for Chronicles of Meterea modding (mod scaffolding, validation, docs search, agent)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "All Rights Reserved" }
+authors = [
+    { name = "MrKins_XP (GardenXsa)" },
+]
+keywords = ["meterea", "chronicles-of-meterea", "modding", "cli", "ai-agent"]
+classifiers = [
+    "Environment :: Console",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment",
+    "Topic :: Software Development :: Code Generators",
+]
+# PySide6 is the native Qt GUI (the default UX when you run
+# `modkit` with no arguments). Textual is the TUI fallback when
+# PySide6 is unavailable. The LLM agent loop itself remains
+# stdlib-only — no `requests`, no extra HTTP libs.
+dependencies = [
+    "PySide6>=6.6",
+    "textual>=0.86,<9",
+]
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6.0"]
+dev = ["pyinstaller>=6.0"]
+
+[project.scripts]
+modkit = "modkit.cli:main"
+metera-modkit = "modkit.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/anomalyco/chronicles-of-meterea"
+
+[tool.setuptools.packages.find]
+include = ["modkit*"]
+exclude = ["tests*", "resources*"]
+
+[tool.setuptools.package-data]
+modkit = []

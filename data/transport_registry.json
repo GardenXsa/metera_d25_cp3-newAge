@@ -1,0 +1,63 @@
+{
+  "horse": {
+    "id": "horse",
+    "name": "Лошадь",
+    "nameEn": "Horse",
+    "category": "mount",
+    "speedMultiplier": 2.0,
+    "cargoBonus": 5,
+    "description": "Верховая лошадь. Увеличивает скорость путешествий в 2 раза.",
+    "rarity": "Необычный",
+    "basePrice": 500,
+    "requiresMount": true
+  },
+  "warhorse": {
+    "id": "warhorse",
+    "name": "Боевой конь",
+    "nameEn": "Warhorse",
+    "category": "mount",
+    "speedMultiplier": 1.8,
+    "cargoBonus": 3,
+    "description": "Обученный боевой конь. Увеличивает скорость путешествий в 1.8 раза.",
+    "rarity": "Редкий",
+    "basePrice": 1200,
+    "requiresMount": true
+  },
+  "cart": {
+    "id": "cart",
+    "name": "Тележка",
+    "nameEn": "Cart",
+    "category": "vehicle",
+    "speedMultiplier": 1.3,
+    "cargoBonus": 15,
+    "description": "Простая деревянная тележка. Увеличивает скорость путешествий в 1.3 раза.",
+    "rarity": "Обычный",
+    "basePrice": 300,
+    "requiresMount": false
+  },
+  "wagon": {
+    "id": "wagon",
+    "name": "Торговая повозка",
+    "nameEn": "Wagon",
+    "category": "vehicle",
+    "speedMultiplier": 1.5,
+    "cargoBonus": 30,
+    "description": "Большая торговая повозка. Увеличивает скорость путешествий в 1.5 раза.",
+    "rarity": "Необычный",
+    "basePrice": 500,
+    "requiresMount": false
+  },
+  "ship_deed": {
+    "id": "ship_deed",
+    "name": "Документ на корабль",
+    "nameEn": "Ship Deed",
+    "category": "ship",
+    "speedMultiplier": 2.5,
+    "cargoBonus": 50,
+    "description": "Документ, подтверждающий право владения кораблём. Только для морских путешествий.",
+    "rarity": "Редкий",
+    "basePrice": 2000,
+    "requiresMount": false,
+    "waterOnly": true
+  }
+}

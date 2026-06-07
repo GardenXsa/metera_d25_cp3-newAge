@@ -1,0 +1,19 @@
+# requirements.txt
+# Installation: pip install -r requirements.txt
+
+# --- Image Processing (TileMapper, split_spritesheet) ---
+Pillow>=9.0.0
+
+# --- HTTP Client (TileMapperCloud API calls) ---
+requests>=2.28.0
+
+# --- GUI Framework (AIPatcher.py, scan.py, GameBuilder.py) ---
+customtkinter>=5.0.0
+
+# --- TTS (Text-to-Speech) ---
+# Piper TTS is bundled in assets/tts/ directory.
+# If needed separately:
+# piper-tts>=1.2.0
+
+# --- Testing (engine tests) ---
+# pytest>=7.0.0  # Uncomment if you need the test runner

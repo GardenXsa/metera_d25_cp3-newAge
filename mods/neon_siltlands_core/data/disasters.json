@@ -1,0 +1,4 @@
+[
+  { "id": "black_tide", "string_id": "black_tide", "name": "Чёрный прилив", "base_radius": 8, "base_duration_days": 12, "population_damage_percent": 4, "facility_damage": 1, "allowed_climates": ["coast", "swamp"], "floods_tiles": true, "ruins_roads": false, "stability_penalty": 5, "threat_set": 1, "fertility_mult": 0.8, "transform_biome_to": "tar_marsh", "affected_biomes": ["silt_shore", "ash_plain"], "spawn_item": "salt_sludge", "spawn_item_qty": 3 },
+  { "id": "memory_storm", "string_id": "memory_storm", "name": "Шторм памяти", "base_radius": 6, "base_duration_days": 7, "population_damage_percent": 2, "facility_damage": 0, "allowed_climates": ["any"], "floods_tiles": false, "ruins_roads": false, "stability_penalty": 8, "threat_set": 2, "fertility_mult": 1.0, "transform_biome_to": "aether_scar", "affected_biomes": ["ash_plain", "blackwood"], "spawn_item": "memory_shards", "spawn_item_qty": 1 }
+]

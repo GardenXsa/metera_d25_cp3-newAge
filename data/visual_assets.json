@@ -1,0 +1,1664 @@
+{
+  "version": 4,
+  "description": "Local visual asset registry. 77 curated dark-fantasy assets (GIF + AI-generated images).",
+  "assets": [
+    {
+      "id": "atmosphere_candle_alone_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/atmosphere/candle_alone_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "atmosphere",
+        "mood",
+        "mystical"
+      ],
+      "tone": [
+        "mysterious",
+        "atmospheric"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "atmosphere_cat_shadow_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/atmosphere/cat_shadow_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "atmosphere",
+        "mood",
+        "mystical"
+      ],
+      "tone": [
+        "mysterious",
+        "atmospheric"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "atmosphere_dark_key_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/atmosphere/dark_key_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "atmosphere",
+        "mood",
+        "mystical"
+      ],
+      "tone": [
+        "mysterious",
+        "atmospheric"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "atmosphere_dark_tarot_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/atmosphere/dark_tarot_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "atmosphere",
+        "mood",
+        "mystical"
+      ],
+      "tone": [
+        "mysterious",
+        "atmospheric"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "atmosphere_rune_glow_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/atmosphere/rune_glow_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "atmosphere",
+        "mood",
+        "mystical"
+      ],
+      "tone": [
+        "mysterious",
+        "atmospheric"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "atmosphere_scroll_dark_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/atmosphere/scroll_dark_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "atmosphere",
+        "mood",
+        "mystical"
+      ],
+      "tone": [
+        "mysterious",
+        "atmospheric"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "atmosphere_tarot_cards_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/atmosphere/tarot_cards_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "atmosphere",
+        "mood",
+        "mystical"
+      ],
+      "tone": [
+        "mysterious",
+        "atmospheric"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_archer_forest_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/archer_forest_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_archer_shadow_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/archer_shadow_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_axe_berserk_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/axe_berserk_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_blood_battle_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/blood_battle_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_boss_fight_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/boss_fight_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_cavalry_knight_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/cavalry_knight_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_dark_samurai_02",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/dark_samurai_02.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_dragon_fight_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/dragon_fight_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_dragon_fire_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/dragon_fire_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_dual_blade_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/dual_blade_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_fire_sword_02",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/fire_sword_02.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_holy_light_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/holy_light_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_knight_dark_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/knight_dark_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_mage_dark_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/mage_dark_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_magic_spell_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/magic_spell_01.gif",
+      "rating": "sfw",
+      "source": "local",
+      "license": "user_supplied_pack",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_rain_fire_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/rain_fire_01.gif",
+      "rating": "sfw",
+      "source": "local",
+      "license": "user_supplied_pack",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_samurai_dark_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/samurai_dark_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_shield_wall_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/shield_wall_01.gif",
+      "rating": "sfw",
+      "source": "local",
+      "license": "user_supplied_pack",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_sword_blood_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/sword_blood_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_sword_fight_02",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/sword_fight_02.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "combat_warrior_armor_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/combat/warrior_armor_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "combat",
+        "battle",
+        "dark_fantasy"
+      ],
+      "tone": [
+        "grim",
+        "dramatic"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "horror_body_horror_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/horror/body_horror_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "horror",
+        "dark",
+        "creepy"
+      ],
+      "tone": [
+        "horror",
+        "tense"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "horror_dark_forest_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/horror/dark_forest_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "horror",
+        "dark",
+        "creepy"
+      ],
+      "tone": [
+        "horror",
+        "tense"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "horror_dark_shadows_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/horror/dark_shadows_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "horror",
+        "dark",
+        "creepy"
+      ],
+      "tone": [
+        "horror",
+        "tense"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "horror_ghost_apparition_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/horror/ghost_apparition_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "horror",
+        "dark",
+        "creepy"
+      ],
+      "tone": [
+        "horror",
+        "tense"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "horror_night_creatures_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/horror/night_creatures_01.gif",
+      "rating": "sfw",
+      "source": "local",
+      "license": "user_supplied_pack",
+      "tags": [
+        "horror",
+        "dark",
+        "creepy"
+      ],
+      "tone": [
+        "horror",
+        "tense"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "horror_pit_abyss_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/horror/pit_abyss_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "horror",
+        "dark",
+        "creepy"
+      ],
+      "tone": [
+        "horror",
+        "tense"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "horror_ritual_circle_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/horror/ritual_circle_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "horror",
+        "dark",
+        "creepy"
+      ],
+      "tone": [
+        "horror",
+        "tense"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "horror_skull_dark_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/horror/skull_dark_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "horror",
+        "dark",
+        "creepy"
+      ],
+      "tone": [
+        "horror",
+        "tense"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "horror_spider_web_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/horror/spider_web_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "horror",
+        "dark",
+        "creepy"
+      ],
+      "tone": [
+        "horror",
+        "tense"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "horror_undead_dark_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/horror/undead_dark_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "horror",
+        "dark",
+        "creepy"
+      ],
+      "tone": [
+        "horror",
+        "tense"
+      ],
+      "intensity": 4,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "nature_dark_flower_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/nature/dark_flower_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "nature",
+        "night",
+        "wild"
+      ],
+      "tone": [
+        "quiet",
+        "atmospheric"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "nature_dead_tree_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/nature/dead_tree_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "nature",
+        "night",
+        "wild"
+      ],
+      "tone": [
+        "quiet",
+        "atmospheric"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "nature_full_moon_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/nature/full_moon_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "nature",
+        "night",
+        "wild"
+      ],
+      "tone": [
+        "quiet",
+        "atmospheric"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "reactions_dice_fail_01",
+      "pack": "meme_reactions",
+      "type": "gif",
+      "path": "assets/gifs/reactions/dice_fail_01.gif",
+      "rating": "meme",
+      "source": "local",
+      "license": "user_supplied_pack",
+      "tags": [
+        "reaction",
+        "meme",
+        "dnd"
+      ],
+      "tone": [
+        "comedy",
+        "absurd"
+      ],
+      "intensity": 2,
+      "weight": 120,
+      "loop": true,
+      "allowedModes": [
+        "meme"
+      ]
+    },
+    {
+      "id": "reactions_slow_clap_dark_01",
+      "pack": "meme_reactions",
+      "type": "gif",
+      "path": "assets/gifs/reactions/slow_clap_dark_01.gif",
+      "rating": "meme",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "reaction",
+        "meme",
+        "dnd"
+      ],
+      "tone": [
+        "comedy",
+        "absurd"
+      ],
+      "intensity": 2,
+      "weight": 120,
+      "loop": true,
+      "allowedModes": [
+        "meme"
+      ]
+    },
+    {
+      "id": "tavern_ale_drink_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/tavern/ale_drink_01.gif",
+      "rating": "sfw",
+      "source": "local",
+      "license": "user_supplied_pack",
+      "tags": [
+        "tavern",
+        "social",
+        "interior"
+      ],
+      "tone": [
+        "social",
+        "warm"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "tavern_chess_dark_art_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/tavern/chess_dark_art_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "tavern",
+        "social",
+        "interior"
+      ],
+      "tone": [
+        "social",
+        "warm"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "tavern_fireplace_crackle_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/tavern/fireplace_crackle_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "tavern",
+        "social",
+        "interior"
+      ],
+      "tone": [
+        "social",
+        "warm"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "tavern_warm_room_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/tavern/warm_room_01.gif",
+      "rating": "sfw",
+      "source": "local",
+      "license": "user_supplied_pack",
+      "tags": [
+        "tavern",
+        "social",
+        "interior"
+      ],
+      "tone": [
+        "social",
+        "warm"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "travel_bridge_dark_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/travel/bridge_dark_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "travel",
+        "journey",
+        "exploration"
+      ],
+      "tone": [
+        "grim",
+        "quiet"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "travel_cave_dark_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/travel/cave_dark_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "travel",
+        "journey",
+        "exploration"
+      ],
+      "tone": [
+        "grim",
+        "quiet"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "travel_desert_dunes_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/travel/desert_dunes_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "travel",
+        "journey",
+        "exploration"
+      ],
+      "tone": [
+        "grim",
+        "quiet"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "travel_muddy_road_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/travel/muddy_road_01.gif",
+      "rating": "sfw",
+      "source": "local",
+      "license": "user_supplied_pack",
+      "tags": [
+        "travel",
+        "journey",
+        "exploration"
+      ],
+      "tone": [
+        "grim",
+        "quiet"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "travel_path_dark_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/travel/path_dark_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "travel",
+        "journey",
+        "exploration"
+      ],
+      "tone": [
+        "grim",
+        "quiet"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "travel_ruins_dark_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/travel/ruins_dark_01.gif",
+      "rating": "sfw",
+      "source": "local",
+      "license": "user_supplied_pack",
+      "tags": [
+        "travel",
+        "journey",
+        "exploration"
+      ],
+      "tone": [
+        "grim",
+        "quiet"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "travel_swamp_dark_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/travel/swamp_dark_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "travel",
+        "journey",
+        "exploration"
+      ],
+      "tone": [
+        "grim",
+        "quiet"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "travel_valley_mist_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/travel/valley_mist_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "travel",
+        "journey",
+        "exploration"
+      ],
+      "tone": [
+        "grim",
+        "quiet"
+      ],
+      "intensity": 2,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "weather_aurora_dark_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/weather/aurora_dark_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "weather",
+        "atmosphere",
+        "nature"
+      ],
+      "tone": [
+        "dramatic",
+        "atmospheric"
+      ],
+      "intensity": 3,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "weather_blood_moon_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/weather/blood_moon_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "weather",
+        "atmosphere",
+        "nature"
+      ],
+      "tone": [
+        "dramatic",
+        "atmospheric"
+      ],
+      "intensity": 3,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "weather_dawn_mist_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/weather/dawn_mist_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "weather",
+        "atmosphere",
+        "nature"
+      ],
+      "tone": [
+        "dramatic",
+        "atmospheric"
+      ],
+      "intensity": 3,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "weather_dust_storm_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/weather/dust_storm_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "weather",
+        "atmosphere",
+        "nature"
+      ],
+      "tone": [
+        "dramatic",
+        "atmospheric"
+      ],
+      "intensity": 3,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "weather_fog_dark_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/weather/fog_dark_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "weather",
+        "atmosphere",
+        "nature"
+      ],
+      "tone": [
+        "dramatic",
+        "atmospheric"
+      ],
+      "intensity": 3,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "weather_fog_mist_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/weather/fog_mist_01.gif",
+      "rating": "sfw",
+      "source": "local",
+      "license": "user_supplied_pack",
+      "tags": [
+        "weather",
+        "atmosphere",
+        "nature"
+      ],
+      "tone": [
+        "dramatic",
+        "atmospheric"
+      ],
+      "intensity": 3,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "weather_heavy_downpour_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/weather/heavy_downpour_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "weather",
+        "atmosphere",
+        "nature"
+      ],
+      "tone": [
+        "dramatic",
+        "atmospheric"
+      ],
+      "intensity": 3,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "weather_moon_dark_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/weather/moon_dark_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "weather",
+        "atmosphere",
+        "nature"
+      ],
+      "tone": [
+        "dramatic",
+        "atmospheric"
+      ],
+      "intensity": 3,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "weather_storm_night_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/weather/storm_night_01.gif",
+      "rating": "sfw",
+      "source": "local",
+      "license": "user_supplied_pack",
+      "tags": [
+        "weather",
+        "atmosphere",
+        "nature"
+      ],
+      "tone": [
+        "dramatic",
+        "atmospheric"
+      ],
+      "intensity": 3,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "weather_thunderstorm_sea_01",
+      "pack": "base_atmosphere",
+      "type": "gif",
+      "path": "assets/gifs/weather/thunderstorm_sea_01.gif",
+      "rating": "sfw",
+      "source": "giphy",
+      "license": "giphy_standard",
+      "tags": [
+        "weather",
+        "atmosphere",
+        "nature"
+      ],
+      "tone": [
+        "dramatic",
+        "atmospheric"
+      ],
+      "intensity": 3,
+      "weight": 100,
+      "loop": true
+    },
+    {
+      "id": "adult_romance_brothel_slot_01",
+      "pack": "adult_local_pack",
+      "type": "gif",
+      "path": "assets/gifs/adult/local_pack/romance_brothel_01.gif",
+      "rating": "explicit",
+      "source": "local",
+      "license": "user_supplied_pack",
+      "tags": [
+        "sex",
+        "brothel",
+        "romance",
+        "consensual"
+      ],
+      "tone": [
+        "erotic"
+      ],
+      "intensity": 3,
+      "weight": 100,
+      "loop": true,
+      "requiresOptIn": true,
+      "blockedInCombat": true,
+      "placeholder": true
+    },
+    {
+      "id": "adult_romance_private_slot_01",
+      "pack": "adult_local_pack",
+      "type": "gif",
+      "path": "assets/gifs/adult/local_pack/private_romance_01.gif",
+      "rating": "adult",
+      "source": "local",
+      "license": "user_supplied_pack",
+      "tags": [
+        "romance",
+        "intimacy",
+        "consensual"
+      ],
+      "tone": [
+        "erotic",
+        "tender"
+      ],
+      "intensity": 2,
+      "weight": 80,
+      "loop": true,
+      "requiresOptIn": true,
+      "blockedInCombat": true,
+      "placeholder": true
+    },
+    {
+      "id": "nature_rune_tree_01",
+      "pack": "base_atmosphere",
+      "type": "image",
+      "path": "assets/images/nature/rune_tree_01.png",
+      "rating": "sfw",
+      "source": "ai_generated",
+      "license": "ai_art",
+      "tags": [
+        "nature",
+        "mystical",
+        "rune",
+        "tree",
+        "ancient"
+      ],
+      "tone": [
+        "mysterious",
+        "ominous"
+      ],
+      "intensity": 3,
+      "weight": 110,
+      "loop": false
+    },
+    {
+      "id": "nature_wolf_pack_01",
+      "pack": "base_atmosphere",
+      "type": "image",
+      "path": "assets/images/nature/wolf_pack_01.png",
+      "rating": "sfw",
+      "source": "ai_generated",
+      "license": "ai_art",
+      "tags": [
+        "nature",
+        "wolf",
+        "forest",
+        "night",
+        "pack"
+      ],
+      "tone": [
+        "tense",
+        "ominous"
+      ],
+      "intensity": 4,
+      "weight": 110,
+      "loop": false
+    },
+    {
+      "id": "reactions_nat1_fail_01",
+      "pack": "meme_reactions",
+      "type": "image",
+      "path": "assets/images/reactions/nat1_fail_01.png",
+      "rating": "sfw",
+      "source": "ai_generated",
+      "license": "ai_art",
+      "tags": [
+        "reaction",
+        "dice",
+        "fail",
+        "dnd",
+        "critical"
+      ],
+      "tone": [
+        "comedy",
+        "dramatic"
+      ],
+      "intensity": 3,
+      "weight": 120,
+      "loop": false,
+      "allowedModes": [
+        "normal",
+        "meme"
+      ]
+    },
+    {
+      "id": "reactions_nat20_success_01",
+      "pack": "meme_reactions",
+      "type": "image",
+      "path": "assets/images/reactions/nat20_success_01.png",
+      "rating": "sfw",
+      "source": "ai_generated",
+      "license": "ai_art",
+      "tags": [
+        "reaction",
+        "dice",
+        "success",
+        "dnd",
+        "critical",
+        "natural20"
+      ],
+      "tone": [
+        "triumph",
+        "dramatic"
+      ],
+      "intensity": 3,
+      "weight": 120,
+      "loop": false,
+      "allowedModes": [
+        "normal",
+        "meme"
+      ]
+    },
+    {
+      "id": "tavern_bar_candles_01",
+      "pack": "base_atmosphere",
+      "type": "image",
+      "path": "assets/images/tavern/bar_candles_01.png",
+      "rating": "sfw",
+      "source": "ai_generated",
+      "license": "ai_art",
+      "tags": [
+        "tavern",
+        "interior",
+        "candle",
+        "warm",
+        "medieval"
+      ],
+      "tone": [
+        "warm",
+        "atmospheric"
+      ],
+      "intensity": 2,
+      "weight": 110,
+      "loop": false
+    },
+    {
+      "id": "tavern_potion_map_01",
+      "pack": "base_atmosphere",
+      "type": "image",
+      "path": "assets/images/tavern/potion_map_01.png",
+      "rating": "sfw",
+      "source": "ai_generated",
+      "license": "ai_art",
+      "tags": [
+        "tavern",
+        "potion",
+        "map",
+        "mystery",
+        "magic"
+      ],
+      "tone": [
+        "mysterious",
+        "atmospheric"
+      ],
+      "intensity": 2,
+      "weight": 110,
+      "loop": false
+    },
+    {
+      "id": "weather_castle_storm_01",
+      "pack": "base_atmosphere",
+      "type": "image",
+      "path": "assets/images/weather/castle_storm_01.png",
+      "rating": "sfw",
+      "source": "ai_generated",
+      "license": "ai_art",
+      "tags": [
+        "weather",
+        "storm",
+        "castle",
+        "lightning",
+        "gothic"
+      ],
+      "tone": [
+        "dramatic",
+        "epic"
+      ],
+      "intensity": 4,
+      "weight": 110,
+      "loop": false
+    },
+    {
+      "id": "weather_rain_village_01",
+      "pack": "base_atmosphere",
+      "type": "image",
+      "path": "assets/images/weather/rain_village_01.png",
+      "rating": "sfw",
+      "source": "ai_generated",
+      "license": "ai_art",
+      "tags": [
+        "weather",
+        "rain",
+        "village",
+        "night",
+        "medieval"
+      ],
+      "tone": [
+        "grim",
+        "atmospheric"
+      ],
+      "intensity": 3,
+      "weight": 110,
+      "loop": false
+    },
+    {
+      "id": "atmosphere_ritual_chamber_01",
+      "pack": "base_atmosphere",
+      "type": "image",
+      "path": "assets/images/atmosphere/ritual_chamber_01.png",
+      "rating": "sfw",
+      "source": "ai_generated",
+      "license": "ai_art",
+      "tags": [
+        "atmosphere",
+        "ritual",
+        "magic",
+        "candle",
+        "gothic"
+      ],
+      "tone": [
+        "mysterious",
+        "occult"
+      ],
+      "intensity": 3,
+      "weight": 110,
+      "loop": false
+    },
+    {
+      "id": "atmosphere_skull_chalice_01",
+      "pack": "base_atmosphere",
+      "type": "image",
+      "path": "assets/images/atmosphere/skull_chalice_01.png",
+      "rating": "sfw",
+      "source": "ai_generated",
+      "license": "ai_art",
+      "tags": [
+        "atmosphere",
+        "skull",
+        "chalice",
+        "dungeon",
+        "dark"
+      ],
+      "tone": [
+        "grim",
+        "gothic"
+      ],
+      "intensity": 3,
+      "weight": 110,
+      "loop": false
+    }
+  ]
+}

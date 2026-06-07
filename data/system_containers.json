@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "aliases": {
+    "player": "player_backpack",
+    "player_inventory": "player_backpack",
+    "player_backpack": "player_backpack",
+    "player_equipment": "player_equipment",
+    "guard_confiscation_chest": "guard_confiscation_chest"
+  },
+  "containers": {
+    "player_backpack": {
+      "type": "player_backpack",
+      "ownerId": "player",
+      "maxWeight": 100,
+      "maxSlots": 30,
+      "locationBinding": "player",
+      "custom_props": {
+        "system_id": "player_backpack",
+        "hidden": false
+      },
+      "lock_data": {
+        "is_locked": false,
+        "difficulty": 0,
+        "trap": null
+      },
+      "physical_props": {
+        "health": 100,
+        "flammable": true
+      }
+    },
+    "player_equipment": {
+      "type": "player_equipment",
+      "ownerId": "player",
+      "maxWeight": 50,
+      "maxSlots": 10,
+      "locationBinding": "player",
+      "custom_props": {
+        "system_id": "player_equipment",
+        "hidden": false
+      },
+      "lock_data": {
+        "is_locked": false,
+        "difficulty": 0,
+        "trap": null
+      },
+      "physical_props": {
+        "health": 100,
+        "flammable": false
+      }
+    },
+    "guard_confiscation_chest": {
+      "type": "static_chest",
+      "ownerId": "city_guard",
+      "maxWeight": 9999,
+      "maxSlots": 999,
+      "locationBinding": "player",
+      "custom_props": {
+        "system_id": "guard_confiscation_chest",
+        "hidden": true
+      },
+      "lock_data": {
+        "is_locked": false,
+        "difficulty": 0,
+        "trap": null
+      },
+      "physical_props": {
+        "health": 250,
+        "flammable": false
+      }
+    }
+  }
+}

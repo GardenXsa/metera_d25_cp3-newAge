@@ -1,0 +1,118 @@
+{
+  "minor_burn_dot": {
+    "name": "Слабое горение",
+    "description": "Вы чувствуете лёгкий жар. Наносит небольшой урон огнём каждый ход.",
+    "icon": "🔥",
+    "effects": [
+      {
+        "trigger": {
+          "type": "on_turn_start",
+          "interval": 1
+        },
+        "action": {
+          "type": "modify_stat",
+          "stat": "hp",
+          "change": -2
+        }
+      }
+    ]
+  },
+  "weak_poison_dot": {
+    "name": "Слабый яд",
+    "description": "Яд медленно действует в ваших жилах. Наносит урон и ослабляет.",
+    "icon": "☠️",
+    "effects": [
+      {
+        "trigger": {
+          "type": "on_turn_start",
+          "interval": 1
+        },
+        "action": {
+          "type": "modify_stat",
+          "stat": "hp",
+          "change": -1
+        }
+      },
+      {
+        "trigger": {
+          "type": "on_turn_start",
+          "interval": 3
+        },
+        "action": {
+          "type": "modify_stat",
+          "stat": "str",
+          "change": -1
+        }
+      }
+    ]
+  },
+  "curse_of_clumsiness": {
+    "name": "Проклятие неловкости",
+    "description": "Проклятие туманит ваш разум. Снижает ловкость.",
+    "icon": "🌀",
+    "effects": [
+      {
+        "trigger": {
+          "type": "on_apply"
+        },
+        "action": {
+          "type": "modify_stat",
+          "stat": "dex",
+          "change": -3
+        }
+      }
+    ]
+  },
+  "blessing_of_might": {
+    "name": "Благословение силы",
+    "description": "Вы чувствуете прилив сил. Увеличивает силу.",
+    "icon": "💪",
+    "effects": [
+      {
+        "trigger": {
+          "type": "on_apply"
+        },
+        "action": {
+          "type": "modify_stat",
+          "stat": "str",
+          "change": 3
+        }
+      }
+    ]
+  },
+  "blessing_of_luck": {
+    "name": "Благословение удачи",
+    "description": "Фортуна улыбается вам. Повышает все характеристики.",
+    "icon": "⭐",
+    "effects": [
+      {
+        "trigger": {
+          "type": "on_apply"
+        },
+        "action": {
+          "type": "modify_stat",
+          "stat": "cha",
+          "change": 2
+        }
+      }
+    ]
+  },
+  "minor_regeneration": {
+    "name": "Слабая регенерация",
+    "description": "Ваши раны медленно затягиваются. Восстанавливает HP каждый ход.",
+    "icon": "💚",
+    "effects": [
+      {
+        "trigger": {
+          "type": "on_turn_start",
+          "interval": 1
+        },
+        "action": {
+          "type": "modify_stat",
+          "stat": "hp",
+          "change": 2
+        }
+      }
+    ]
+  }
+}

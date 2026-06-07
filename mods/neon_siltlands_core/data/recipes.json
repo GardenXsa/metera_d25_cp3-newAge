@@ -1,0 +1,5 @@
+[
+  { "id": "bake_mold_bread", "name": "Испечь плесневой хлеб", "inputs": { "mold_grain": 2 }, "outputs": { "mold_bread": 1 }, "facility": "farms" },
+  { "id": "forge_silt_blade", "name": "Сковать илистый клинок", "inputs": { "iron_scrap": 2, "scrap_wood": 1 }, "outputs": { "silt_blade": 1 }, "facility": "smithy" },
+  { "id": "prepare_field_kit", "name": "Собрать полевой набор", "inputs": { "night_herbs": 1, "salt_sludge": 1 }, "outputs": { "field_kit": 1 }, "facility": "market" }
+]

@@ -1,0 +1,19 @@
+{
+  "mod_json": {
+    "id": "__MOD_ID__",
+    "name": "__MOD_NAME__",
+    "version": "1.0.0",
+    "author": "Unknown",
+    "description": "Описание мода...",
+    "dependencies": [
+      "base_game"
+    ],
+    "scripts": [
+      "data/main.js"
+    ],
+    "data": {}
+  },
+  "files": {
+    "data/main.js": "// Инициализация мода\nModAPI.on('onModsInitialized', async () => {\n    console.log('Мод __MOD_ID__ успешно загружен!');\n\n    // Data-first пример: добавляй items/recipes/locations через JSON-файлы мода,\n    // а не прямой записью в runtime DB из скрипта.\n});\n"
+  }
+}
