@@ -396,6 +396,25 @@ def _build_runtime_context(
             ui.hint(preview)
         return ui.confirm("СЂР°Р·СЂРµС€РёС‚СЊ?", default=False)
 
+    def _ask_user(payload: dict) -> str:
+        """CLI ask_user handler: present options or free-text prompt."""
+        question = payload.get("question", "")
+        options = payload.get("options", [])
+        default_val = payload.get("default", "")
+        if json_output:
+            return default_val
+        if options:
+            default_idx = 0
+            if default_val:
+                for i, opt in enumerate(options):
+                    val = opt.get("value", opt) if isinstance(opt, dict) else opt
+                    if val == default_val:
+                        default_idx = i
+                        break
+            chosen = ui.choose(question, options, default=default_idx)
+            return options[chosen]
+        return ui.ask(question, default=default_val)
+
     ctx = ToolContext(
         mods_root=mods_root,
         mod_root=mod_root,
@@ -403,6 +422,7 @@ def _build_runtime_context(
         confirm=confirm,
         log=lambda msg: ui.hint(msg),
         shell_cwd=mod_root or mods_root,
+        extra={"ask_user": _ask_user},
     )
     return registry, ctx
 

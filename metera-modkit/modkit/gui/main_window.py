@@ -159,6 +159,10 @@ class _AgentWorker(QThread):
                 mod_root=self.mod_path,
                 mode=Mode(self.cfg.permission_mode),
                 confirm=lambda name, args: True,
+                extra={
+                    "ask_user": lambda payload: payload.get("default", "")
+                    or (payload.get("options", [""])[0] if payload.get("options") else ""),
+                },
             )
             registry = build_default_registry(include_shell=False)
             def safe_emit(ev):

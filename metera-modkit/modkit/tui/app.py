@@ -902,11 +902,26 @@ class ModKitApp(App):
 
         mods_root = self._mods_root
         mod_root = (mods_root / self.current_mod) if self.current_mod else None
+        def _ask_user(payload: dict) -> str:
+            """TUI ask_user handler: log question, return default or first option."""
+            question = payload.get("question", "")
+            options = payload.get("options", [])
+            default_val = payload.get("default", "")
+            self.call_from_thread(
+                log.write,
+                f"[yellow]? {question}[/yellow]"
+                + (f" (default: {default_val})" if default_val else ""),
+            )
+            if options:
+                return options[0] if isinstance(options[0], str) else options[0].get("value", str(options[0]))
+            return default_val
+
         ctx = ToolContext(
             mods_root=mods_root,
             mod_root=mod_root,
             mode=Mode(self.cfg.permission_mode),
             confirm=lambda name, args: True,  # UI handles prompting via Dialog
+            extra={"ask_user": _ask_user},
         )
         registry = build_default_registry(include_shell=bool(self.cfg.provider))
 
