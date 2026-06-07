@@ -130,6 +130,7 @@ class _AgentWorker(QThread):
     event = Signal(str, str, str, bool)  # kind, title, body, is_markdown
     error = Signal(str)
     finished_history = Signal(list)
+    ask_user_signal = Signal(dict)  # payload dict → main window shows dialog
 
     def __init__(self, cfg: config_mod.Config, mod_path: Path | None, mods_root: Path, task: str, history: list) -> None:
         super().__init__()
@@ -154,62 +155,24 @@ class _AgentWorker(QThread):
                 temperature=self.cfg.temperature,
                 max_tokens=self.cfg.max_tokens,
             )
-            # ask_user: show a real dialog with buttons for each option
+            # ask_user: emit signal to main thread, wait for answer
             def _ask_user(payload: dict) -> str:
                 import threading
 
-                question = payload.get("question", "")
-                options = payload.get("options", [])
-                default_val = payload.get("default", "")
                 result_holder: dict = {"answer": None}
                 answer_event = threading.Event()
 
-                def _show_dialog() -> None:
-                    from PySide6.QtWidgets import QMessageBox
-
-                    msg_box = QMessageBox(self)
-                    msg_box.setWindowTitle("Вопрос агента")
-                    msg_box.setText(question)
-                    msg_box.setIcon(QMessageBox.Question)
-
-                    if options:
-                        buttons = []
-                        for i, opt in enumerate(options):
-                            label = opt if isinstance(opt, str) else opt.get("label", opt.get("value", str(opt)))
-                            value = opt if isinstance(opt, str) else opt.get("value", str(opt))
-                            btn = msg_box.addButton(label, QMessageBox.AcceptRole)
-                            btn.ask_value = value  # type: ignore[attr-defined]
-                            buttons.append(btn)
-                    else:
-                        msg_box.setStandardButtons(QMessageBox.Ok)
-                        msg_box.setInformativeText(f"По умолчанию: {default_val}" if default_val else "Нажмите OK для подтверждения")
-
-                    ret = msg_box.exec()
-
-                    # Find clicked button's value
-                    if options:
-                        for btn in buttons:
-                            if msg_box.clickedButton() == btn:
-                                result_holder["answer"] = getattr(btn, "ask_value", btn.text())
-                                break
-                    else:
-                        result_holder["answer"] = default_val
+                def _on_answer(answer: str) -> None:
+                    result_holder["answer"] = answer
                     answer_event.set()
 
-                # Schedule dialog on the GUI thread
-                try:
-                    from PySide6.QtCore import QMetaObject, Qt as QtCompat
-                    QMetaObject.invokeMethod(self, "show", QtCompat.ConnectionType.QueuedConnection)
-                    # Use QTimer to show dialog on main thread
-                    from PySide6.QtCore import QTimer
-                    QTimer.singleShot(0, _show_dialog)
-                except Exception:
-                    result_holder["answer"] = default_val
-                    answer_event.set()
+                # Store callback so the main window slot can call it
+                payload["_answer_callback"] = _on_answer
+                self.ask_user_signal.emit(payload)
 
-                # Wait up to 5 minutes
+                # Wait up to 5 minutes for the user to answer
                 answer_event.wait(timeout=300)
-                return result_holder["answer"] or default_val
+                return result_holder["answer"] or payload.get("default", "")
 
             project_root = str(self.mods_root.parent) if self.mods_root.parent.exists() else str(self.mods_root)
 
@@ -999,6 +962,7 @@ class ModKitWindow(QMainWindow):
         self._ai_worker.event.connect(self._on_ai_event)
         self._ai_worker.error.connect(self._on_ai_error)
         self._ai_worker.finished_history.connect(self._on_ai_finished_history)
+        self._ai_worker.ask_user_signal.connect(self._on_ask_user)
         self._ai_worker.start()
 
     def _remove_thinking_placeholder(self) -> None:
@@ -1138,6 +1102,51 @@ class ModKitWindow(QMainWindow):
 
     def _on_ai_error(self, msg: str) -> None:
         self._append_chat_record(ChatRecord(kind="error", title="error", body=msg))
+
+    def _on_ask_user(self, payload: dict) -> None:
+        """Show a dialog on the main thread when agent asks a question.
+
+        This slot is connected to _AgentWorker.ask_user_signal and runs
+        on the GUI thread, so QMessageBox.exec() is safe to call.
+        """
+        from PySide6.QtWidgets import QMessageBox
+
+        question = payload.get("question", "")
+        options = payload.get("options", [])
+        default_val = payload.get("default", "")
+        callback = payload.get("_answer_callback")
+
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Вопрос агента")
+        msg_box.setText(question)
+        msg_box.setIcon(QMessageBox.Question)
+
+        if options:
+            for i, opt in enumerate(options):
+                label = opt if isinstance(opt, str) else opt.get("label", opt.get("value", str(opt)))
+                value = opt if isinstance(opt, str) else opt.get("value", str(opt))
+                btn = msg_box.addButton(label, QMessageBox.AcceptRole)
+                btn.ask_value = value  # type: ignore[attr-defined]
+        else:
+            msg_box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+            msg_box.setInformativeText(f"По умолчанию: {default_val}" if default_val else "Нажмите OK для подтверждения")
+
+        msg_box.exec()
+
+        # Determine answer
+        answer = default_val
+        if options:
+            for btn in msg_box.buttons():
+                if msg_box.clickedButton() == btn:
+                    answer = getattr(btn, "ask_value", btn.text())
+                    break
+        else:
+            if msg_box.result() == QMessageBox.Ok:
+                answer = default_val
+
+        # Send answer back to the agent thread
+        if callable(callback):
+            callback(answer)
 
     def _on_ai_finished_history(self, history: list) -> None:
         self.chat_history = history
